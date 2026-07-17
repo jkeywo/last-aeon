@@ -1,0 +1,11 @@
+package:
+  id: the_last_aeons
+  display_name: The Last Aeons
+  spec: worldspec-core/0.6
+
+revision: { id: the-last-aeons-0.1, status: development }
+extensions: []
+genre_profile: science_fantasy_space_opera
+style_profiles: []
+dependencies: {}
+validation: { mode: development }

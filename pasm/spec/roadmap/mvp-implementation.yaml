@@ -1,0 +1,194 @@
+# MVP implementation plan — The Last Aeons
+#
+# Every milestone is a vertical slice.  A milestone is complete only when its
+# headless simulation tests and its native/web presentation contract pass.
+
+entities:
+  - system: mvp-implementation-plan
+    core:
+      status: accepted
+      confidence: confirmed
+      title: MVP Implementation Plan
+      summary: >-
+        Build the hand-authored, open-ended local-system MVP in nine ordered
+        vertical slices: deterministic foundation; scripted content; 3D map;
+        political entities; jobs; resources and travel; warfare; the authored
+        scenario; and end-to-end acceptance. The completed MVP simulates a
+        fixed subordinate house in a 41-province world, moon, and starbase
+        system with competing houses and the Sanctora Imperim.
+      references:
+        - mvp-vision
+        - full-game-vision
+        - last-aeons-simulation-runtime
+        - headless-authoritative-simulation
+        - mvp-3d-world-and-system-with-2d-details
+
+  - milestone: mvp-foundation
+    core:
+      status: proposed
+      confidence: confirmed
+      title: "M1: Deterministic Headless Foundation"
+      summary: >-
+        Establish the Rust/Bevy workspace and a headless authoritative
+        simulation host. Implement stable game IDs, deterministic seeded RNG,
+        ordered command application, calendar stepping, versioned snapshots,
+        append-only command logs, and native/web entry points that attach to
+        the same simulation.
+      references:
+        - last-aeons-simulation-runtime
+        - deterministic-campaign-simulation
+        - campaign-persistence
+        - stable-game-identity
+        - headless-simulation-host
+
+  - milestone: mvp-scripted-content
+    core:
+      status: proposed
+      confidence: confirmed
+      title: "M2: Rhai Content and Validation"
+      summary: >-
+        Load authored Rhai scenario, job, result, and event scripts through a
+        narrow API. Scripts read validated context and emit typed commands or
+        events only; Rust validates and applies all mutations. Add CI checks
+        for script loading, cross-references, deterministic execution, and
+        prohibited direct-state access.
+      references:
+        - rhai-is-the-content-scripting-language
+        - scripts-emit-validated-effects-only
+        - scripted-content-with-ci-validation
+        - validated-declarative-game-data
+
+  - milestone: mvp-map-and-inspection
+    core:
+      status: proposed
+      confidence: confirmed
+      title: "M3: Local-System Map and Inspection"
+      summary: >-
+        Implement a selectable 3D local-system map containing the planet,
+        moon, and starbase; a rotatable 3D planetary globe; zoom/select
+        navigation; and read-only 2D information panels. Populate a temporary
+        authored 32-world, 8-moon, 1-starbase province layout using stable IDs.
+      references:
+        - strategic-3d-map-presentation
+        - mvp-3d-world-and-system-with-2d-details
+        - mvp-provincial-composition
+        - mvp-starbase-province
+
+  - milestone: mvp-political-model
+    core:
+      status: proposed
+      confidence: confirmed
+      title: "M4: Characters, Houses, Titles, and Offices"
+      summary: >-
+        Implement characters, dynastic houses, lineage and legal succession,
+        provinces and title holdings, offices, hierarchy, and a derived
+        directional opinion model with stored modifiers. Add autonomous
+        organisation agency for houses and the rules-distinct Sanctora
+        Imperim, including the Consul, starbase commander, and contested
+        Consular appointment.
+      references:
+        - mvp-player-identity
+        - mvp-dynastic-succession
+        - legal-holdings-and-obligations
+        - titles-and-offices-are-separate
+        - no-generic-relationship-entity
+        - organisation-agency-model
+        - consul-and-starbase-command-hierarchy
+        - consul-vacancy-is-a-contested-appointment
+
+  - milestone: mvp-jobs-and-events
+    core:
+      status: proposed
+      confidence: confirmed
+      title: "M5: Character-Led Jobs and Results"
+      summary: >-
+        Implement job initiation, assignment, forecast, duration, requirements,
+        resolution, and delegation. Enforce one personally led job for the
+        current head and character assignment for additional jobs. Implement
+        critical success, success, failure, and disaster; routine-job retry;
+        result-level popups; and the cross-organisation notable-result log.
+      references:
+        - character-led-jobs-are-primary-actions
+        - assignment-quality-and-presence-matter
+        - duty-officer-inspired-job-catalogue
+        - routine-job-failure-retries
+        - consequential-job-failure-and-disaster
+        - result-level-popups
+        - notable-results-are-logged
+        - explicit-personal-risk-tags
+
+  - milestone: mvp-economy-and-local-travel
+    core:
+      status: proposed
+      confidence: confirmed
+      title: "M6: Resources, Presence, Ships, and Local Travel"
+      summary: >-
+        Implement provincial economic production and consumption for wealth,
+        manpower, and supplies; legitimacy-driven influence capacity and
+        recharge; physical character location; delayed orders across bodies
+        and during transit; individually tracked ships; and capital-ship
+        captains. Implement jobs to form persistent armies by assigning a
+        general, manpower, and supplies.
+      references:
+        - legitimacy-caps-and-regenerates-influence
+        - physical-presence-and-order-delay
+        - individually-tracked-ships
+        - persistent-armies
+        - mvp-local-system-scope
+
+  - milestone: mvp-operational-warfare
+    core:
+      status: proposed
+      confidence: confirmed
+      title: "M7: Operational Warfare and Standing Orders"
+      summary: >-
+        Implement military jobs for raising, supplying, moving, patrolling,
+        blockading, besieging, raiding, and negotiating. Resolve engagements
+        from strategic state rather than tactical battles. Implement standing
+        orders that generate reactive jobs, with bespoke player jobs taking
+        precedence.
+      references:
+        - job-based-operational-warfare
+        - military-standing-orders
+        - persistent-armies
+        - tracked-starships
+
+  - milestone: mvp-authored-scenario
+    core:
+      status: proposed
+      confidence: confirmed
+      title: "M8: Forty-One Province Succession Crisis"
+      summary: >-
+        Author and validate the fixed MVP scenario: 32 planetary provinces,
+        8 lunar provinces, the Sanctora starbase, three great houses, eight
+        vassal houses, two independent houses, the fixed player house, the
+        vacant planetary paramount title, and the recent death that caused its
+        succession crisis. Include Consular endorsement, Imperial tithes, and
+        contested Consular appointment jobs.
+      references:
+        - mvp-hand-authored-scenario
+        - mvp-fixed-house-and-head
+        - mvp-provincial-composition
+        - mvp-three-overhouses-and-eight-vassals
+        - mvp-vassal-allegiance-and-independents
+        - planetary-paramount-title-is-contested
+        - planetary-succession-crisis-origin
+        - consul-endorsement-is-helpful-not-required
+
+  - milestone: mvp-acceptance-and-release
+    core:
+      status: proposed
+      confidence: confirmed
+      title: "M9: MVP Acceptance, Replay, and Delivery"
+      summary: >-
+        Prove the complete MVP through deterministic seeded playthroughs on
+        both native and web builds. Validate scripts and scenario references in
+        CI; replay recorded command logs from snapshots; test succession,
+        appointment, jobs, travel delay, army standing orders, and the message
+        log; and publish a playable web build alongside the native build.
+      references:
+        - mvp-has-no-victory-condition
+        - deterministic-seed-and-command-replay
+        - versioned-snapshots-plus-command-log
+        - shared-native-and-web-delivery
+        - scripted-content-with-ci-validation

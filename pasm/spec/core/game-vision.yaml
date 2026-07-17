@@ -1,0 +1,1052 @@
+entities:
+  - system: last-aeons-grand-strategy-game
+    core:
+      status: proposed
+      confidence: confirmed
+      title: The Last Aeons Grand Strategy Game
+      summary: A character-led grand strategy game in The Last Aeons, where the player guides an organisation through its current leader across a galaxy joined by strategically scarce Maelstrom Gates.
+      goals:
+        - Deliver a Crusader Kings-like game of personal rule, succession, political relationships, territorial power, and conflict in a science-fantasy space-opera setting.
+      references: [player-organisation, organisation-head, organisation-control-model, campaign-map]
+
+  - scope: full-game-vision
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Finished Game Vision
+      summary: A pauseable-real-time, character-led grand strategy simulation in The Last Aeons. The player leads a house or other eligible organisation through its current head across a campaign of fewer than ten star systems linked by Maelstrom Gates, pursuing open-ended political, territorial, military, and personal ambitions through persistent characters, holdings, ships, armies, offices, and jobs.
+      goals:
+        - Deliver Crusader Kings-scale dynastic and organisational politics across worlds rather than a single landmass.
+        - Make physical presence, travel, delegation, and scarce interstellar routes strategically consequential.
+        - Support organisation-specific succession and political rules beyond dynastic houses.
+      references: [last-aeons-grand-strategy-game, player-organisation, campaign-map, maelstrom-gate, job-system, physical-presence-and-order-delay, succession-framework]
+
+  - scope: mvp-vision
+    core:
+      status: accepted
+      confidence: confirmed
+      title: MVP Vision
+      summary: One fixed, hand-authored, open-ended political simulation centred on a minor legitimate dynastic house and its head. The playable local system contains a 32-province world, an 8-province moon, and a Sanctora Imperim-controlled starbase province; it has local space travel but no Maelstrom Gate, interstellar travel, Precursor technology, or cosmic entities.
+      goals:
+        - Prove that character-led jobs, delegation, physical presence, delayed orders, and meaningful failures create compelling political play.
+        - Prove that succession, title-based power, persistent armies and ships, local-space operations, and competing houses produce a living simulation without a scripted victory condition.
+      references: [mvp-hand-authored-scenario, mvp-fixed-house-and-head, mvp-local-system-scope, mvp-excludes-cosmic-setting-systems, mvp-has-no-victory-condition, job-system, mvp-dynastic-succession]
+
+  - role: player-organisation
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Player Organisation
+      summary: The enduring player identity. In the finished game this may be a house or another eligible organisation; it owns the leader, members, relationships, assets, holdings, and succession rules appropriate to its form.
+      references: [organisation-head]
+    game_design:
+      responsibilities:
+        - Persist as the player's strategic identity across changes of leader.
+        - Supply the political, territorial, military, and social capabilities available to its current head.
+
+  - component: organisation-agency-model
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Organisation Agency Model
+      summary: Every non-player organisation acts autonomously through its own leader, characters, jobs, resources, priorities, and political rules. The initial MVP landscape consists of AI-controlled dynastic houses and the Sanctora Imperim.
+      references: [job-system, character-simulation-scope, player-organisation]
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
+  - organisation_type: dynastic-house
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Dynastic House
+      summary: A hereditary organisation embodied by its current head, with a family, titles, succession, assets, characters, and obligations. The MVP player and other autonomous MVP houses use this organisation type.
+      references: [mvp-player-identity, mvp-dynastic-succession, organisation-agency-model]
+
+  - organisation: sanctora-imperim
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Sanctora Imperim
+      summary: The Tsar-appointed civilian government of the Hegemony of Mankind. In the MVP it is an autonomous organisation with political rules distinct from a dynastic house and initially controls the starbase.
+      references: [organisation-agency-model, offices-and-appointments, mvp-local-system-scope]
+    evidence:
+      - kind: other
+        reference: the_last_aeons/entities/import_09.md
+        summary: Canon setting record identifies the Sanctora Imperim as the Hegemony's new civilian government, administering sectors through Golden Tsar-appointed Consuls and maintaining the Sanctora Guard.
+
+  - decision: mvp-organisation-landscape
+    core:
+      status: accepted
+      confidence: confirmed
+      title: MVP Organisation Landscape
+      summary: The MVP contains three large dynastic houses and eight vassal dynastic houses, including the player house as a subordinate. The Sanctora Imperim is a distinct factional organisation, initially controlling the starbase and following different political and succession rules from a house.
+      rationale:
+        - Competing autonomous houses provide the core dynastic political field.
+        - A rules-distinct Sanctora presence creates an external institutional power and a non-dynastic model for the finished game.
+      references: [dynastic-house, sanctora-imperim, organisation-agency-model, mvp-fixed-house-and-head]
+
+  - decision: mvp-three-overhouses-and-eight-vassals
+    core:
+      status: accepted
+      confidence: confirmed
+      title: MVP Has Three Great Houses and Eight Vassal Houses
+      summary: The MVP political hierarchy contains three large dynastic houses, eight subordinate vassal houses, and two small independent houses. The player begins as one of the vassal houses, alongside the rules-distinct Sanctora Imperim.
+      rationale:
+        - A layered hierarchy creates immediate obligations, patronage, rivalry, and ambitions beyond peer-to-peer competition.
+        - The player starts with enough constraint to make advancement, intrigue, and selective defiance meaningful.
+      references: [dynastic-house, mvp-minor-house-opening, mvp-organisation-landscape, legal-holdings-and-obligations]
+
+  - decision: mvp-vassal-allegiance-and-independents
+    core:
+      status: accepted
+      confidence: confirmed
+      title: MVP Vassals Have Named Overlords
+      summary: Every vassal house begins bound to exactly one named great house, including the player house. Two small dynastic houses begin independent of the great-house hierarchy.
+      rationale:
+        - Named starting allegiance makes obligations, protection, tax demands, faction politics, and defiance concrete.
+        - Independent houses provide alternative allies, targets, and examples of a different political path.
+      references: [mvp-three-overhouses-and-eight-vassals, legal-holdings-and-obligations, title-based-territorial-politics]
+
+  - decision: great-houses-contest-the-planet
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Great Houses Contest the Planet
+      summary: All three great houses are vying for the planet. Their vassals are distributed across the local system; some vassal houses and one independent house are based on the moon.
+      rationale:
+        - The planet remains the central political prize, while the moon provides a distinct but entangled arena for alliances, refuge, and local-space strategy.
+      references: [mvp-three-overhouses-and-eight-vassals, mvp-vassal-allegiance-and-independents, mvp-local-system-scope, province]
+
+  - decision: planetary-paramount-title-is-contested
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Planetary Paramount Title Is Contested
+      summary: At the start of the MVP, the planet's paramount title is vacant or effectively contested. Each of the three great houses has a plausible claim, but none has unchallengeable authority.
+      rationale:
+        - The contested title makes the struggle for the planet an immediate political problem rather than a distant expansion goal.
+      references: [great-houses-contest-the-planet, legal-holdings-and-obligations, title-based-territorial-politics]
+
+  - decision: planetary-succession-crisis-origin
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Planetary Succession Crisis Follows the Paramount's Death
+      summary: The previous planetary paramount has recently died without an accepted successor. Distant Imperial authority has delayed, or strategically declined, to settle the succession, leaving the title contested.
+      rationale:
+        - The crisis is immediate and legally intelligible without requiring a supernatural or external-catastrophe premise.
+      references: [planetary-paramount-title-is-contested, consul-title, sanctora-imperim, mvp-excludes-cosmic-setting-systems]
+
+  - decision: consul-endorsement-is-helpful-not-required
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Consular Endorsement Is Helpful, Not Required
+      summary: A Consul can endorse or oppose a claimant to the planetary paramount title, but Consular endorsement is neither necessary nor sufficient to secure the title. Territorial, military, and political backing can still establish a claimant.
+      rationale:
+        - Imperial recognition matters without making the local political contest a single-office veto.
+      references: [consul-title, planetary-paramount-title-is-contested, great-houses-contest-the-planet]
+
+  - system: last-aeons-simulation-runtime
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Rust and Bevy Simulation Runtime
+      summary: The game uses Rust and Bevy. Its authoritative simulation is data-driven and data-oriented, making full use of ECS to model and process the large population of characters, holdings, ships, armies, jobs, titles, offices, and events efficiently.
+      references: [last-aeons-grand-strategy-game, job-system, campaign-time-model, character-simulation-scope]
+    architecture:
+      kind: simulation-runtime
+      classification: core
+      authority: authoritative
+
+  - decision: shared-native-and-web-delivery
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Shared Native and Web Delivery
+      summary: Native desktop and web builds share the Rust/Bevy simulation and data model. The web build is a low-cost additional delivery target rather than a separate game implementation.
+      rationale:
+        - Bevy allows the same simulation to serve both native and web delivery.
+        - Shared delivery prevents gameplay rules from diverging by platform.
+      references: [last-aeons-simulation-runtime, last-aeons-grand-strategy-game]
+
+  - decision: data-driven-data-oriented-simulation
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Data-Driven, Data-Oriented Simulation
+      summary: Game content and rules are authored as data wherever practical, while ECS-oriented systems process simulation entities efficiently. Hand-authored MVP scenario content is data, not bespoke gameplay code.
+      rationale:
+        - Data authoring supports the large variety of jobs, characters, territories, rules-distinct organisations, and events envisioned for the game.
+        - ECS supports high-throughput simulation while keeping related entity state explicit.
+      references: [last-aeons-simulation-runtime, mvp-hand-authored-scenario, job-system]
+
+  - component: deterministic-campaign-simulation
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Deterministic Campaign Simulation
+      summary: A campaign seed, authored scenario data, and ordered player decisions fully determine the campaign state. Random outcomes are generated from recorded deterministic streams and can be replayed.
+      references: [last-aeons-simulation-runtime, campaign-time-model, job-system]
+    architecture:
+      kind: simulation-subsystem
+      classification: core
+      authority: authoritative
+
+  - decision: deterministic-seed-and-command-replay
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Deterministic Seed and Command Replay
+      summary: The same campaign seed, authored data, and sequence of player decisions must produce the same simulation result. Randomness is seed-driven and recorded through the deterministic simulation rather than left to platform state.
+      rationale:
+        - Determinism enables reliable save/load, replay, debugging, automated scenario tests, and balancing across native and web builds.
+      references: [deterministic-campaign-simulation, shared-native-and-web-delivery, data-driven-data-oriented-simulation]
+
+  - component: campaign-persistence
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Campaign Snapshot and Command Persistence
+      summary: A versioned campaign snapshot captures current state for fast loading. An append-only ordered player-command log records meaningful player decisions and supports replay, verification, debugging, and future migration.
+      references: [deterministic-campaign-simulation, last-aeons-simulation-runtime]
+    architecture:
+      kind: persistence-subsystem
+      classification: core
+      authority: authoritative
+
+  - decision: versioned-snapshots-plus-command-log
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Versioned Snapshots Plus Command Log
+      summary: Campaign saves contain versioned periodic state snapshots plus an append-only player-command log. The game autosaves at meaningful decisions and calendar milestones.
+      rationale:
+        - Snapshots provide fast ordinary loading, while the command log supports deterministic verification and diagnosis.
+      references: [campaign-persistence, deterministic-seed-and-command-replay, campaign-time-model]
+
+  - component: stable-game-identity
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Stable Game Identity
+      summary: Every durable game entity has a stable game ID distinct from its transient Bevy ECS entity handle. Stable IDs are used by saves, command logs, jobs, titles, UI selection, references, and cross-system links.
+      references: [campaign-persistence, deterministic-campaign-simulation, last-aeons-simulation-runtime]
+    architecture:
+      kind: identity-subsystem
+      classification: core
+      authority: authoritative
+
+  - decision: stable-ids-separate-from-ecs-handles
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Stable IDs Are Separate from ECS Handles
+      summary: Stable game IDs represent durable identity. Bevy ECS entity handles are internal runtime optimisation details and must not be relied on for persistence, command targeting, or external references.
+      rationale:
+        - ECS reconstruction and reloads must not invalidate durable game references.
+      references: [stable-game-identity, versioned-snapshots-plus-command-log, data-driven-data-oriented-simulation]
+
+  - component: headless-simulation-host
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Headless Simulation Host
+      summary: The authoritative Bevy ECS calendar, command resolver, jobs, persistence, and simulation systems can run without a renderer or UI. Native and web clients attach input and presentation to this same simulation.
+      references: [last-aeons-simulation-runtime, deterministic-campaign-simulation, campaign-persistence]
+    architecture:
+      kind: simulation-host
+      classification: core
+      authority: authoritative
+
+  - decision: headless-authoritative-simulation
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Authoritative Simulation Runs Headlessly
+      summary: The simulation must be runnable headlessly; UI and render layers do not own or alter its rules. This supports deterministic tests, replay verification, batch simulation, and balancing tools.
+      rationale:
+        - Shared native and web delivery needs one authoritative source of gameplay truth.
+      references: [headless-simulation-host, shared-native-and-web-delivery, deterministic-seed-and-command-replay]
+
+  - component: validated-declarative-game-data
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Validated Scripted Game Content
+      summary: Hand-authored scenario content, map data, provinces, houses, characters, titles, jobs, job results, and popup events are authored as script files. Automated validation checks their structure, references, and gameplay invariants.
+      references: [data-driven-data-oriented-simulation, mvp-hand-authored-scenario, job-system, job-result-event-system]
+    architecture:
+      kind: content-authoring-subsystem
+      classification: core
+      authority: authoritative
+
+  - decision: scripted-content-with-ci-validation
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Scripted Content with CI Validation
+      summary: The MVP authors game content as script files. Continuous integration validates content structure, cross-references, and declared gameplay invariants before changes are accepted.
+      rationale:
+        - Script files give authored scenarios and jobs the flexibility they need.
+        - CI validation protects determinism, consistency, and authoring quality without constraining content to declarative-only forms.
+      references: [validated-declarative-game-data, deterministic-seed-and-command-replay, mvp-hand-authored-scenario]
+
+  - component: rhai-game-scripting
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Rhai Game Scripting Runtime
+      summary: Rhai is the embedded, Rust-native scripting runtime for authored game content. It is used consistently across native and web builds.
+      references: [validated-declarative-game-data, last-aeons-simulation-runtime, shared-native-and-web-delivery]
+    architecture:
+      kind: scripting-runtime
+      classification: core
+      authority: non-authoritative
+
+  - decision: rhai-is-the-content-scripting-language
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Rhai Is the Content Scripting Language
+      summary: Rhai is the language used for authored scenario, job, result, and event scripts.
+      rationale:
+        - Rhai is Rust-native and supports one embedded scripting approach across desktop and WebAssembly delivery.
+      references: [rhai-game-scripting, scripted-content-with-ci-validation, shared-native-and-web-delivery]
+
+  - component: scripted-command-boundary
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Scripted Command Boundary
+      summary: Rhai scripts receive validated read context and produce declared commands or events. Rust simulation systems validate and apply those effects; scripts cannot directly mutate Bevy ECS state.
+      references: [rhai-game-scripting, last-aeons-simulation-runtime, deterministic-campaign-simulation]
+    architecture:
+      kind: authority-boundary
+      classification: core
+      authority: authoritative
+
+  - decision: scripts-emit-validated-effects-only
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Scripts Emit Validated Effects Only
+      summary: Rhai scripts may read approved context and emit commands or events, but cannot directly write authoritative ECS state. Rust systems own validation and mutation.
+      rationale:
+        - This preserves determinism and makes CI validation, replay, and entity invariants enforceable.
+      references: [scripted-command-boundary, deterministic-seed-and-command-replay, stable-game-identity]
+
+  - component: strategic-3d-map-presentation
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Strategic 3D Map Presentation
+      summary: The MVP presents a rotatable 3D planetary globe and a 3D local-system map containing the planet, moon, and starbase. Players can select a body on the system map and zoom into its strategic view; 2D information panels display detailed state.
+      references: [mvp-local-system-scope, mvp-starbase-province, last-aeons-simulation-runtime]
+    architecture:
+      kind: presentation-subsystem
+      classification: interface
+      authority: derived
+
+  - decision: mvp-3d-world-and-system-with-2d-details
+    core:
+      status: accepted
+      confidence: confirmed
+      title: MVP Uses 3D World and System Maps with 2D Details
+      summary: The MVP uses a rotatable 3D world sphere and a 3D system map for the planet, moon, and starbase. Clickable bodies support zooming into their strategic views; 2D panels show provinces, characters, jobs, ships, armies, titles, and logs.
+      rationale:
+        - The presentation makes local-space geography and the distinct planetary, lunar, and starbase arenas tangible while preserving readable strategy detail.
+      references: [strategic-3d-map-presentation, mvp-local-system-scope, notable-result-message-log]
+
+  - territory: mvp-starbase-province
+    core:
+      status: accepted
+      confidence: confirmed
+      title: MVP Starbase Province
+      summary: The starbase is a province in its own right. It is initially controlled by the Sanctora Imperim through its starbase commander.
+      references: [province, sanctora-imperim, mvp-local-system-scope]
+
+  - office: starbase-commander
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Starbase Commander
+      summary: A character office that directly controls the starbase province and commands its local administration, defence, ships, and personnel. The commander is subordinate to the Consul title.
+      references: [mvp-starbase-province, offices-and-appointments, sanctora-imperim]
+
+  - title: consul-title
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Consul
+      summary: A superior Sanctora title whose holder has the starbase commander as a subordinate and is entitled to exercise Imperial authority through special jobs, including collecting Imperial tithes.
+      references: [starbase-commander, sanctora-imperim, legal-holdings-and-obligations, job-system]
+
+  - decision: consul-and-starbase-command-hierarchy
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Consul Is Superior to Starbase Command
+      summary: In the MVP, the Sanctora Imperim controls the starbase through a commander who controls its province. A Consul holds a superior title over that commander and gains special Imperial jobs such as collecting tithes.
+      rationale:
+        - The hierarchy separates practical control of a strategic province from the wider political authority that can direct and extract from it.
+      references: [sanctora-imperim, mvp-starbase-province, starbase-commander, consul-title, job-system]
+
+  - component: imperial-appointment-contest
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Imperial Appointment Contest
+      summary: When the Consul title becomes vacant, any eligible character can seek it. The distant Golden Tsar formally appoints the successor, but the practical result is determined through local political jobs that advance, obstruct, endorse, or discredit candidates.
+      references: [consul-title, job-system, character-simulation-scope, sanctora-imperim]
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
+  - decision: consul-vacancy-is-a-contested-appointment
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Consul Vacancy Is a Contested Appointment
+      summary: The Consul is formally appointed by the Golden Tsar and is not inherited. In practice, a vacancy opens a contest in which any character may put themselves forward and use jobs to manipulate the appointment.
+      rationale:
+        - Distance from the Tsar makes Imperial authority a local political contest rather than an automatic remote decision.
+        - The contest creates a high-value arena for influence, reputation, alliances, blackmail, and personal presence.
+      references: [imperial-appointment-contest, consul-title, job-system, influence]
+
+  - decision: mvp-provincial-composition
+    core:
+      status: accepted
+      confidence: confirmed
+      title: MVP Has Forty-One Provinces
+      summary: The MVP local system has 32 provinces on its world, 8 provinces on its moon, and 1 starbase province, for 41 provinces in total.
+      rationale:
+        - The world has enough territorial depth for substantial house politics.
+        - The moon and starbase create distinct local-space political arenas without expanding to another star system.
+      references: [mvp-local-system-scope, mvp-starbase-province, province]
+
+  - role: organisation-head
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Head of Organisation
+      summary: The character who embodies the player organisation in play, takes its decisions, and is subject to personal relationships, risk, incapacity, death, and succession.
+      references: [player-organisation]
+    game_design:
+      responsibilities:
+        - Embody the player organisation's authority and personal agency.
+        - Make the consequential political and strategic decisions assigned to the player.
+
+  - component: organisation-control-model
+    core:
+      status: proposed
+      confidence: confirmed
+      title: Organisation Control Model
+      summary: The authoritative simulation boundary that binds the active player organisation to its current head and applies the rules that determine which organisation forms are eligible in a given game mode.
+      references: [player-organisation, organisation-head]
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+      owns: [player-organisation, organisation-head]
+
+  - component: campaign-map
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Campaign Map
+      summary: A compact network of fewer than ten star systems, connected by Maelstrom Gates. Systems contain worlds and orbital habitats; worlds and starbases are divided into politically meaningful provinces.
+      references: [province, star-system, maelstrom-gate]
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+      owns: [province, star-system, maelstrom-gate]
+
+  - territory: star-system
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Star System
+      summary: The interstellar strategic node containing worlds, orbital infrastructure, and Maelstrom Gate links. The complete campaign contains fewer than ten systems.
+      references: [campaign-map, maelstrom-gate, province]
+
+  - territory: province
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Province
+      summary: The basic politically controlled holding. A large world may contain around one hundred provinces, while a starbase may constitute one province in its own right.
+      references: [campaign-map, star-system]
+    game_design:
+      responsibilities:
+        - Provide the local territorial unit through which characters and organisations exercise rule.
+        - Support both planetary provinces and orbital-starbase provinces.
+
+  - infrastructure: maelstrom-gate
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Maelstrom Gate
+      summary: Scarce ancient infrastructure that links star systems and determines the campaign's interstellar strategic routes.
+      references: [campaign-map, star-system]
+
+  - decision: compact-interstellar-map-scope
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Compact Interstellar Map Scope
+      summary: The campaign is a Crusader Kings-scale political map distributed across fewer than ten star systems. Large worlds may have around one hundred provinces, and a starbase may be a province.
+      rationale:
+        - A small system network makes each Maelstrom Gate, system, and interstellar expedition strategically legible.
+        - High province density on major worlds retains the granular territorial politics expected from a Crusader Kings-like game.
+      references: [campaign-map, star-system, province, maelstrom-gate]
+
+  - decision: mvp-minor-house-opening
+    core:
+      status: accepted
+      confidence: confirmed
+      title: MVP Starts as a Minor Legitimate House
+      summary: The MVP player begins as the head of a minor but legitimate dynastic house, with a small cluster of provinces inside a stronger realm. A credible claim or opening for independence, catalysed by a local-system crisis, creates the initial strategic arc.
+      rationale:
+        - A constrained opening makes interpersonal politics, feudal obligation, succession, and territorial ambition immediately relevant.
+        - The player has room to grow without beginning as an already dominant realm.
+      references: [mvp-player-identity, player-organisation, organisation-head, province, star-system]
+
+  - decision: mvp-local-system-scope
+    core:
+      status: accepted
+      confidence: confirmed
+      title: MVP Is a Single Local System
+      summary: The MVP takes place on one world, one moon, and one starbase. It includes local space travel among those bodies but no Maelstrom Gate or interstellar travel.
+      rationale:
+        - This keeps the first playable campaign geographically concentrated while retaining distinct planetary, lunar, and orbital political spaces.
+        - Local-space movement establishes travel, logistics, and orbital power without requiring gate-network simulation in the MVP.
+      references: [campaign-map, province, star-system]
+
+  - component: character-simulation-scope
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Character Simulation Scope
+      summary: The simulation models the player house, close family, court, vassals, rivals, and leading figures of neighbouring powers as individual characters. The broader population is abstracted.
+      references: [player-organisation, organisation-head, province]
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
+  - component: physical-presence-and-order-delay
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Physical Presence and Order Delay
+      summary: Every simulated character is physically present at a holding, on a celestial body, aboard a tracked ship, or in transit. Orders issued across distance are delayed; while a character is in space, all of that character's orders are delayed.
+      references: [campaign-time-model, character-simulation-scope, campaign-map]
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
+  - component: tracked-starships
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Individually Tracked Starships
+      summary: Starships are strategic assets represented and located individually in the simulation. Capital ships additionally have captains who are simulated characters.
+      references: [physical-presence-and-order-delay, character-simulation-scope, campaign-map]
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
+  - decision: presence-constrained-command
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Presence-Constrained Command
+      summary: The player's leader and every other simulated character must be somewhere. If a character is on the wrong world, their orders are delayed; if travelling through space, all their orders are delayed. Physical location is therefore a strategic commitment.
+      rationale:
+        - It makes the world, moon, and starbase distinct political arenas rather than instantaneous interfaces.
+        - It makes travel, delegation, interception, and the position of ships central to strategy.
+      references: [physical-presence-and-order-delay, campaign-time-model, tracked-starships]
+
+  - decision: individually-tracked-ships
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Ships Are Individual Strategic Assets
+      summary: Starships are individually tracked. Capital ships have named captains who participate in the character simulation.
+      rationale:
+        - Individual vessels make naval presence, transport, loyalty, and interception legible at the scale of the intended campaign.
+      references: [tracked-starships, character-simulation-scope, physical-presence-and-order-delay]
+
+  - component: job-system
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Character-Led Job System
+      summary: Jobs are the universal unit of strategic action. Each job takes calendar time and may require manpower, resources, and one or more assigned characters. Its progress and outcome derive from its requirements, the assigned characters' capabilities, their presence, and the evolving world state.
+      references: [campaign-time-model, character-simulation-scope, physical-presence-and-order-delay]
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
+  - decision: character-led-jobs-are-primary-actions
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Character-Led Jobs Are the Primary Actions
+      summary: The player acts by initiating jobs that take time, manpower, characters, and resources to complete. The current organisation head may personally lead one job; every additional job requires assignment of another character.
+      rationale:
+        - This makes time, delegation, staff development, and the location of important people meaningful strategic constraints.
+        - It lets the same action model cover governance, diplomacy, intrigue, military preparation, travel, and ship command.
+      references: [job-system, organisation-head, character-simulation-scope, campaign-time-model]
+
+  - decision: assignment-quality-and-presence-matter
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Assignment Quality and Presence Matter
+      summary: A job's effectiveness depends on the character assigned. Training specialists such as generals improves the jobs they lead, and personal presence can be more effective than delegation—for example, an ally is more impressed when courted by the house head than by a functionary.
+      rationale:
+        - Characters become durable strategic investments rather than interchangeable modifiers.
+        - The player must weigh the head's limited personal attention against the value of developing and trusting delegates.
+      references: [job-system, organisation-head, character-simulation-scope, physical-presence-and-order-delay]
+
+  - decision: duty-officer-inspired-job-catalogue
+    core:
+      status: proposed
+      confidence: confirmed
+      title: Duty-Officer-Inspired Job Catalogue
+      summary: "The job catalogue is informed by Star Trek Online's Duty Officer assignments: jobs declare duration, requirements, risks, and graded outcomes; they may be routine, tied to a location, unlocked as a chain, or created by events."
+      rationale:
+        - The reference system demonstrates a legible way to surface many different kinds of asynchronous assignment without making them feel identical.
+        - This game will adapt the pattern to a small number of named, persistent characters rather than high-volume disposable officer management.
+      references: [job-system, character-simulation-scope, physical-presence-and-order-delay]
+      open_questions:
+        - How should non-routine job failures differ from the automatically retried failures of routine jobs?
+    evidence:
+      - kind: other
+        reference: https://sto.fandom.com/wiki/Duty_officer
+        summary: Duty Officer assignments use real-time durations, staffing slots, specialisations and traits that alter outcomes, location-specific offers, and a simultaneous-assignment limit.
+      - kind: other
+        reference: https://sto.fandom.com/wiki/Assignment:_Support_Colonization_Efforts
+        summary: A representative assignment exposes location type, duration, personnel requirements, outcome probabilities, casualty risk, and distinct critical-success, success, failure, and disaster results.
+
+  - decision: routine-job-failure-retries
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Routine Job Failures Automatically Retry
+      summary: Routine jobs may fail, but failure automatically restarts the same job. The only cost of a routine-job failure is the time lost before its retry.
+      rationale:
+        - Routine work retains a sense of uncertainty without demanding repetitive player intervention.
+        - The player can concentrate attention on consequential jobs while routine administration recovers on its own.
+      references: [job-system, duty-officer-inspired-job-catalogue, campaign-time-model]
+
+  - decision: consequential-job-failure-and-disaster
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Consequential Jobs Have Setbacks and Disasters
+      summary: A failed non-routine job creates a meaningful setback with a credible recovery path. A disaster creates a new political problem or irreversible loss.
+      rationale:
+        - Jobs such as diplomacy, intrigue, military operations, and expeditions need real stakes beyond lost time.
+        - Distinguishing setbacks from disasters keeps failure playable while allowing exceptional consequences to reshape the campaign.
+      references: [job-system, duty-officer-inspired-job-catalogue, campaign-time-model]
+    game_design:
+      failure: [job-setback, job-disaster]
+
+  - failure_state: job-setback
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Job Setback
+      summary: A recoverable failure of a consequential job, such as cooled relations, a missed threat, delay, or lost position.
+      references: [consequential-job-failure-and-disaster]
+    game_design:
+      terminal: false
+      consequences:
+        - The job's objective is delayed, weakened, or temporarily blocked.
+      recovery_paths:
+        - Commit additional time, resources, information, or a better-suited character.
+
+  - failure_state: job-disaster
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Job Disaster
+      summary: A severe failure of a consequential job that creates a new political problem or irreversible loss, such as public insult, a strengthened rival, a lost ship, or a compromised captain.
+      references: [consequential-job-failure-and-disaster]
+    game_design:
+      terminal: false
+      consequences:
+        - The world state changes materially against the initiating organisation.
+      recovery_paths:
+        - Address the new problem through subsequent political, military, diplomatic, or resource commitments.
+
+  - component: military-operation-system
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Character-Led Military Operation System
+      summary: Military play is a sequence of jobs to raise, supply, move, patrol, blockade, besiege, raid, and negotiate. Engagements resolve from forces, preparation, terrain or orbit, commanders, ships, intelligence, morale, and local support rather than tactical battle control.
+      references: [job-system, tracked-starships, physical-presence-and-order-delay, province]
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
+  - decision: job-based-operational-warfare
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Job-Based Operational Warfare
+      summary: The player directs military objectives and commanders through jobs. Battles are strategic resolutions, not separate real-time or tactical battle games.
+      rationale:
+        - It keeps warfare integrated with the character, time, location, resource, and uncertainty systems.
+        - The player's focus remains on political and operational judgement rather than unit-level micromanagement.
+      references: [military-operation-system, job-system, character-simulation-scope]
+
+  - decision: military-standing-orders
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Military Standing Orders Create Reactive Jobs
+      summary: Armies can follow standing orders that automatically create and pursue reactive military jobs. The player can always issue a bespoke manual job, which takes precedence over the standing-order response.
+      rationale:
+        - Reactive automation reduces military micromanagement while keeping every military action inside the common job system.
+        - Bespoke jobs preserve player control at politically or strategically decisive moments.
+      references: [military-operation-system, job-system]
+
+  - resource: wealth
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Wealth
+      summary: Fungible economic capacity spent to fund jobs, personnel, and strategic commitments.
+    game_design:
+      sources: [provincial output, taxation, trade, agreements, successful jobs]
+      sinks: [jobs, personnel, construction, diplomacy, military commitments]
+
+  - resource: manpower
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Manpower
+      summary: Available people who can staff jobs, holdings, armies, and other strategic commitments.
+    game_design:
+      sources: [provincial population, recruitment, agreements, successful jobs]
+      sinks: [jobs, army formation, garrisons, casualties]
+
+  - resource: supplies
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Supplies
+      summary: Material support consumed by expeditions, fleets, armies, and other sustained operations.
+    game_design:
+      sources: [provincial production, trade, procurement jobs]
+      sinks: [army operations, fleet operations, expeditions, construction]
+
+  - resource: influence
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Influence
+      summary: Spendable political capital used to secure cooperation, impose decisions, and take consequential political actions.
+    game_design:
+      sources: [legitimacy-driven recharge, political successes, relationships, holdings]
+      sinks: [political jobs, diplomatic commitments, favours, interventions]
+
+  - component: legitimacy-and-influence-model
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Legitimacy and Influence Model
+      summary: Legitimacy is a non-spendable political standing that sets the player's maximum influence and its recharge rate. Influence is the spendable political resource.
+      references: [influence, player-organisation]
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
+  - component: persistent-armies
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Persistent Armies
+      summary: Armies are individual persistent assets. An army-formation job assigns a General, manpower, and supplies to create it; it then acts through bespoke jobs or standing-order-generated reactive jobs.
+      references: [military-operation-system, military-standing-orders, job-system, manpower, supplies]
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
+  - decision: legitimacy-caps-and-regenerates-influence
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Legitimacy Caps and Regenerates Influence
+      summary: Legitimacy determines maximum influence and the rate at which influence recharges. Influence, rather than legitimacy, is spent on political actions.
+      rationale:
+        - The distinction makes long-term political standing valuable without making every action permanently erode it.
+      references: [legitimacy-and-influence-model, influence]
+
+  - component: legal-holdings-and-obligations
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Legal Holdings and Obligations
+      summary: Provinces and other strategic holdings are legal titles with holders and obligations. A title may be personally held by a house, administered for a superior, leased, or otherwise controlled under a recognised political arrangement.
+      references: [province, player-organisation, character-simulation-scope]
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
+  - decision: title-based-territorial-politics
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Title-Based Territorial Politics
+      summary: Territorial power is expressed through legal titles. Houses can hold provinces, administer them for superiors, lease or control starbases, and bind other houses through vassalage, contracts, or appointments.
+      rationale:
+        - Legal relationships make taxes, levies, claims, loyalty, rebellion, and succession politically intelligible.
+      references: [legal-holdings-and-obligations, province, player-organisation, legitimacy-and-influence-model]
+
+  - component: offices-and-appointments
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Offices and Appointments
+      summary: Offices are temporary, revocable grants of authority and responsibility held by characters. They can include planetary governor, starbase commander, military command, and Sanctora-appointed consul.
+      references: [legal-holdings-and-obligations, character-simulation-scope]
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
+  - component: character-opinion-model
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Derived Character Opinion Model
+      summary: A character's opinion of another character is derived from their traits and current world state, then adjusted by directional, target-specific modifiers stored on one or both involved characters. Modifiers may be temporary or persistent.
+      references: [character-simulation-scope, legal-holdings-and-obligations, offices-and-appointments]
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
+  - decision: no-generic-relationship-entity
+    core:
+      status: accepted
+      confidence: confirmed
+      title: No Generic Relationship Entity
+      summary: The game does not use a generic relationship entity between characters. Family, marriage, title and liege links, office, contracts, faction membership, claims, secrets, and similar facts are represented by their own specific systems; opinion is derived and modified through the character opinion model.
+      rationale:
+        - Specific political and social facts have different ownership, rules, lifetimes, and consequences; collapsing them into a generic relationship record would obscure those rules.
+        - Derived baseline opinion plus directional modifiers gives events a clear, inspectable way to change how characters feel about one another.
+      references: [character-opinion-model, legal-holdings-and-obligations, offices-and-appointments]
+    evidence:
+      - kind: other
+        reference: https://github.com/jesec/ck3-modding-wiki/blob/master/wiki_pages/Effects.md
+        summary: CK3 modding documentation exposes character-targeted opinion values, direct title ownership, and faction membership as distinct effect and scope operations.
+      - kind: other
+        reference: https://app.unpkg.com/ck3-modding-wiki%401.20251107.0/files/wiki_pages/Scopes_list.md
+        summary: CK3 modding documentation treats character, province, landed title, faction, war, and activity as distinct scopes with explicit links among them.
+
+  - decision: titles-and-offices-are-separate
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Titles and Offices Are Separate
+      summary: Territorial titles are enduring legal holdings that may be inherited, claimed, granted, or seized. Offices are temporary appointments that grant authority and responsibilities but can be revoked.
+      rationale:
+        - Separating them creates meaningful tensions between landed power and delegated state authority.
+      references: [legal-holdings-and-obligations, offices-and-appointments, mvp-dynastic-succession]
+
+  - decision: mvp-excludes-cosmic-setting-systems
+    core:
+      status: accepted
+      confidence: confirmed
+      title: MVP Excludes Cosmic Setting Systems
+      summary: The MVP contains no Maelstrom Gates, Maelstrom travel, Precursor technology, or cosmic entities. Its conflicts are political, social, economic, and local-space military.
+      rationale:
+        - The MVP must establish the character-led political simulation before expanding into wider interstellar and cosmic systems.
+      references: [mvp-local-system-scope, campaign-map, job-system]
+
+  - decision: mvp-hand-authored-scenario
+    core:
+      status: accepted
+      confidence: confirmed
+      title: MVP Is One Hand-Authored Scenario
+      summary: The MVP is a single hand-authored world, moon, and starbase scenario with authored provinces, houses, characters, offices, political relationships, and local-space crisis.
+      rationale:
+        - A curated scenario can make the first job-driven political simulation dense, legible, and dramatically effective.
+        - Procedural campaign generation should follow only after this experience is proven.
+      references: [mvp-local-system-scope, job-system, character-simulation-scope, legal-holdings-and-obligations]
+
+  - decision: mvp-has-no-victory-condition
+    core:
+      status: accepted
+      confidence: confirmed
+      title: MVP Has No Victory Condition
+      summary: The MVP is an open-ended simulation with no campaign victory condition or scripted ending. It continues until a terminal house failure, including having neither a viable successor nor a meaningful territorial foothold.
+      rationale:
+        - The point of the MVP is to establish a living political simulation rather than solve a fixed scenario objective.
+      references: [mvp-hand-authored-scenario, mvp-dynastic-succession, player-organisation]
+
+  - decision: mvp-fixed-house-and-head
+    core:
+      status: accepted
+      confidence: confirmed
+      title: MVP Uses a Fixed House and Head
+      summary: The MVP begins with one fixed, authored dynastic house and its current head, including authored family ties, claims, allies, rivals, holdings, and obligations.
+      rationale:
+        - A predetermined start lets the hand-authored scenario demonstrate a dense political web immediately.
+        - Custom house and leader creation can follow once the core simulation is compelling.
+      references: [mvp-hand-authored-scenario, mvp-player-identity, organisation-head, player-organisation]
+
+  - component: job-result-event-system
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Job Result Event System
+      summary: Each individual job result may declare whether it warrants a player-facing popup. A popup presents a short characterful situation and a small number of consequential choices; unflagged results resolve without interruption.
+      references: [job-system, consequential-job-failure-and-disaster, campaign-time-model]
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
+  - decision: result-level-popups
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Job Results Individually Control Popups
+      summary: Success, critical success, failure, and disaster results can each independently decide whether to open a popup. Most jobs resolve automatically; a popup is reserved for outcomes that warrant an immediate player choice.
+      rationale:
+        - Result-level control preserves the pace of asynchronous jobs while allowing pivotal political and personal moments to become interactive.
+      references: [job-result-event-system, duty-officer-inspired-job-catalogue, job-system]
+
+  - component: notable-result-message-log
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Notable Result Message Log
+      summary: A message log records appropriately flagged notable job results, including jobs led by other organisations' characters. Popups are selective interruptions; the log provides ongoing awareness of the wider simulation.
+      references: [job-result-event-system, job-system]
+    architecture:
+      kind: presentation-and-information
+      classification: interface
+      authority: derived
+
+  - decision: notable-results-are-logged
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Flagged Notable Results Are Logged
+      summary: Job results can be flagged for the message log independently of whether they create a popup. The log may include notable results from other leaders as well as the player's organisation.
+      rationale:
+        - The player can follow important changes in the wider political simulation without being interrupted by every one.
+      references: [notable-result-message-log, job-result-event-system, job-system]
+
+  - decision: explicit-personal-risk-tags
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Jobs Declare Explicit Personal Risks
+      summary: "Jobs can declare explicit personal-risk tags: injury, capture, scandal, incapacity, or death. Sending the house head often improves effectiveness while increasing their exposure to these risks."
+      rationale:
+        - Visible risk categories make personal commitment an informed strategic choice.
+        - The house head's power is balanced by the danger that succession will be tested.
+      references: [job-system, organisation-head, mvp-dynastic-succession, character-simulation-scope]
+
+  - decision: mvp-selective-character-simulation
+    core:
+      status: accepted
+      confidence: confirmed
+      title: MVP Selectively Simulates Characters
+      summary: MVP characters in the house, court, vassal network, rival network, and neighbouring leadership can hold titles, form relationships, marry, bear heirs, travel, scheme, and die. Ordinary populations remain abstracted.
+      rationale:
+        - The game needs a dense web of personal politics without treating every citizen across a high-province-count world as an individual agent.
+      references: [character-simulation-scope, mvp-player-identity, mvp-dynastic-succession, province]
+
+  - component: succession-framework
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Organisation Succession Framework
+      summary: The game resolves a change of organisation head according to the succession rules of that organisation type. This framework supports distinct future rules for houses and other factions.
+      references: [player-organisation, organisation-head]
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+      owns: [organisation-head]
+
+  - decision: mvp-dynastic-succession
+    core:
+      status: accepted
+      confidence: confirmed
+      title: MVP Dynastic Succession
+      summary: When the current house head dies or is removed, play continues as the legally recognised heir, including a weak, unpopular, underage, distant, or compromised heir. The campaign ends only if the house has no viable successor or no meaningful territorial foothold.
+      rationale:
+        - Succession should create dramatic change and new constraints rather than a routine game-over state.
+        - Different organisation types will later provide distinct succession rules through the shared framework.
+      references: [mvp-player-identity, organisation-head, player-organisation, succession-framework, province]
+    game_design:
+      protected: true
+      owner_role: organisation-head
+      enforcement_links: [succession-framework]
+      must_not_be:
+        - Resolved as an automatic game over whenever the current head dies.
+        - Applied uniformly to every future organisation type regardless of its own succession rules.
+
+  - component: campaign-time-model
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Campaign Time Model
+      summary: A pauseable real-time calendar with selectable speeds. Daily ticks resolve events and travel; monthly and yearly pulses resolve economy, construction, births, ageing, and political drift.
+      references: [last-aeons-grand-strategy-game]
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
+  - decision: pauseable-realtime-campaign
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Pauseable Real-Time Campaign
+      summary: The campaign runs in pauseable real time with selectable speeds, using daily resolution for events and travel and monthly or yearly strategic pulses for slower systems.
+      rationale:
+        - It supports crises and personal politics unfolding at different tempos while retaining a clear Crusader Kings-like cadence.
+        - It keeps the MVP control surface familiar and focused.
+      references: [campaign-time-model, last-aeons-grand-strategy-game]
+
+  - decision: mvp-player-identity
+    core:
+      status: accepted
+      confidence: confirmed
+      title: MVP Player Identity Is a Dynastic House
+      summary: The MVP limits the player organisation to a dynastic house, embodied by its current head. The finished-game model remains extensible to other organisation types without changing the player-facing premise.
+      rationale:
+        - Dynastic succession provides the clearest initial expression of the intended Crusader Kings-in-space experience.
+        - Generalising organisation types is valuable for the finished game but would broaden the MVP beyond its essential experience.
+      references: [last-aeons-grand-strategy-game, player-organisation, organisation-head, organisation-control-model]
+    game_design:
+      protected: true
+      owner_role: organisation-head
+      enforcement_links: [organisation-control-model]
+      must_not_be:
+        - Resolved as control of an impersonal state detached from a leader.
+        - Generalised into multiple organisation archetypes in the MVP before dynastic succession is playable.
