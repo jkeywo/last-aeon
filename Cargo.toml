@@ -1,0 +1,38 @@
+[workspace]
+resolver = "3"
+members = ["crates/*"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.95"
+license = "MIT"
+repository = "https://github.com/jkeywo/last-aeon"
+
+[workspace.dependencies]
+aeon_core = { path = "crates/aeon_core" }
+aeon_data = { path = "crates/aeon_data" }
+aeon_sim = { path = "crates/aeon_sim" }
+
+# Bevy is consumed with default features disabled so the authoritative
+# simulation (aeon_sim) stays headless; the client re-enables defaults.
+bevy = { version = "0.19", default-features = false }
+bevy_egui = "0.41"
+rhai = { version = "1.25", features = ["sync"] }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+ron = "0.12"
+sha2 = "0.10"
+thiserror = "2"
+clap = { version = "4", features = ["derive"] }
+
+[workspace.lints.rust]
+unsafe_code = "deny"
+
+# Fast-ish iterative builds for a Bevy project without giving up debuggability
+# of our own crates.
+[profile.dev]
+opt-level = 1
+
+[profile.dev.package."*"]
+opt-level = 3

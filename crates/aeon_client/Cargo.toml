@@ -1,0 +1,26 @@
+[package]
+name = "aeon_client"
+description = "Native and web presentation client: 3D system and planet maps, 2D information panels, input."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "last_aeons"
+path = "src/main.rs"
+
+[dependencies]
+aeon_sim = { workspace = true }
+bevy = { workspace = true, default-features = true }
+bevy_egui = { workspace = true }
+
+# Transitive dependencies use getrandom for non-gameplay randomness; on the
+# web target its JavaScript backend must be enabled explicitly (paired with
+# the getrandom_backend cfg in .cargo/config.toml).
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+getrandom = { version = "0.3", features = ["wasm_js"] }
+
+[lints]
+workspace = true

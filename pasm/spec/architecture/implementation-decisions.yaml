@@ -1,0 +1,225 @@
+# Implementation decisions taken while building the MVP.
+#
+# These record concrete technical choices the roadmap milestones left open.
+# Each decision names the accepted vision/architecture entities it serves so
+# traceability from code back to intent stays navigable.
+
+entities:
+  - decision: rust-workspace-crate-layout
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Five-Crate Cargo Workspace
+      summary: >-
+        The implementation is a Cargo workspace of five crates. aeon_core
+        holds engine-agnostic foundations (stable IDs, deterministic RNG,
+        calendar, fixed-point arithmetic, state hashing) with no Bevy
+        dependency. aeon_data owns the Rhai host, content definitions, and
+        content validation. aeon_sim is the headless authoritative Bevy ECS
+        simulation. aeon_client is the native/web presentation binary.
+        aeon_tools is the developer CLI used by CI for content validation,
+        headless runs, and replay verification.
+      rationale:
+        - Separating engine-agnostic foundations from the ECS simulation keeps determinism testable without an engine and reusable from the tools CLI.
+        - A dedicated client crate enforces the headless-authoritative boundary at the crate graph level; presentation cannot reach into simulation internals that are not exported.
+      references:
+        - last-aeons-simulation-runtime
+        - headless-simulation-host
+        - headless-authoritative-simulation
+        - scripted-command-boundary
+
+  - decision: dependency-baseline-bevy-and-rhai
+    core:
+      status: accepted
+      confidence: confirmed
+      title: "Dependency Baseline: Bevy 0.19, bevy_egui 0.41, Rhai 1.25, Rust 1.95"
+      summary: >-
+        The workspace pins Rust 1.95.0 via rust-toolchain.toml (with the
+        wasm32-unknown-unknown target) and builds on Bevy 0.19 with default
+        features disabled for the simulation, bevy_egui 0.41 for 2D panels,
+        and Rhai 1.25 with the sync feature for authored content.
+      rationale:
+        - Pinning the toolchain and versions keeps native, web, and CI builds identical, which the deterministic replay guarantee depends on.
+        - Disabling Bevy default features in the simulation crate prevents renderer, audio, and windowing concerns from leaking into authoritative code.
+      references:
+        - last-aeons-simulation-runtime
+        - rhai-game-scripting
+        - shared-native-and-web-delivery
+
+  - decision: hand-rolled-deterministic-rng
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Hand-Rolled Deterministic RNG Streams
+      summary: >-
+        aeon_core implements its own xoshiro256** generator seeded via
+        splitmix64, instead of depending on external RNG crates. Named
+        streams are derived from the campaign seed plus a purpose label plus
+        the acting entity's stable ID, and golden-value tests lock the
+        streams' outputs permanently.
+      rationale:
+        - External RNG crates may change algorithms or stream behaviour across versions, which would silently break replay of recorded campaigns.
+        - Purpose-plus-entity stream derivation means unrelated systems cannot perturb each other's random sequences when systems are added or reordered.
+      references:
+        - deterministic-seed-and-command-replay
+        - deterministic-campaign-simulation
+
+  - decision: integer-arithmetic-for-authoritative-outcomes
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Authoritative Outcomes Use Integer Arithmetic
+      summary: >-
+        All authoritative simulation quantities (resources, progress, opinion
+        values, chances) are integers or i64 fixed-point milli-units.
+        Floating point appears only in presentation-side code such as camera
+        movement and rendering.
+      rationale:
+        - Integer arithmetic is bit-identical across native and WebAssembly builds, removing the main platform-divergence risk to deterministic replay.
+        - Milli-unit fixed point gives authored content fractional rates without exposing gameplay to float rounding drift.
+      references:
+        - deterministic-campaign-simulation
+        - shared-native-and-web-delivery
+
+  - decision: stable-id-ordered-iteration
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Simulation Iterates in Stable-ID Order
+      summary: >-
+        Wherever iteration order can influence an authoritative outcome, the
+        simulation iterates collections ordered by stable game ID (BTreeMap
+        or sorted vectors), never in hash-map or ECS query order.
+      rationale:
+        - Hash iteration order varies across platforms and runs, which would break replay even with identical inputs.
+        - ECS query order is an engine implementation detail and must not become gameplay-significant, matching the rule that ECS handles are not durable identity.
+      references:
+        - deterministic-campaign-simulation
+        - stable-ids-separate-from-ecs-handles
+
+  - decision: ron-snapshots-and-jsonl-command-log
+    core:
+      status: accepted
+      confidence: confirmed
+      title: RON Snapshots and JSON-Lines Command Log
+      summary: >-
+        Campaign snapshots are RON documents with an explicit format version
+        field, written from a dedicated serializable model rather than raw
+        ECS state. The player-command log is an append-only JSON-Lines file,
+        one command per line with its tick and sequence number. Replay
+        verification recomputes a canonical SHA-256 state hash and compares
+        it against the hash recorded in the snapshot.
+      rationale:
+        - Human-readable formats keep authored-scenario debugging and save-file diagnosis cheap during MVP development, and the version field gives migration a hook.
+        - Line-per-command appends are crash-tolerant and trivially replayable in order.
+      references:
+        - versioned-snapshots-plus-command-log
+        - campaign-persistence
+        - deterministic-seed-and-command-replay
+
+  - decision: campaign-calendar-twelve-thirty-day-months
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Campaign Calendar Uses Twelve Thirty-Day Months
+      summary: >-
+        The campaign calendar is a 360-day year of twelve 30-day months,
+        stored as a day count from the campaign epoch. Daily ticks resolve
+        events and travel; month and year boundaries trigger the slower
+        strategic pulses. The setting canon prescribes no civil calendar, so
+        this is an invented convention.
+      rationale:
+        - Equal-length months make monthly economic and political pulses uniform, which keeps fixed-point rate arithmetic exact.
+        - A plain day count serialises compactly and avoids leap-rule complexity that adds nothing to play.
+      references:
+        - campaign-time-model
+        - pauseable-realtime-campaign
+
+  - decision: egui-for-information-panels
+    core:
+      status: accepted
+      confidence: confirmed
+      title: 2D Information Panels Use bevy_egui
+      summary: >-
+        The 2D information panels (provinces, characters, jobs, ships,
+        armies, titles, logs) are built with bevy_egui rather than Bevy UI.
+        The 3D map views remain native Bevy rendering.
+      rationale:
+        - The MVP's panels are dense, data-first, and change shape every milestone; immediate-mode UI keeps that iteration cheap.
+        - bevy_egui works identically on native and WebAssembly targets.
+      references:
+        - mvp-3d-world-and-system-with-2d-details
+        - strategic-3d-map-presentation
+
+  - decision: github-actions-ci-and-pages-delivery
+    core:
+      status: accepted
+      confidence: confirmed
+      title: GitHub Actions CI and GitHub Pages Web Delivery
+      summary: >-
+        CI runs on GitHub Actions for every push and pull request. It
+        validates the PASM model with the pasm CLI, checks Rust formatting,
+        lints with clippy at deny-warnings, runs the workspace test suite,
+        and checks the client compiles for wasm32-unknown-unknown. Content
+        validation joins CI with the M2 content pipeline, and the published
+        playable web build deploys to GitHub Pages from main once the client
+        renders (M3 onward). Work is committed and pushed per milestone.
+      rationale:
+        - The repository already lives on GitHub, so Actions plus Pages is the lowest-friction way to satisfy CI validation and published web delivery.
+        - Validating the PASM model in CI keeps the authored architecture model and the implementation from drifting apart unnoticed.
+      references:
+        - scripted-content-with-ci-validation
+        - shared-native-and-web-delivery
+        - mvp-acceptance-and-release
+
+  - decision: mvp-programmer-art-visual-bar
+    core:
+      status: accepted
+      confidence: confirmed
+      title: MVP Visual Bar Is Clean Programmer Art
+      summary: >-
+        The MVP presents flat-shaded stylised 3D bodies, solid
+        political-colour province regions, and clear selection and hover
+        feedback, with no textures or art asset pipeline. Composed and
+        readable, not debug output; polish beyond that waits for post-MVP.
+      rationale:
+        - The MVP exists to prove the political simulation, so presentation effort goes to readability of political state rather than surface fidelity.
+      references:
+        - strategic-3d-map-presentation
+        - mvp-3d-world-and-system-with-2d-details
+
+  - decision: invented-canon-scenario-content
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Scenario Content Is Freshly Invented Canon
+      summary: >-
+        The hand-authored scenario invents its own houses, characters,
+        places, and province names, written to fit the setting's tone.
+        Entities the plan explicitly names from existing canon — the
+        Sanctora Imperim, the Golden Tsar, Consuls — keep their canonical
+        identities. All naming lives in authored content files so a later
+        renaming pass is data-only.
+      rationale:
+        - Existing canon does not cover a 41-province local system, and inventing coherent local canon reads better than systematic placeholders.
+      references:
+        - mvp-hand-authored-scenario
+        - sanctora-imperim
+
+  - decision: content-ids-are-kebab-case-strings
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Authored Content IDs Are Kebab-Case Strings
+      summary: >-
+        Authored content refers to definitions and scenario entities by
+        lowercase kebab-case string IDs, matching PASM entity ID style. At
+        load these are interned to compact numeric handles; the intern table
+        is part of the campaign snapshot so saves and command logs remain
+        stable across content edits that do not delete IDs.
+      rationale:
+        - String IDs keep authored files greppable and reviewable, while interning keeps hot simulation paths cheap.
+        - Persisting the intern table decouples save compatibility from content-file ordering.
+      references:
+        - stable-game-identity
+        - validated-declarative-game-data

@@ -1,0 +1,20 @@
+[package]
+name = "aeon_sim"
+description = "Headless authoritative simulation: ECS components, systems, command resolution, and persistence."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+aeon_core = { workspace = true }
+aeon_data = { workspace = true }
+bevy = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+ron = { workspace = true }
+thiserror = { workspace = true }
+
+[lints]
+workspace = true

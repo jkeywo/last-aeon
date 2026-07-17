@@ -1,0 +1,8 @@
+# Workspace-wide target configuration.
+#
+# getrandom 0.3 (transitive) refuses to compile for wasm32-unknown-unknown
+# unless the JavaScript backend is explicitly selected. The authoritative
+# simulation never uses OS randomness — this only feeds non-gameplay code
+# such as UI internals.
+[target.wasm32-unknown-unknown]
+rustflags = ["--cfg", "getrandom_backend=\"wasm_js\""]

@@ -1,0 +1,21 @@
+[package]
+name = "aeon_tools"
+description = "Developer CLI: content validation, headless campaign runs, and replay verification."
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "aeon"
+path = "src/main.rs"
+
+[dependencies]
+aeon_core = { workspace = true }
+aeon_data = { workspace = true }
+aeon_sim = { workspace = true }
+clap = { workspace = true }
+
+[lints]
+workspace = true
