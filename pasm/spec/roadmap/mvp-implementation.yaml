@@ -25,7 +25,7 @@ entities:
 
   - milestone: mvp-foundation
     core:
-      status: proposed
+      status: implemented
       confidence: confirmed
       title: "M1: Deterministic Headless Foundation"
       summary: >-
@@ -40,6 +40,21 @@ entities:
         - campaign-persistence
         - stable-game-identity
         - headless-simulation-host
+    implementation:
+      paths:
+        - crates/aeon_core/src
+        - crates/aeon_sim/src
+        - crates/aeon_tools/src/main.rs
+      tests:
+        - crates/aeon_sim/tests/determinism.rs
+      status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/determinism.rs
+        summary: Headless tests verify identical hashes for identical seed-plus-command runs, snapshot round-trip and continuation, command-log replay from a mid-run snapshot to the original final hash, ordered same-day command application, pulse scheduling on month and year boundaries, and rejection of tampered or version-mismatched snapshots.
+      - kind: test
+        reference: crates/aeon_core/src/rng.rs
+        summary: Golden-value tests lock the xoshiro256** streams against an independent reference implementation, permanently fixing replay-relevant random sequences.
 
   - milestone: mvp-scripted-content
     core:

@@ -185,7 +185,7 @@ entities:
 
   - component: deterministic-campaign-simulation
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Deterministic Campaign Simulation
       summary: A campaign seed, authored scenario data, and ordered player decisions fully determine the campaign state. Random outcomes are generated from recorded deterministic streams and can be replayed.
@@ -194,6 +194,14 @@ entities:
       kind: simulation-subsystem
       classification: core
       authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_core/src/rng.rs
+        - crates/aeon_sim/src/clock.rs
+        - crates/aeon_sim/src/command.rs
+      tests:
+        - crates/aeon_sim/tests/determinism.rs
+      status: declared
 
   - decision: deterministic-seed-and-command-replay
     core:
@@ -207,7 +215,7 @@ entities:
 
   - component: campaign-persistence
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Campaign Snapshot and Command Persistence
       summary: A versioned campaign snapshot captures current state for fast loading. An append-only ordered player-command log records meaningful player decisions and supports replay, verification, debugging, and future migration.
@@ -216,6 +224,13 @@ entities:
       kind: persistence-subsystem
       classification: core
       authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_sim/src/snapshot.rs
+        - crates/aeon_sim/src/persistence.rs
+      tests:
+        - crates/aeon_sim/tests/determinism.rs
+      status: declared
 
   - decision: versioned-snapshots-plus-command-log
     core:
@@ -229,7 +244,7 @@ entities:
 
   - component: stable-game-identity
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Stable Game Identity
       summary: Every durable game entity has a stable game ID distinct from its transient Bevy ECS entity handle. Stable IDs are used by saves, command logs, jobs, titles, UI selection, references, and cross-system links.
@@ -238,6 +253,10 @@ entities:
       kind: identity-subsystem
       classification: core
       authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_core/src/id.rs
+      status: declared
 
   - decision: stable-ids-separate-from-ecs-handles
     core:
@@ -251,7 +270,7 @@ entities:
 
   - component: headless-simulation-host
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Headless Simulation Host
       summary: The authoritative Bevy ECS calendar, command resolver, jobs, persistence, and simulation systems can run without a renderer or UI. Native and web clients attach input and presentation to this same simulation.
@@ -260,6 +279,11 @@ entities:
       kind: simulation-host
       classification: core
       authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_sim/src/host.rs
+        - crates/aeon_sim/src/lib.rs
+      status: declared
 
   - decision: headless-authoritative-simulation
     core:
@@ -1012,7 +1036,7 @@ entities:
 
   - component: campaign-time-model
     core:
-      status: accepted
+      status: partially-implemented
       confidence: confirmed
       title: Campaign Time Model
       summary: A pauseable real-time calendar with selectable speeds. Daily ticks resolve events and travel; monthly and yearly pulses resolve economy, construction, births, ageing, and political drift.
@@ -1021,6 +1045,13 @@ entities:
       kind: simulation-subsystem
       classification: domain
       authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_core/src/calendar.rs
+        - crates/aeon_sim/src/clock.rs
+      tests:
+        - crates/aeon_sim/tests/determinism.rs
+      status: declared
 
   - decision: pauseable-realtime-campaign
     core:

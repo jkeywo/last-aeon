@@ -6,6 +6,12 @@
 //! game rests on — stable game identity, seeded RNG streams, the campaign
 //! calendar, fixed-point arithmetic, and canonical state hashing.
 
+pub mod calendar;
+pub mod fixed;
+pub mod hash;
+pub mod id;
+pub mod rng;
+
 /// The player-facing name of the game.
 pub const GAME_NAME: &str = "The Last Aeons";
 
