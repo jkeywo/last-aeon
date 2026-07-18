@@ -1,0 +1,161 @@
+# Post-MVP implementation plan — Milestone 2
+#
+# This milestone deliberately deepens the existing Ashkarr Succession MVP. It
+# adds no provinces, factions, bodies, or second scenario: its value comes from
+# letting existing politics, travel, jobs, economy, and warfare affect one
+# another more visibly and more often.
+
+entities:
+  - system: milestone-2-implementation-plan
+    core:
+      status: proposed
+      confidence: confirmed
+      title: "Milestone 2: Consequences and Clarity"
+      summary: >-
+        A post-MVP vertical-slice programme that makes the existing local-system
+        campaign more reactive, legible, and strategically consequential. It
+        introduces contextual events, provincial order, explicit political
+        obligations, intent-driven AI, informative job forecasts, and map and
+        campaign-information improvements without expanding the authored map
+        scope, organisation roster, or campaign count.
+      references:
+        - mvp-vision
+        - full-game-vision
+        - deterministic-campaign-simulation
+        - headless-authoritative-simulation
+        - milestone-2-contextual-event-system
+        - provincial-order-system
+        - political-obligation-ledger
+        - intent-driven-organisation-agency
+        - job-forecast-and-explanation-ui
+        - strategic-map-intelligence-modes
+
+  - milestone: m2-forecast-and-information-foundation
+    core:
+      status: proposed
+      confidence: confirmed
+      title: "M2.1: Forecast and Information Foundation"
+      summary: >-
+        Expose the simulation's existing job calculations before commitment and
+        make ongoing campaign changes navigable. Job starts show cost, duration,
+        order delay, governing skill, effective difficulty, exact current result
+        odds, result effects, and risk consequences. The log becomes filterable
+        and links entries to their subject.
+      references:
+        - job-forecast-and-explanation-ui
+        - notable-result-message-log
+        - context-sensitive-job-ui
+        - skill-shifted-result-weights
+        - physical-presence-and-order-delay
+      goals:
+        - A player can compare every eligible leader and see the exact result distribution that would apply if that leader started the selected job now.
+        - Every displayed chance, resource cost, delay, and risk has hover help that names its inputs and distinguishes a known effect from a conditional outcome.
+        - A military job separates the job-roll forecast from the conditional operational contest rather than claiming a false single probability.
+        - Forecast values are derived by shared simulation code and test-locked against eventual resolution weights.
+    implementation:
+      paths:
+        - crates/aeon_sim/src/jobs.rs
+        - crates/aeon_client/src/jobs_ui.rs
+        - crates/aeon_client/src/panels.rs
+      tests:
+        - crates/aeon_sim/tests/jobs.rs
+      status: declared
+
+  - milestone: m2-provincial-order-and-map-intelligence
+    core:
+      status: proposed
+      confidence: confirmed
+      title: "M2.2: Provincial Order and Map Intelligence"
+      summary: >-
+        Give every province a persistent, inspectable order state that connects
+        rule, economy, presence, and warfare. Present the resulting pressures
+        through new strategic map modes and a situation strip that identifies
+        holdings requiring attention.
+      references:
+        - provincial-order-system
+        - strategic-map-intelligence-modes
+        - wealth
+        - physical-presence-and-order-delay
+        - military-operation-system
+      goals:
+        - Siege, raid, blockade, shortages, and neglect reduce order; successful administration, security, supply, and legitimate presence can restore it.
+        - Order has clear bounded economic, military, and event-frequency consequences, all captured in snapshots and deterministic replays.
+        - Holder and Great House modes remain available; Order, Wealth, Military, Player Relations, and Claim Pressure modes have legends, hover summaries, and colour-safe non-colour cues.
+        - The situation strip identifies active threats such as critically low order, hostile operations, and expiring obligations and navigates to the relevant subject.
+    implementation:
+      paths:
+        - crates/aeon_sim/src/economy.rs
+        - crates/aeon_sim/src/warfare.rs
+        - crates/aeon_sim/src/snapshot.rs
+        - crates/aeon_client/src/view.rs
+        - crates/aeon_client/src/panels.rs
+      tests:
+        - crates/aeon_sim/tests/logistics.rs
+        - crates/aeon_sim/tests/warfare.rs
+      status: declared
+
+  - milestone: m2-contextual-events-and-obligations
+    core:
+      status: proposed
+      confidence: confirmed
+      title: "M2.3: Contextual Events and Political Obligations"
+      summary: >-
+        Introduce a deterministic, data-authored event runtime and a small
+        explicit ledger of political favours, promises, and grievances. Events
+        arise from travel, job progress, provincial pressure, and political
+        relationships; their choices create consequences that the rest of the
+        simulation can see and act upon.
+      references:
+        - milestone-2-contextual-event-system
+        - political-obligation-ledger
+        - job-result-event-system
+        - validated-declarative-game-data
+        - character-opinion-model
+      goals:
+        - Event eligibility, priority, cooldown, selection, choices, effects, and history are data-authored, validated, deterministic, and snapshot-safe.
+        - The initial reusable event deck contains travel, job-complication, provincial-pressure, and political-obligation events, but adds no new map entities or scenario organisations.
+        - A choice may create, fulfil, break, or expire a specific favour, promise, or grievance; its visible political effect is not represented only as an opaque opinion modifier.
+        - The player can inspect an obligation's parties, origin, expiry or fulfilment condition, and relevant gameplay consequences.
+    implementation:
+      paths:
+        - crates/aeon_data/src/model.rs
+        - crates/aeon_data/src/effect.rs
+        - crates/aeon_sim/src/politics.rs
+        - crates/aeon_sim/src/snapshot.rs
+        - assets/content/core
+      tests:
+        - crates/aeon_data/tests/loading.rs
+        - crates/aeon_sim/tests/events.rs
+        - crates/aeon_sim/tests/politics.rs
+      status: declared
+
+  - milestone: m2-reactive-agency-and-acceptance
+    core:
+      status: proposed
+      confidence: confirmed
+      title: "M2.4: Reactive Agency and Milestone Acceptance"
+      summary: >-
+        Make autonomous houses respond to current pressures through scored,
+        inspectable priorities, then prove the whole enhanced campaign remains
+        deterministic on native and web targets.
+      references:
+        - intent-driven-organisation-agency
+        - organisation-agency-model
+        - m2-contextual-events-and-obligations
+        - deterministic-seed-and-command-replay
+        - mvp-acceptance-and-release
+      goals:
+        - AI job selection scores a small deterministic shortlist for tangible pressures—threatened or disordered holdings, political weakness, obligations, resource recovery, and viable claims—while retaining the shared job pipeline.
+        - The player can inspect why a significant AI action occurred through its log/event history, without exposing hidden random rolls as false certainty.
+        - A seeded multi-year Ashkarr playthrough containing events, obligation changes, order changes, and AI responses replays from a mid-campaign snapshot to the identical final state hash.
+        - Content validation, headless tests, native build, and web build remain CI gates for the milestone.
+    implementation:
+      paths:
+        - crates/aeon_sim/src/jobs.rs
+        - crates/aeon_sim/src/politics.rs
+        - crates/aeon_tools/src/main.rs
+        - crates/aeon_sim/tests/acceptance.rs
+      tests:
+        - crates/aeon_sim/tests/events.rs
+        - crates/aeon_sim/tests/acceptance.rs
+      status: declared

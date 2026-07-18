@@ -1206,3 +1206,212 @@ entities:
       must_not_be:
         - Resolved as control of an impersonal state detached from a leader.
         - Generalised into multiple organisation archetypes in the MVP before dynastic succession is playable.
+
+  - component: milestone-2-contextual-event-system
+    core:
+      status: proposed
+      confidence: confirmed
+      title: Contextual Event System
+      summary: >-
+        Data-authored events are selected deterministically from the current
+        campaign state rather than occurring as unconditioned flavour. An event
+        declares its trigger family, eligibility, priority, cooldown,
+        participants, text, choices, and typed effects. Events may arise during
+        travel, job progress, provincial pressure, or political interaction and
+        leave an inspectable history.
+      references:
+        - job-result-event-system
+        - campaign-time-model
+        - validated-declarative-game-data
+        - deterministic-campaign-simulation
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
+  - decision: milestone-2-event-scope-is-systemic-not-map-expansion
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Milestone 2 Events Deepen the Existing Scenario
+      summary: >-
+        Milestone 2 ships a small reusable deck of event definitions for the
+        existing Ashkarr scenario. It does not add provinces, celestial bodies,
+        organisations, or a second scenario. Event variety comes from distinct
+        state, participants, and choices, rather than from broadening authored
+        campaign content.
+      rationale:
+        - The milestone's purpose is to prove reactive simulation depth and
+          information quality before increasing setting or map scope.
+        - Reusable event definitions exercise the data pipeline without making
+          the campaign harder to balance or understand.
+      references:
+        - milestone-2-contextual-event-system
+        - mvp-hand-authored-scenario
+        - mvp-local-system-scope
+
+  - component: provincial-order-system
+    core:
+      status: proposed
+      confidence: confirmed
+      title: Provincial Order System
+      summary: >-
+        Every province has a bounded persistent order value representing local
+        compliance and governability. Order changes through security, supply,
+        administration, legitimate presence, siege, raid, blockade, shortage,
+        and neglect. It modifies provincial output, defensive reliability, and
+        the eligibility or weight of relevant events.
+      references:
+        - province
+        - wealth
+        - physical-presence-and-order-delay
+        - military-operation-system
+        - milestone-2-contextual-event-system
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
+  - decision: provincial-order-connects-existing-systems
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Provincial Order Connects Rule, Economy, and Warfare
+      summary: >-
+        Provincial order is a common consequence layer, not a separate building
+        game. Existing actions and conditions change it, and it in turn changes
+        existing production, defensive, and event outcomes. Its rules remain
+        bounded, inspectable, and free of hidden irreversible collapse states.
+      rationale:
+        - A shared local pressure makes presence, administration, logistics,
+          warfare, and political extraction interact in a legible way.
+        - Keeping the system bounded prevents each province becoming an
+          independent management screen.
+      references:
+        - provincial-order-system
+        - wealth
+        - job-system
+        - military-operation-system
+
+  - component: political-obligation-ledger
+    core:
+      status: proposed
+      confidence: confirmed
+      title: Political Obligation Ledger
+      summary: >-
+        Favours, promises, and grievances are explicit bilateral political facts
+        with a source, parties, gameplay effect, and expiry or fulfilment rule.
+        They coexist with character opinion: a house can dislike the player yet
+        be bound by a favour, or like the player while holding a grievance.
+      references:
+        - character-opinion-model
+        - legal-holdings-and-obligations
+        - milestone-2-contextual-event-system
+        - organisation-agency-model
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
+  - decision: obligations-are-specific-political-facts
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Obligations Are Specific, Inspectable Political Facts
+      summary: >-
+        Favours, promises, and grievances must not be flattened into generic
+        opinion modifiers. Each is separately inspectable, can be fulfilled,
+        broken, or expired by named rules, and may affect event choices, job
+        requirements or weights, and AI priorities.
+      rationale:
+        - Feudal politics needs enforceable social commitments as well as
+          sentiment; opinion alone cannot explain why an unfriendly ruler acts.
+      references:
+        - political-obligation-ledger
+        - no-generic-relationship-entity
+        - intent-driven-organisation-agency
+
+  - component: intent-driven-organisation-agency
+    core:
+      status: proposed
+      confidence: confirmed
+      title: Intent-Driven Organisation Agency
+      summary: >-
+        Autonomous organisations choose from the existing shared job catalogue
+        by deterministically scoring a small set of concrete pressures: defence
+        of threatened or disordered holdings, political weakness, obligations,
+        resource recovery, and viable claims. This is a lightweight priority
+        system, not a separate AI action model.
+      references:
+        - organisation-agency-model
+        - job-system
+        - provincial-order-system
+        - political-obligation-ledger
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
+  - component: job-forecast-and-explanation-ui
+    core:
+      status: proposed
+      confidence: confirmed
+      title: Job Forecast and Explanation UI
+      summary: >-
+        Before starting a job, the player sees simulation-derived duration,
+        immediate costs, order delay, eligibility, governing skill, effective
+        difficulty, exact current result odds, result effects, and personal risk
+        consequences. Hover explanations identify every contributing input and
+        distinguish guaranteed, probabilistic, and conditional effects.
+      references:
+        - job-system
+        - skill-shifted-result-weights
+        - explicit-personal-risk-tags
+        - context-sensitive-job-ui
+        - physical-presence-and-order-delay
+    architecture:
+      kind: presentation-and-information
+      classification: interface
+      authority: derived
+
+  - decision: job-forecasts-share-authoritative-calculations
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Job Forecasts Use Shared Authoritative Calculations
+      summary: >-
+        Forecasts call pure simulation-owned calculation functions rather than
+        recreating formulas in the client. They report the probability
+        distribution at order time, while clearly separating downstream
+        conditional contests such as an engagement from the job-result roll.
+      rationale:
+        - A forecast is strategic information only if it cannot drift from the
+          simulation that later resolves the job.
+        - Separating conditional outcomes avoids promising precision the model
+          does not possess.
+      references:
+        - job-forecast-and-explanation-ui
+        - deterministic-campaign-simulation
+        - headless-authoritative-simulation
+
+  - component: strategic-map-intelligence-modes
+    core:
+      status: proposed
+      confidence: confirmed
+      title: Strategic Map Intelligence Modes
+      summary: >-
+        The political globe supplements Holder and Great House with Order,
+        Wealth, Military, Player Relations, and Claim Pressure modes. Every
+        mode has a legend, hover explanation, selection treatment, and a
+        colour-safe secondary cue so it explains a strategic question rather
+        than merely recolouring the map.
+      references:
+        - strategic-3d-map-presentation
+        - provincial-order-system
+        - political-obligation-ledger
+        - military-operation-system
+        - planetary-paramount-title-is-contested
+    architecture:
+      kind: presentation-and-information
+      classification: interface
+      authority: derived
