@@ -223,3 +223,79 @@ entities:
       references:
         - stable-game-identity
         - validated-declarative-game-data
+
+  - decision: rhai-sandbox-allow-list
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Rhai Sandbox Is an Allow-List
+      summary: >-
+        Content engines start from a raw Rhai engine and register only
+        deterministic language packages; wall-clock, file access, imports,
+        and eval are absent rather than disabled. Rhai is built with
+        no_float so authored arithmetic is integer-only, matching the
+        authoritative-arithmetic decision. Hard operation, recursion, and
+        size limits bound runaway scripts, and print output is captured
+        into the loading report. The loading engine exposes define_*
+        builder functions; the runtime engine does not, and never re-runs
+        file top levels.
+      rationale:
+        - Deny-by-default means new Rhai features cannot silently widen the sandbox; anything scripts can do was explicitly granted.
+        - Determinism restrictions enforced by the engine cannot be forgotten by individual call sites.
+      references:
+        - rhai-game-scripting
+        - scripts-emit-validated-effects-only
+        - integer-arithmetic-for-authoritative-outcomes
+
+  - decision: content-defined-by-builder-calls
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Content Files Declare Data and Provide File-Local Functions
+      summary: >-
+        Authored files declare definitions by calling define_job,
+        define_body, define_province, and define_scenario with plain maps,
+        which Rust converts and validates immediately. Dynamic behaviour is
+        written as named functions in the same file; definitions may only
+        reference functions defined in their own file. Loading collects all
+        findings across all files rather than stopping at the first error.
+      rationale:
+        - Declaration-by-call keeps authored files ordinary scripts (the flexibility the vision asks for) while producing a fully validated data model.
+        - File-local function references make every content file self-contained and reviewable in isolation.
+      references:
+        - validated-declarative-game-data
+        - scripted-content-with-ci-validation
+        - content-ids-are-kebab-case-strings
+
+  - decision: effects-returned-not-emitted
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Script Functions Return Effects
+      summary: >-
+        Authored functions receive a read-only context map and return an
+        array of effect maps, which Rust parses into typed effects,
+        validates, and applies. There are no emitter functions and no
+        shared collector state; a script invocation is a pure call.
+      rationale:
+        - Pure calls cannot leak state between invocations, which keeps script execution replay-deterministic by construction.
+        - Typed parsing at the boundary means malformed authored effects fail loudly at a single point with good errors.
+      references:
+        - scripted-command-boundary
+        - scripts-emit-validated-effects-only
+
+  - decision: content-hash-binds-saves-to-content
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Snapshots Record and Require Their Content Hash
+      summary: >-
+        A campaign snapshot records the hash of the authored content it ran
+        on, and restoring requires content with the identical hash.
+        Content-free snapshots refuse attached content and vice versa.
+      rationale:
+        - Replaying a command log against different content silently produces a different campaign; hash binding turns that into an explicit error.
+      references:
+        - campaign-persistence
+        - deterministic-seed-and-command-replay
+        - versioned-snapshots-plus-command-log

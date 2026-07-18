@@ -58,7 +58,7 @@ entities:
 
   - milestone: mvp-scripted-content
     core:
-      status: proposed
+      status: implemented
       confidence: confirmed
       title: "M2: Rhai Content and Validation"
       summary: >-
@@ -72,6 +72,21 @@ entities:
         - scripts-emit-validated-effects-only
         - scripted-content-with-ci-validation
         - validated-declarative-game-data
+    implementation:
+      paths:
+        - crates/aeon_data/src
+        - assets/content
+      tests:
+        - crates/aeon_data/tests/loading.rs
+        - crates/aeon_sim/tests/content_binding.rs
+      status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_data/tests/loading.rs
+        summary: Tests verify content loading and cross-reference validation, double-load determinism, sandbox rejection of timestamp/eval/import, operation limits on runaway scripts, effect functions returning typed effects from read-only context, and that the repository's authored content always loads cleanly.
+      - kind: test
+        reference: crates/aeon_sim/tests/content_binding.rs
+        summary: Snapshots record their content hash and refuse to restore against missing, different, or unexpected content.
 
   - milestone: mvp-map-and-inspection
     core:

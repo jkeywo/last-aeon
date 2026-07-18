@@ -35,6 +35,8 @@ jobs:
         run: cargo clippy --workspace --all-targets -- -D warnings
       - name: Test
         run: cargo test --workspace
+      - name: Validate authored content
+        run: cargo run -p aeon_tools -- validate-content
 
   wasm:
     name: Web target check

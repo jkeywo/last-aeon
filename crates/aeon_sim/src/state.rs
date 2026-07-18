@@ -1,12 +1,23 @@
 //! Authoritative campaign resources.
 
+use std::sync::Arc;
+
 use aeon_core::id::IdAllocator;
+use aeon_data::ContentSet;
 use bevy::prelude::{Resource, World};
 use serde::{Deserialize, Serialize};
 
 use crate::clock::CampaignClock;
 use crate::command::{CommandLog, PendingCommands};
 use crate::config::CampaignConfig;
+
+/// The loaded authored-content database this campaign runs on.
+///
+/// Snapshots record the content hash, and restoring requires content with
+/// the same hash: a save is only meaningful against the content that
+/// produced it.
+#[derive(Resource, Clone)]
+pub struct ContentDb(pub Arc<ContentSet>);
 
 /// The campaign seed every derived random stream folds in.
 #[derive(Resource, Copy, Clone, Debug, PartialEq, Eq)]

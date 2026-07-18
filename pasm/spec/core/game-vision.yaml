@@ -297,7 +297,7 @@ entities:
 
   - component: validated-declarative-game-data
     core:
-      status: accepted
+      status: partially-implemented
       confidence: confirmed
       title: Validated Scripted Game Content
       summary: Hand-authored scenario content, map data, provinces, houses, characters, titles, jobs, job results, and popup events are authored as script files. Automated validation checks their structure, references, and gameplay invariants.
@@ -306,6 +306,14 @@ entities:
       kind: content-authoring-subsystem
       classification: core
       authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_data/src/model.rs
+        - crates/aeon_data/src/key.rs
+        - assets/content
+      tests:
+        - crates/aeon_data/tests/loading.rs
+      status: declared
 
   - decision: scripted-content-with-ci-validation
     core:
@@ -320,7 +328,7 @@ entities:
 
   - component: rhai-game-scripting
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Rhai Game Scripting Runtime
       summary: Rhai is the embedded, Rust-native scripting runtime for authored game content. It is used consistently across native and web builds.
@@ -329,6 +337,12 @@ entities:
       kind: scripting-runtime
       classification: core
       authority: non-authoritative
+    implementation:
+      paths:
+        - crates/aeon_data/src/host.rs
+      tests:
+        - crates/aeon_data/tests/loading.rs
+      status: declared
 
   - decision: rhai-is-the-content-scripting-language
     core:
@@ -342,7 +356,7 @@ entities:
 
   - component: scripted-command-boundary
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Scripted Command Boundary
       summary: Rhai scripts receive validated read context and produce declared commands or events. Rust simulation systems validate and apply those effects; scripts cannot directly mutate Bevy ECS state.
@@ -351,6 +365,13 @@ entities:
       kind: authority-boundary
       classification: core
       authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_data/src/effect.rs
+        - crates/aeon_data/src/host.rs
+      tests:
+        - crates/aeon_data/tests/loading.rs
+      status: declared
 
   - decision: scripts-emit-validated-effects-only
     core:

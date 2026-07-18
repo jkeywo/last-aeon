@@ -30,6 +30,15 @@ enum Command {
     Replay(ReplayArgs),
     /// Verify a snapshot's integrity and print its state hash.
     Hash(HashArgs),
+    /// Load and validate the authored content, reporting all findings.
+    ValidateContent(ValidateContentArgs),
+}
+
+#[derive(Args)]
+struct ValidateContentArgs {
+    /// Content root directory.
+    #[arg(long, default_value = "assets/content")]
+    root: PathBuf,
 }
 
 #[derive(Args)]
@@ -117,6 +126,56 @@ fn dispatch(command: Command) -> Result<ExitCode, String> {
         Command::Run(args) => run(args),
         Command::Replay(args) => replay(args),
         Command::Hash(args) => hash(args),
+        Command::ValidateContent(args) => validate_content(args),
+    }
+}
+
+fn validate_content(args: ValidateContentArgs) -> Result<ExitCode, String> {
+    let sources = aeon_data::fs::read_content_dir(&args.root)
+        .map_err(|e| format!("reading {}: {e}", args.root.display()))?;
+    if sources.is_empty() {
+        return Err(format!("no .rhai files under {}", args.root.display()));
+    }
+
+    let (set, report) = aeon_data::load_content(&sources);
+    for finding in &report.findings {
+        println!("{finding}");
+    }
+
+    // Loading must be deterministic: a second pass must produce identical
+    // data and hash. Divergence means authored content used forbidden
+    // stateful behaviour that slipped past the sandbox.
+    if let Some(set) = &set {
+        let (second, _) = aeon_data::load_content(&sources);
+        match second {
+            Some(second) if set.data_eq(&second) => {}
+            _ => {
+                eprintln!("error: content loading is not deterministic across passes");
+                return Ok(ExitCode::from(1));
+            }
+        }
+    }
+
+    println!(
+        "files: {}  jobs: {}  bodies: {}  provinces: {}  scenario: {}",
+        sources.len(),
+        set.as_ref().map_or(0, |s| s.jobs.len()),
+        set.as_ref().map_or(0, |s| s.bodies.len()),
+        set.as_ref().map_or(0, |s| s.provinces.len()),
+        set.as_ref()
+            .and_then(|s| s.scenario.as_ref())
+            .map_or("none".to_owned(), |s| s.key.to_string()),
+    );
+    match set {
+        Some(set) => {
+            println!("content-hash: {}", set.content_hash);
+            println!("content OK");
+            Ok(ExitCode::SUCCESS)
+        }
+        None => {
+            eprintln!("content validation failed");
+            Ok(ExitCode::from(1))
+        }
     }
 }
 

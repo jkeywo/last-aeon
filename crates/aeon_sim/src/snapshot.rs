@@ -18,8 +18,9 @@ use crate::state::{CampaignIds, CampaignMeta, CampaignSeed};
 /// Current snapshot format version.
 ///
 /// Bump on any change to [`CampaignState`]'s serialised shape, and provide a
-/// migration for every version a release has ever written.
-pub const SNAPSHOT_FORMAT_VERSION: u32 = 1;
+/// migration for every version a release has ever written. No release has
+/// shipped yet, so pre-release bumps carry no migrations.
+pub const SNAPSHOT_FORMAT_VERSION: u32 = 2;
 
 /// The complete authoritative campaign state.
 ///
@@ -36,6 +37,8 @@ pub struct CampaignState {
     pub start_date: GameDate,
     /// The current day.
     pub date: GameDate,
+    /// Hash of the authored content this campaign runs on, if any.
+    pub content_hash: Option<StateHash>,
     /// The stable-ID allocator.
     pub id_allocator: IdAllocator,
     /// Next command sequence number.
@@ -77,6 +80,26 @@ pub enum SnapshotError {
         /// Hash recomputed from the state.
         computed: StateHash,
     },
+    /// The snapshot was taken against authored content, which must be
+    /// supplied to restore it.
+    #[error("this snapshot requires its authored content (hash {required}) to restore")]
+    ContentRequired {
+        /// The content hash the snapshot was taken against.
+        required: StateHash,
+    },
+    /// The supplied content does not match what the snapshot was taken
+    /// against.
+    #[error("content mismatch: snapshot was taken against {required}, supplied {supplied}")]
+    ContentMismatch {
+        /// The content hash the snapshot was taken against.
+        required: StateHash,
+        /// The hash of the content actually supplied.
+        supplied: StateHash,
+    },
+    /// The snapshot was taken without authored content, so attaching
+    /// content on restore would change what future snapshots record.
+    #[error("this snapshot was taken without authored content; restore it without content")]
+    ContentNotExpected,
 }
 
 /// Computes the canonical hash of a campaign state.
@@ -97,6 +120,9 @@ pub fn capture_state(world: &World) -> CampaignState {
         seed: world.resource::<CampaignSeed>().0,
         start_date: clock.start_date,
         date: clock.date,
+        content_hash: world
+            .get_resource::<crate::state::ContentDb>()
+            .map(|db| db.0.content_hash),
         id_allocator: world.resource::<CampaignIds>().0.clone(),
         next_command_seq: log.next_seq,
         pending_commands: world.resource::<PendingCommands>().entries().to_vec(),

@@ -6,8 +6,11 @@
 //! snapshots, and read state. The tools CLI, the test suite, and replay
 //! verification all drive campaigns exclusively through this API.
 
+use std::sync::Arc;
+
 use aeon_core::calendar::GameDate;
 use aeon_core::hash::StateHash;
+use aeon_data::ContentSet;
 use bevy::app::App;
 use bevy::prelude::World;
 
@@ -21,7 +24,7 @@ use crate::snapshot::{
     CampaignSnapshot, SnapshotError, capture_snapshot, capture_state, hash_state, restore_state,
     verify_snapshot,
 };
-use crate::state::{CampaignMeta, start_campaign};
+use crate::state::{CampaignMeta, ContentDb, start_campaign};
 
 /// Why a recorded envelope could not be re-submitted during replay.
 #[derive(Debug, thiserror::Error)]
@@ -53,7 +56,10 @@ pub struct SimHost {
 }
 
 impl SimHost {
-    /// Starts a fresh campaign.
+    /// Starts a fresh campaign with no authored content attached.
+    ///
+    /// Used by foundation tests and tooling; real campaigns run on content
+    /// via [`SimHost::new_with_content`].
     pub fn new(config: CampaignConfig) -> Self {
         let mut app = App::new();
         app.add_plugins(AeonSimPlugin);
@@ -61,12 +67,48 @@ impl SimHost {
         Self { app }
     }
 
-    /// Restores a campaign from a snapshot, verifying version and hash.
+    /// Starts a fresh campaign running on the given authored content.
+    pub fn new_with_content(config: CampaignConfig, content: Arc<ContentSet>) -> Self {
+        let mut host = Self::new(config);
+        host.app.world_mut().insert_resource(ContentDb(content));
+        host
+    }
+
+    /// Restores a content-free campaign from a snapshot, verifying version
+    /// and hash. Snapshots taken against authored content are refused; use
+    /// [`SimHost::restore_with_content`].
     pub fn restore(snapshot: CampaignSnapshot) -> Result<Self, SnapshotError> {
         let state = verify_snapshot(snapshot)?;
+        if let Some(required) = state.content_hash {
+            return Err(SnapshotError::ContentRequired { required });
+        }
         let mut app = App::new();
         app.add_plugins(AeonSimPlugin);
         restore_state(app.world_mut(), state);
+        Ok(Self { app })
+    }
+
+    /// Restores a campaign from a snapshot together with the authored
+    /// content it was taken against, verifying the content hash matches.
+    pub fn restore_with_content(
+        snapshot: CampaignSnapshot,
+        content: Arc<ContentSet>,
+    ) -> Result<Self, SnapshotError> {
+        let state = verify_snapshot(snapshot)?;
+        match state.content_hash {
+            Some(required) if required != content.content_hash => {
+                return Err(SnapshotError::ContentMismatch {
+                    required,
+                    supplied: content.content_hash,
+                });
+            }
+            Some(_) => {}
+            None => return Err(SnapshotError::ContentNotExpected),
+        }
+        let mut app = App::new();
+        app.add_plugins(AeonSimPlugin);
+        restore_state(app.world_mut(), state);
+        app.world_mut().insert_resource(ContentDb(content));
         Ok(Self { app })
     }
 

@@ -1,0 +1,67 @@
+//! Saves are bound to the exact authored content that produced them.
+
+use std::sync::Arc;
+
+use aeon_core::calendar::GameDate;
+use aeon_data::{ContentSource, load_content};
+use aeon_sim::{CampaignConfig, SimHost, SnapshotError};
+
+fn content(source_text: &str) -> Arc<aeon_data::ContentSet> {
+    let (set, report) = load_content(&[ContentSource {
+        path: "test.rhai".to_owned(),
+        source: source_text.to_owned(),
+    }]);
+    assert!(!report.has_errors(), "findings: {:?}", report.findings);
+    Arc::new(set.unwrap())
+}
+
+fn config() -> CampaignConfig {
+    CampaignConfig {
+        name: "Content Binding".to_owned(),
+        seed: 11,
+        start_date: GameDate::EPOCH,
+    }
+}
+
+const WORLD_A: &str =
+    r#"define_body(#{ id: "world", name: "World", kind: "planet", radius_km: 6000 });"#;
+const WORLD_B: &str =
+    r#"define_body(#{ id: "world", name: "Another World", kind: "planet", radius_km: 6000 });"#;
+
+#[test]
+fn snapshots_restore_only_with_matching_content() {
+    let content_a = content(WORLD_A);
+    let mut host = SimHost::new_with_content(config(), content_a.clone());
+    host.advance_days(30);
+    let snapshot = host.snapshot();
+
+    // Same content restores and continues to the same hash.
+    let restored = SimHost::restore_with_content(snapshot.clone(), content_a).unwrap();
+    assert_eq!(restored.state_hash(), host.state_hash());
+
+    // Different content is refused.
+    let content_b = content(WORLD_B);
+    assert!(matches!(
+        SimHost::restore_with_content(snapshot.clone(), content_b),
+        Err(SnapshotError::ContentMismatch { .. })
+    ));
+
+    // Restoring without content at all is refused.
+    assert!(matches!(
+        SimHost::restore(snapshot),
+        Err(SnapshotError::ContentRequired { .. })
+    ));
+}
+
+#[test]
+fn content_free_snapshots_refuse_content_on_restore() {
+    let mut host = SimHost::new(config());
+    host.advance_days(5);
+    let snapshot = host.snapshot();
+
+    assert!(SimHost::restore(snapshot.clone()).is_ok());
+    assert!(matches!(
+        SimHost::restore_with_content(snapshot, content(WORLD_A)),
+        Err(SnapshotError::ContentNotExpected)
+    ));
+}
