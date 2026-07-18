@@ -7,6 +7,7 @@
 
 define_job(#{
     id: "manage-estates",
+    ai_intent: "resources",
     title: "Manage the Estates",
     summary: "Routine administration of the house's provincial holdings; steadies order everywhere you rule.",
     category: "routine",
@@ -24,6 +25,7 @@ fn estates_kept(ctx) {
 
 define_job(#{
     id: "hold-court",
+    ai_intent: "order",
     title: "Hold Court",
     summary: "Hear petitions and settle disputes among your household; settles the province you sit in.",
     category: "routine",
@@ -41,6 +43,7 @@ fn court_settled(ctx) {
 
 define_job(#{
     id: "court-a-rival-house",
+    ai_intent: "standing",
     title: "Court a Rival House",
     summary: "Send an envoy to soften another house's standing against you.",
     category: "consequential",
@@ -89,6 +92,7 @@ fn courting_disaster(ctx) {
 
 define_job(#{
     id: "curry-favour-with-the-sanctora",
+    ai_intent: "standing",
     title: "Curry Favour with the Sanctora",
     summary: "Pay respects, tithes, and flattery aboard the Spire.",
     category: "consequential",
@@ -175,6 +179,7 @@ fn whispers_disaster(ctx) {
 
 define_job(#{
     id: "tour-the-holdings",
+    ai_intent: "order",
     title: "Tour the Holdings",
     summary: "Show the household's face across its provinces.",
     category: "consequential",
@@ -243,6 +248,7 @@ fn petition_disaster(ctx) {
 
 define_job(#{
     id: "muster-the-levies",
+    ai_intent: "muster",
     title: "Muster the Levies",
     summary: "Raise a standing army under a general, with manpower and supplies from the house pool.",
     category: "consequential",
@@ -280,6 +286,7 @@ fn muster_success(ctx) {
 
 define_job(#{
     id: "press-claim-to-the-paramountcy",
+    ai_intent: "claim",
     title: "Press the Claim to the Paramountcy",
     summary: "Advance your house's claim to the vacant planetary Paramountcy. Succeeds only if you hold more of the planet than any rival.",
     category: "consequential",
@@ -334,6 +341,7 @@ fn levy_tithes(ctx) {
 
 define_job(#{
     id: "seek-consular-endorsement",
+    ai_intent: "standing",
     title: "Seek the Consul's Endorsement",
     summary: "Court the Consul's public backing for your house's ambitions. Helpful, but never decisive.",
     category: "consequential",
@@ -379,6 +387,7 @@ fn endorsement_disaster(ctx) {
 
 define_job(#{
     id: "call-in-a-favour",
+    ai_intent: "obligation",
     title: "Call in a Favour",
     summary: "Ask a house that owes you to make good on it. Spends the debt, whatever they think of you.",
     category: "consequential",

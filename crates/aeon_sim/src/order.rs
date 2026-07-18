@@ -374,6 +374,11 @@ fn revolt(world: &mut World, province: ProvinceId) {
     );
 }
 
+/// A province's display name, for log lines and agency reasons.
+pub fn province_display_name(world: &World, province: ProvinceId) -> String {
+    province_name(world, province)
+}
+
 fn province_name(world: &World, province: ProvinceId) -> String {
     world
         .get_resource::<MapIndex>()

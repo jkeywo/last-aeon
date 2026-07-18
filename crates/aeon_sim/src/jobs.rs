@@ -1105,128 +1105,6 @@ pub fn answer_popup(
 // AI agency
 // ---------------------------------------------------------------------------
 
-/// Monthly: idle AI organisation heads start jobs.
-pub fn ai_start_jobs(world: &mut World) {
-    if world.get_resource::<JobsIndex>().is_none() || world.get_resource::<CampaignOver>().is_some()
-    {
-        return;
-    }
-    let date = world.resource::<CampaignClock>().date;
-    let seed = world.resource::<CampaignSeed>().0;
-    let player = world.get_resource::<PlayerHouse>().and_then(|p| p.0);
-    let content = world.resource::<ContentDb>().0.clone();
-
-    let ai_jobs: Vec<&JobDef> = content
-        .jobs
-        .values()
-        .filter(|def| def.ai_available)
-        .collect();
-    if ai_jobs.is_empty() {
-        return;
-    }
-
-    let orgs: Vec<(OrgId, Option<CharacterId>)> = {
-        let index = world.resource::<PoliticsIndex>();
-        index
-            .orgs
-            .iter()
-            .filter_map(|(org_id, entity)| {
-                let record = world.get::<OrgRecord>(*entity)?;
-                if record.defunct || Some(*org_id) == player {
-                    return None;
-                }
-                Some((*org_id, record.head))
-            })
-            .collect()
-    };
-
-    for (org_id, head) in orgs {
-        let Some(head) = head else {
-            continue;
-        };
-        if leader_eligible(world, org_id, head, date).is_err() {
-            continue;
-        }
-        let month_stamp = date.days_since_epoch() as u64 / 30;
-        let mut rng = DeterministicRng::derive(seed, "ai-job-choice", &[org_id.raw(), month_stamp]);
-        // Half the months, the head keeps their own counsel.
-        if !rng.check_permille(500) {
-            continue;
-        }
-        let def = ai_jobs[rng.roll(ai_jobs.len() as u64) as usize];
-
-        // Deterministic target selection.
-        let target = match def.target {
-            JobTargetKind::None => JobTarget::None,
-            JobTargetKind::Organisation => {
-                let candidates: Vec<OrgId> = {
-                    let index = world.resource::<PoliticsIndex>();
-                    index
-                        .orgs
-                        .iter()
-                        .filter(|(id, e)| {
-                            **id != org_id
-                                && world.get::<OrgRecord>(**e).is_some_and(|r| !r.defunct)
-                        })
-                        .map(|(id, _)| *id)
-                        .collect()
-                };
-                match candidates.is_empty() {
-                    true => continue,
-                    false => JobTarget::Org(candidates[rng.roll(candidates.len() as u64) as usize]),
-                }
-            }
-            JobTargetKind::Character => {
-                let candidates: Vec<CharacterId> = {
-                    let index = world.resource::<PoliticsIndex>();
-                    index
-                        .characters
-                        .iter()
-                        .filter(|(_, e)| {
-                            world.get::<CharacterRecord>(**e).is_some_and(|r| {
-                                r.alive()
-                                    && r.organisation.is_some()
-                                    && r.organisation != Some(org_id)
-                            })
-                        })
-                        .map(|(id, _)| *id)
-                        .collect()
-                };
-                match candidates.is_empty() {
-                    true => continue,
-                    false => {
-                        JobTarget::Character(candidates[rng.roll(candidates.len() as u64) as usize])
-                    }
-                }
-            }
-            JobTargetKind::Province => {
-                let candidates: Vec<ProvinceId> = world
-                    .resource::<crate::map::MapIndex>()
-                    .provinces
-                    .keys()
-                    .copied()
-                    .collect();
-                match candidates.is_empty() {
-                    true => continue,
-                    false => {
-                        JobTarget::Province(candidates[rng.roll(candidates.len() as u64) as usize])
-                    }
-                }
-            }
-            // Autonomous organisations do not initiate military
-            // operations through random agency; their armies act through
-            // standing orders instead.
-            JobTargetKind::OwnArmy
-            | JobTargetKind::OwnArmyAndProvince
-            | JobTargetKind::OwnShipAndProvince => continue,
-        };
-
-        if validate_start(world, org_id, &def.key, head, target).is_ok() {
-            start_job(world, org_id, &def.key, head, target);
-        }
-    }
-}
-
 // ---------------------------------------------------------------------------
 // Snapshot state
 // ---------------------------------------------------------------------------
@@ -1337,6 +1215,6 @@ pub(crate) fn install(app: &mut App) {
     );
     app.add_systems(
         MonthlyPulse,
-        ai_start_jobs.after(crate::politics::expire_opinion_modifiers),
+        crate::agency::ai_start_jobs.after(crate::politics::expire_opinion_modifiers),
     );
 }

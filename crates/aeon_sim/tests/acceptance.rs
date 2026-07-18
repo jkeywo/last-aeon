@@ -10,7 +10,8 @@ use aeon_core::calendar::CalendarDate;
 use aeon_data::{ContentKey, ContentSet, load_content};
 use aeon_sim::persistence;
 use aeon_sim::{
-    CampaignConfig, CharacterId, JobTarget, OrgId, PlayerCommand, PoliticsIndex, SimHost,
+    CampaignConfig, CharacterId, JobTarget, OrgId, PendingPopups, PlayerCommand, PoliticsIndex,
+    SimHost,
 };
 
 fn repository_content() -> Arc<ContentSet> {
@@ -176,5 +177,107 @@ fn a_scripted_campaign_replays_from_a_snapshot_through_its_log() {
         replayed.state_hash(),
         final_hash,
         "replay from the snapshot reproduced the final campaign state"
+    );
+}
+
+/// Milestone 2 acceptance: a multi-year playthrough that exercises the
+/// systems this milestone added — provincial order moving under pressure,
+/// contextual events firing and being answered, obligations settling, and
+/// autonomous houses responding to their own pressures — and proves the
+/// whole enhanced campaign still replays exactly from a mid-run snapshot.
+#[test]
+fn the_enhanced_campaign_replays_from_a_mid_campaign_snapshot() {
+    use aeon_sim::events::EventState;
+    use aeon_sim::obligations::Obligations;
+    use aeon_sim::order::{ORDER_MAX, adjust_order, province_order};
+
+    let content = repository_content();
+    let mut original = scenario_host(content.clone(), 4242);
+
+    let edrun = char_id(&mut original, "edrun-harrow");
+    let veyrin = org_id(&mut original, "veyrin");
+    let harrow = org_id(&mut original, "harrow");
+
+    // Year one: the head courts the liege while the realm settles.
+    original
+        .submit(PlayerCommand::StartJob {
+            job: key("court-a-rival-house"),
+            leader: edrun,
+            target: JobTarget::Org(veyrin),
+        })
+        .unwrap();
+    original.advance_days(200);
+
+    // Knock one of the player's own holdings badly out of order, so the
+    // order system, its events, and the AI all have something to react to.
+    let hyperions_rest = original
+        .world_mut()
+        .resource::<aeon_sim::MapIndex>()
+        .province_keys[&key("hyperions-rest")];
+    adjust_order(original.world_mut(), hyperions_rest, -500);
+    original.advance_days(500);
+
+    // Mid-campaign snapshot, taken with events, obligations and order all
+    // in mid-flight.
+    let snapshot = original.snapshot();
+    let bytes = persistence::snapshot_to_ron(&snapshot).expect("snapshot serialises");
+
+    // Answer whatever the world has asked, then play on for two more years.
+    let play_on = |h: &mut SimHost| {
+        for _ in 0..8 {
+            let pending = h.world_mut().resource::<PendingPopups>().clone();
+            let Some(popup) = pending.popups.first().cloned() else {
+                break;
+            };
+            let choice = popup.choices[0].0.clone();
+            let _ = h.submit(PlayerCommand::AnswerPopup {
+                popup: popup.id,
+                choice,
+            });
+            h.advance_days(1);
+        }
+        h.advance_days(720);
+    };
+    play_on(&mut original);
+
+    // The replay: restore the snapshot and play the identical continuation.
+    let restored_snapshot = persistence::snapshot_from_ron(&bytes).expect("snapshot deserialises");
+    let mut replayed =
+        SimHost::restore_with_content(restored_snapshot, content).expect("snapshot restores");
+    play_on(&mut replayed);
+
+    assert_eq!(
+        replayed.state_hash(),
+        original.state_hash(),
+        "a campaign carrying order, events, obligations and reactive houses \
+         must replay to the identical state"
+    );
+
+    // And the milestone's systems must actually have been exercised, or
+    // the guarantee above would be vacuous.
+    let world = original.world_mut();
+    let events = world.resource::<EventState>();
+    assert!(
+        !events.history.is_empty(),
+        "the playthrough should have drawn contextual events"
+    );
+    let ledger = world.resource::<Obligations>();
+    assert!(
+        ledger.entries.len() >= 9,
+        "the authored obligations should be on the books"
+    );
+    let order = province_order(world, hyperions_rest).order;
+    assert!(
+        order < ORDER_MAX,
+        "the disordered holding should still bear the marks of it"
+    );
+    let acted = world
+        .resource::<aeon_sim::MessageLog>()
+        .entries
+        .iter()
+        .any(|entry| entry.org != Some(harrow) && entry.text.contains("began '"));
+    assert!(
+        acted,
+        "at least one autonomous house should have acted on a pressure and said why"
     );
 }

@@ -22,11 +22,11 @@ use rhai::{AST, Dynamic, Engine, Map, Scope};
 use crate::effect::{EffectParseError, ScriptEffect, parse_effects};
 use crate::key::ContentKey;
 use crate::model::{
-    ArmyDef, BodyDef, BodyKind, CharacterDef, ContentSet, EventChoiceDef, EventDef, EventFamily,
-    EventRequires, Gender, GoverningSkill, HouseTier, JobCategory, JobDef, JobResultDef,
-    JobResultKind, JobTargetKind, MilitaryOp, NamePoolDef, ObligationDef, OfficeDef, OrgDef,
-    OrgKind, PopupChoiceDef, ProvinceDef, RiskTag, ScenarioDef, ScriptFnRef, ShipClass, ShipDef,
-    SkillsDef, TitleDef, TitleHolderDef, TitleKindDef, TraitDef,
+    AiIntent, ArmyDef, BodyDef, BodyKind, CharacterDef, ContentSet, EventChoiceDef, EventDef,
+    EventFamily, EventRequires, Gender, GoverningSkill, HouseTier, JobCategory, JobDef,
+    JobResultDef, JobResultKind, JobTargetKind, MilitaryOp, NamePoolDef, ObligationDef, OfficeDef,
+    OrgDef, OrgKind, PopupChoiceDef, ProvinceDef, RiskTag, ScenarioDef, ScriptFnRef, ShipClass,
+    ShipDef, SkillsDef, TitleDef, TitleHolderDef, TitleKindDef, TraitDef,
 };
 use crate::report::{ContentReport, Severity};
 
@@ -206,6 +206,7 @@ fn define_job(state: &mut BuilderState, map: Map) {
         &map,
         Some(key.as_str()),
         &[
+            "ai_intent",
             "id",
             "title",
             "summary",
@@ -358,6 +359,29 @@ fn define_job(state: &mut BuilderState, map: Map) {
         );
         return;
     }
+    let ai_intent = match map
+        .get("ai_intent")
+        .and_then(|v| v.clone().into_string().ok())
+        .unwrap_or_else(|| "routine".to_owned())
+        .as_str()
+    {
+        "routine" => AiIntent::Routine,
+        "order" => AiIntent::Order,
+        "muster" => AiIntent::Muster,
+        "obligation" => AiIntent::Obligation,
+        "resources" => AiIntent::Resources,
+        "standing" => AiIntent::Standing,
+        "claim" => AiIntent::Claim,
+        other => {
+            state.error(
+                Some(key.as_str()),
+                format!(
+                    "unknown ai_intent '{other}' (expected routine, order, muster,                      obligation, resources, standing, claim)"
+                ),
+            );
+            return;
+        }
+    };
     let Some(ai_available) = opt_bool(state, &map, "ai_available", true) else {
         return;
     };
@@ -572,6 +596,7 @@ fn define_job(state: &mut BuilderState, map: Map) {
             risks,
             military_op,
             ai_available,
+            ai_intent,
             wealth_cost,
             manpower_cost,
             supplies_cost,

@@ -332,6 +332,7 @@ mod tests {
             risks: Vec::new(),
             military_op: None,
             ai_available: false,
+            ai_intent: aeon_data::model::AiIntent::Routine,
             wealth_cost: 0,
             manpower_cost: 0,
             supplies_cost: 0,

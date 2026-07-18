@@ -186,6 +186,8 @@ pub struct JobDef {
     pub military_op: Option<MilitaryOp>,
     /// Whether autonomous organisations may start this job.
     pub ai_available: bool,
+    /// Which pressure an autonomous house starts this job to answer.
+    pub ai_intent: AiIntent,
     /// Wealth deducted when the job starts.
     pub wealth_cost: i64,
     /// Manpower committed when the job starts.
@@ -547,6 +549,30 @@ pub struct ArmyDef {
     pub manpower: i64,
     /// Supplies in its train.
     pub supplies: i64,
+}
+
+/// The pressure an autonomous house would start a job to answer.
+///
+/// Authored on the job rather than hardcoded in the simulation, so the
+/// AI's repertoire grows with the content instead of with the engine.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum AiIntent {
+    /// Ordinary business, chosen when nothing is pressing.
+    #[default]
+    Routine,
+    /// Restore order in a holding that is slipping.
+    Order,
+    /// Raise troops.
+    Muster,
+    /// Act on a favour, promise, or grievance.
+    Obligation,
+    /// Repair the treasury or stores.
+    Resources,
+    /// Shore up political standing.
+    Standing,
+    /// Press a claim that is actually viable.
+    Claim,
 }
 
 /// The kind of situation an event arises from.

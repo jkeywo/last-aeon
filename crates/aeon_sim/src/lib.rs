@@ -17,6 +17,7 @@
 //! - [`host`] — [`host::SimHost`], the embedding API used by the tools CLI,
 //!   tests, and anything else that drives the simulation without a client.
 
+pub mod agency;
 pub mod clock;
 pub mod command;
 pub mod config;

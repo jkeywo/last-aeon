@@ -63,6 +63,39 @@ define_obligation(#{
     origin: "an old border quarrel",
 });
 
+// Jobs an autonomous house can reach for, each declaring the pressure it
+// answers, so agency is driven by content rather than by hardcoded keys.
+define_job(#{
+    id: "settle-the-shire", title: "Settle the Shire", summary: "s",
+    ai_intent: "order", category: "consequential", duration_days: 20,
+    skill: "diplomacy", difficulty: 5, ai_available: true,
+    results: #{
+        success: #{ weight: 900, effect_fn: "settled" },
+        failure: #{ weight: 100 },
+    },
+});
+fn settled(ctx) {
+    [#{ kind: "order", scope: "all-held", amount: 40 }]
+}
+define_job(#{
+    id: "collect-what-is-owed", title: "Collect What Is Owed", summary: "s",
+    ai_intent: "obligation", category: "consequential", duration_days: 20,
+    skill: "diplomacy", difficulty: 5, target: "organisation", ai_available: true,
+    results: #{
+        success: #{ weight: 800 },
+        failure: #{ weight: 200 },
+    },
+});
+define_job(#{
+    id: "ordinary-business", title: "Ordinary Business", summary: "s",
+    category: "consequential", duration_days: 30,
+    skill: "stewardship", difficulty: 5, ai_available: true,
+    results: #{
+        success: #{ weight: 800 },
+        failure: #{ weight: 200 },
+    },
+});
+
 // Fires only on badly disordered player ground, and asks a question.
 define_event(#{
     id: "unrest-choice",
@@ -375,5 +408,87 @@ fn events_replay_identically_and_survive_snapshots() {
         restored.state_hash(),
         a.state_hash(),
         "and keep drawing the same events afterwards"
+    );
+}
+
+// ---------------------------------------------------------------------------
+// Reactive agency
+// ---------------------------------------------------------------------------
+
+#[test]
+fn houses_score_the_pressures_they_are_actually_under() {
+    use aeon_sim::agency::score_intents;
+
+    let mut h = host(11);
+    let birch = org(&mut h, "birch");
+
+    // With nothing wrong, Birch has only ordinary business in mind.
+    let calm = score_intents(h.world_mut(), birch);
+    let calm_top = calm.first().map(|intent| intent.score).unwrap_or(0);
+
+    // Put its holding in disorder, and that pressure outranks everything.
+    let beta = h.world_mut().resource::<MapIndex>().province_keys[&key("beta")];
+    adjust_order(h.world_mut(), beta, -600);
+    let pressed = score_intents(h.world_mut(), birch);
+    let top = pressed
+        .first()
+        .expect("a house under pressure wants something");
+
+    assert!(
+        top.score > calm_top,
+        "disorder should outrank ordinary business: {} vs {calm_top}",
+        top.score
+    );
+    assert!(
+        top.reason.contains("Beta"),
+        "the reason should name the pressure: {}",
+        top.reason
+    );
+}
+
+#[test]
+fn agency_notices_an_obligation_it_can_collect() {
+    use aeon_sim::agency::score_intents;
+
+    let mut h = host(12);
+    let ash = org(&mut h, "ash");
+    let birch = org(&mut h, "birch");
+    // Ash is owed a favour by Birch from the fixture's seeded ledger.
+    let intents = score_intents(h.world_mut(), ash);
+    let collecting = intents
+        .iter()
+        .find(|intent| intent.target == aeon_sim::JobTarget::Org(birch));
+    assert!(
+        collecting.is_some_and(|intent| intent.reason.contains("owes us")),
+        "a house should notice a favour it can call in: {:?}",
+        intents.iter().map(|i| &i.reason).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn autonomous_houses_act_and_say_why() {
+    let mut h = host(13);
+    // Put Birch's holding into disorder so it has something to answer.
+    let beta = h.world_mut().resource::<MapIndex>().province_keys[&key("beta")];
+    adjust_order(h.world_mut(), beta, -600);
+    h.advance_days(400);
+
+    let birch = org(&mut h, "birch");
+    let explained = h
+        .world_mut()
+        .resource::<MessageLog>()
+        .entries
+        .iter()
+        .any(|entry| entry.org == Some(birch) && entry.text.contains("began '"));
+    let entries: Vec<String> = h
+        .world_mut()
+        .resource::<MessageLog>()
+        .entries
+        .iter()
+        .map(|entry| format!("{:?} {}", entry.org, entry.text))
+        .collect();
+    assert!(
+        explained,
+        "a house acting on a pressure should record why it did; log was {entries:#?}"
     );
 }
