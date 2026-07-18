@@ -7,6 +7,9 @@ succession, political relationships, territorial power, and conflict across a
 world, its moon, and an orbital starbase. Built in Rust on Bevy with a
 deterministic, headless, data-driven simulation and Rhai-authored content.
 
+**▶ Play in the browser:** <https://jkeywo.github.io/last-aeon/>
+(published from `main` by CI; lead House Harrow through the Ashkarr Succession).
+
 ## Repository layout
 
 | Path | Contents |
@@ -22,15 +25,29 @@ deterministic, headless, data-driven simulation and Rhai-authored content.
 ## Working on the game
 
 ```powershell
-cargo test --workspace          # headless simulation test suite
-cargo run -p aeon_client        # run the game natively
-cargo run -p aeon_tools -- help # developer CLI
-uv run pasm validate            # validate the architecture model
+cargo test --workspace                 # headless simulation test suite
+cargo run -p aeon_client               # run the game natively
+cargo run -p aeon_tools -- validate-content  # validate authored content
+cargo run -p aeon_tools -- accept      # end-to-end deterministic-replay acceptance
+uv run pasm validate                   # validate the architecture model
 ```
 
 The architecture model in `pasm/spec/` is authoritative for design intent.
 Add or update PASM entities alongside (or before) the code that implements
 them; CI validates the model on every push.
+
+### Web build and delivery
+
+The client shares the Rust/Bevy simulation between native and web. CI builds
+the release WebAssembly bundle with [trunk](https://trunkrs.dev) and deploys
+it to GitHub Pages from `main`. To build it locally:
+
+```powershell
+trunk serve --config crates/aeon_client/Trunk.toml   # dev server at :8642
+```
+
+> **One-time setup:** GitHub Pages must be enabled for the repository with
+> **Settings → Pages → Source: GitHub Actions** for the deploy job to publish.
 
 ## Design pillars
 

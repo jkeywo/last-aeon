@@ -280,7 +280,7 @@ entities:
 
   - milestone: mvp-acceptance-and-release
     core:
-      status: proposed
+      status: implemented
       confidence: confirmed
       title: "M9: MVP Acceptance, Replay, and Delivery"
       summary: >-
@@ -295,3 +295,19 @@ entities:
         - versioned-snapshots-plus-command-log
         - shared-native-and-web-delivery
         - scripted-content-with-ci-validation
+    implementation:
+      paths:
+        - crates/aeon_tools/src/main.rs
+        - .github/workflows/ci.yml
+        - crates/aeon_client/index.html
+      tests:
+        - crates/aeon_sim/tests/acceptance.rs
+        - crates/aeon_sim/tests/scenario.rs
+      status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/acceptance.rs
+        summary: A scripted House Harrow playthrough on the real scenario (courting the liege, currying Sanctora favour, mustering a levy, sending the heir travelling) is deterministic and replays from a mid-run snapshot through its JSONL command log to an identical final state hash.
+      - kind: manual-review
+        reference: crates/aeon_tools/src/main.rs
+        summary: "'aeon accept' runs the full Ashkarr Succession scenario for ten years, snapshots at day 1200, replays from the snapshot, and reproduces the exact final hash; CI runs it on every push and deploys the release wasm client to GitHub Pages."

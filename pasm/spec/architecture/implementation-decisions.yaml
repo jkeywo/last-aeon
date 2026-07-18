@@ -667,3 +667,42 @@ entities:
         - mvp-vassal-allegiance-and-independents
         - great-houses-contest-the-planet
         - invented-canon-scenario-content
+
+  - decision: cli-acceptance-round-trip
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Acceptance Is a CLI Round-Trip Verified in CI
+      summary: >-
+        The aeon tools CLI gains a scenario-aware run/replay/hash surface
+        (a --content flag loads the authored scenario) and an 'accept'
+        command that runs the scenario to the end, snapshots it mid-run,
+        restores that snapshot, replays the remaining days, and confirms
+        the replayed final state hash equals the original. CI runs 'aeon
+        accept' on every push, so a determinism regression fails the build.
+      rationale:
+        - A single end-to-end command run in CI turns the deterministic-replay guarantee into a continuously enforced gate rather than a claim.
+      references:
+        - deterministic-seed-and-command-replay
+        - versioned-snapshots-plus-command-log
+        - mvp-acceptance-and-release
+
+  - decision: github-pages-subpath-delivery
+    core:
+      status: accepted
+      confidence: confirmed
+      title: The Playable Web Build Deploys to GitHub Pages
+      summary: >-
+        CI builds the release WebAssembly client with trunk, prefixing
+        asset URLs with the repository subpath (--public-url /last-aeon/),
+        uploads it as a Pages artifact, and deploys it to GitHub Pages from
+        main after the spec, test, and wasm jobs pass. The same authored
+        content is embedded at build time, so the published build cannot
+        drift from what CI validated. Enabling Pages with the GitHub
+        Actions source is a one-time repository setting.
+      rationale:
+        - Bevy's shared native and web delivery makes the web build a near-free additional target, and Pages is the lowest-friction host for it.
+      references:
+        - shared-native-and-web-delivery
+        - client-embeds-content-at-build-time
+        - github-actions-ci-and-pages-delivery

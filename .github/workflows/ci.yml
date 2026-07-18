@@ -8,6 +8,16 @@ on:
 env:
   CARGO_TERM_COLOR: always
 
+# Allow the Pages deploy job to publish, and serialise deploys.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   spec:
     name: PASM model validation
@@ -37,12 +47,41 @@ jobs:
         run: cargo test --workspace
       - name: Validate authored content
         run: cargo run -p aeon_tools -- validate-content
+      - name: Acceptance replay verification
+        run: cargo run -p aeon_tools -- accept
 
   wasm:
-    name: Web target check
+    name: Build the web client
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: Swatinem/rust-cache@v2
-      - name: Check the client compiles for the web
-        run: cargo check --target wasm32-unknown-unknown -p aeon_client
+      - name: Add the wasm target
+        run: rustup target add wasm32-unknown-unknown
+      - name: Install trunk
+        uses: jetli/trunk-action@v0.5.0
+        with:
+          version: latest
+      - name: Build the release web bundle
+        working-directory: crates/aeon_client
+        # The site is served from a repository subpath on GitHub Pages, so
+        # the asset URLs must be prefixed with the repository name.
+        run: trunk build --release --public-url /last-aeon/
+      - name: Upload the Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: crates/aeon_client/dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    # Only publish the playable build from the default branch.
+    if: github.ref == 'refs/heads/main'
+    needs: [spec, rust, wasm]
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
