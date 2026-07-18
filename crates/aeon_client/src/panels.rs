@@ -10,24 +10,26 @@ use std::collections::BTreeMap;
 
 use aeon_core::calendar::GameDate;
 use aeon_data::ContentSet;
-use aeon_data::model::{BodyKind, HouseTier, OrgKind, ShipClass};
+use aeon_data::model::{BodyKind, HouseTier, JobDef, JobTargetKind, OrgKind, ShipClass};
 use aeon_sim::economy::OrgResources;
 use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
+use aeon_sim::jobs::CharacterCondition;
 use aeon_sim::map::{BodyRecord, DisplayName, GeoPosition, ProvinceRecord};
 use aeon_sim::politics::{
-    CharacterSkills, CharacterTraits, CharacterView, Lineage, OpinionLedger, opinion_of,
+    ADULT_AGE, CharacterSkills, CharacterTraits, CharacterView, Lineage, OpinionLedger, opinion_of,
 };
 use aeon_sim::presence::{CharacterLocation, Location};
 use aeon_sim::state::{CampaignMeta, ContentDb};
 use aeon_sim::{
-    CampaignClock, CampaignOver, CharacterId, CharacterRecord, OrgId, OrgRecord, PlayerCommand,
-    PlayerHouse, PoliticsIndex, ProvinceId, TitleHolder, TitleRecord,
+    ActiveJob, CampaignClock, CampaignOver, CharacterId, CharacterRecord, JobTarget, OrgId,
+    OrgRecord, PlayerCommand, PlayerHouse, PoliticsIndex, ProvinceId, TitleHolder, TitleKind,
+    TitleRecord,
 };
 use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
-use crate::jobs_ui::UiCommandQueue;
+use crate::jobs_ui::{JobForm, UiCommandQueue};
 use crate::sim_driver::{SPEED_STEPS, TimeControl};
 use crate::view::{MapMode, MapView, SearchState, Selection, ViewState};
 
@@ -188,6 +190,502 @@ pub struct PanelData<'w, 's> {
     titles: Query<'w, 's, &'static TitleRecord>,
     ships: Query<'w, 's, &'static ShipRecord>,
     armies: Query<'w, 's, &'static ArmyRecord>,
+    conditions: Query<'w, 's, &'static CharacterCondition>,
+    active_jobs: Query<'w, 's, &'static ActiveJob>,
+}
+
+/// What the inspector's context-job section is anchored to.
+enum JobScope {
+    /// A living adult member of the player's house, who leads the job.
+    OwnCharacter(CharacterId),
+    /// A character outside the player's house, targeted by the job.
+    OutsideCharacter(CharacterId),
+    /// A province, targeted by military jobs.
+    Province(ProvinceId),
+}
+
+/// A tooltip summarising a job's effect, costs, and risks.
+fn job_hover(def: &JobDef) -> String {
+    let mut text = def.summary.clone();
+    let mut costs = Vec::new();
+    if def.wealth_cost > 0 {
+        costs.push(format!("W {}", def.wealth_cost));
+    }
+    if def.manpower_cost > 0 {
+        costs.push(format!("M {}", def.manpower_cost));
+    }
+    if def.supplies_cost > 0 {
+        costs.push(format!("S {}", def.supplies_cost));
+    }
+    if def.influence_cost > 0 {
+        costs.push(format!("I {}", def.influence_cost));
+    }
+    if !costs.is_empty() {
+        text.push_str(&format!("\nCost: {}", costs.join(", ")));
+    }
+    if !def.risks.is_empty() {
+        let risks: Vec<String> = def.risks.iter().map(|r| format!("{r:?}")).collect();
+        text.push_str(&format!("\nRisks: {}", risks.join(", ")));
+    }
+    text
+}
+
+/// Draws context-sensitive job buttons for the current selection, with an
+/// inline picker for any slot the context does not already supply. Issuing
+/// stays on the authoritative path: every action becomes a queued
+/// [`PlayerCommand::StartJob`].
+#[allow(clippy::too_many_arguments)]
+fn draw_context_jobs(
+    ui: &mut egui::Ui,
+    scope: JobScope,
+    content: &ContentSet,
+    politics: &PoliticsIndex,
+    player_org: OrgId,
+    player_head: Option<CharacterId>,
+    date: GameDate,
+    data: &PanelData,
+    form: &mut JobForm,
+    queue: &mut UiCommandQueue,
+) {
+    let busy: Vec<CharacterId> = data.active_jobs.iter().map(|j| j.leader).collect();
+    let char_name = |id: CharacterId| -> String {
+        politics
+            .characters
+            .get(&id)
+            .and_then(|e| data.characters.get(*e).ok())
+            .map(|(r, ..)| r.name.clone())
+            .unwrap_or_default()
+    };
+    let leader_ok = |id: CharacterId| -> bool {
+        let Some(entity) = politics.characters.get(&id) else {
+            return false;
+        };
+        let Ok((record, ..)) = data.characters.get(*entity) else {
+            return false;
+        };
+        let can_lead = data
+            .conditions
+            .get(*entity)
+            .map(|c| c.can_lead(date))
+            .unwrap_or(true);
+        record.alive()
+            && record.organisation == Some(player_org)
+            && record.age_years(date) >= ADULT_AGE
+            && !busy.contains(&id)
+            && can_lead
+    };
+    let eligible_leaders = || -> Vec<(CharacterId, String)> {
+        let mut leaders: Vec<(CharacterId, String)> = politics
+            .characters
+            .keys()
+            .filter(|id| leader_ok(**id))
+            .map(|id| (*id, char_name(*id)))
+            .collect();
+        leaders.sort_by(|a, b| a.1.cmp(&b.1));
+        leaders
+    };
+    let jobs_of = |kinds: &[JobTargetKind]| -> Vec<(aeon_data::ContentKey, JobDef)> {
+        let mut jobs: Vec<(aeon_data::ContentKey, JobDef)> = content
+            .jobs
+            .iter()
+            .filter(|(_, d)| kinds.contains(&d.target))
+            .map(|(k, d)| (k.clone(), d.clone()))
+            .collect();
+        jobs.sort_by(|a, b| a.1.title.cmp(&b.1.title));
+        jobs
+    };
+
+    ui.separator();
+    ui.strong("Actions");
+
+    match scope {
+        JobScope::OwnCharacter(leader) => {
+            if !leader_ok(leader) {
+                ui.weak("Away, indisposed, or already leading a job.");
+            } else {
+                let jobs = jobs_of(&[
+                    JobTargetKind::None,
+                    JobTargetKind::Organisation,
+                    JobTargetKind::Character,
+                    JobTargetKind::Province,
+                ]);
+                for (key, def) in &jobs {
+                    if ui
+                        .button(&def.title)
+                        .on_hover_text(job_hover(def))
+                        .clicked()
+                    {
+                        if def.target == JobTargetKind::None {
+                            queue.0.push(PlayerCommand::StartJob {
+                                job: key.clone(),
+                                leader,
+                                target: JobTarget::None,
+                            });
+                            form.reset();
+                            form.notice = None;
+                        } else {
+                            form.reset();
+                            form.job = Some(key.clone());
+                            form.leader = Some(leader);
+                        }
+                    }
+                    // Inline target picker for the expanded job.
+                    let expanded = form.job.as_ref() == Some(key) && form.leader == Some(leader);
+                    if expanded && def.target != JobTargetKind::None {
+                        ui.indent(key.to_string(), |ui| {
+                            pick_target(ui, def.target, content, politics, player_org, data, form);
+                            let ready = form.target.is_some();
+                            if ui
+                                .add_enabled(ready, egui::Button::new("Confirm"))
+                                .clicked()
+                                && let Some(target) = form.target
+                            {
+                                queue.0.push(PlayerCommand::StartJob {
+                                    job: key.clone(),
+                                    leader,
+                                    target,
+                                });
+                                form.reset();
+                                form.notice = None;
+                            }
+                        });
+                    }
+                }
+            }
+        }
+        JobScope::OutsideCharacter(target_char) => {
+            let jobs = jobs_of(&[JobTargetKind::Character]);
+            for (key, def) in &jobs {
+                if ui
+                    .button(&def.title)
+                    .on_hover_text(job_hover(def))
+                    .clicked()
+                {
+                    form.reset();
+                    form.job = Some(key.clone());
+                    form.target = Some(JobTarget::Character(target_char));
+                    form.leader = player_head.filter(|h| leader_ok(*h));
+                }
+                let expanded = form.job.as_ref() == Some(key)
+                    && form.target == Some(JobTarget::Character(target_char));
+                if expanded {
+                    ui.indent(key.to_string(), |ui| {
+                        pick_leader(ui, &eligible_leaders(), form);
+                        let ready = form.leader.is_some();
+                        if ui
+                            .add_enabled(ready, egui::Button::new("Confirm"))
+                            .clicked()
+                            && let Some(leader) = form.leader
+                        {
+                            queue.0.push(PlayerCommand::StartJob {
+                                job: key.clone(),
+                                leader,
+                                target: JobTarget::Character(target_char),
+                            });
+                            form.reset();
+                            form.notice = None;
+                        }
+                    });
+                }
+            }
+            // If this character holds the Consul title, the head can petition.
+            let is_consul = data.titles.iter().any(|t| {
+                t.kind == TitleKind::Consul && t.holder == TitleHolder::Character(target_char)
+            });
+            if is_consul
+                && let Some((key, def)) = content
+                    .jobs
+                    .iter()
+                    .find(|(k, _)| k.as_str() == "petition-the-consul")
+                && let Some(head) = player_head.filter(|h| leader_ok(*h))
+                && ui
+                    .button(&def.title)
+                    .on_hover_text(job_hover(def))
+                    .clicked()
+            {
+                queue.0.push(PlayerCommand::StartJob {
+                    job: key.clone(),
+                    leader: head,
+                    target: JobTarget::None,
+                });
+                form.reset();
+                form.notice = None;
+            }
+        }
+        JobScope::Province(province) => {
+            let jobs = jobs_of(&[
+                JobTargetKind::OwnArmy,
+                JobTargetKind::OwnArmyAndProvince,
+                JobTargetKind::OwnShipAndProvince,
+            ]);
+            for (key, def) in &jobs {
+                if ui
+                    .button(&def.title)
+                    .on_hover_text(job_hover(def))
+                    .clicked()
+                {
+                    form.reset();
+                    form.job = Some(key.clone());
+                    form.province = Some(province);
+                }
+                let expanded = form.job.as_ref() == Some(key) && form.province == Some(province);
+                if expanded {
+                    ui.indent(key.to_string(), |ui| {
+                        if def.target == JobTargetKind::OwnShipAndProvince {
+                            pick_ship(ui, player_org, data, form);
+                        } else {
+                            pick_army(ui, player_org, data, form);
+                        }
+                        let (target, leader) =
+                            province_action(def.target, province, data, form, player_head);
+                        let ready = target.is_some() && leader.is_some();
+                        if ui
+                            .add_enabled(ready, egui::Button::new("Confirm"))
+                            .clicked()
+                            && let (Some(target), Some(leader)) = (target, leader)
+                        {
+                            queue.0.push(PlayerCommand::StartJob {
+                                job: key.clone(),
+                                leader,
+                                target,
+                            });
+                            form.reset();
+                            form.notice = None;
+                        }
+                    });
+                }
+            }
+        }
+    }
+
+    if let Some(notice) = &form.notice {
+        ui.colored_label(egui::Color32::from_rgb(220, 60, 60), notice);
+    }
+}
+
+/// Builds the target and derived leader for a province-scoped military job.
+fn province_action(
+    kind: JobTargetKind,
+    province: ProvinceId,
+    data: &PanelData,
+    form: &JobForm,
+    player_head: Option<CharacterId>,
+) -> (Option<JobTarget>, Option<CharacterId>) {
+    match kind {
+        JobTargetKind::OwnArmy => {
+            let target = form.army.map(JobTarget::OwnArmy);
+            let leader = form
+                .army
+                .and_then(|id| data.armies.iter().find(|a| a.id == id))
+                .map(|a| a.general);
+            (target, leader)
+        }
+        JobTargetKind::OwnArmyAndProvince => {
+            let target = form.army.map(|a| JobTarget::ArmyToProvince(a, province));
+            let leader = form
+                .army
+                .and_then(|id| data.armies.iter().find(|a| a.id == id))
+                .map(|a| a.general);
+            (target, leader)
+        }
+        JobTargetKind::OwnShipAndProvince => {
+            let ship = form
+                .ship
+                .and_then(|id| data.ships.iter().find(|s| s.id == id));
+            let target = form.ship.map(|s| JobTarget::ShipToProvince(s, province));
+            let leader = ship.and_then(|s| s.captain).or(player_head);
+            (target, leader)
+        }
+        _ => (None, None),
+    }
+}
+
+fn pick_target(
+    ui: &mut egui::Ui,
+    kind: JobTargetKind,
+    content: &ContentSet,
+    politics: &PoliticsIndex,
+    player_org: OrgId,
+    data: &PanelData,
+    form: &mut JobForm,
+) {
+    match kind {
+        JobTargetKind::Organisation => {
+            let label = match form.target {
+                Some(JobTarget::Org(org)) => politics
+                    .orgs
+                    .get(&org)
+                    .and_then(|e| data.orgs.get(*e).ok())
+                    .and_then(|(r, _)| content.organisations.get(&r.key))
+                    .map(|d| d.name.clone())
+                    .unwrap_or_default(),
+                _ => "Choose an organisation".to_owned(),
+            };
+            egui::ComboBox::from_id_salt("ctx-org")
+                .selected_text(label)
+                .show_ui(ui, |ui| {
+                    for (id, entity) in &politics.orgs {
+                        if *id == player_org {
+                            continue;
+                        }
+                        let Ok((record, _)) = data.orgs.get(*entity) else {
+                            continue;
+                        };
+                        let Some(def) = content.organisations.get(&record.key) else {
+                            continue;
+                        };
+                        if ui
+                            .selectable_label(form.target == Some(JobTarget::Org(*id)), &def.name)
+                            .clicked()
+                        {
+                            form.target = Some(JobTarget::Org(*id));
+                        }
+                    }
+                });
+        }
+        JobTargetKind::Character => {
+            let label = match form.target {
+                Some(JobTarget::Character(id)) => politics
+                    .characters
+                    .get(&id)
+                    .and_then(|e| data.characters.get(*e).ok())
+                    .map(|(r, ..)| r.name.clone())
+                    .unwrap_or_default(),
+                _ => "Choose a character".to_owned(),
+            };
+            egui::ComboBox::from_id_salt("ctx-char")
+                .selected_text(label)
+                .show_ui(ui, |ui| {
+                    let mut people: Vec<(CharacterId, String)> = politics
+                        .characters
+                        .iter()
+                        .filter_map(|(id, e)| {
+                            let (record, ..) = data.characters.get(*e).ok()?;
+                            (record.alive() && record.organisation != Some(player_org))
+                                .then(|| (*id, record.name.clone()))
+                        })
+                        .collect();
+                    people.sort_by(|a, b| a.1.cmp(&b.1));
+                    for (id, name) in people {
+                        if ui
+                            .selectable_label(form.target == Some(JobTarget::Character(id)), &name)
+                            .clicked()
+                        {
+                            form.target = Some(JobTarget::Character(id));
+                        }
+                    }
+                });
+        }
+        JobTargetKind::Province => {
+            let label = match form.target {
+                Some(JobTarget::Province(id)) => data
+                    .provinces
+                    .iter()
+                    .find(|(r, _, _)| r.id == id)
+                    .map(|(_, n, _)| n.0.clone())
+                    .unwrap_or_default(),
+                _ => "Choose a province".to_owned(),
+            };
+            egui::ComboBox::from_id_salt("ctx-prov")
+                .selected_text(label)
+                .show_ui(ui, |ui| {
+                    let mut sorted: Vec<_> = data.provinces.iter().collect();
+                    sorted.sort_by_key(|(r, _, _)| r.id);
+                    for (record, name, _) in sorted {
+                        if ui
+                            .selectable_label(
+                                form.target == Some(JobTarget::Province(record.id)),
+                                &name.0,
+                            )
+                            .clicked()
+                        {
+                            form.target = Some(JobTarget::Province(record.id));
+                        }
+                    }
+                });
+        }
+        _ => {}
+    }
+}
+
+fn pick_leader(ui: &mut egui::Ui, leaders: &[(CharacterId, String)], form: &mut JobForm) {
+    let label = form
+        .leader
+        .and_then(|id| leaders.iter().find(|(l, _)| *l == id))
+        .map(|(_, n)| n.clone())
+        .unwrap_or_else(|| "Choose a leader".to_owned());
+    egui::ComboBox::from_id_salt("ctx-leader")
+        .selected_text(label)
+        .show_ui(ui, |ui| {
+            for (id, name) in leaders {
+                if ui
+                    .selectable_label(form.leader == Some(*id), name)
+                    .clicked()
+                {
+                    form.leader = Some(*id);
+                }
+            }
+        });
+}
+
+fn pick_army(ui: &mut egui::Ui, player_org: OrgId, data: &PanelData, form: &mut JobForm) {
+    let mut armies: Vec<&ArmyRecord> = data
+        .armies
+        .iter()
+        .filter(|a| a.owner == player_org)
+        .collect();
+    armies.sort_by_key(|a| a.id);
+    let label = form
+        .army
+        .and_then(|id| armies.iter().find(|a| a.id == id))
+        .map(|a| a.name.clone())
+        .unwrap_or_else(|| "Choose an army".to_owned());
+    if armies.is_empty() {
+        ui.weak("You command no armies. Muster the levies first.");
+        return;
+    }
+    egui::ComboBox::from_id_salt("ctx-army")
+        .selected_text(label)
+        .show_ui(ui, |ui| {
+            for army in &armies {
+                if ui
+                    .selectable_label(form.army == Some(army.id), &army.name)
+                    .clicked()
+                {
+                    form.army = Some(army.id);
+                }
+            }
+        });
+}
+
+fn pick_ship(ui: &mut egui::Ui, player_org: OrgId, data: &PanelData, form: &mut JobForm) {
+    let mut ships: Vec<&ShipRecord> = data
+        .ships
+        .iter()
+        .filter(|s| s.owner == player_org && matches!(s.location, ShipLocation::Docked(_)))
+        .collect();
+    ships.sort_by_key(|s| s.id);
+    if ships.is_empty() {
+        ui.weak("You have no docked ships.");
+        return;
+    }
+    let label = form
+        .ship
+        .and_then(|id| ships.iter().find(|s| s.id == id))
+        .map(|s| s.name.clone())
+        .unwrap_or_else(|| "Choose a ship".to_owned());
+    egui::ComboBox::from_id_salt("ctx-ship")
+        .selected_text(label)
+        .show_ui(ui, |ui| {
+            for ship in &ships {
+                if ui
+                    .selectable_label(form.ship == Some(ship.id), &ship.name)
+                    .clicked()
+                {
+                    form.ship = Some(ship.id);
+                }
+            }
+        });
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -204,6 +702,7 @@ pub fn draw_panels(
     mut queue: ResMut<UiCommandQueue>,
     mut search: ResMut<SearchState>,
     mut mode: ResMut<MapMode>,
+    mut form: ResMut<JobForm>,
     data: PanelData,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
@@ -552,6 +1051,21 @@ pub fn draw_panels(
                                 });
                             }
                         }
+
+                        if let Some(org) = player_org {
+                            draw_context_jobs(
+                                ui,
+                                JobScope::Province(id),
+                                &content.0,
+                                &politics,
+                                org,
+                                player_head,
+                                date,
+                                &data,
+                                &mut form,
+                                &mut queue,
+                            );
+                        }
                     }
                 }
                 Some(Selection::Org(id)) => {
@@ -746,6 +1260,28 @@ pub fn draw_panels(
                                 "Their opinion of your head: {:+}",
                                 opinion_of(&content.0, date, as_view(them), as_view(head)),
                             ));
+                        }
+
+                        if record.alive()
+                            && let Some(org) = player_org
+                        {
+                            let scope = if record.organisation == Some(org) {
+                                JobScope::OwnCharacter(id)
+                            } else {
+                                JobScope::OutsideCharacter(id)
+                            };
+                            draw_context_jobs(
+                                ui,
+                                scope,
+                                &content.0,
+                                &politics,
+                                org,
+                                player_head,
+                                date,
+                                &data,
+                                &mut form,
+                                &mut queue,
+                            );
                         }
                     }
                 }
