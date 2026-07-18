@@ -99,6 +99,7 @@ name = "aeon_client"
 version = "0.1.0"
 dependencies = [
  "aeon_core",
+ "aeon_data",
  "aeon_sim",
  "bevy",
  "bevy_egui",

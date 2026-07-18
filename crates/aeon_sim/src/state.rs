@@ -49,3 +49,17 @@ pub fn start_campaign(world: &mut World, config: CampaignConfig) {
     world.insert_resource(PendingCommands::default());
     world.insert_resource(CommandLog::default());
 }
+
+/// Starts a fresh campaign running on authored content.
+///
+/// Attaches the content database and spawns the map with stable IDs
+/// allocated in content-key order.
+pub fn start_campaign_with_content(
+    world: &mut World,
+    config: CampaignConfig,
+    content: Arc<ContentSet>,
+) {
+    start_campaign(world, config);
+    crate::map::spawn_from_content(world, &content);
+    world.insert_resource(ContentDb(content));
+}

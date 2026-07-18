@@ -1,72 +1,64 @@
 //! Native and web entry point for The Last Aeons.
 //!
-//! The client attaches presentation (windowing, 3D maps, 2D panels) to the
-//! authoritative simulation from `aeon_sim`; it never owns gameplay rules.
-//! Until the scenario pipeline lands, it starts a fixed development
-//! campaign and drives it in real time.
+//! The client attaches presentation — the 3D system and globe maps, orbit
+//! camera, picking, and 2D information panels — to the authoritative
+//! simulation from `aeon_sim`. It never owns gameplay rules. Until the
+//! authored scenario lands, it starts a fixed development campaign on the
+//! embedded content.
 
-use aeon_core::calendar::CalendarDate;
-use aeon_sim::state::start_campaign;
-use aeon_sim::{AeonSimPlugin, CampaignClock, CampaignConfig, advance_one_day};
+mod camera;
+mod content;
+mod panels;
+mod scene;
+mod selection;
+mod sim_driver;
+mod view;
+
+use aeon_sim::AeonSimPlugin;
+use bevy::picking::mesh_picking::MeshPickingPlugin;
 use bevy::prelude::*;
-use bevy::window::PrimaryWindow;
-use bevy_egui::EguiPlugin;
-
-/// Seed for the fixed development campaign.
-const DEV_SEED: u64 = 0xA301;
-
-/// Wall-clock seconds per campaign day at the default speed.
-const SECONDS_PER_DAY: f32 = 1.0;
+use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
 
 fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: "The Last Aeons".to_owned(),
+                // On the web, track the canvas' CSS size (full window).
+                fit_canvas_to_parent: true,
                 ..Default::default()
             }),
             ..Default::default()
         }))
+        .add_plugins(MeshPickingPlugin)
         .add_plugins(EguiPlugin::default())
         .add_plugins(AeonSimPlugin)
-        .add_systems(Startup, begin_dev_campaign)
-        .add_systems(Update, drive_simulation)
+        .init_resource::<sim_driver::TimeControl>()
+        .init_resource::<view::ViewState>()
+        .init_resource::<camera::OrbitCamera>()
+        .add_systems(
+            Startup,
+            (
+                sim_driver::begin_dev_campaign,
+                camera::spawn_camera,
+                scene::spawn_scene,
+            )
+                .chain(),
+        )
+        .add_systems(
+            Update,
+            (
+                sim_driver::drive_simulation,
+                sim_driver::time_hotkeys,
+                selection::attach_pickers,
+                selection::view_hotkeys,
+                scene::update_system_positions,
+                scene::apply_view_visibility,
+                scene::apply_selection_tint,
+                camera::retarget_on_view_change,
+                camera::drive_camera,
+            ),
+        )
+        .add_systems(EguiPrimaryContextPass, panels::draw_panels)
         .run();
-}
-
-fn begin_dev_campaign(world: &mut World) {
-    start_campaign(
-        world,
-        CampaignConfig {
-            name: "Development Campaign".to_owned(),
-            seed: DEV_SEED,
-            start_date: CalendarDate {
-                year: 411,
-                month: 1,
-                day: 1,
-            }
-            .to_date()
-            .expect("dev start date is valid"),
-        },
-    );
-}
-
-/// Maps wall-clock time to discrete daily ticks of the authoritative
-/// simulation. Pause and speed selection arrive with the map milestone.
-fn drive_simulation(world: &mut World, mut carry: Local<f32>) {
-    let delta = world.resource::<Time>().delta_secs();
-    *carry += delta;
-    let mut advanced = false;
-    while *carry >= SECONDS_PER_DAY {
-        *carry -= SECONDS_PER_DAY;
-        advance_one_day(world);
-        advanced = true;
-    }
-    if advanced {
-        let date = world.resource::<CampaignClock>().date;
-        let mut windows = world.query_filtered::<&mut Window, With<PrimaryWindow>>();
-        for mut window in windows.iter_mut(world) {
-            window.title = format!("The Last Aeons — {date}");
-        }
-    }
 }

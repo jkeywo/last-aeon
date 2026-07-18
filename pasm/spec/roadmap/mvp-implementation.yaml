@@ -90,7 +90,7 @@ entities:
 
   - milestone: mvp-map-and-inspection
     core:
-      status: proposed
+      status: implemented
       confidence: confirmed
       title: "M3: Local-System Map and Inspection"
       summary: >-
@@ -103,6 +103,21 @@ entities:
         - mvp-3d-world-and-system-with-2d-details
         - mvp-provincial-composition
         - mvp-starbase-province
+    implementation:
+      paths:
+        - crates/aeon_sim/src/map.rs
+        - crates/aeon_client/src
+        - assets/content/system
+      tests:
+        - crates/aeon_sim/tests/content_binding.rs
+      status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/content_binding.rs
+        summary: Map entities spawn from content with deterministic stable IDs and survive snapshot restore with identical IDs and state hash.
+      - kind: manual-review
+        reference: crates/aeon_client
+        summary: Verified in the browser against the wasm build - system view with orbiting bodies, body and province selection with inspector facts (stable ID, content key, coordinates), the rotatable strategic globe with 41 province markers across three bodies, view navigation, and campaign time advancing under the speed controls.
 
   - milestone: mvp-political-model
     core:

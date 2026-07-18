@@ -385,7 +385,7 @@ entities:
 
   - component: strategic-3d-map-presentation
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Strategic 3D Map Presentation
       summary: The MVP presents a rotatable 3D planetary globe and a 3D local-system map containing the planet, moon, and starbase. Players can select a body on the system map and zoom into its strategic view; 2D information panels display detailed state.
@@ -394,6 +394,13 @@ entities:
       kind: presentation-subsystem
       classification: interface
       authority: derived
+    implementation:
+      paths:
+        - crates/aeon_client/src/scene.rs
+        - crates/aeon_client/src/camera.rs
+        - crates/aeon_client/src/panels.rs
+        - crates/aeon_client/src/selection.rs
+      status: declared
 
   - decision: mvp-3d-world-and-system-with-2d-details
     core:

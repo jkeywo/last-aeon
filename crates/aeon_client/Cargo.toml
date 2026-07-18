@@ -13,6 +13,7 @@ path = "src/main.rs"
 
 [dependencies]
 aeon_core = { workspace = true }
+aeon_data = { workspace = true }
 aeon_sim = { workspace = true }
 bevy = { workspace = true, default-features = true }
 bevy_egui = { workspace = true }

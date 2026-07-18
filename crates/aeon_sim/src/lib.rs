@@ -21,6 +21,8 @@ pub mod clock;
 pub mod command;
 pub mod config;
 pub mod host;
+pub mod ids;
+pub mod map;
 pub mod persistence;
 pub mod snapshot;
 pub mod state;
@@ -31,6 +33,8 @@ pub use clock::{CampaignClock, DailyTick, MonthlyPulse, TickSet, YearlyPulse, ad
 pub use command::{CommandEnvelope, CommandRejection, PlayerCommand};
 pub use config::CampaignConfig;
 pub use host::SimHost;
+pub use ids::{BodyId, ProvinceId};
+pub use map::{BodyRecord, DisplayName, GeoPosition, MapIndex, ProvinceRecord};
 pub use snapshot::{CampaignSnapshot, CampaignState, SNAPSHOT_FORMAT_VERSION, SnapshotError};
 
 /// Root plugin installing the authoritative simulation into a Bevy [`App`].

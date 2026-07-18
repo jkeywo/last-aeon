@@ -69,9 +69,10 @@ impl SimHost {
 
     /// Starts a fresh campaign running on the given authored content.
     pub fn new_with_content(config: CampaignConfig, content: Arc<ContentSet>) -> Self {
-        let mut host = Self::new(config);
-        host.app.world_mut().insert_resource(ContentDb(content));
-        host
+        let mut app = App::new();
+        app.add_plugins(AeonSimPlugin);
+        crate::state::start_campaign_with_content(app.world_mut(), config, content);
+        Self { app }
     }
 
     /// Restores a content-free campaign from a snapshot, verifying version
@@ -107,7 +108,9 @@ impl SimHost {
         }
         let mut app = App::new();
         app.add_plugins(AeonSimPlugin);
+        let map_state = state.map.clone();
         restore_state(app.world_mut(), state);
+        crate::map::restore_map(app.world_mut(), &map_state, &content);
         app.world_mut().insert_resource(ContentDb(content));
         Ok(Self { app })
     }

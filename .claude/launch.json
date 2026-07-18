@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "web",
+      "runtimeExecutable": "python",
+      "runtimeArgs": [
+        "-m",
+        "http.server",
+        "8642",
+        "--directory",
+        "crates/aeon_client/dist"
+      ],
+      "port": 8642
+    },
+    {
+      "name": "web-trunk",
+      "runtimeExecutable": "trunk",
+      "runtimeArgs": ["serve", "--config", "crates/aeon_client/Trunk.toml"],
+      "port": 8642
+    }
+  ]
+}

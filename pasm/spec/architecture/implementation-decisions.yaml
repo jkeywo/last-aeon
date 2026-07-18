@@ -299,3 +299,40 @@ entities:
         - campaign-persistence
         - deterministic-seed-and-command-replay
         - versioned-snapshots-plus-command-log
+
+  - decision: client-embeds-content-at-build-time
+    core:
+      status: accepted
+      confidence: confirmed
+      title: The Client Embeds Authored Content at Build Time
+      summary: >-
+        aeon_client's build script walks assets/content and embeds every
+        authored file into the binary; native and web clients always run
+        exactly the content their build was validated against. The tools
+        CLI and tests read content from disk instead.
+      rationale:
+        - A shipped build that cannot drift from its validated content removes a whole class of content-mismatch failures, and gives the web build its content without a fetch-and-cache layer.
+        - Embedding pairs naturally with content-hash save binding; a build's saves are self-consistent by construction.
+      references:
+        - content-hash-binds-saves-to-content
+        - shared-native-and-web-delivery
+        - scripted-content-with-ci-validation
+
+  - decision: temporary-system-layout-ashkarr
+    core:
+      status: accepted
+      confidence: confirmed
+      title: "Temporary System Layout: Ashkarr, Vesk, and the Aurelian Spire"
+      summary: >-
+        The map milestone authors the local system as the planet Ashkarr
+        (32 provinces), its moon Vesk (8 provinces), and the starbase The
+        Aurelian Spire (1 province), with invented canon-consistent
+        province names and Fibonacci-sphere-spread coordinates. The
+        authored-scenario milestone layers houses, holders, and politics
+        onto this same geography; all naming is data-only and renameable.
+      rationale:
+        - Establishing real geography early lets the map, selection, and inspection pipeline run against final-shaped data rather than throwaway placeholders.
+      references:
+        - mvp-provincial-composition
+        - mvp-starbase-province
+        - invented-canon-scenario-content

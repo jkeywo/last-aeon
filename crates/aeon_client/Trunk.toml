@@ -1,0 +1,12 @@
+# Trunk configuration for the web client.
+#
+# Run from anywhere with: trunk serve --config crates/aeon_client/Trunk.toml
+# Paths resolve relative to this file.
+
+[build]
+target = "index.html"
+release = true
+
+[serve]
+port = 8642
+open = false
