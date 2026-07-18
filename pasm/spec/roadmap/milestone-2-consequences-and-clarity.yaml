@@ -8,7 +8,7 @@
 entities:
   - system: milestone-2-implementation-plan
     core:
-      status: proposed
+      status: accepted
       confidence: confirmed
       title: "Milestone 2: Consequences and Clarity"
       summary: >-
@@ -32,7 +32,7 @@ entities:
 
   - milestone: m2-forecast-and-information-foundation
     core:
-      status: proposed
+      status: accepted
       confidence: confirmed
       title: "M2.1: Forecast and Information Foundation"
       summary: >-
@@ -54,16 +54,25 @@ entities:
         - Forecast values are derived by shared simulation code and test-locked against eventual resolution weights.
     implementation:
       paths:
+        - crates/aeon_sim/src/forecast.rs
         - crates/aeon_sim/src/jobs.rs
+        - crates/aeon_client/src/forecast_view.rs
         - crates/aeon_client/src/jobs_ui.rs
         - crates/aeon_client/src/panels.rs
       tests:
         - crates/aeon_sim/tests/jobs.rs
       status: declared
 
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/jobs.rs
+        summary: Over fifteen hundred seeded runs the outcomes of a job land within tolerance of the odds its forecast quoted, alongside exact assertions on permille apportionment, skill shifting, tail floors, costs, order delay, risks, and blocked reasons.
+      - kind: manual-review
+        reference: crates/aeon_sim/src/forecast.rs
+        summary: Outcome weighting, duration and risk chances live in one module that both the forecast and job resolution call, so the quoted figures cannot drift from the ones used to resolve; verified in the browser, where a forecast quoting W 50 and I 10 deducted exactly that on starting.
   - milestone: m2-provincial-order-and-map-intelligence
     core:
-      status: proposed
+      status: accepted
       confidence: confirmed
       title: "M2.2: Provincial Order and Map Intelligence"
       summary: >-
@@ -84,19 +93,29 @@ entities:
         - The situation strip identifies active threats such as critically low order, hostile operations, and expiring obligations and navigates to the relevant subject.
     implementation:
       paths:
+        - crates/aeon_sim/src/order.rs
         - crates/aeon_sim/src/economy.rs
         - crates/aeon_sim/src/warfare.rs
         - crates/aeon_sim/src/snapshot.rs
+        - crates/aeon_client/src/map_modes.rs
         - crates/aeon_client/src/view.rs
         - crates/aeon_client/src/panels.rs
       tests:
+        - crates/aeon_sim/tests/order.rs
         - crates/aeon_sim/tests/logistics.rs
         - crates/aeon_sim/tests/warfare.rs
       status: declared
 
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/order.rs
+        summary: Order is neutral at its starting value, damage persists unless the holder attends to the province, siege and blockade erode it, a province left in unrest revolts and stops paying its former ruler, unrest answered in time never becomes a revolt, and the whole system round-trips through a snapshot.
+      - kind: manual-review
+        reference: crates/aeon_client/src/map_modes.rs
+        summary: Verified in the browser across Holder, Great House, Order and Wealth modes; each carries a legend, a hover explanation, and its value printed on every province so the map never has to be read by colour alone.
   - milestone: m2-contextual-events-and-obligations
     core:
-      status: proposed
+      status: accepted
       confidence: confirmed
       title: "M2.3: Contextual Events and Political Obligations"
       summary: >-
@@ -118,20 +137,29 @@ entities:
         - The player can inspect an obligation's parties, origin, expiry or fulfilment condition, and relevant gameplay consequences.
     implementation:
       paths:
+        - crates/aeon_sim/src/events.rs
+        - crates/aeon_sim/src/obligations.rs
         - crates/aeon_data/src/model.rs
         - crates/aeon_data/src/effect.rs
-        - crates/aeon_sim/src/politics.rs
+        - crates/aeon_data/src/host.rs
         - crates/aeon_sim/src/snapshot.rs
-        - assets/content/core
+        - assets/content/core/events.rhai
+        - assets/content/scenario/ashkarr-succession.rhai
       tests:
-        - crates/aeon_data/tests/loading.rs
         - crates/aeon_sim/tests/events.rs
-        - crates/aeon_sim/tests/politics.rs
+        - crates/aeon_data/tests/loading.rs
       status: declared
 
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/events.rs
+        summary: Events fire only where their declarative conditions hold, respect per-subject cooldowns, record the answer given to a weighty choice, and replay identically through a snapshot; authored obligations seed at the start, expire on their day, stay on the record once settled, and move independently of opinion.
+      - kind: manual-review
+        reference: assets/content/scenario/ashkarr-succession.rhai
+        summary: The scenario opens with nine standing obligations among the existing houses; verified in the browser, where House Veyrin's inspector lists a favour from Harrow, a favour owed to Calder and a grievance from Pell, each with its origin, expiry and weight.
   - milestone: m2-reactive-agency-and-acceptance
     core:
-      status: proposed
+      status: accepted
       confidence: confirmed
       title: "M2.4: Reactive Agency and Milestone Acceptance"
       summary: >-
@@ -151,11 +179,20 @@ entities:
         - Content validation, headless tests, native build, and web build remain CI gates for the milestone.
     implementation:
       paths:
+        - crates/aeon_sim/src/agency.rs
         - crates/aeon_sim/src/jobs.rs
-        - crates/aeon_sim/src/politics.rs
+        - crates/aeon_data/src/model.rs
         - crates/aeon_tools/src/main.rs
         - crates/aeon_sim/tests/acceptance.rs
       tests:
         - crates/aeon_sim/tests/events.rs
         - crates/aeon_sim/tests/acceptance.rs
       status: declared
+
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/acceptance.rs
+        summary: A multi-year playthrough on the real scenario with a holding knocked out of order, snapshotted mid-flight while events, obligations and order are live, replays the identical continuation to the same state hash, and asserts that events fired, obligations stood, order moved and an autonomous house acted on a pressure.
+      - kind: test
+        reference: crates/aeon_sim/tests/events.rs
+        summary: Houses score the pressures they are actually under, notice a favour they could call in, and record in the log why they acted, while the pressure-to-job mapping stays authored on the job rather than named in the engine.

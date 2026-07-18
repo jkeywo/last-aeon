@@ -1209,7 +1209,7 @@ entities:
 
   - component: milestone-2-contextual-event-system
     core:
-      status: proposed
+      status: accepted
       confidence: confirmed
       title: Contextual Event System
       summary: >-
@@ -1252,7 +1252,7 @@ entities:
 
   - component: provincial-order-system
     core:
-      status: proposed
+      status: accepted
       confidence: confirmed
       title: Provincial Order System
       summary: >-
@@ -1295,7 +1295,7 @@ entities:
 
   - component: political-obligation-ledger
     core:
-      status: proposed
+      status: accepted
       confidence: confirmed
       title: Political Obligation Ledger
       summary: >-
@@ -1333,7 +1333,7 @@ entities:
 
   - component: intent-driven-organisation-agency
     core:
-      status: proposed
+      status: accepted
       confidence: confirmed
       title: Intent-Driven Organisation Agency
       summary: >-
@@ -1354,7 +1354,7 @@ entities:
 
   - component: job-forecast-and-explanation-ui
     core:
-      status: proposed
+      status: accepted
       confidence: confirmed
       title: Job Forecast and Explanation UI
       summary: >-
@@ -1396,7 +1396,7 @@ entities:
 
   - component: strategic-map-intelligence-modes
     core:
-      status: proposed
+      status: accepted
       confidence: confirmed
       title: Strategic Map Intelligence Modes
       summary: >-

@@ -789,3 +789,125 @@ entities:
         - character-led-jobs-are-primary-actions
         - headless-authoritative-simulation
         - egui-for-information-panels
+
+  - decision: forecasts-derive-from-shared-resolution-code
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Forecasts and Resolution Share One Calculation
+      summary: >-
+        Outcome weighting, job duration, and personal-risk chances live in
+        a single simulation-owned module that both the forecast and the
+        resolution call. Job resolution rolls against exactly the table the
+        forecast reports, and a march is quoted by the function that sets
+        its duration. Odds are apportioned to permille by largest
+        remainder so they sum exactly, and a conditional military contest
+        is reported separately rather than folded into the roll.
+      rationale:
+        - A forecast is strategic information only if it cannot drift from the simulation that later fulfils it; sharing the code makes drift impossible rather than merely unlikely.
+        - Separating the operational contest avoids promising a precision the model does not possess at order time.
+      references:
+        - job-forecasts-share-authoritative-calculations
+        - job-forecast-and-explanation-ui
+        - skill-shifted-result-weights
+
+  - decision: order-is-neutral-at-its-starting-value
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Provincial Order Is Balanced Around Its Starting Value
+      summary: >-
+        Both consequences of order — what a province yields and how
+        reliably it is defended — are exactly neutral at the settled
+        starting value, so introducing the system rebalanced nothing. A
+        quiet province holds its ground indefinitely; active harm always
+        pushes order down; damage is repaired only where the holder
+        attends to the province with troops or in person, and only back to
+        settled. Order beyond that is earned by deliberate administrative
+        work through authored effects.
+      rationale:
+        - Anchoring the modifiers at the starting value means order can be added to a balanced campaign without silently re-tuning its economy or its battles.
+        - Making passive attention repair rather than improve keeps presence from becoming a free bonus for merely existing somewhere, and gives administrative jobs a purpose.
+      references:
+        - provincial-order-system
+        - provincial-order-connects-existing-systems
+        - wealth
+
+  - decision: revolt-vacates-rather-than-transfers
+    core:
+      status: accepted
+      confidence: confirmed
+      title: A Revolt Vacates a Province Rather Than Gifting It
+      summary: >-
+        A province left in open unrest past its telegraphed clock throws
+        off its ruler and its title falls vacant, rather than passing to a
+        rival. It stops paying its former holder, counts toward nobody's
+        claim, and can be taken by whoever can hold it. The warning is
+        given the day the clock starts and the remaining days stay visible
+        while it runs.
+      rationale:
+        - Losing ground to your own misrule is a real stake, but handing it to a rival would make neglect a gift rather than a failure.
+        - A vacant title is recoverable through the existing siege rules, which keeps the state bounded and free of irreversible collapse.
+      references:
+        - provincial-order-system
+        - military-operation-system
+        - planetary-paramount-title-is-contested
+
+  - decision: weighty-events-interrupt-minor-events-inform
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Only Weighty Events Interrupt
+      summary: >-
+        Events are drawn by two independent daily gates. A weighty event
+        raises a choice popup and pauses the campaign, and is rare enough
+        to be worth the interruption; a minor event applies its effect and
+        writes to the filterable log without stopping play. Eligibility is
+        declarative data rather than script, evaluated over subjects in
+        stable ID order, and every firing and answer is recorded.
+      rationale:
+        - The client pauses on every popup, so event volume is really a question of how often play is interrupted; splitting the deck keeps interruption proportionate to consequence.
+        - Declarative eligibility can be validated at load and replays identically, which scripted predicates would not guarantee.
+      references:
+        - milestone-2-contextual-event-system
+        - milestone-2-event-scope-is-systemic-not-map-expansion
+        - notable-result-message-log
+
+  - decision: obligations-seeded-in-the-opening-scenario
+    core:
+      status: accepted
+      confidence: confirmed
+      title: The Succession Opens With a Political Past
+      summary: >-
+        The Ashkarr scenario begins with nine authored obligations among
+        the existing houses — favours owed, promises with deadlines, and
+        grievances of long standing. The ledger is therefore live from the
+        first day and already shapes what autonomous houses do, rather
+        than being an empty system that only fills through play.
+      rationale:
+        - A succession crisis without prior debts and grudges has no political history for the crisis to be about.
+        - Seeded entries exercise the ledger, its events, and intent-driven agency from turn one without adding any new map entities or houses.
+      references:
+        - political-obligation-ledger
+        - obligations-are-specific-political-facts
+        - mvp-hand-authored-scenario
+
+  - decision: agency-intents-are-authored-on-jobs
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Which Job Answers Which Pressure Is Authored Content
+      summary: >-
+        Autonomous houses score concrete pressures, then choose among jobs
+        whose authored ai_intent declares that they answer that pressure.
+        The simulation never names a piece of content, so a new job joins
+        the AI's repertoire by declaring an intent. A house explains in the
+        log why it acted on a pressure, while routine upkeep speaks through
+        its results.
+      rationale:
+        - Hardcoding job keys in the engine would couple the simulation to a particular content set and break every fixture that authors its own jobs.
+        - Explaining pressure-driven actions makes autonomous behaviour legible without exposing the roll that broke a tie as though it were certainty.
+      references:
+        - intent-driven-organisation-agency
+        - ai-agency-through-the-job-catalogue
+        - job-system

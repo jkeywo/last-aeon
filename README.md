@@ -11,9 +11,13 @@ deterministic, headless, data-driven simulation and Rhai-authored content.
 (published from `main` by CI; lead House Harrow through the Ashkarr Succession).
 
 Each body's globe is a political map — provinces painted by their holding
-house (or top great house) with black borders, standing armies and ships
-shown where they are. Click a province, house, or character to inspect it,
-search by name, and start jobs from context buttons on the selection.
+house with black borders, standing armies and ships shown where they are —
+and it can be re-read as order, wealth, military strength, relations, or
+the race for the Paramountcy. Every action shows its odds, costs and risks
+before you commit to it. Provinces you neglect slip out of order and will
+eventually throw you off; houses owe each other favours and nurse
+grievances; and rival houses act on the pressures they are actually under,
+and say why.
 
 ## Repository layout
 
