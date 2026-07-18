@@ -1,0 +1,1044 @@
+//! The character-led job system: the universal unit of strategic action.
+//!
+//! Jobs are started by commands (player) or agency (AI organisations),
+//! take calendar days, and resolve into graded results whose weights are
+//! shifted by the leader's governing skill against the job's difficulty.
+//! Results can log to the notable-result message log, open player popups
+//! with choices, expose the leader to declared personal risks, and apply
+//! authored script effects through the sandboxed effect boundary.
+
+use std::collections::BTreeMap;
+
+use aeon_core::calendar::GameDate;
+use aeon_core::rng::DeterministicRng;
+use aeon_data::model::{
+    GoverningSkill, JobCategory, JobDef, JobResultKind, JobTargetKind, RiskTag,
+};
+use aeon_data::{ContentKey, ScriptEffect, ScriptHost};
+use bevy::app::App;
+use bevy::prelude::{Component, Entity, IntoScheduleConfigs, Resource, World};
+use serde::{Deserialize, Serialize};
+
+use crate::clock::{CampaignClock, DailyTick, MonthlyPulse, TickSet};
+use crate::ids::{CharacterId, JobId, OrgId, ProvinceId};
+use crate::politics::{
+    CampaignOver, CharacterRecord, CharacterSkills, OpinionEntry, OpinionLedger, OrgRecord,
+    PlayerHouse, PoliticsIndex, process_death,
+};
+use crate::state::{CampaignIds, CampaignSeed, ContentDb};
+
+/// What a job acts on.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum JobTarget {
+    /// The job acts on its owner organisation.
+    None,
+    /// A character.
+    Character(CharacterId),
+    /// An organisation.
+    Org(OrgId),
+    /// A province.
+    Province(ProvinceId),
+}
+
+/// A running job.
+#[derive(Component, Clone, Debug)]
+pub struct ActiveJob {
+    /// Stable ID.
+    pub id: JobId,
+    /// The job definition's content key.
+    pub def: ContentKey,
+    /// The organisation this job serves.
+    pub owner: OrgId,
+    /// The character leading it.
+    pub leader: CharacterId,
+    /// What it acts on.
+    pub target: JobTarget,
+    /// The day it (re)started.
+    pub started: GameDate,
+    /// The day it resolves.
+    pub completes: GameDate,
+}
+
+/// Temporary states that keep a character from leading new jobs.
+#[derive(Component, Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CharacterCondition {
+    /// Hurt; recovering until this day.
+    pub injured_until: Option<GameDate>,
+    /// Held by an enemy until this day.
+    pub captured_until: Option<GameDate>,
+    /// Unable to act until this day.
+    pub incapacitated_until: Option<GameDate>,
+}
+
+impl CharacterCondition {
+    /// Whether the character can take on new work at `date`.
+    pub fn can_lead(&self, date: GameDate) -> bool {
+        let blocked = |until: Option<GameDate>| until.is_some_and(|u| u > date);
+        !blocked(self.injured_until)
+            && !blocked(self.captured_until)
+            && !blocked(self.incapacitated_until)
+    }
+}
+
+/// Lookup from job IDs to entities.
+#[derive(Resource, Clone, Debug, Default)]
+pub struct JobsIndex {
+    /// Jobs by stable ID.
+    pub jobs: BTreeMap<JobId, Entity>,
+}
+
+/// One notable-result log entry.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LogEntry {
+    /// The day it happened.
+    pub date: GameDate,
+    /// Rendered text.
+    pub text: String,
+    /// The organisation involved, if any.
+    pub org: Option<OrgId>,
+}
+
+/// The notable-result message log: selective ongoing awareness of the
+/// whole simulation, including other organisations' flagged results.
+#[derive(Resource, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MessageLog {
+    /// Entries in chronological order.
+    pub entries: Vec<LogEntry>,
+}
+
+/// A player-facing popup waiting for an answer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingPopup {
+    /// Monotonic popup id, for the answer command.
+    pub id: u64,
+    /// The day it opened.
+    pub date: GameDate,
+    /// The job definition involved.
+    pub job: ContentKey,
+    /// The result that opened it.
+    pub result: JobResultKind,
+    /// Rendered situation text.
+    pub text: String,
+    /// Choice ids and labels; always at least one.
+    pub choices: Vec<(ContentKey, String)>,
+    /// Roles resolved at resolution time, for choice effects.
+    pub roles: JobRoles,
+}
+
+/// Popups awaiting player answers.
+#[derive(Resource, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PendingPopups {
+    /// Next popup id to assign.
+    pub next_id: u64,
+    /// Open popups, oldest first.
+    pub popups: Vec<PendingPopup>,
+}
+
+/// The sandboxed script host, recreated per process (never serialised).
+#[derive(Resource)]
+pub struct ScriptRuntime(pub ScriptHost);
+
+/// The characters standing behind each script-effect role for one job.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JobRoles {
+    /// `leader`.
+    pub leader: Option<CharacterId>,
+    /// `target` (a character target, or the target org's head).
+    pub target: Option<CharacterId>,
+    /// `target-head`.
+    pub target_head: Option<CharacterId>,
+    /// `owner-head`.
+    pub owner_head: Option<CharacterId>,
+    /// `liege-head`.
+    pub liege_head: Option<CharacterId>,
+    /// `consul`.
+    pub consul: Option<CharacterId>,
+    /// `sanctora`: every living Sanctora member.
+    pub sanctora: Vec<CharacterId>,
+}
+
+impl JobRoles {
+    fn resolve_from(&self, role: &str) -> Vec<CharacterId> {
+        match role {
+            "leader" => self.leader.into_iter().collect(),
+            "target" => self.target.into_iter().collect(),
+            "target-head" => self.target_head.into_iter().collect(),
+            "owner-head" => self.owner_head.into_iter().collect(),
+            "liege-head" => self.liege_head.into_iter().collect(),
+            "consul" => self.consul.into_iter().collect(),
+            "sanctora" => self.sanctora.clone(),
+            _ => Vec::new(),
+        }
+    }
+
+    fn resolve_toward(&self, role: &str) -> Option<CharacterId> {
+        self.resolve_from(role).first().copied()
+    }
+}
+
+/// Why a job could not be started or answered.
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
+pub enum JobRejection {
+    /// The campaign has ended.
+    #[error("the campaign is over")]
+    CampaignOver,
+    /// No such job definition.
+    #[error("unknown job definition '{0}'")]
+    UnknownJob(ContentKey),
+    /// The player has no house to act through.
+    #[error("no player organisation")]
+    NoPlayerOrg,
+    /// The leader is not a living adult member of the organisation.
+    #[error("that character cannot lead jobs for this organisation")]
+    IneligibleLeader,
+    /// The leader is already leading a job.
+    #[error("that character is already leading a job")]
+    LeaderBusy,
+    /// The leader is injured, captured, or incapacitated.
+    #[error("that character is in no state to lead")]
+    LeaderIndisposed,
+    /// The target does not match the definition's target kind.
+    #[error("the job's target is missing or of the wrong kind")]
+    BadTarget,
+    /// No such popup or choice.
+    #[error("no such popup or choice")]
+    BadPopupAnswer,
+    /// No such active job, or it is not the player's to cancel.
+    #[error("no such active job for your organisation")]
+    BadJob,
+}
+
+// ---------------------------------------------------------------------------
+// Eligibility and start
+// ---------------------------------------------------------------------------
+
+fn leader_eligible(
+    world: &World,
+    org: OrgId,
+    leader: CharacterId,
+    date: GameDate,
+) -> Result<(), JobRejection> {
+    let index = world.resource::<PoliticsIndex>();
+    let Some(entity) = index.characters.get(&leader) else {
+        return Err(JobRejection::IneligibleLeader);
+    };
+    let record = world.get::<CharacterRecord>(*entity).expect("indexed");
+    if !record.alive()
+        || record.organisation != Some(org)
+        || record.age_years(date) < crate::politics::ADULT_AGE
+    {
+        return Err(JobRejection::IneligibleLeader);
+    }
+    let condition = world
+        .get::<CharacterCondition>(*entity)
+        .copied()
+        .unwrap_or_default();
+    if !condition.can_lead(date) {
+        return Err(JobRejection::LeaderIndisposed);
+    }
+    let busy = world
+        .resource::<JobsIndex>()
+        .jobs
+        .values()
+        .any(|job_entity| {
+            world
+                .get::<ActiveJob>(*job_entity)
+                .is_some_and(|job| job.leader == leader)
+        });
+    if busy {
+        return Err(JobRejection::LeaderBusy);
+    }
+    Ok(())
+}
+
+fn target_valid(world: &World, def: &JobDef, owner: OrgId, target: JobTarget) -> bool {
+    let index = world.resource::<PoliticsIndex>();
+    match (def.target, target) {
+        (JobTargetKind::None, JobTarget::None) => true,
+        (JobTargetKind::Character, JobTarget::Character(id)) => index
+            .characters
+            .get(&id)
+            .and_then(|e| world.get::<CharacterRecord>(*e))
+            .is_some_and(|r| r.alive()),
+        (JobTargetKind::Organisation, JobTarget::Org(id)) => {
+            id != owner && index.orgs.contains_key(&id)
+        }
+        (JobTargetKind::Province, JobTarget::Province(id)) => world
+            .resource::<crate::map::MapIndex>()
+            .provinces
+            .contains_key(&id),
+        _ => false,
+    }
+}
+
+/// Validates a start-job request for an organisation.
+pub fn validate_start(
+    world: &World,
+    org: OrgId,
+    def_key: &ContentKey,
+    leader: CharacterId,
+    target: JobTarget,
+) -> Result<(), JobRejection> {
+    if world.get_resource::<CampaignOver>().is_some() {
+        return Err(JobRejection::CampaignOver);
+    }
+    let content = world.resource::<ContentDb>().0.clone();
+    let Some(def) = content.jobs.get(def_key) else {
+        return Err(JobRejection::UnknownJob(def_key.clone()));
+    };
+    let date = world.resource::<CampaignClock>().date;
+    leader_eligible(world, org, leader, date)?;
+    if !target_valid(world, def, org, target) {
+        return Err(JobRejection::BadTarget);
+    }
+    Ok(())
+}
+
+/// Starts a job for an organisation. Callers must have validated.
+pub fn start_job(
+    world: &mut World,
+    org: OrgId,
+    def_key: &ContentKey,
+    leader: CharacterId,
+    target: JobTarget,
+) -> JobId {
+    let date = world.resource::<CampaignClock>().date;
+    let duration = {
+        let content = world.resource::<ContentDb>();
+        i64::from(content.0.jobs[def_key].duration_days)
+    };
+    let id: JobId = world.resource_mut::<CampaignIds>().0.allocate();
+    let entity = world
+        .spawn(ActiveJob {
+            id,
+            def: def_key.clone(),
+            owner: org,
+            leader,
+            target,
+            started: date,
+            completes: date.add_days(duration),
+        })
+        .id();
+    world.resource_mut::<JobsIndex>().jobs.insert(id, entity);
+    id
+}
+
+// ---------------------------------------------------------------------------
+// Resolution
+// ---------------------------------------------------------------------------
+
+fn governing_skill(world: &World, leader: CharacterId, skill: GoverningSkill) -> i32 {
+    let index = world.resource::<PoliticsIndex>();
+    let Some(entity) = index.characters.get(&leader) else {
+        return 0;
+    };
+    let skills = world
+        .get::<CharacterSkills>(*entity)
+        .map(|s| s.0)
+        .unwrap_or_default();
+    match skill {
+        GoverningSkill::Command => skills.command,
+        GoverningSkill::Diplomacy => skills.diplomacy,
+        GoverningSkill::Intrigue => skills.intrigue,
+        GoverningSkill::Stewardship => skills.stewardship,
+    }
+}
+
+/// Shifts a result weight by skill-versus-difficulty effectiveness.
+///
+/// Positive outcomes scale up with effectiveness, negative outcomes scale
+/// down, both floored at a fifth of the authored weight.
+fn shifted_weight(base: u32, kind: JobResultKind, effectiveness: i32) -> u64 {
+    let swing = 40i64 * i64::from(effectiveness);
+    let factor = match kind {
+        JobResultKind::CriticalSuccess | JobResultKind::Success => 1000 + swing,
+        JobResultKind::Failure | JobResultKind::Disaster => 1000 - swing,
+    }
+    .max(200);
+    (u64::from(base) * factor as u64) / 1000
+}
+
+/// The character standing behind each effect role for a job.
+fn resolve_roles(world: &World, job: &ActiveJob) -> JobRoles {
+    let index = world.resource::<PoliticsIndex>();
+    let org_head = |org: OrgId| -> Option<CharacterId> {
+        index
+            .orgs
+            .get(&org)
+            .and_then(|e| world.get::<OrgRecord>(*e))
+            .and_then(|r| r.head)
+    };
+    let owner_record = index
+        .orgs
+        .get(&job.owner)
+        .and_then(|e| world.get::<OrgRecord>(*e));
+
+    let (target, target_head) = match job.target {
+        JobTarget::Character(id) => (Some(id), None),
+        JobTarget::Org(org) => (org_head(org), org_head(org)),
+        _ => (None, None),
+    };
+
+    let consul = index.titles.values().find_map(|entity| {
+        let title = world.get::<crate::politics::TitleRecord>(*entity)?;
+        match (title.kind, title.holder) {
+            (
+                crate::politics::TitleKind::Consul,
+                crate::politics::TitleHolder::Character(holder),
+            ) => Some(holder),
+            _ => None,
+        }
+    });
+
+    let sanctora_org = index.orgs.iter().find_map(|(org_id, entity)| {
+        let record = world.get::<OrgRecord>(*entity)?;
+        (record.kind == aeon_data::model::OrgKind::SanctoraImperim).then_some(*org_id)
+    });
+    let sanctora = index
+        .characters
+        .iter()
+        .filter(|(_, e)| {
+            world.get::<CharacterRecord>(**e).is_some_and(|r| {
+                r.alive() && sanctora_org.is_some() && r.organisation == sanctora_org
+            })
+        })
+        .map(|(id, _)| *id)
+        .collect();
+
+    JobRoles {
+        leader: Some(job.leader),
+        target,
+        target_head,
+        owner_head: owner_record.and_then(|r| r.head),
+        liege_head: owner_record.and_then(|r| r.liege).and_then(org_head),
+        consul,
+        sanctora,
+    }
+}
+
+fn display_name(world: &World, id: CharacterId) -> String {
+    let index = world.resource::<PoliticsIndex>();
+    index
+        .characters
+        .get(&id)
+        .and_then(|e| world.get::<CharacterRecord>(*e))
+        .map(|r| r.name.clone())
+        .unwrap_or_else(|| id.to_string())
+}
+
+fn target_name(world: &World, target: JobTarget) -> String {
+    match target {
+        JobTarget::None => String::new(),
+        JobTarget::Character(id) => display_name(world, id),
+        JobTarget::Org(org) => {
+            let index = world.resource::<PoliticsIndex>();
+            index
+                .orgs
+                .get(&org)
+                .and_then(|e| world.get::<OrgRecord>(*e))
+                .and_then(|r| {
+                    world
+                        .resource::<ContentDb>()
+                        .0
+                        .organisations
+                        .get(&r.key)
+                        .map(|d| d.name.clone())
+                })
+                .unwrap_or_else(|| org.to_string())
+        }
+        JobTarget::Province(id) => {
+            let map = world.resource::<crate::map::MapIndex>();
+            map.provinces
+                .get(&id)
+                .and_then(|e| world.get::<crate::map::DisplayName>(*e))
+                .map(|n| n.0.clone())
+                .unwrap_or_else(|| id.to_string())
+        }
+    }
+}
+
+fn render_template(template: &str, leader: &str, target: &str, job_title: &str) -> String {
+    template
+        .replace("{leader}", leader)
+        .replace("{target}", target)
+        .replace("{job}", job_title)
+}
+
+/// Applies parsed script effects against resolved roles.
+pub fn apply_effects(
+    world: &mut World,
+    effects: &[ScriptEffect],
+    roles: &JobRoles,
+    owner: Option<OrgId>,
+) {
+    let date = world.resource::<CampaignClock>().date;
+    for effect in effects {
+        match effect {
+            ScriptEffect::Log { message } => {
+                world.resource_mut::<MessageLog>().entries.push(LogEntry {
+                    date,
+                    text: message.clone(),
+                    org: owner,
+                });
+            }
+            ScriptEffect::Opinion {
+                from,
+                toward,
+                amount,
+                days,
+                reason,
+            } => {
+                let Some(toward_id) = roles.resolve_toward(toward) else {
+                    continue;
+                };
+                let expires = days.map(|d| date.add_days(d));
+                for from_id in roles.resolve_from(from) {
+                    if from_id == toward_id {
+                        continue;
+                    }
+                    let entity = world.resource::<PoliticsIndex>().characters[&from_id];
+                    if let Some(mut ledger) = world.get_mut::<OpinionLedger>(entity) {
+                        ledger.set(OpinionEntry {
+                            target: toward_id,
+                            amount: *amount,
+                            reason: reason.clone(),
+                            expires,
+                        });
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn risk_permille(tag: RiskTag, disaster: bool) -> u32 {
+    let base = match tag {
+        RiskTag::Injury => 80,
+        RiskTag::Capture => 40,
+        RiskTag::Scandal => 80,
+        RiskTag::Incapacity => 50,
+        RiskTag::Death => 25,
+    };
+    if disaster { base * 2 } else { base }
+}
+
+/// Applies one personal-risk consequence to a character. Public so event
+/// systems (and tests) can reuse the exact job-risk semantics.
+pub fn apply_risk(world: &mut World, leader: CharacterId, tag: RiskTag, date: GameDate) {
+    let entity = world.resource::<PoliticsIndex>().characters[&leader];
+    match tag {
+        RiskTag::Injury => {
+            let mut condition = world
+                .get_mut::<CharacterCondition>(entity)
+                .expect("characters carry conditions");
+            condition.injured_until = Some(date.add_days(90));
+        }
+        RiskTag::Capture => {
+            let mut condition = world
+                .get_mut::<CharacterCondition>(entity)
+                .expect("characters carry conditions");
+            condition.captured_until = Some(date.add_days(360));
+        }
+        RiskTag::Incapacity => {
+            let mut condition = world
+                .get_mut::<CharacterCondition>(entity)
+                .expect("characters carry conditions");
+            condition.incapacitated_until = Some(date.add_days(180));
+        }
+        RiskTag::Scandal => {
+            // Every living organisation head thinks less of the leader.
+            let heads: Vec<CharacterId> = {
+                let index = world.resource::<PoliticsIndex>();
+                index
+                    .orgs
+                    .values()
+                    .filter_map(|e| world.get::<OrgRecord>(*e).and_then(|r| r.head))
+                    .filter(|h| *h != leader)
+                    .collect()
+            };
+            for head in heads {
+                let head_entity = world.resource::<PoliticsIndex>().characters[&head];
+                if let Some(mut ledger) = world.get_mut::<OpinionLedger>(head_entity) {
+                    ledger.set(OpinionEntry {
+                        target: leader,
+                        amount: -15,
+                        reason: "scandal".to_owned(),
+                        expires: Some(date.add_days(720)),
+                    });
+                }
+            }
+        }
+        RiskTag::Death => {
+            process_death(world, leader, date);
+        }
+    }
+}
+
+/// Daily: resolves every job due today, in stable-ID order.
+pub fn resolve_due_jobs(world: &mut World) {
+    if world.get_resource::<JobsIndex>().is_none() {
+        return;
+    }
+    let date = world.resource::<CampaignClock>().date;
+    let seed = world.resource::<CampaignSeed>().0;
+    let player = world.get_resource::<PlayerHouse>().and_then(|p| p.0);
+
+    let due: Vec<(JobId, Entity)> = world
+        .resource::<JobsIndex>()
+        .jobs
+        .iter()
+        .filter(|(_, entity)| {
+            world
+                .get::<ActiveJob>(**entity)
+                .is_some_and(|job| job.completes <= date)
+        })
+        .map(|(id, entity)| (*id, *entity))
+        .collect();
+
+    for (job_id, entity) in due {
+        let job = world.get::<ActiveJob>(entity).expect("indexed").clone();
+        let content = world.resource::<ContentDb>().0.clone();
+        let def = content.jobs[&job.def].clone();
+
+        // A dead or removed leader abandons the job.
+        let leader_alive = {
+            let index = world.resource::<PoliticsIndex>();
+            index
+                .characters
+                .get(&job.leader)
+                .and_then(|e| world.get::<CharacterRecord>(*e))
+                .is_some_and(|r| r.alive())
+        };
+        if !leader_alive {
+            world.resource_mut::<MessageLog>().entries.push(LogEntry {
+                date,
+                text: format!("'{}' was abandoned; its leader is gone.", def.title),
+                org: Some(job.owner),
+            });
+            world.despawn(entity);
+            world.resource_mut::<JobsIndex>().jobs.remove(&job_id);
+            continue;
+        }
+
+        // Outcome.
+        let effectiveness = governing_skill(world, job.leader, def.skill) - def.difficulty;
+        let mut rng = DeterministicRng::derive(
+            seed,
+            "job-resolution",
+            &[job_id.raw(), date.days_since_epoch() as u64],
+        );
+        let weights: Vec<(JobResultKind, u64)> = JobResultKind::ALL
+            .iter()
+            .filter_map(|kind| {
+                def.results
+                    .get(kind)
+                    .map(|r| (*kind, shifted_weight(r.weight, *kind, effectiveness)))
+            })
+            .collect();
+        let total: u64 = weights.iter().map(|(_, w)| w).sum();
+        let mut roll = rng.roll(total.max(1));
+        let mut outcome = weights
+            .last()
+            .map(|(k, _)| *k)
+            .unwrap_or(JobResultKind::Failure);
+        for (kind, weight) in &weights {
+            if roll < *weight {
+                outcome = *kind;
+                break;
+            }
+            roll -= *weight;
+        }
+        let result = def.results[&outcome].clone();
+
+        // Personal risks on bad outcomes.
+        if matches!(outcome, JobResultKind::Failure | JobResultKind::Disaster) {
+            let disaster = outcome == JobResultKind::Disaster;
+            for (index, tag) in def.risks.iter().enumerate() {
+                let mut risk_rng = DeterministicRng::derive(
+                    seed,
+                    "job-risk",
+                    &[job_id.raw(), date.days_since_epoch() as u64, index as u64],
+                );
+                if risk_rng.check_permille(risk_permille(*tag, disaster)) {
+                    apply_risk(world, job.leader, *tag, date);
+                }
+            }
+        }
+
+        let roles = resolve_roles(world, &job);
+        let leader_name = display_name(world, job.leader);
+        let target_label = target_name(world, job.target);
+
+        // Authored result effects.
+        if let Some(fn_ref) = &result.effect_fn {
+            let mut ctx = rhai::Map::new();
+            ctx.insert("job".into(), job.def.as_str().into());
+            ctx.insert("result".into(), format!("{outcome:?}").into());
+            ctx.insert("leader".into(), leader_name.clone().into());
+            ctx.insert("target".into(), target_label.clone().into());
+            let effects = {
+                let runtime = world.resource::<ScriptRuntime>();
+                runtime.0.call_effect_fn(&content, fn_ref, ctx)
+            };
+            match effects {
+                Ok(effects) => apply_effects(world, &effects, &roles, Some(job.owner)),
+                Err(err) => {
+                    world.resource_mut::<MessageLog>().entries.push(LogEntry {
+                        date,
+                        text: format!("script error resolving '{}': {err}", def.title),
+                        org: Some(job.owner),
+                    });
+                }
+            }
+        }
+
+        // Notable-result log (all organisations).
+        if result.log {
+            let text = result
+                .log_text
+                .as_deref()
+                .map(|t| render_template(t, &leader_name, &target_label, &def.title))
+                .unwrap_or_else(|| {
+                    format!("{leader_name} finished '{}' ({outcome:?}).", def.title)
+                });
+            world.resource_mut::<MessageLog>().entries.push(LogEntry {
+                date,
+                text,
+                org: Some(job.owner),
+            });
+        }
+
+        // Player popups.
+        if result.popup && player == Some(job.owner) {
+            let text = result
+                .popup_text
+                .as_deref()
+                .map(|t| render_template(t, &leader_name, &target_label, &def.title))
+                .unwrap_or_else(|| format!("'{}' resolved: {outcome:?}.", def.title));
+            let choices = if result.choices.is_empty() {
+                vec![(
+                    ContentKey::new("continue").expect("static key"),
+                    "Continue".to_owned(),
+                )]
+            } else {
+                result
+                    .choices
+                    .iter()
+                    .map(|c| (c.id.clone(), c.label.clone()))
+                    .collect()
+            };
+            let mut popups = world.resource_mut::<PendingPopups>();
+            let id = popups.next_id;
+            popups.next_id += 1;
+            popups.popups.push(PendingPopup {
+                id,
+                date,
+                job: job.def.clone(),
+                result: outcome,
+                text,
+                choices,
+                roles: roles.clone(),
+            });
+        }
+
+        // Routine failures restart; everything else completes.
+        let restart = def.category == JobCategory::Routine
+            && outcome == JobResultKind::Failure
+            && world.get_resource::<CampaignOver>().is_none();
+        if restart {
+            let duration = i64::from(def.duration_days);
+            let mut active = world.get_mut::<ActiveJob>(entity).expect("indexed");
+            active.started = date;
+            active.completes = date.add_days(duration);
+        } else {
+            world.despawn(entity);
+            world.resource_mut::<JobsIndex>().jobs.remove(&job_id);
+        }
+    }
+}
+
+/// Answers a pending popup, applying the chosen effect.
+pub fn answer_popup(
+    world: &mut World,
+    popup_id: u64,
+    choice: &ContentKey,
+) -> Result<(), JobRejection> {
+    let popup = {
+        let popups = world.resource::<PendingPopups>();
+        popups
+            .popups
+            .iter()
+            .find(|p| p.id == popup_id)
+            .cloned()
+            .ok_or(JobRejection::BadPopupAnswer)?
+    };
+    if !popup.choices.iter().any(|(id, _)| id == choice) {
+        return Err(JobRejection::BadPopupAnswer);
+    }
+
+    let content = world.resource::<ContentDb>().0.clone();
+    let effect_fn = content
+        .jobs
+        .get(&popup.job)
+        .and_then(|def| def.results.get(&popup.result))
+        .and_then(|result| {
+            result
+                .choices
+                .iter()
+                .find(|c| &c.id == choice)
+                .and_then(|c| c.effect_fn.clone())
+        });
+    if let Some(fn_ref) = effect_fn {
+        let mut ctx = rhai::Map::new();
+        ctx.insert("job".into(), popup.job.as_str().into());
+        ctx.insert("choice".into(), choice.as_str().into());
+        let effects = {
+            let runtime = world.resource::<ScriptRuntime>();
+            runtime.0.call_effect_fn(&content, &fn_ref, ctx)
+        };
+        if let Ok(effects) = effects {
+            let player = world.get_resource::<PlayerHouse>().and_then(|p| p.0);
+            apply_effects(world, &effects, &popup.roles, player);
+        }
+    }
+
+    world
+        .resource_mut::<PendingPopups>()
+        .popups
+        .retain(|p| p.id != popup_id);
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// AI agency
+// ---------------------------------------------------------------------------
+
+/// Monthly: idle AI organisation heads start jobs.
+pub fn ai_start_jobs(world: &mut World) {
+    if world.get_resource::<JobsIndex>().is_none() || world.get_resource::<CampaignOver>().is_some()
+    {
+        return;
+    }
+    let date = world.resource::<CampaignClock>().date;
+    let seed = world.resource::<CampaignSeed>().0;
+    let player = world.get_resource::<PlayerHouse>().and_then(|p| p.0);
+    let content = world.resource::<ContentDb>().0.clone();
+
+    let ai_jobs: Vec<&JobDef> = content
+        .jobs
+        .values()
+        .filter(|def| def.ai_available)
+        .collect();
+    if ai_jobs.is_empty() {
+        return;
+    }
+
+    let orgs: Vec<(OrgId, Option<CharacterId>)> = {
+        let index = world.resource::<PoliticsIndex>();
+        index
+            .orgs
+            .iter()
+            .filter_map(|(org_id, entity)| {
+                let record = world.get::<OrgRecord>(*entity)?;
+                if record.defunct || Some(*org_id) == player {
+                    return None;
+                }
+                Some((*org_id, record.head))
+            })
+            .collect()
+    };
+
+    for (org_id, head) in orgs {
+        let Some(head) = head else {
+            continue;
+        };
+        if leader_eligible(world, org_id, head, date).is_err() {
+            continue;
+        }
+        let month_stamp = date.days_since_epoch() as u64 / 30;
+        let mut rng = DeterministicRng::derive(seed, "ai-job-choice", &[org_id.raw(), month_stamp]);
+        // Half the months, the head keeps their own counsel.
+        if !rng.check_permille(500) {
+            continue;
+        }
+        let def = ai_jobs[rng.roll(ai_jobs.len() as u64) as usize];
+
+        // Deterministic target selection.
+        let target = match def.target {
+            JobTargetKind::None => JobTarget::None,
+            JobTargetKind::Organisation => {
+                let candidates: Vec<OrgId> = {
+                    let index = world.resource::<PoliticsIndex>();
+                    index
+                        .orgs
+                        .iter()
+                        .filter(|(id, e)| {
+                            **id != org_id
+                                && world.get::<OrgRecord>(**e).is_some_and(|r| !r.defunct)
+                        })
+                        .map(|(id, _)| *id)
+                        .collect()
+                };
+                match candidates.is_empty() {
+                    true => continue,
+                    false => JobTarget::Org(candidates[rng.roll(candidates.len() as u64) as usize]),
+                }
+            }
+            JobTargetKind::Character => {
+                let candidates: Vec<CharacterId> = {
+                    let index = world.resource::<PoliticsIndex>();
+                    index
+                        .characters
+                        .iter()
+                        .filter(|(_, e)| {
+                            world.get::<CharacterRecord>(**e).is_some_and(|r| {
+                                r.alive()
+                                    && r.organisation.is_some()
+                                    && r.organisation != Some(org_id)
+                            })
+                        })
+                        .map(|(id, _)| *id)
+                        .collect()
+                };
+                match candidates.is_empty() {
+                    true => continue,
+                    false => {
+                        JobTarget::Character(candidates[rng.roll(candidates.len() as u64) as usize])
+                    }
+                }
+            }
+            JobTargetKind::Province => {
+                let candidates: Vec<ProvinceId> = world
+                    .resource::<crate::map::MapIndex>()
+                    .provinces
+                    .keys()
+                    .copied()
+                    .collect();
+                match candidates.is_empty() {
+                    true => continue,
+                    false => {
+                        JobTarget::Province(candidates[rng.roll(candidates.len() as u64) as usize])
+                    }
+                }
+            }
+        };
+
+        if validate_start(world, org_id, &def.key, head, target).is_ok() {
+            start_job(world, org_id, &def.key, head, target);
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
+// Snapshot state
+// ---------------------------------------------------------------------------
+
+/// Serialised active job.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JobState {
+    /// Stable ID.
+    pub id: JobId,
+    /// Definition key.
+    pub def: ContentKey,
+    /// Owning organisation.
+    pub owner: OrgId,
+    /// Leader.
+    pub leader: CharacterId,
+    /// Target.
+    pub target: JobTarget,
+    /// Start day.
+    pub started: GameDate,
+    /// Resolution day.
+    pub completes: GameDate,
+}
+
+/// The complete serialised job world.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JobsState {
+    /// Active jobs in ID order.
+    pub jobs: Vec<JobState>,
+    /// The notable-result message log.
+    pub message_log: MessageLog,
+    /// Popups awaiting answers.
+    pub popups: PendingPopups,
+}
+
+/// Captures the job world for a snapshot.
+pub fn capture_jobs(world: &World) -> JobsState {
+    let Some(index) = world.get_resource::<JobsIndex>() else {
+        return JobsState::default();
+    };
+    JobsState {
+        jobs: index
+            .jobs
+            .values()
+            .map(|entity| {
+                let job = world.get::<ActiveJob>(*entity).expect("indexed");
+                JobState {
+                    id: job.id,
+                    def: job.def.clone(),
+                    owner: job.owner,
+                    leader: job.leader,
+                    target: job.target,
+                    started: job.started,
+                    completes: job.completes,
+                }
+            })
+            .collect(),
+        message_log: world
+            .get_resource::<MessageLog>()
+            .cloned()
+            .unwrap_or_default(),
+        popups: world
+            .get_resource::<PendingPopups>()
+            .cloned()
+            .unwrap_or_default(),
+    }
+}
+
+/// Respawns the job world from a snapshot.
+pub fn restore_jobs(world: &mut World, state: &JobsState) {
+    let mut index = JobsIndex::default();
+    for job in &state.jobs {
+        let entity = world
+            .spawn(ActiveJob {
+                id: job.id,
+                def: job.def.clone(),
+                owner: job.owner,
+                leader: job.leader,
+                target: job.target,
+                started: job.started,
+                completes: job.completes,
+            })
+            .id();
+        index.jobs.insert(job.id, entity);
+    }
+    world.insert_resource(index);
+    world.insert_resource(state.message_log.clone());
+    world.insert_resource(state.popups.clone());
+}
+
+/// Installs job resources for a fresh campaign.
+pub fn init_jobs(world: &mut World) {
+    world.insert_resource(JobsIndex::default());
+    world.insert_resource(MessageLog::default());
+    world.insert_resource(PendingPopups::default());
+    world.insert_resource(ScriptRuntime(ScriptHost::new()));
+}
+
+pub(crate) fn install(app: &mut App) {
+    // Explicit cross-module ordering: job resolutions land before the
+    // day's appointment reactions, and monthly AI planning follows the
+    // opinion cleanup. Insertion order would give the same result today;
+    // stating it keeps determinism independent of plugin build order.
+    app.add_systems(
+        DailyTick,
+        resolve_due_jobs
+            .in_set(TickSet::Simulation)
+            .before(crate::politics::daily_appointments),
+    );
+    app.add_systems(
+        MonthlyPulse,
+        ai_start_jobs.after(crate::politics::expire_opinion_modifiers),
+    );
+}

@@ -22,6 +22,7 @@ pub mod command;
 pub mod config;
 pub mod host;
 pub mod ids;
+pub mod jobs;
 pub mod map;
 pub mod persistence;
 pub mod politics;
@@ -34,7 +35,8 @@ pub use clock::{CampaignClock, DailyTick, MonthlyPulse, TickSet, YearlyPulse, ad
 pub use command::{CommandEnvelope, CommandRejection, PlayerCommand};
 pub use config::CampaignConfig;
 pub use host::SimHost;
-pub use ids::{BodyId, CharacterId, OfficeId, OrgId, ProvinceId, TitleId};
+pub use ids::{BodyId, CharacterId, JobId, OfficeId, OrgId, ProvinceId, TitleId};
+pub use jobs::{ActiveJob, JobTarget, JobsIndex, MessageLog, PendingPopups};
 pub use map::{BodyRecord, DisplayName, GeoPosition, MapIndex, ProvinceRecord};
 pub use politics::{
     CampaignOver, CharacterRecord, OfficeRecord, OrgRecord, PlayerHouse, PoliticsIndex,
@@ -55,6 +57,7 @@ impl Plugin for AeonSimPlugin {
         clock::install(app);
         command::install(app);
         politics::install(app);
+        jobs::install(app);
     }
 }
 

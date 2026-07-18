@@ -7,11 +7,15 @@
 //! which is what makes a recorded command log replayable.
 
 use aeon_core::calendar::GameDate;
+use aeon_data::ContentKey;
 use bevy::app::App;
 use bevy::prelude::{IntoScheduleConfigs, Resource, World};
 use serde::{Deserialize, Serialize};
 
 use crate::clock::{CampaignClock, DailyTick, TickSet};
+use crate::ids::{CharacterId, JobId};
+use crate::jobs::{self, JobRejection, JobTarget};
+use crate::politics::PlayerHouse;
 use crate::state::CampaignMeta;
 
 /// A meaningful player decision.
@@ -27,6 +31,27 @@ pub enum PlayerCommand {
     RenameCampaign {
         /// The new player-facing campaign name.
         name: String,
+    },
+    /// Starts a job for the player's organisation.
+    StartJob {
+        /// The job definition.
+        job: ContentKey,
+        /// The character who will lead it.
+        leader: CharacterId,
+        /// What the job acts on.
+        target: JobTarget,
+    },
+    /// Cancels one of the player's active jobs.
+    CancelJob {
+        /// The job to cancel.
+        job: JobId,
+    },
+    /// Answers a pending result popup.
+    AnswerPopup {
+        /// The popup being answered.
+        popup: u64,
+        /// The chosen option.
+        choice: ContentKey,
     },
 }
 
@@ -50,6 +75,9 @@ pub enum CommandRejection {
         /// Length of the rejected name in characters.
         length: usize,
     },
+    /// A job-related command was refused.
+    #[error(transparent)]
+    Job(#[from] JobRejection),
 }
 
 /// Commands accepted but not yet applied, sorted by `(day, seq)`.
@@ -98,7 +126,7 @@ pub struct CommandLog {
 /// Validates a command against the current world.
 ///
 /// Validation must be deterministic and side-effect free: replays re-run it.
-pub fn validate_command(_world: &World, command: &PlayerCommand) -> Result<(), CommandRejection> {
+pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), CommandRejection> {
     match command {
         PlayerCommand::Noop => Ok(()),
         PlayerCommand::RenameCampaign { name } => {
@@ -107,6 +135,49 @@ pub fn validate_command(_world: &World, command: &PlayerCommand) -> Result<(), C
                 Ok(())
             } else {
                 Err(CommandRejection::InvalidCampaignName { length })
+            }
+        }
+        PlayerCommand::StartJob {
+            job,
+            leader,
+            target,
+        } => {
+            let org = world
+                .get_resource::<PlayerHouse>()
+                .and_then(|p| p.0)
+                .ok_or(JobRejection::NoPlayerOrg)?;
+            jobs::validate_start(world, org, job, *leader, *target)?;
+            Ok(())
+        }
+        PlayerCommand::CancelJob { job } => {
+            let org = world
+                .get_resource::<PlayerHouse>()
+                .and_then(|p| p.0)
+                .ok_or(JobRejection::NoPlayerOrg)?;
+            let owned = world
+                .get_resource::<crate::jobs::JobsIndex>()
+                .and_then(|index| index.jobs.get(job).copied())
+                .and_then(|entity| world.get::<crate::jobs::ActiveJob>(entity))
+                .is_some_and(|active| active.owner == org);
+            if owned {
+                Ok(())
+            } else {
+                Err(JobRejection::BadJob.into())
+            }
+        }
+        PlayerCommand::AnswerPopup { popup, choice } => {
+            let valid = world
+                .get_resource::<crate::jobs::PendingPopups>()
+                .is_some_and(|popups| {
+                    popups
+                        .popups
+                        .iter()
+                        .any(|p| p.id == *popup && p.choices.iter().any(|(id, _)| id == choice))
+                });
+            if valid {
+                Ok(())
+            } else {
+                Err(JobRejection::BadPopupAnswer.into())
             }
         }
     }
@@ -119,7 +190,58 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
         PlayerCommand::RenameCampaign { name } => {
             world.resource_mut::<CampaignMeta>().name = name.clone();
         }
+        PlayerCommand::StartJob {
+            job,
+            leader,
+            target,
+        } => {
+            // Conditions may have changed since submission; re-validate
+            // and drop silently if the start is no longer legal (the
+            // command log still records the attempt deterministically).
+            if let Some(org) = world.get_resource::<PlayerHouse>().and_then(|p| p.0)
+                && jobs::validate_start(world, org, job, *leader, *target).is_ok()
+            {
+                jobs::start_job(world, org, job, *leader, *target);
+            }
+        }
+        PlayerCommand::CancelJob { job } => {
+            let entity = world
+                .get_resource::<crate::jobs::JobsIndex>()
+                .and_then(|index| index.jobs.get(job).copied());
+            if let Some(entity) = entity {
+                world.despawn(entity);
+                world
+                    .resource_mut::<crate::jobs::JobsIndex>()
+                    .jobs
+                    .remove(job);
+            }
+        }
+        PlayerCommand::AnswerPopup { popup, choice } => {
+            let _ = jobs::answer_popup(world, *popup, choice);
+        }
     }
+}
+
+/// Submits a player command into a campaign world: validate, assign the
+/// next day and sequence number, and queue it. Shared by the headless
+/// host and the interactive client so both record identical logs.
+pub fn submit_command(
+    world: &mut World,
+    command: PlayerCommand,
+) -> Result<CommandEnvelope, CommandRejection> {
+    validate_command(world, &command)?;
+    let day = world.resource::<CampaignClock>().date.add_days(1);
+    let seq = {
+        let mut log = world.resource_mut::<CommandLog>();
+        let seq = log.next_seq;
+        log.next_seq += 1;
+        seq
+    };
+    let envelope = CommandEnvelope { seq, day, command };
+    world
+        .resource_mut::<PendingCommands>()
+        .insert(envelope.clone());
+    Ok(envelope)
 }
 
 /// Applies every command due this tick, in `(day, seq)` order.

@@ -22,9 +22,10 @@ use rhai::{AST, Dynamic, Engine, Map, Scope};
 use crate::effect::{EffectParseError, ScriptEffect, parse_effects};
 use crate::key::ContentKey;
 use crate::model::{
-    BodyDef, BodyKind, CharacterDef, ContentSet, Gender, HouseTier, JobCategory, JobDef,
-    JobResultDef, JobResultKind, NamePoolDef, OfficeDef, OrgDef, OrgKind, ProvinceDef, ScenarioDef,
-    ScriptFnRef, SkillsDef, TitleDef, TitleHolderDef, TitleKindDef, TraitDef,
+    BodyDef, BodyKind, CharacterDef, ContentSet, Gender, GoverningSkill, HouseTier, JobCategory,
+    JobDef, JobResultDef, JobResultKind, JobTargetKind, NamePoolDef, OfficeDef, OrgDef, OrgKind,
+    PopupChoiceDef, ProvinceDef, RiskTag, ScenarioDef, ScriptFnRef, SkillsDef, TitleDef,
+    TitleHolderDef, TitleKindDef, TraitDef,
 };
 use crate::report::{ContentReport, Severity};
 
@@ -205,6 +206,11 @@ fn define_job(state: &mut BuilderState, map: Map) {
             "summary",
             "category",
             "duration_days",
+            "skill",
+            "difficulty",
+            "target",
+            "risks",
+            "ai_available",
             "results",
         ],
     );
@@ -239,6 +245,74 @@ fn define_job(state: &mut BuilderState, map: Map) {
         return;
     }
 
+    let Some(skill_raw) = req_str(state, &map, "skill") else {
+        return;
+    };
+    let skill = match skill_raw.as_str() {
+        "command" => GoverningSkill::Command,
+        "diplomacy" => GoverningSkill::Diplomacy,
+        "intrigue" => GoverningSkill::Intrigue,
+        "stewardship" => GoverningSkill::Stewardship,
+        other => {
+            state.error(
+                Some(key.as_str()),
+                format!(
+                    "unknown skill '{other}' (expected command, diplomacy, intrigue, stewardship)"
+                ),
+            );
+            return;
+        }
+    };
+    let Some(difficulty) = req_int(state, &map, "difficulty") else {
+        return;
+    };
+    if !(0..=40).contains(&difficulty) {
+        state.error(Some(key.as_str()), "difficulty must be 0..=40");
+        return;
+    }
+    let target = match map.get("target") {
+        None => JobTargetKind::None,
+        Some(value) => match value.clone().into_string() {
+            Ok(raw) => match raw.as_str() {
+                "none" => JobTargetKind::None,
+                "character" => JobTargetKind::Character,
+                "organisation" => JobTargetKind::Organisation,
+                "province" => JobTargetKind::Province,
+                other => {
+                    state.error(Some(key.as_str()), format!("unknown target kind '{other}'"));
+                    return;
+                }
+            },
+            Err(_) => {
+                state.error(Some(key.as_str()), "field 'target' must be a string");
+                return;
+            }
+        },
+    };
+    let Some(risk_names) = string_list(state, &map, "risks") else {
+        return;
+    };
+    let mut risks = Vec::with_capacity(risk_names.len());
+    for name in &risk_names {
+        let tag = match name.as_str() {
+            "injury" => RiskTag::Injury,
+            "capture" => RiskTag::Capture,
+            "scandal" => RiskTag::Scandal,
+            "incapacity" => RiskTag::Incapacity,
+            "death" => RiskTag::Death,
+            other => {
+                state.error(Some(key.as_str()), format!("unknown risk '{other}'"));
+                return;
+            }
+        };
+        risks.push(tag);
+    }
+    risks.sort();
+    risks.dedup();
+    let Some(ai_available) = opt_bool(state, &map, "ai_available", true) else {
+        return;
+    };
+
     let Some(results_value) = map.get("results") else {
         state.error(Some(key.as_str()), "missing required field 'results'");
         return;
@@ -269,7 +343,15 @@ fn define_job(state: &mut BuilderState, map: Map) {
             state,
             &entry_map,
             Some(key.as_str()),
-            &["weight", "popup", "log", "effect_fn"],
+            &[
+                "weight",
+                "popup",
+                "popup_text",
+                "choices",
+                "log",
+                "log_text",
+                "effect_fn",
+            ],
         );
         let Some(weight) = req_int(state, &entry_map, "weight") else {
             continue;
@@ -303,12 +385,100 @@ fn define_job(state: &mut BuilderState, map: Map) {
             },
             None => None,
         };
+        let popup_text = match entry_map.get("popup_text") {
+            None => None,
+            Some(value) => match value.clone().into_string() {
+                Ok(text) => Some(text),
+                Err(_) => {
+                    state.error(
+                        Some(key.as_str()),
+                        format!("result '{result_name}' popup_text must be a string"),
+                    );
+                    continue;
+                }
+            },
+        };
+        let log_text = match entry_map.get("log_text") {
+            None => None,
+            Some(value) => match value.clone().into_string() {
+                Ok(text) => Some(text),
+                Err(_) => {
+                    state.error(
+                        Some(key.as_str()),
+                        format!("result '{result_name}' log_text must be a string"),
+                    );
+                    continue;
+                }
+            },
+        };
+        let mut choices = Vec::new();
+        let mut choices_bad = false;
+        if let Some(value) = entry_map.get("choices") {
+            let Some(array) = value.clone().try_cast::<rhai::Array>() else {
+                state.error(
+                    Some(key.as_str()),
+                    format!("result '{result_name}' choices must be an array of maps"),
+                );
+                continue;
+            };
+            for element in array {
+                let Some(choice_map) = element.try_cast::<Map>() else {
+                    state.error(
+                        Some(key.as_str()),
+                        format!("result '{result_name}' choices must be maps"),
+                    );
+                    choices_bad = true;
+                    break;
+                };
+                warn_unknown_fields(
+                    state,
+                    &choice_map,
+                    Some(key.as_str()),
+                    &["id", "label", "effect_fn"],
+                );
+                let (Some(choice_id), Some(label)) = (
+                    req_key(state, &choice_map),
+                    req_str(state, &choice_map, "label"),
+                ) else {
+                    choices_bad = true;
+                    break;
+                };
+                let choice_effect = match choice_map.get("effect_fn") {
+                    Some(value) => match value.clone().into_string() {
+                        Ok(name) => Some(ScriptFnRef {
+                            path: state.current_path.clone(),
+                            name,
+                        }),
+                        Err(_) => {
+                            state.error(
+                                Some(key.as_str()),
+                                format!("result '{result_name}' choice effect_fn must be a string"),
+                            );
+                            choices_bad = true;
+                            break;
+                        }
+                    },
+                    None => None,
+                };
+                choices.push(PopupChoiceDef {
+                    id: choice_id,
+                    label,
+                    effect_fn: choice_effect,
+                });
+            }
+        }
+        if choices_bad {
+            continue;
+        }
         results.insert(
             kind,
             JobResultDef {
                 weight: weight as u32,
                 popup,
+                popup_text,
+                choices,
                 log,
+                log_text,
                 effect_fn,
             },
         );
@@ -339,6 +509,11 @@ fn define_job(state: &mut BuilderState, map: Map) {
             summary,
             category,
             duration_days: duration_days as u32,
+            skill,
+            difficulty: difficulty as i32,
+            target,
+            risks,
+            ai_available,
             results,
         },
     );
@@ -1291,7 +1466,11 @@ fn validate_cross_references(
             }
         }
         for result in job.results.values() {
-            if let Some(fn_ref) = &result.effect_fn {
+            let fn_refs = result
+                .effect_fn
+                .iter()
+                .chain(result.choices.iter().filter_map(|c| c.effect_fn.as_ref()));
+            for fn_ref in fn_refs {
                 let exists = fn_names
                     .get(&fn_ref.path)
                     .is_some_and(|names| names.contains(&fn_ref.name));
@@ -1305,6 +1484,13 @@ fn validate_cross_references(
                         ),
                     ));
                 }
+            }
+            if result.popup && result.popup_text.is_none() {
+                findings.push((
+                    fn_ref_path(job),
+                    Some(key.to_string()),
+                    "popup results should declare popup_text".to_owned(),
+                ));
             }
         }
     }

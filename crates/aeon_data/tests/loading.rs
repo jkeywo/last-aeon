@@ -18,6 +18,8 @@ define_job(#{
     summary: "Routine administration of the house's holdings.",
     category: "routine",
     duration_days: 30,
+    skill: "stewardship",
+    difficulty: 6,
     results: #{
         success: #{ weight: 850 },
         failure: #{ weight: 150 },
@@ -30,11 +32,22 @@ define_job(#{
     summary: "Send an envoy to soften a rival's stance.",
     category: "consequential",
     duration_days: 45,
+    skill: "diplomacy",
+    difficulty: 10,
+    target: "organisation",
+    risks: ["scandal"],
     results: #{
-        critical_success: #{ weight: 100, popup: true, log: true },
+        critical_success: #{
+            weight: 100, popup: true, log: true,
+            popup_text: "{leader} returns triumphant from {target}.",
+        },
         success: #{ weight: 500, log: true },
         failure: #{ weight: 300 },
-        disaster: #{ weight: 100, popup: true, log: true, effect_fn: "courting_disaster" },
+        disaster: #{
+            weight: 100, popup: true, log: true,
+            popup_text: "{leader} gave insult at {target}.",
+            effect_fn: "courting_disaster",
+        },
     },
 });
 
@@ -138,6 +151,7 @@ fn missing_mandatory_results_are_errors() {
 define_job(#{
     id: "half-defined", title: "Half Defined", summary: "s",
     category: "routine", duration_days: 10,
+    skill: "stewardship", difficulty: 5,
     results: #{ success: #{ weight: 1000 } },
 });
 "#;
@@ -163,6 +177,7 @@ define_province(#{
 define_job(#{
     id: "ghost-effect", title: "Ghost", summary: "s",
     category: "routine", duration_days: 1,
+    skill: "intrigue", difficulty: 5,
     results: #{
         success: #{ weight: 1, effect_fn: "does_not_exist" },
         failure: #{ weight: 1 },

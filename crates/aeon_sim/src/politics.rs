@@ -304,6 +304,7 @@ pub fn spawn_from_content(world: &mut World, content: &ContentSet) {
                     spouse: def.spouse.as_ref().map(|s| index.character_keys[s]),
                 },
                 OpinionLedger::default(),
+                crate::jobs::CharacterCondition::default(),
             ))
             .id();
         index.characters.insert(id, entity);
@@ -460,6 +461,9 @@ pub struct CharacterState {
     pub spouse: Option<CharacterId>,
     /// Stored opinion modifiers from this character.
     pub opinions: Vec<OpinionEntry>,
+    /// Temporary incapacitating conditions.
+    #[serde(default)]
+    pub condition: crate::jobs::CharacterCondition,
 }
 
 /// Serialised organisation (mutable facts only; the rest is content).
@@ -543,6 +547,10 @@ pub fn capture_politics(world: &World) -> PoliticsState {
         let traits = world.get::<CharacterTraits>(*entity).expect("indexed");
         let lineage = world.get::<Lineage>(*entity).expect("indexed");
         let opinions = world.get::<OpinionLedger>(*entity).expect("indexed");
+        let condition = world
+            .get::<crate::jobs::CharacterCondition>(*entity)
+            .copied()
+            .unwrap_or_default();
         characters.push(CharacterState {
             id: record.id,
             key: record.key.clone(),
@@ -556,6 +564,7 @@ pub fn capture_politics(world: &World) -> PoliticsState {
             parents: lineage.parents.clone(),
             spouse: lineage.spouse,
             opinions: opinions.0.clone(),
+            condition,
         });
     }
 
@@ -641,6 +650,7 @@ pub fn restore_politics(world: &mut World, state: &PoliticsState, content: &Cont
                     spouse: character.spouse,
                 },
                 OpinionLedger(character.opinions.clone()),
+                character.condition,
             ))
             .id();
         index.characters.insert(character.id, entity);
@@ -1479,6 +1489,7 @@ fn spawn_child(
                 spouse: None,
             },
             OpinionLedger::default(),
+            crate::jobs::CharacterCondition::default(),
         ))
         .id();
     world

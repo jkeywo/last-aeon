@@ -416,3 +416,76 @@ entities:
         - mvp-selective-character-simulation
         - character-simulation-scope
         - hand-rolled-deterministic-rng
+
+  - decision: skill-shifted-result-weights
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Result Weights Shift with Skill Against Difficulty
+      summary: >-
+        A job outcome is drawn from its authored result weights after
+        shifting them by the leader's governing skill minus the job's
+        difficulty: positive outcomes scale up with effectiveness and
+        negative outcomes scale down, each floored at a fifth of the
+        authored weight, using integer arithmetic and a per-job derived
+        random stream.
+      rationale:
+        - Authored weights keep outcome shape in content hands while assignment quality visibly matters, exactly as the vision's assignment-quality decision demands.
+        - Flooring keeps every authored outcome possible, so competence reduces but never removes uncertainty.
+      references:
+        - assignment-quality-and-presence-matter
+        - duty-officer-inspired-job-catalogue
+        - integer-arithmetic-for-authoritative-outcomes
+
+  - decision: job-effect-roles
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Script Effects Address Job Roles, Not IDs
+      summary: >-
+        Authored effect functions address characters through stable role
+        names - leader, target, target-head, owner-head, liege-head,
+        consul, sanctora - which the simulation resolves from the job's
+        context at resolution time. Scripts never see or emit stable IDs.
+      rationale:
+        - Role addressing keeps authored content portable across scenarios and makes the effect boundary impossible to aim at arbitrary simulation state.
+      references:
+        - effects-returned-not-emitted
+        - scripts-emit-validated-effects-only
+
+  - decision: risk-consequence-catalogue
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Fixed Consequences per Personal-Risk Tag
+      summary: >-
+        Each declared risk tag has one engine-defined consequence rolled on
+        failure (doubled on disaster): injury lays the leader up for 90
+        days, capture holds them 360, incapacity stops them 180, scandal
+        costs 15 opinion with every organisation head for two years, and
+        death flows into the succession machinery. Indisposed characters
+        cannot take new jobs.
+      rationale:
+        - Uniform engine-owned consequences make authored risk declarations honest and comparable across the whole catalogue.
+      references:
+        - explicit-personal-risk-tags
+        - consequential-job-failure-and-disaster
+        - gender-blind-primogeniture
+
+  - decision: ai-agency-through-the-job-catalogue
+    core:
+      status: accepted
+      confidence: confirmed
+      title: AI Organisations Act Through the Same Job Catalogue
+      summary: >-
+        Each month, an idle AI organisation head has an even chance of
+        starting an ai_available job, chosen and targeted through derived
+        random streams. AI jobs resolve through exactly the player's
+        pipeline, so their flagged results reach the shared notable-result
+        log; popups are player-only.
+      rationale:
+        - One action pipeline for player and AI keeps the world honest - whatever the player can do to the world, the world does back.
+      references:
+        - organisation-agency-model
+        - character-led-jobs-are-primary-actions
+        - notable-results-are-logged

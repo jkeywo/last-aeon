@@ -58,6 +58,17 @@ impl JobResultKind {
     ];
 }
 
+/// One choice offered by a result popup.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PopupChoiceDef {
+    /// Stable choice id within the result.
+    pub id: ContentKey,
+    /// Button label.
+    pub label: String,
+    /// Effect function applied when this choice is taken.
+    pub effect_fn: Option<ScriptFnRef>,
+}
+
 /// One possible result of a job.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct JobResultDef {
@@ -65,10 +76,61 @@ pub struct JobResultDef {
     pub weight: u32,
     /// Whether this result opens a player-facing popup.
     pub popup: bool,
+    /// Popup body text; templated with {leader}, {target}, {job}.
+    pub popup_text: Option<String>,
+    /// Choices offered by the popup; empty means a lone acknowledgement.
+    pub choices: Vec<PopupChoiceDef>,
     /// Whether this result is flagged for the notable-result message log.
     pub log: bool,
+    /// Log line; templated like popup_text. Falls back to a generic line.
+    pub log_text: Option<String>,
     /// Effect function applied when this result occurs.
     pub effect_fn: Option<ScriptFnRef>,
+}
+
+/// The personal risks a job can expose its leader to.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RiskTag {
+    /// Physical harm; the leader is laid up for a while.
+    Injury,
+    /// The leader is taken and held.
+    Capture,
+    /// Public disgrace; opinions of the leader suffer.
+    Scandal,
+    /// The leader cannot act for a while.
+    Incapacity,
+    /// The leader may die.
+    Death,
+}
+
+/// What kind of target a job requires.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum JobTargetKind {
+    /// No target; the job acts on the owner organisation itself.
+    #[default]
+    None,
+    /// Targets a character.
+    Character,
+    /// Targets an organisation.
+    Organisation,
+    /// Targets a province.
+    Province,
+}
+
+/// The skill that governs a job's outcome.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum GoverningSkill {
+    /// Military leadership.
+    Command,
+    /// Negotiation and persuasion.
+    Diplomacy,
+    /// Schemes and subversion.
+    Intrigue,
+    /// Administration.
+    Stewardship,
 }
 
 /// An authored job definition.
@@ -84,6 +146,16 @@ pub struct JobDef {
     pub category: JobCategory,
     /// Base duration in days.
     pub duration_days: u32,
+    /// The skill that governs the outcome.
+    pub skill: GoverningSkill,
+    /// Difficulty on the same scale as skills (roughly 0..=20).
+    pub difficulty: i32,
+    /// What kind of target the job requires.
+    pub target: JobTargetKind,
+    /// Personal risks the leader is exposed to on failure or disaster.
+    pub risks: Vec<RiskTag>,
+    /// Whether autonomous organisations may start this job.
+    pub ai_available: bool,
     /// Possible outcomes, keyed by kind. Success and failure are mandatory.
     pub results: BTreeMap<JobResultKind, JobResultDef>,
 }

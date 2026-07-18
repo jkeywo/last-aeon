@@ -110,9 +110,13 @@ impl SimHost {
         app.add_plugins(AeonSimPlugin);
         let map_state = state.map.clone();
         let politics_state = state.politics.clone();
+        let jobs_state = state.jobs.clone();
         restore_state(app.world_mut(), state);
         crate::map::restore_map(app.world_mut(), &map_state, &content);
         crate::politics::restore_politics(app.world_mut(), &politics_state, &content);
+        crate::jobs::restore_jobs(app.world_mut(), &jobs_state);
+        app.world_mut()
+            .insert_resource(crate::jobs::ScriptRuntime(aeon_data::ScriptHost::new()));
         app.world_mut().insert_resource(ContentDb(content));
         Ok(Self { app })
     }
@@ -122,20 +126,7 @@ impl SimHost {
     /// Returns the recorded envelope; persist it via the command log to make
     /// the campaign replayable.
     pub fn submit(&mut self, command: PlayerCommand) -> Result<CommandEnvelope, CommandRejection> {
-        let world = self.app.world_mut();
-        validate_command(world, &command)?;
-        let day = world.resource::<CampaignClock>().date.add_days(1);
-        let seq = {
-            let mut log = world.resource_mut::<CommandLog>();
-            let seq = log.next_seq;
-            log.next_seq += 1;
-            seq
-        };
-        let envelope = CommandEnvelope { seq, day, command };
-        world
-            .resource_mut::<PendingCommands>()
-            .insert(envelope.clone());
-        Ok(envelope)
+        crate::command::submit_command(self.app.world_mut(), command)
     }
 
     /// Re-submits a recorded envelope during replay, preserving its day and

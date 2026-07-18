@@ -13,6 +13,7 @@ define_id_kind!(pub CharacterIdKind => "character");
 define_id_kind!(pub OrgIdKind => "org");
 define_id_kind!(pub TitleIdKind => "title");
 define_id_kind!(pub OfficeIdKind => "office");
+define_id_kind!(pub JobIdKind => "job");
 
 /// Stable ID of a celestial body.
 pub type BodyId = Id<BodyIdKind>;
@@ -26,3 +27,5 @@ pub type OrgId = Id<OrgIdKind>;
 pub type TitleId = Id<TitleIdKind>;
 /// Stable ID of an office.
 pub type OfficeId = Id<OfficeIdKind>;
+/// Stable ID of an active job.
+pub type JobId = Id<JobIdKind>;

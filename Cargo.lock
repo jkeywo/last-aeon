@@ -133,6 +133,7 @@ dependencies = [
  "aeon_core",
  "aeon_data",
  "bevy",
+ "rhai",
  "ron",
  "serde",
  "serde_json",

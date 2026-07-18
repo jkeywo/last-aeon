@@ -20,6 +20,23 @@ pub enum ScriptEffect {
         /// The message text.
         message: String,
     },
+    /// Add a directional opinion modifier between job-context roles.
+    ///
+    /// Roles are resolved by the simulation from the job's context:
+    /// `leader`, `target`, `target-head`, `owner-head`, `liege-head`,
+    /// `consul`, or `sanctora` (every living Sanctora member).
+    Opinion {
+        /// Role whose opinion changes.
+        from: String,
+        /// Role the opinion is about.
+        toward: String,
+        /// Signed amount.
+        amount: i32,
+        /// Days until expiry; `None` is permanent.
+        days: Option<i64>,
+        /// Stable reason tag.
+        reason: String,
+    },
 }
 
 /// Why a script's returned effects were rejected.
@@ -98,6 +115,43 @@ pub fn parse_effects(value: Dynamic) -> Result<Vec<ScriptEffect>, EffectParseErr
                         expected: "string".to_owned(),
                     })?;
                 effects.push(ScriptEffect::Log { message });
+            }
+            "opinion" => {
+                let get_str = |field: &str| {
+                    map.get(field)
+                        .and_then(|v| v.clone().into_string().ok())
+                        .ok_or_else(|| EffectParseError::BadField {
+                            index,
+                            kind: kind.clone(),
+                            field: field.to_owned(),
+                            expected: "string".to_owned(),
+                        })
+                };
+                let amount = map
+                    .get("amount")
+                    .and_then(|v| v.as_int().ok())
+                    .ok_or_else(|| EffectParseError::BadField {
+                        index,
+                        kind: kind.clone(),
+                        field: "amount".to_owned(),
+                        expected: "integer".to_owned(),
+                    })?;
+                let days = match map.get("days") {
+                    None => None,
+                    Some(v) => Some(v.as_int().map_err(|_| EffectParseError::BadField {
+                        index,
+                        kind: kind.clone(),
+                        field: "days".to_owned(),
+                        expected: "integer".to_owned(),
+                    })?),
+                };
+                effects.push(ScriptEffect::Opinion {
+                    from: get_str("from")?,
+                    toward: get_str("toward")?,
+                    amount: amount as i32,
+                    days,
+                    reason: get_str("reason")?,
+                });
             }
             other => {
                 return Err(EffectParseError::UnknownKind {

@@ -8,6 +8,7 @@
 
 mod camera;
 mod content;
+mod jobs_ui;
 mod panels;
 mod scene;
 mod selection;
@@ -36,6 +37,8 @@ fn main() {
         .init_resource::<sim_driver::TimeControl>()
         .init_resource::<view::ViewState>()
         .init_resource::<camera::OrbitCamera>()
+        .init_resource::<jobs_ui::UiCommandQueue>()
+        .init_resource::<jobs_ui::JobForm>()
         .add_systems(
             Startup,
             (
@@ -58,8 +61,13 @@ fn main() {
                 scene::apply_selection_tint,
                 camera::retarget_on_view_change,
                 camera::drive_camera,
+                jobs_ui::auto_pause_on_popups,
+                jobs_ui::flush_ui_commands,
             ),
         )
-        .add_systems(EguiPrimaryContextPass, panels::draw_panels)
+        .add_systems(
+            EguiPrimaryContextPass,
+            (panels::draw_panels, jobs_ui::draw_jobs_ui).chain(),
+        )
         .run();
 }

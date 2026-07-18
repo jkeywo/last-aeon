@@ -662,7 +662,7 @@ entities:
 
   - component: job-system
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Character-Led Job System
       summary: Jobs are the universal unit of strategic action. Each job takes calendar time and may require manpower, resources, and one or more assigned characters. Its progress and outcome derive from its requirements, the assigned characters' capabilities, their presence, and the evolving world state.
@@ -671,6 +671,12 @@ entities:
       kind: simulation-subsystem
       classification: domain
       authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_sim/src/jobs.rs
+      tests:
+        - crates/aeon_sim/tests/jobs.rs
+      status: declared
 
   - decision: character-led-jobs-are-primary-actions
     core:
@@ -1010,7 +1016,7 @@ entities:
 
   - component: job-result-event-system
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Job Result Event System
       summary: Each individual job result may declare whether it warrants a player-facing popup. A popup presents a short characterful situation and a small number of consequential choices; unflagged results resolve without interruption.
@@ -1019,6 +1025,12 @@ entities:
       kind: simulation-subsystem
       classification: domain
       authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_sim/src/jobs.rs
+      tests:
+        - crates/aeon_sim/tests/jobs.rs
+      status: declared
 
   - decision: result-level-popups
     core:
@@ -1032,7 +1044,7 @@ entities:
 
   - component: notable-result-message-log
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Notable Result Message Log
       summary: A message log records appropriately flagged notable job results, including jobs led by other organisations' characters. Popups are selective interruptions; the log provides ongoing awareness of the wider simulation.
@@ -1041,6 +1053,13 @@ entities:
       kind: presentation-and-information
       classification: interface
       authority: derived
+    implementation:
+      paths:
+        - crates/aeon_sim/src/jobs.rs
+        - crates/aeon_client/src/jobs_ui.rs
+      tests:
+        - crates/aeon_sim/tests/jobs.rs
+      status: declared
 
   - decision: notable-results-are-logged
     core:
