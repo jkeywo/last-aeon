@@ -1,25 +1,31 @@
-//! Read-only 2D information panels.
+//! Read-only 2D information panels plus presence and forces controls.
 //!
-//! A top bar (campaign, date, time control, view breadcrumb), a left
-//! inspector for the current selection (body, province, house, or
-//! character), and a right listing panel. Panels display simulation
-//! state; they never mutate it directly.
+//! A top bar (campaign, date, resources, time control, view breadcrumb),
+//! a left inspector for the current selection (body, province, house, or
+//! character, including location and travel), and a right listing panel
+//! (bodies, houses, and the player's forces). Mutations travel through
+//! the UI command queue into the authoritative command pipeline.
 
 use std::collections::BTreeMap;
 
-use aeon_data::model::{BodyKind, HouseTier, OrgKind};
+use aeon_data::model::{BodyKind, HouseTier, OrgKind, ShipClass};
+use aeon_sim::economy::OrgResources;
+use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
 use aeon_sim::map::{BodyRecord, DisplayName, GeoPosition, ProvinceRecord};
 use aeon_sim::politics::{
     CharacterSkills, CharacterTraits, CharacterView, Lineage, OpinionLedger, opinion_of,
 };
+use aeon_sim::presence::{CharacterLocation, Location};
 use aeon_sim::state::{CampaignMeta, ContentDb};
 use aeon_sim::{
-    CampaignClock, CampaignOver, CharacterId, CharacterRecord, OrgId, OrgRecord, PlayerHouse,
-    PoliticsIndex, TitleHolder, TitleRecord,
+    CampaignClock, CampaignOver, CharacterId, CharacterRecord, OrgId, OrgRecord, PlayerCommand,
+    PlayerHouse, PoliticsIndex, ProvinceId, TitleHolder, TitleRecord,
 };
+use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
+use crate::jobs_ui::UiCommandQueue;
 use crate::sim_driver::{SPEED_STEPS, TimeControl};
 use crate::view::{MapView, Selection, ViewState};
 
@@ -31,6 +37,14 @@ fn kind_label(kind: BodyKind) -> &'static str {
     }
 }
 
+type CharacterQuery = (
+    &'static CharacterRecord,
+    &'static CharacterSkills,
+    &'static CharacterTraits,
+    &'static Lineage,
+    &'static OpinionLedger,
+);
+
 type CharacterParts<'a> = (
     &'a CharacterRecord,
     &'a CharacterSkills,
@@ -38,6 +52,28 @@ type CharacterParts<'a> = (
     &'a Lineage,
     &'a OpinionLedger,
 );
+
+/// Every world query the panels read, bundled to stay within system
+/// parameter limits.
+#[derive(SystemParam)]
+pub struct PanelData<'w, 's> {
+    bodies: Query<'w, 's, (&'static BodyRecord, &'static DisplayName)>,
+    provinces: Query<
+        'w,
+        's,
+        (
+            &'static ProvinceRecord,
+            &'static DisplayName,
+            &'static GeoPosition,
+        ),
+    >,
+    orgs: Query<'w, 's, (&'static OrgRecord, Option<&'static OrgResources>)>,
+    characters: Query<'w, 's, CharacterQuery>,
+    locations: Query<'w, 's, &'static CharacterLocation>,
+    titles: Query<'w, 's, &'static TitleRecord>,
+    ships: Query<'w, 's, &'static ShipRecord>,
+    armies: Query<'w, 's, &'static ArmyRecord>,
+}
 
 #[allow(clippy::too_many_arguments)]
 pub fn draw_panels(
@@ -50,11 +86,8 @@ pub fn draw_panels(
     over: Option<Res<CampaignOver>>,
     mut control: ResMut<TimeControl>,
     mut view: ResMut<ViewState>,
-    bodies: Query<(&BodyRecord, &DisplayName)>,
-    provinces: Query<(&ProvinceRecord, &DisplayName, &GeoPosition)>,
-    orgs: Query<&OrgRecord>,
-    characters: Query<CharacterParts>,
-    titles: Query<&TitleRecord>,
+    mut queue: ResMut<UiCommandQueue>,
+    data: PanelData,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -64,25 +97,46 @@ pub fn draw_panels(
         return;
     };
     let date = clock.date;
+    let player_org = player.as_ref().and_then(|p| p.0);
 
-    // Lookup tables for cross-references inside the UI.
-    let chars: BTreeMap<CharacterId, CharacterParts> =
-        characters.iter().map(|parts| (parts.0.id, parts)).collect();
-    let org_records: BTreeMap<OrgId, &OrgRecord> =
-        orgs.iter().map(|record| (record.id, record)).collect();
+    let chars: BTreeMap<CharacterId, CharacterParts> = data
+        .characters
+        .iter()
+        .map(|parts| (parts.0.id, parts))
+        .collect();
+    let org_records: BTreeMap<OrgId, (&OrgRecord, Option<&OrgResources>)> = data
+        .orgs
+        .iter()
+        .map(|(record, resources)| (record.id, (record, resources)))
+        .collect();
+    let province_names: BTreeMap<ProvinceId, &str> = data
+        .provinces
+        .iter()
+        .map(|(record, name, _)| (record.id, name.0.as_str()))
+        .collect();
     let org_label = |id: OrgId| -> String {
         org_records
             .get(&id)
-            .and_then(|record| content.0.organisations.get(&record.key))
+            .and_then(|(record, _)| content.0.organisations.get(&record.key))
             .map(|def| def.name.clone())
             .unwrap_or_else(|| id.to_string())
     };
-    let player_head: Option<CharacterId> = player
-        .as_ref()
-        .and_then(|p| p.0)
-        .and_then(|org| org_records.get(&org).and_then(|r| r.head));
+    let location_label = |location: Option<&CharacterLocation>| -> String {
+        match location.map(|l| l.0) {
+            Some(Location::Province(province)) => province_names
+                .get(&province)
+                .map(|n| (*n).to_owned())
+                .unwrap_or_default(),
+            Some(Location::Transit { to, arrives }) => {
+                let dest = province_names.get(&to).copied().unwrap_or("...");
+                format!("In transit to {dest} (arrives {arrives})")
+            }
+            None => "Unknown".to_owned(),
+        }
+    };
+    let player_head: Option<CharacterId> =
+        player_org.and_then(|org| org_records.get(&org).and_then(|(r, _)| r.head));
 
-    // egui 0.35 shows panels inside a Ui; build the root viewport Ui.
     let mut viewport = egui::Ui::new(
         ctx.clone(),
         "viewport".into(),
@@ -97,6 +151,19 @@ pub fn draw_panels(
             ui.separator();
             ui.monospace(date.to_string());
             ui.separator();
+
+            if let Some((_, Some(resources))) = player_org.and_then(|org| org_records.get(&org)) {
+                ui.label(format!(
+                    "W {}  M {}  S {}  I {}/{}",
+                    resources.wealth,
+                    resources.manpower,
+                    resources.supplies,
+                    resources.influence,
+                    resources.legitimacy,
+                ))
+                .on_hover_text("Wealth, Manpower, Supplies, Influence / Legitimacy");
+                ui.separator();
+            }
 
             let pause_label = if control.paused { "Resume" } else { "Pause" };
             if ui.button(pause_label).clicked() {
@@ -121,7 +188,8 @@ pub fn draw_panels(
                     if ui.button("< System").clicked() {
                         view.view = MapView::System;
                     }
-                    let name = bodies
+                    let name = data
+                        .bodies
                         .iter()
                         .find(|(record, _)| record.id == id)
                         .map(|(_, name)| name.0.as_str())
@@ -150,7 +218,8 @@ pub fn draw_panels(
                     ui.label("Select a body, province, house, or character.");
                 }
                 Some(Selection::Body(id)) => {
-                    if let Some((record, name)) = bodies.iter().find(|(record, _)| record.id == id)
+                    if let Some((record, name)) =
+                        data.bodies.iter().find(|(record, _)| record.id == id)
                     {
                         ui.strong(&name.0);
                         ui.label(kind_label(record.kind));
@@ -164,7 +233,7 @@ pub fn draw_panels(
                             ui.end_row();
                             ui.label("Provinces");
                             ui.label(
-                                provinces
+                                data.provinces
                                     .iter()
                                     .filter(|(p, _, _)| p.body == id)
                                     .count()
@@ -179,10 +248,11 @@ pub fn draw_panels(
                 }
                 Some(Selection::Province(id)) => {
                     if let Some((record, name, geo)) =
-                        provinces.iter().find(|(record, _, _)| record.id == id)
+                        data.provinces.iter().find(|(record, _, _)| record.id == id)
                     {
                         ui.strong(&name.0);
-                        let body_name = bodies
+                        let body_name = data
+                            .bodies
                             .iter()
                             .find(|(body, _)| body.id == record.body)
                             .map(|(_, name)| name.0.as_str())
@@ -194,12 +264,9 @@ pub fn draw_panels(
                             .province_titles
                             .get(&id)
                             .and_then(|title_id| politics.titles.get(title_id))
-                            .and_then(|entity| titles.get(*entity).ok())
+                            .and_then(|entity| data.titles.get(*entity).ok())
                             .map(|title| title.holder);
                         egui::Grid::new("province-facts").show(ui, |ui| {
-                            ui.label("Stable ID");
-                            ui.monospace(record.id.to_string());
-                            ui.end_row();
                             ui.label("Held by");
                             match holder {
                                 Some(TitleHolder::Org(org)) => {
@@ -221,6 +288,14 @@ pub fn draw_panels(
                                 }
                             }
                             ui.end_row();
+                            if let Some(def) = content.0.provinces.get(&record.key) {
+                                ui.label("Monthly output");
+                                ui.label(format!(
+                                    "W {} / M {} / S {}",
+                                    def.wealth_output, def.manpower_output, def.supplies_output
+                                ));
+                                ui.end_row();
+                            }
                             ui.label("Latitude");
                             ui.label(format!("{:.2}\u{00b0}", geo.latitude_mdeg as f32 / 1000.0));
                             ui.end_row();
@@ -231,7 +306,7 @@ pub fn draw_panels(
                     }
                 }
                 Some(Selection::Org(id)) => {
-                    if let Some(record) = org_records.get(&id).copied() {
+                    if let Some((record, resources)) = org_records.get(&id).copied() {
                         let def = content.0.organisations.get(&record.key);
                         ui.strong(def.map(|d| d.name.as_str()).unwrap_or("Unknown"));
                         let standing = match (record.kind, record.tier) {
@@ -248,6 +323,16 @@ pub fn draw_panels(
                         if record.defunct {
                             ui.colored_label(egui::Color32::from_rgb(220, 60, 60), "DEFUNCT");
                         }
+                        if let Some(resources) = resources {
+                            ui.label(format!(
+                                "W {}  M {}  S {}  I {}/{}",
+                                resources.wealth,
+                                resources.manpower,
+                                resources.supplies,
+                                resources.influence,
+                                resources.legitimacy,
+                            ));
+                        }
                         ui.separator();
 
                         ui.label("Head:");
@@ -262,7 +347,8 @@ pub fn draw_panels(
                             }
                         }
 
-                        let held = titles
+                        let held = data
+                            .titles
                             .iter()
                             .filter(|t| t.holder == TitleHolder::Org(id))
                             .count();
@@ -298,6 +384,35 @@ pub fn draw_panels(
                             && ui.link(org_label(org)).clicked()
                         {
                             view.selected = Some(Selection::Org(org));
+                        }
+
+                        // Location and travel.
+                        let location = politics
+                            .characters
+                            .get(&id)
+                            .and_then(|e| data.locations.get(*e).ok());
+                        ui.label(format!("At: {}", location_label(location)));
+                        if record.alive()
+                            && record.organisation == player_org
+                            && let Some(Location::Province(at)) = location.map(|l| l.0)
+                        {
+                            egui::ComboBox::from_id_salt("travel-to")
+                                .selected_text("Travel to...")
+                                .show_ui(ui, |ui| {
+                                    let mut sorted: Vec<_> = province_names.iter().collect();
+                                    sorted.sort_by_key(|(id, _)| **id);
+                                    for (province, name) in sorted {
+                                        if *province == at {
+                                            continue;
+                                        }
+                                        if ui.selectable_label(false, *name).clicked() {
+                                            queue.0.push(PlayerCommand::Travel {
+                                                character: id,
+                                                destination: *province,
+                                            });
+                                        }
+                                    }
+                                });
                         }
                         ui.separator();
 
@@ -348,7 +463,6 @@ pub fn draw_panels(
                             }
                         }
 
-                        // Opinions relative to the player's head.
                         if let Some(head_id) = player_head
                             && head_id != id
                             && let (Some(head), Some(them)) = (chars.get(&head_id), chars.get(&id))
@@ -382,7 +496,7 @@ pub fn draw_panels(
             MapView::System => {
                 ui.heading("Bodies");
                 ui.separator();
-                let mut sorted: Vec<_> = bodies.iter().collect();
+                let mut sorted: Vec<_> = data.bodies.iter().collect();
                 sorted.sort_by_key(|(record, _)| record.id);
                 for (record, name) in sorted {
                     let selected = view.selected == Some(Selection::Body(record.id));
@@ -394,7 +508,7 @@ pub fn draw_panels(
                 ui.add_space(8.0);
                 ui.heading("Houses");
                 ui.separator();
-                for (org_id, record) in &org_records {
+                for (org_id, (record, _)) in &org_records {
                     let def = content.0.organisations.get(&record.key);
                     let label = def.map(|d| d.name.clone()).unwrap_or_default();
                     let selected = view.selected == Some(Selection::Org(*org_id));
@@ -402,12 +516,79 @@ pub fn draw_panels(
                         view.selected = Some(Selection::Org(*org_id));
                     }
                 }
+
+                ui.add_space(8.0);
+                ui.heading("Forces");
+                ui.separator();
+                egui::ScrollArea::vertical()
+                    .id_salt("forces")
+                    .show(ui, |ui| {
+                        let mut ships: Vec<&ShipRecord> = data.ships.iter().collect();
+                        ships.sort_by_key(|s| s.id);
+                        for ship in ships {
+                            let class = match ship.class {
+                                ShipClass::Capital => "Capital",
+                                ShipClass::Transport => "Transport",
+                                ShipClass::Patrol => "Patrol",
+                            };
+                            let place = match ship.location {
+                                ShipLocation::Docked(province) => province_names
+                                    .get(&province)
+                                    .map(|n| (*n).to_owned())
+                                    .unwrap_or_default(),
+                                ShipLocation::Transit { to, .. } => format!(
+                                    "-> {}",
+                                    province_names.get(&to).copied().unwrap_or("...")
+                                ),
+                            };
+                            ui.horizontal(|ui| {
+                                ui.label(format!("{} ({class}) — {place}", ship.name));
+                            });
+                            if Some(ship.owner) == player_org
+                                && matches!(ship.location, ShipLocation::Docked(_))
+                            {
+                                egui::ComboBox::from_id_salt(("move-ship", ship.id))
+                                    .selected_text("Move to...")
+                                    .show_ui(ui, |ui| {
+                                        let mut sorted: Vec<_> = province_names.iter().collect();
+                                        sorted.sort_by_key(|(id, _)| **id);
+                                        for (province, name) in sorted {
+                                            if ui.selectable_label(false, *name).clicked() {
+                                                queue.0.push(PlayerCommand::MoveShip {
+                                                    ship: ship.id,
+                                                    destination: *province,
+                                                });
+                                            }
+                                        }
+                                    });
+                            }
+                        }
+
+                        let mut armies: Vec<&ArmyRecord> = data.armies.iter().collect();
+                        armies.sort_by_key(|a| a.id);
+                        for army in armies {
+                            let place =
+                                province_names.get(&army.location).copied().unwrap_or("...");
+                            ui.horizontal(|ui| {
+                                ui.label(format!(
+                                    "{} — {} men, {} supplies — {place}",
+                                    army.name, army.manpower, army.supplies
+                                ));
+                                if Some(army.owner) == player_org
+                                    && ui.small_button("Disband").clicked()
+                                {
+                                    queue.0.push(PlayerCommand::DisbandArmy { army: army.id });
+                                }
+                            });
+                        }
+                    });
             }
             MapView::Body(body_id) => {
                 ui.heading("Provinces");
                 ui.separator();
                 egui::ScrollArea::vertical().show(ui, |ui| {
-                    let mut sorted: Vec<_> = provinces
+                    let mut sorted: Vec<_> = data
+                        .provinces
                         .iter()
                         .filter(|(record, _, _)| record.body == body_id)
                         .collect();

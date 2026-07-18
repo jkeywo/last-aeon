@@ -13,9 +13,10 @@ use bevy::prelude::{IntoScheduleConfigs, Resource, World};
 use serde::{Deserialize, Serialize};
 
 use crate::clock::{CampaignClock, DailyTick, TickSet};
-use crate::ids::{CharacterId, JobId};
+use crate::ids::{ArmyId, CharacterId, JobId, ProvinceId, ShipId};
 use crate::jobs::{self, JobRejection, JobTarget};
-use crate::politics::PlayerHouse;
+use crate::politics::{CharacterRecord, PlayerHouse, PoliticsIndex};
+use crate::presence::{self, Location};
 use crate::state::CampaignMeta;
 
 /// A meaningful player decision.
@@ -52,6 +53,25 @@ pub enum PlayerCommand {
         popup: u64,
         /// The chosen option.
         choice: ContentKey,
+    },
+    /// Sends one of the player's characters travelling to a province.
+    Travel {
+        /// The traveller.
+        character: CharacterId,
+        /// The destination province.
+        destination: ProvinceId,
+    },
+    /// Orders one of the player's ships to another province.
+    MoveShip {
+        /// The ship.
+        ship: ShipId,
+        /// The destination province.
+        destination: ProvinceId,
+    },
+    /// Disbands one of the player's armies, returning its soldiers.
+    DisbandArmy {
+        /// The army.
+        army: ArmyId,
     },
 }
 
@@ -180,6 +200,83 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
                 Err(JobRejection::BadPopupAnswer.into())
             }
         }
+        PlayerCommand::Travel {
+            character,
+            destination,
+        } => {
+            let org = world
+                .get_resource::<PlayerHouse>()
+                .and_then(|p| p.0)
+                .ok_or(JobRejection::NoPlayerOrg)?;
+            let index = world.resource::<PoliticsIndex>();
+            let member = index
+                .characters
+                .get(character)
+                .and_then(|e| world.get::<CharacterRecord>(*e))
+                .is_some_and(|r| r.alive() && r.organisation == Some(org));
+            if !member {
+                return Err(JobRejection::IneligibleLeader.into());
+            }
+            match presence::character_location(world, *character) {
+                Some(Location::Province(at)) if at != *destination => {
+                    let known = world
+                        .resource::<crate::map::MapIndex>()
+                        .provinces
+                        .contains_key(destination);
+                    if known {
+                        Ok(())
+                    } else {
+                        Err(JobRejection::BadTarget.into())
+                    }
+                }
+                _ => Err(JobRejection::BadTarget.into()),
+            }
+        }
+        PlayerCommand::MoveShip { ship, destination } => {
+            let org = world
+                .get_resource::<PlayerHouse>()
+                .and_then(|p| p.0)
+                .ok_or(JobRejection::NoPlayerOrg)?;
+            let forces = world
+                .get_resource::<crate::forces::ForcesIndex>()
+                .ok_or(JobRejection::BadTarget)?;
+            let ok = forces
+                .ships
+                .get(ship)
+                .and_then(|e| world.get::<crate::forces::ShipRecord>(*e))
+                .is_some_and(|s| {
+                    s.owner == org
+                        && matches!(
+                            s.location,
+                            crate::forces::ShipLocation::Docked(at) if at != *destination
+                        )
+                })
+                && world
+                    .resource::<crate::map::MapIndex>()
+                    .provinces
+                    .contains_key(destination);
+            if ok {
+                Ok(())
+            } else {
+                Err(JobRejection::BadTarget.into())
+            }
+        }
+        PlayerCommand::DisbandArmy { army } => {
+            let org = world
+                .get_resource::<PlayerHouse>()
+                .and_then(|p| p.0)
+                .ok_or(JobRejection::NoPlayerOrg)?;
+            let owned = world
+                .get_resource::<crate::forces::ForcesIndex>()
+                .and_then(|forces| forces.armies.get(army).copied())
+                .and_then(|entity| world.get::<crate::forces::ArmyRecord>(entity))
+                .is_some_and(|a| a.owner == org);
+            if owned {
+                Ok(())
+            } else {
+                Err(JobRejection::BadJob.into())
+            }
+        }
     }
 }
 
@@ -219,6 +316,42 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
         PlayerCommand::AnswerPopup { popup, choice } => {
             let _ = jobs::answer_popup(world, *popup, choice);
         }
+        PlayerCommand::Travel {
+            character,
+            destination,
+        } => {
+            presence::begin_travel(world, *character, *destination);
+        }
+        PlayerCommand::MoveShip { ship, destination } => {
+            let date = world.resource::<CampaignClock>().date;
+            let entity = world
+                .get_resource::<crate::forces::ForcesIndex>()
+                .and_then(|forces| forces.ships.get(ship).copied());
+            if let Some(entity) = entity {
+                let from = match world
+                    .get::<crate::forces::ShipRecord>(entity)
+                    .map(|s| s.location)
+                {
+                    Some(crate::forces::ShipLocation::Docked(at)) => Some(at),
+                    _ => None,
+                };
+                if let Some(from) = from {
+                    // Ships cross space a third faster than liners.
+                    let days = (presence::travel_days(world, from, *destination) * 2 / 3).max(2);
+                    if let Some(mut ship_record) =
+                        world.get_mut::<crate::forces::ShipRecord>(entity)
+                    {
+                        ship_record.location = crate::forces::ShipLocation::Transit {
+                            to: *destination,
+                            arrives: date.add_days(days),
+                        };
+                    }
+                }
+            }
+        }
+        PlayerCommand::DisbandArmy { army } => {
+            crate::forces::disband_army(world, *army);
+        }
     }
 }
 
@@ -230,7 +363,13 @@ pub fn submit_command(
     command: PlayerCommand,
 ) -> Result<CommandEnvelope, CommandRejection> {
     validate_command(world, &command)?;
-    let day = world.resource::<CampaignClock>().date.add_days(1);
+    let actor = match &command {
+        PlayerCommand::StartJob { leader, .. } => Some(*leader),
+        PlayerCommand::Travel { character, .. } => Some(*character),
+        _ => None,
+    };
+    let delay = presence::order_delay(world, actor);
+    let day = world.resource::<CampaignClock>().date.add_days(1 + delay);
     let seq = {
         let mut log = world.resource_mut::<CommandLog>();
         let seq = log.next_seq;

@@ -617,7 +617,7 @@ entities:
 
   - component: physical-presence-and-order-delay
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Physical Presence and Order Delay
       summary: Every simulated character is physically present at a holding, on a celestial body, aboard a tracked ship, or in transit. Orders issued across distance are delayed; while a character is in space, all of that character's orders are delayed.
@@ -626,10 +626,16 @@ entities:
       kind: simulation-subsystem
       classification: domain
       authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_sim/src/presence.rs
+      tests:
+        - crates/aeon_sim/tests/logistics.rs
+      status: declared
 
   - component: tracked-starships
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Individually Tracked Starships
       summary: Starships are strategic assets represented and located individually in the simulation. Capital ships additionally have captains who are simulated characters.
@@ -638,6 +644,12 @@ entities:
       kind: simulation-subsystem
       classification: domain
       authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_sim/src/forces.rs
+      tests:
+        - crates/aeon_sim/tests/logistics.rs
+      status: declared
 
   - decision: presence-constrained-command
     core:
@@ -848,7 +860,7 @@ entities:
 
   - component: legitimacy-and-influence-model
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Legitimacy and Influence Model
       summary: Legitimacy is a non-spendable political standing that sets the player's maximum influence and its recharge rate. Influence is the spendable political resource.
@@ -857,10 +869,16 @@ entities:
       kind: simulation-subsystem
       classification: domain
       authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_sim/src/economy.rs
+      tests:
+        - crates/aeon_sim/tests/logistics.rs
+      status: declared
 
   - component: persistent-armies
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Persistent Armies
       summary: Armies are individual persistent assets. An army-formation job assigns a General, manpower, and supplies to create it; it then acts through bespoke jobs or standing-order-generated reactive jobs.
@@ -869,6 +887,12 @@ entities:
       kind: simulation-subsystem
       classification: domain
       authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_sim/src/forces.rs
+      tests:
+        - crates/aeon_sim/tests/logistics.rs
+      status: declared
 
   - decision: legitimacy-caps-and-regenerates-influence
     core:

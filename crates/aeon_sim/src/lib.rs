@@ -20,12 +20,15 @@
 pub mod clock;
 pub mod command;
 pub mod config;
+pub mod economy;
+pub mod forces;
 pub mod host;
 pub mod ids;
 pub mod jobs;
 pub mod map;
 pub mod persistence;
 pub mod politics;
+pub mod presence;
 pub mod snapshot;
 pub mod state;
 
@@ -34,14 +37,17 @@ use bevy::app::{App, Plugin};
 pub use clock::{CampaignClock, DailyTick, MonthlyPulse, TickSet, YearlyPulse, advance_one_day};
 pub use command::{CommandEnvelope, CommandRejection, PlayerCommand};
 pub use config::CampaignConfig;
+pub use economy::OrgResources;
+pub use forces::{ArmyRecord, ForcesIndex, ShipRecord};
 pub use host::SimHost;
-pub use ids::{BodyId, CharacterId, JobId, OfficeId, OrgId, ProvinceId, TitleId};
+pub use ids::{ArmyId, BodyId, CharacterId, JobId, OfficeId, OrgId, ProvinceId, ShipId, TitleId};
 pub use jobs::{ActiveJob, JobTarget, JobsIndex, MessageLog, PendingPopups};
 pub use map::{BodyRecord, DisplayName, GeoPosition, MapIndex, ProvinceRecord};
 pub use politics::{
     CampaignOver, CharacterRecord, OfficeRecord, OrgRecord, PlayerHouse, PoliticsIndex,
     TitleHolder, TitleKind, TitleRecord, opinion_between,
 };
+pub use presence::{CharacterLocation, Location};
 pub use snapshot::{CampaignSnapshot, CampaignState, SNAPSHOT_FORMAT_VERSION, SnapshotError};
 
 /// Root plugin installing the authoritative simulation into a Bevy [`App`].
@@ -58,6 +64,9 @@ impl Plugin for AeonSimPlugin {
         command::install(app);
         politics::install(app);
         jobs::install(app);
+        economy::install(app);
+        presence::install(app);
+        forces::install(app);
     }
 }
 

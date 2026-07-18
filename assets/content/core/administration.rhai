@@ -39,6 +39,7 @@ define_job(#{
     summary: "Send an envoy to soften another house's standing against you.",
     category: "consequential",
     duration_days: 45,
+    wealth_cost: 15,
     skill: "diplomacy",
     difficulty: 10,
     target: "organisation",
@@ -86,6 +87,7 @@ define_job(#{
     summary: "Pay respects, tithes, and flattery aboard the Spire.",
     category: "consequential",
     duration_days: 60,
+    wealth_cost: 25,
     skill: "diplomacy",
     difficulty: 12,
     risks: ["scandal"],
@@ -195,6 +197,7 @@ define_job(#{
     summary: "Seek the Consul's ear for your house's interests.",
     category: "consequential",
     duration_days: 30,
+    influence_cost: 10,
     skill: "diplomacy",
     difficulty: 14,
     risks: ["scandal"],
@@ -219,4 +222,39 @@ fn petition_success(ctx) {
 
 fn petition_disaster(ctx) {
     [#{ kind: "opinion", from: "consul", toward: "owner-head", amount: -10, days: 1080, reason: "petition" }]
+}
+
+define_job(#{
+    id: "muster-the-levies",
+    title: "Muster the Levies",
+    summary: "Raise a standing army under a general, with manpower and supplies from the house pool.",
+    category: "consequential",
+    duration_days: 40,
+    skill: "command",
+    difficulty: 8,
+    wealth_cost: 50,
+    influence_cost: 10,
+    risks: ["injury"],
+    ai_available: false,
+    results: #{
+        critical_success: #{
+            weight: 150, log: true,
+            log_text: "{leader} mustered an eager and well-found levy.",
+            effect_fn: "muster_crit",
+        },
+        success: #{
+            weight: 600, log: true,
+            log_text: "{leader} mustered the levies.",
+            effect_fn: "muster_success",
+        },
+        failure: #{ weight: 250 },
+    },
+});
+
+fn muster_crit(ctx) {
+    [#{ kind: "form-army", manpower: 700, supplies: 160 }]
+}
+
+fn muster_success(ctx) {
+    [#{ kind: "form-army", manpower: 500, supplies: 100 }]
 }

@@ -187,7 +187,7 @@ entities:
 
   - milestone: mvp-economy-and-local-travel
     core:
-      status: proposed
+      status: implemented
       confidence: confirmed
       title: "M6: Resources, Presence, Ships, and Local Travel"
       summary: >-
@@ -203,6 +203,18 @@ entities:
         - individually-tracked-ships
         - persistent-armies
         - mvp-local-system-scope
+    implementation:
+      paths:
+        - crates/aeon_sim/src/economy.rs
+        - crates/aeon_sim/src/presence.rs
+        - crates/aeon_sim/src/forces.rs
+      tests:
+        - crates/aeon_sim/tests/logistics.rs
+      status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/logistics.rs
+        summary: Tests verify monthly provincial production and influence recharge capped by legitimacy with the paramount-title bonus, job cost validation and deduction, army formation at the general's province with pool draws and disband returns, liner travel with transit and scheduled landfall, order delay for cross-body leaders and a head in space (recorded in command envelopes), ship movement and docking, upkeep, and snapshot fidelity with full determinism.
 
   - milestone: mvp-operational-warfare
     core:

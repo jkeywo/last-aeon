@@ -206,6 +206,9 @@ pub enum JobRejection {
     /// No such active job, or it is not the player's to cancel.
     #[error("no such active job for your organisation")]
     BadJob,
+    /// The organisation cannot pay the job's costs.
+    #[error("the organisation cannot afford this job")]
+    CannotAfford,
 }
 
 // ---------------------------------------------------------------------------
@@ -291,6 +294,24 @@ pub fn validate_start(
     if !target_valid(world, def, org, target) {
         return Err(JobRejection::BadTarget);
     }
+    let affordable = {
+        let index = world.resource::<PoliticsIndex>();
+        index
+            .orgs
+            .get(&org)
+            .and_then(|e| world.get::<crate::economy::OrgResources>(*e))
+            .is_some_and(|r| {
+                r.can_afford(
+                    def.wealth_cost,
+                    def.manpower_cost,
+                    def.supplies_cost,
+                    def.influence_cost,
+                )
+            })
+    };
+    if !affordable {
+        return Err(JobRejection::CannotAfford);
+    }
     Ok(())
 }
 
@@ -303,10 +324,25 @@ pub fn start_job(
     target: JobTarget,
 ) -> JobId {
     let date = world.resource::<CampaignClock>().date;
-    let duration = {
+    let (duration, costs) = {
         let content = world.resource::<ContentDb>();
-        i64::from(content.0.jobs[def_key].duration_days)
+        let def = &content.0.jobs[def_key];
+        (
+            i64::from(def.duration_days),
+            (
+                def.wealth_cost,
+                def.manpower_cost,
+                def.supplies_cost,
+                def.influence_cost,
+            ),
+        )
     };
+    {
+        let org_entity = world.resource::<PoliticsIndex>().orgs[&org];
+        if let Some(mut resources) = world.get_mut::<crate::economy::OrgResources>(org_entity) {
+            resources.spend(costs.0, costs.1, costs.2, costs.3);
+        }
+    }
     let id: JobId = world.resource_mut::<CampaignIds>().0.allocate();
     let entity = world
         .spawn(ActiveJob {
@@ -480,6 +516,46 @@ pub fn apply_effects(
                     text: message.clone(),
                     org: owner,
                 });
+            }
+            ScriptEffect::FormArmy { manpower, supplies } => {
+                let Some(owner) = owner else {
+                    continue;
+                };
+                let Some(general) = roles.leader else {
+                    continue;
+                };
+                // Validate against and deduct from the owner's pool;
+                // clamp to what actually exists.
+                let (manpower, supplies) = {
+                    let org_entity = world.resource::<PoliticsIndex>().orgs[&owner];
+                    let Some(mut resources) =
+                        world.get_mut::<crate::economy::OrgResources>(org_entity)
+                    else {
+                        continue;
+                    };
+                    let manpower = (*manpower).clamp(0, resources.manpower);
+                    let supplies = (*supplies).clamp(0, resources.supplies);
+                    resources.manpower -= manpower;
+                    resources.supplies -= supplies;
+                    (manpower, supplies)
+                };
+                if manpower == 0 {
+                    continue;
+                }
+                // The army musters where its general stands; a general in
+                // transit musters at the organisation's first holding.
+                let location = match crate::presence::character_location(world, general) {
+                    Some(crate::presence::Location::Province(province)) => Some(province),
+                    _ => {
+                        let index = world.resource::<PoliticsIndex>();
+                        let map = world.resource::<crate::map::MapIndex>();
+                        let _ = &index;
+                        map.province_ids.keys().next().copied()
+                    }
+                };
+                if let Some(location) = location {
+                    crate::forces::form_army(world, owner, general, manpower, supplies, location);
+                }
             }
             ScriptEffect::Opinion {
                 from,

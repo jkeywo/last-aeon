@@ -37,6 +37,14 @@ pub enum ScriptEffect {
         /// Stable reason tag.
         reason: String,
     },
+    /// Form a persistent army at the job leader's location, spending the
+    /// stated manpower and supplies from the owning organisation.
+    FormArmy {
+        /// Soldiers drawn from the organisation's manpower pool.
+        manpower: i64,
+        /// Supplies committed from the organisation's stores.
+        supplies: i64,
+    },
 }
 
 /// Why a script's returned effects were rejected.
@@ -151,6 +159,22 @@ pub fn parse_effects(value: Dynamic) -> Result<Vec<ScriptEffect>, EffectParseErr
                     amount: amount as i32,
                     days,
                     reason: get_str("reason")?,
+                });
+            }
+            "form-army" => {
+                let get_int = |field: &str| {
+                    map.get(field).and_then(|v| v.as_int().ok()).ok_or_else(|| {
+                        EffectParseError::BadField {
+                            index,
+                            kind: kind.clone(),
+                            field: field.to_owned(),
+                            expected: "integer".to_owned(),
+                        }
+                    })
+                };
+                effects.push(ScriptEffect::FormArmy {
+                    manpower: get_int("manpower")?,
+                    supplies: get_int("supplies")?,
                 });
             }
             other => {

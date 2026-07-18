@@ -489,3 +489,60 @@ entities:
         - organisation-agency-model
         - character-led-jobs-are-primary-actions
         - notable-results-are-logged
+
+  - decision: abstract-liner-travel-tracked-military-ships
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Personal Travel Is Abstract; Tracked Ships Are Strategic Assets
+      summary: >-
+        Characters travel between provinces on abstract scheduled liners
+        (three days locally, four plus an orbital-distance term across
+        bodies); individually tracked ships are the strategic assets that
+        move a third faster, carry military weight, and give capital
+        captains their simulated role. This keeps the presence and delay
+        model complete without coupling every journey to fleet management.
+      rationale:
+        - The vision requires presence and delay to bite and ships to be individual assets; it does not require personal journeys to consume fleet logistics, which would punish delegation.
+      references:
+        - physical-presence-and-order-delay
+        - individually-tracked-ships
+        - tracked-starships
+
+  - decision: order-delay-formula
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Order Delay from Head Transit and Body Separation
+      summary: >-
+        Player commands execute after one day plus delays computed at
+        submission and recorded in the command envelope: a head in space
+        delays every order until the day after arrival, and orders to a
+        character on another body add half the liner travel time between
+        the bodies. Recording the delay in the envelope keeps replay
+        byte-identical.
+      rationale:
+        - Computing delay at submission makes the cost of distance visible when the order is given, which is what makes location a strategic commitment.
+      references:
+        - presence-constrained-command
+        - physical-presence-and-order-delay
+        - deterministic-seed-and-command-replay
+
+  - decision: army-formation-through-job-effects
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Armies Form Through Job Effects, Drawing Pools at Muster
+      summary: >-
+        Army-formation jobs pay their wealth and influence costs at start;
+        the form-army script effect then draws manpower and supplies from
+        the owner's pools at resolution, clamped to what exists, and
+        musters the army where its general stands. Armies eat from their
+        own trains monthly and waste away when the train is dry;
+        disbanding returns soldiers to the pool.
+      rationale:
+        - Drawing troops at muster rather than commitment means a failed muster costs money and standing but not the levy itself, which reads as the fiction intends.
+      references:
+        - persistent-armies
+        - effects-returned-not-emitted
+        - legitimacy-caps-and-regenerates-influence

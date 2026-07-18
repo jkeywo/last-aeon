@@ -156,6 +156,14 @@ pub struct JobDef {
     pub risks: Vec<RiskTag>,
     /// Whether autonomous organisations may start this job.
     pub ai_available: bool,
+    /// Wealth deducted when the job starts.
+    pub wealth_cost: i64,
+    /// Manpower committed when the job starts.
+    pub manpower_cost: i64,
+    /// Supplies consumed when the job starts.
+    pub supplies_cost: i64,
+    /// Influence spent when the job starts.
+    pub influence_cost: i64,
     /// Possible outcomes, keyed by kind. Success and failure are mandatory.
     pub results: BTreeMap<JobResultKind, JobResultDef>,
 }
@@ -204,6 +212,12 @@ pub struct ProvinceDef {
     pub latitude_mdeg: i32,
     /// Longitude of the province centre in millidegrees, -180000..180000.
     pub longitude_mdeg: i32,
+    /// Monthly wealth output.
+    pub wealth_output: i64,
+    /// Monthly manpower output.
+    pub manpower_output: i64,
+    /// Monthly supplies output.
+    pub supplies_output: i64,
 }
 
 /// Scenario metadata. Extended by the authored-scenario milestone.
@@ -246,6 +260,8 @@ pub struct ContentSet {
     pub titles: BTreeMap<ContentKey, TitleDef>,
     /// Offices by key.
     pub offices: BTreeMap<ContentKey, OfficeDef>,
+    /// Ships by key.
+    pub ships: BTreeMap<ContentKey, ShipDef>,
     /// The scenario, if this content set defines one.
     pub scenario: Option<ScenarioDef>,
     /// Compiled ASTs by content-relative path, for runtime function calls.
@@ -267,6 +283,7 @@ impl ContentSet {
             && self.organisations == other.organisations
             && self.titles == other.titles
             && self.offices == other.offices
+            && self.ships == other.ships
             && self.scenario == other.scenario
             && self.content_hash == other.content_hash
     }
@@ -390,6 +407,15 @@ pub struct OrgDef {
     pub liege: Option<ContentKey>,
     /// Family surname, used to name children born during play.
     pub surname: Option<String>,
+    /// Starting wealth.
+    pub wealth: i64,
+    /// Starting manpower.
+    pub manpower: i64,
+    /// Starting supplies.
+    pub supplies: i64,
+    /// Non-spendable political standing, 0..=100; caps and recharges
+    /// influence.
+    pub legitimacy: i32,
     /// The character who leads at campaign start.
     pub head: Option<ContentKey>,
     /// Provinces this organisation holds at campaign start.
@@ -436,6 +462,35 @@ pub enum TitleHolderDef {
     Character(ContentKey),
     /// Vacant or contested.
     Vacant,
+}
+
+/// A starship's broad class.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ShipClass {
+    /// A capital ship; its captain is a simulated character.
+    Capital,
+    /// A troop and cargo carrier.
+    Transport,
+    /// A light patrol vessel.
+    Patrol,
+}
+
+/// An authored starship.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ShipDef {
+    /// The ship's stable content key.
+    pub key: ContentKey,
+    /// Player-facing name.
+    pub name: String,
+    /// Broad class.
+    pub class: ShipClass,
+    /// Owning organisation.
+    pub owner: ContentKey,
+    /// Captain; required for capital ships.
+    pub captain: Option<ContentKey>,
+    /// Starting dock province.
+    pub location: ContentKey,
 }
 
 /// An authored office: a revocable appointment held by a character.

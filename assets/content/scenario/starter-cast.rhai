@@ -244,3 +244,35 @@ define_character(#{
     traits: ["devout", "forthright"],
     skills: #{ command: 2, diplomacy: 9, intrigue: 7, stewardship: 10 },
 });
+
+// --- Ship captains ---
+define_character(#{
+    id: "captain-vashk", name: "Captain Oren Vashk", gender: "male",
+    birth_year: 378, birth_month: 2, birth_day: 6, organisation: "veyrin",
+    traits: ["bold"],
+    skills: #{ command: 10, diplomacy: 4, intrigue: 3, stewardship: 6 },
+});
+define_character(#{
+    id: "captain-thessaly", name: "Captain Mira Thessaly", gender: "female",
+    birth_year: 382, birth_month: 6, birth_day: 21, organisation: "sanctora-imperim",
+    traits: ["wary", "devout"],
+    skills: #{ command: 12, diplomacy: 5, intrigue: 4, stewardship: 7 },
+});
+
+// --- Ships ---
+define_ship(#{
+    id: "ember-crown", name: "The Ember Crown", class: "capital",
+    owner: "veyrin", captain: "captain-vashk", location: "karvessa",
+});
+define_ship(#{
+    id: "aurelias-writ", name: "Aurelia's Writ", class: "capital",
+    owner: "sanctora-imperim", captain: "captain-thessaly", location: "spire-decks",
+});
+define_ship(#{
+    id: "redwater-runner", name: "Redwater Runner", class: "transport",
+    owner: "harrow", location: "hyperions-rest",
+});
+define_ship(#{
+    id: "pale-lantern", name: "Pale Lantern", class: "patrol",
+    owner: "draksha", location: "palensk",
+});

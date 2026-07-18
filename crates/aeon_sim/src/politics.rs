@@ -310,18 +310,62 @@ pub fn spawn_from_content(world: &mut World, content: &ContentSet) {
         index.characters.insert(id, entity);
     }
 
+    // Character locations: members start at their organisation's first
+    // held province; everyone else at the map's first province.
+    let map_index = world.resource::<crate::map::MapIndex>().clone();
+    let fallback_province = map_index.province_ids.keys().next().copied();
+    let mut org_homes: BTreeMap<OrgId, crate::ids::ProvinceId> = BTreeMap::new();
+    for (key, def) in &content.organisations {
+        let org_id = index.org_keys[key];
+        let home = def
+            .provinces
+            .iter()
+            .map(|p| map_index.province_keys[p])
+            .min()
+            .or(fallback_province);
+        if let Some(home) = home {
+            org_homes.insert(org_id, home);
+        }
+    }
+    for (key, def) in &content.characters {
+        let id = index.character_keys[key];
+        let entity = index.characters[&id];
+        let home = def
+            .organisation
+            .as_ref()
+            .map(|o| index.org_keys[o])
+            .and_then(|org| org_homes.get(&org).copied())
+            .or(fallback_province);
+        if let Some(home) = home {
+            world
+                .entity_mut(entity)
+                .insert(crate::presence::CharacterLocation(
+                    crate::presence::Location::Province(home),
+                ));
+        }
+    }
+
     for (key, def) in &content.organisations {
         let id = index.org_keys[key];
         let entity = world
-            .spawn(OrgRecord {
-                id,
-                key: key.clone(),
-                kind: def.kind,
-                tier: def.tier,
-                liege: def.liege.as_ref().map(|l| index.org_keys[l]),
-                head: def.head.as_ref().map(|h| index.character_keys[h]),
-                defunct: false,
-            })
+            .spawn((
+                OrgRecord {
+                    id,
+                    key: key.clone(),
+                    kind: def.kind,
+                    tier: def.tier,
+                    liege: def.liege.as_ref().map(|l| index.org_keys[l]),
+                    head: def.head.as_ref().map(|h| index.character_keys[h]),
+                    defunct: false,
+                },
+                crate::economy::OrgResources {
+                    wealth: def.wealth,
+                    manpower: def.manpower,
+                    supplies: def.supplies,
+                    influence: i64::from(def.legitimacy),
+                    legitimacy: def.legitimacy,
+                },
+            ))
             .id();
         index.orgs.insert(id, entity);
     }
@@ -464,6 +508,9 @@ pub struct CharacterState {
     /// Temporary incapacitating conditions.
     #[serde(default)]
     pub condition: crate::jobs::CharacterCondition,
+    /// Physical location, if tracked.
+    #[serde(default)]
+    pub location: Option<crate::presence::Location>,
 }
 
 /// Serialised organisation (mutable facts only; the rest is content).
@@ -479,6 +526,9 @@ pub struct OrgState {
     pub head: Option<CharacterId>,
     /// Whether the organisation has failed.
     pub defunct: bool,
+    /// Strategic resources.
+    #[serde(default)]
+    pub resources: crate::economy::OrgResources,
 }
 
 /// Serialised title.
@@ -551,6 +601,9 @@ pub fn capture_politics(world: &World) -> PoliticsState {
             .get::<crate::jobs::CharacterCondition>(*entity)
             .copied()
             .unwrap_or_default();
+        let location = world
+            .get::<crate::presence::CharacterLocation>(*entity)
+            .map(|l| l.0);
         characters.push(CharacterState {
             id: record.id,
             key: record.key.clone(),
@@ -565,6 +618,7 @@ pub fn capture_politics(world: &World) -> PoliticsState {
             spouse: lineage.spouse,
             opinions: opinions.0.clone(),
             condition,
+            location,
         });
     }
 
@@ -579,6 +633,10 @@ pub fn capture_politics(world: &World) -> PoliticsState {
                 liege: record.liege,
                 head: record.head,
                 defunct: record.defunct,
+                resources: world
+                    .get::<crate::economy::OrgResources>(*entity)
+                    .copied()
+                    .unwrap_or_default(),
             }
         })
         .collect();
@@ -653,6 +711,11 @@ pub fn restore_politics(world: &mut World, state: &PoliticsState, content: &Cont
                 character.condition,
             ))
             .id();
+        if let Some(location) = character.location {
+            world
+                .entity_mut(entity)
+                .insert(crate::presence::CharacterLocation(location));
+        }
         index.characters.insert(character.id, entity);
         if let Some(key) = &character.key {
             index.character_keys.insert(key.clone(), character.id);
@@ -665,15 +728,18 @@ pub fn restore_politics(world: &mut World, state: &PoliticsState, content: &Cont
             .get(&org.key)
             .expect("hash-verified content defines every persisted organisation");
         let entity = world
-            .spawn(OrgRecord {
-                id: org.id,
-                key: org.key.clone(),
-                kind: def.kind,
-                tier: def.tier,
-                liege: org.liege,
-                head: org.head,
-                defunct: org.defunct,
-            })
+            .spawn((
+                OrgRecord {
+                    id: org.id,
+                    key: org.key.clone(),
+                    kind: def.kind,
+                    tier: def.tier,
+                    liege: org.liege,
+                    head: org.head,
+                    defunct: org.defunct,
+                },
+                org.resources,
+            ))
             .id();
         index.orgs.insert(org.id, entity);
         index.org_keys.insert(org.key.clone(), org.id);
@@ -1492,6 +1558,21 @@ fn spawn_child(
             crate::jobs::CharacterCondition::default(),
         ))
         .id();
+    let mother_home = {
+        let index = world.resource::<PoliticsIndex>();
+        index
+            .characters
+            .get(&mother)
+            .and_then(|e| world.get::<crate::presence::CharacterLocation>(*e))
+            .map(|l| l.0)
+    };
+    if let Some(crate::presence::Location::Province(province)) = mother_home {
+        world
+            .entity_mut(entity)
+            .insert(crate::presence::CharacterLocation(
+                crate::presence::Location::Province(province),
+            ));
+    }
     world
         .resource_mut::<PoliticsIndex>()
         .characters

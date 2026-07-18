@@ -111,9 +111,11 @@ impl SimHost {
         let map_state = state.map.clone();
         let politics_state = state.politics.clone();
         let jobs_state = state.jobs.clone();
+        let forces_state = state.forces.clone();
         restore_state(app.world_mut(), state);
         crate::map::restore_map(app.world_mut(), &map_state, &content);
         crate::politics::restore_politics(app.world_mut(), &politics_state, &content);
+        crate::forces::restore_forces(app.world_mut(), &forces_state, &content);
         crate::jobs::restore_jobs(app.world_mut(), &jobs_state);
         app.world_mut()
             .insert_resource(crate::jobs::ScriptRuntime(aeon_data::ScriptHost::new()));

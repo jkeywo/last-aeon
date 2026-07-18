@@ -24,8 +24,8 @@ use crate::key::ContentKey;
 use crate::model::{
     BodyDef, BodyKind, CharacterDef, ContentSet, Gender, GoverningSkill, HouseTier, JobCategory,
     JobDef, JobResultDef, JobResultKind, JobTargetKind, NamePoolDef, OfficeDef, OrgDef, OrgKind,
-    PopupChoiceDef, ProvinceDef, RiskTag, ScenarioDef, ScriptFnRef, SkillsDef, TitleDef,
-    TitleHolderDef, TitleKindDef, TraitDef,
+    PopupChoiceDef, ProvinceDef, RiskTag, ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SkillsDef,
+    TitleDef, TitleHolderDef, TitleKindDef, TraitDef,
 };
 use crate::report::{ContentReport, Severity};
 
@@ -88,6 +88,7 @@ struct BuilderState {
     organisations: BTreeMap<ContentKey, OrgDef>,
     titles: BTreeMap<ContentKey, TitleDef>,
     offices: BTreeMap<ContentKey, OfficeDef>,
+    ships: BTreeMap<ContentKey, ShipDef>,
     scenario: Option<ScenarioDef>,
 }
 
@@ -211,6 +212,10 @@ fn define_job(state: &mut BuilderState, map: Map) {
             "target",
             "risks",
             "ai_available",
+            "wealth_cost",
+            "manpower_cost",
+            "supplies_cost",
+            "influence_cost",
             "results",
         ],
     );
@@ -310,6 +315,14 @@ fn define_job(state: &mut BuilderState, map: Map) {
     risks.sort();
     risks.dedup();
     let Some(ai_available) = opt_bool(state, &map, "ai_available", true) else {
+        return;
+    };
+    let (Some(wealth_cost), Some(manpower_cost), Some(supplies_cost), Some(influence_cost)) = (
+        opt_int(state, &map, "wealth_cost", 0),
+        opt_int(state, &map, "manpower_cost", 0),
+        opt_int(state, &map, "supplies_cost", 0),
+        opt_int(state, &map, "influence_cost", 0),
+    ) else {
         return;
     };
 
@@ -514,6 +527,10 @@ fn define_job(state: &mut BuilderState, map: Map) {
             target,
             risks,
             ai_available,
+            wealth_cost,
+            manpower_cost,
+            supplies_cost,
+            influence_cost,
             results,
         },
     );
@@ -611,7 +628,16 @@ fn define_province(state: &mut BuilderState, map: Map) {
         state,
         &map,
         Some(key.as_str()),
-        &["id", "name", "body", "latitude_mdeg", "longitude_mdeg"],
+        &[
+            "id",
+            "name",
+            "body",
+            "latitude_mdeg",
+            "longitude_mdeg",
+            "wealth_output",
+            "manpower_output",
+            "supplies_output",
+        ],
     );
     let Some(name) = req_str(state, &map, "name") else {
         return;
@@ -640,6 +666,13 @@ fn define_province(state: &mut BuilderState, map: Map) {
         state.error(Some(key.as_str()), "longitude_mdeg must be -180000..180000");
         return;
     }
+    let (Some(wealth_output), Some(manpower_output), Some(supplies_output)) = (
+        opt_int(state, &map, "wealth_output", 10),
+        opt_int(state, &map, "manpower_output", 10),
+        opt_int(state, &map, "supplies_output", 10),
+    ) else {
+        return;
+    };
 
     if state.provinces.contains_key(&key) {
         state.error(Some(key.as_str()), "duplicate province id");
@@ -653,6 +686,9 @@ fn define_province(state: &mut BuilderState, map: Map) {
             body,
             latitude_mdeg: latitude_mdeg as i32,
             longitude_mdeg: longitude_mdeg as i32,
+            wealth_output,
+            manpower_output,
+            supplies_output,
         },
     );
 }
@@ -997,6 +1033,10 @@ fn define_house(state: &mut BuilderState, map: Map) {
             "head",
             "provinces",
             "color",
+            "wealth",
+            "manpower",
+            "supplies",
+            "legitimacy",
         ],
     );
     let Some(name) = req_str(state, &map, "name") else {
@@ -1039,6 +1079,9 @@ fn define_house(state: &mut BuilderState, map: Map) {
     let Some(color) = org_color(state, &map, &key) else {
         return;
     };
+    let Some((wealth, manpower, supplies, legitimacy)) = org_resources(state, &map, &key) else {
+        return;
+    };
     insert_org(
         state,
         OrgDef {
@@ -1051,8 +1094,33 @@ fn define_house(state: &mut BuilderState, map: Map) {
             head,
             provinces,
             color,
+            wealth,
+            manpower,
+            supplies,
+            legitimacy,
         },
     );
+}
+
+/// Reads starting resources and legitimacy for an organisation.
+fn org_resources(
+    state: &mut BuilderState,
+    map: &Map,
+    key: &ContentKey,
+) -> Option<(i64, i64, i64, i32)> {
+    let (Some(wealth), Some(manpower), Some(supplies), Some(legitimacy)) = (
+        opt_int(state, map, "wealth", 100),
+        opt_int(state, map, "manpower", 1000),
+        opt_int(state, map, "supplies", 200),
+        opt_int(state, map, "legitimacy", 50),
+    ) else {
+        return None;
+    };
+    if !(0..=100).contains(&legitimacy) {
+        state.error(Some(key.as_str()), "legitimacy must be 0..=100");
+        return None;
+    }
+    Some((wealth, manpower, supplies, legitimacy as i32))
 }
 
 fn string_list(state: &mut BuilderState, map: &Map, field: &str) -> Option<Vec<String>> {
@@ -1111,7 +1179,18 @@ fn define_organisation(state: &mut BuilderState, map: Map) {
         state,
         &map,
         Some(key.as_str()),
-        &["id", "name", "kind", "head", "provinces", "color"],
+        &[
+            "id",
+            "name",
+            "kind",
+            "head",
+            "provinces",
+            "color",
+            "wealth",
+            "manpower",
+            "supplies",
+            "legitimacy",
+        ],
     );
     let Some(name) = req_str(state, &map, "name") else {
         return;
@@ -1145,6 +1224,9 @@ fn define_organisation(state: &mut BuilderState, map: Map) {
     let Some(color) = org_color(state, &map, &key) else {
         return;
     };
+    let Some((wealth, manpower, supplies, legitimacy)) = org_resources(state, &map, &key) else {
+        return;
+    };
     insert_org(
         state,
         OrgDef {
@@ -1157,6 +1239,64 @@ fn define_organisation(state: &mut BuilderState, map: Map) {
             head,
             provinces,
             color,
+            wealth,
+            manpower,
+            supplies,
+            legitimacy,
+        },
+    );
+}
+
+fn define_ship(state: &mut BuilderState, map: Map) {
+    let Some(key) = req_key(state, &map) else {
+        return;
+    };
+    warn_unknown_fields(
+        state,
+        &map,
+        Some(key.as_str()),
+        &["id", "name", "class", "owner", "captain", "location"],
+    );
+    let Some(name) = req_str(state, &map, "name") else {
+        return;
+    };
+    let Some(class_raw) = req_str(state, &map, "class") else {
+        return;
+    };
+    let class = match class_raw.as_str() {
+        "capital" => ShipClass::Capital,
+        "transport" => ShipClass::Transport,
+        "patrol" => ShipClass::Patrol,
+        other => {
+            state.error(
+                Some(key.as_str()),
+                format!("unknown ship class '{other}' (expected capital, transport, patrol)"),
+            );
+            return;
+        }
+    };
+    let Some(owner) = req_key_field(state, &map, "owner") else {
+        return;
+    };
+    let Some(captain) = opt_key(state, &map, "captain") else {
+        return;
+    };
+    let Some(location) = req_key_field(state, &map, "location") else {
+        return;
+    };
+    if state.ships.contains_key(&key) {
+        state.error(Some(key.as_str()), "duplicate ship id");
+        return;
+    }
+    state.ships.insert(
+        key.clone(),
+        ShipDef {
+            key,
+            name,
+            class,
+            owner,
+            captain,
+            location,
         },
     );
 }
@@ -1338,6 +1478,11 @@ fn loading_engine(state: Arc<Mutex<BuilderState>>) -> Engine {
         let mut s = name_pool_state.lock().expect("builder state lock");
         define_name_pool(&mut s, map);
     });
+    let ship_state = state.clone();
+    engine.register_fn("define_ship", move |map: Map| {
+        let mut s = ship_state.lock().expect("builder state lock");
+        define_ship(&mut s, map);
+    });
     engine
 }
 
@@ -1421,6 +1566,7 @@ pub fn load_content(sources: &[ContentSource]) -> (Option<ContentSet>, ContentRe
         organisations: builder.organisations,
         titles: builder.titles,
         offices: builder.offices,
+        ships: builder.ships,
         scenario: builder.scenario,
         asts,
         content_hash: content_hash(&sources),
@@ -1443,6 +1589,7 @@ impl BuilderState {
             organisations: std::mem::take(&mut self.organisations),
             titles: std::mem::take(&mut self.titles),
             offices: std::mem::take(&mut self.offices),
+            ships: std::mem::take(&mut self.ships),
             scenario: self.scenario.take(),
         }
     }
@@ -1717,6 +1864,24 @@ fn validate_political_references(
             && !builder.characters.contains_key(holder)
         {
             err(key, format!("holder '{holder}' is not defined"));
+        }
+    }
+
+    for (key, ship) in &builder.ships {
+        if !builder.organisations.contains_key(&ship.owner) {
+            err(key, format!("owner '{}' is not defined", ship.owner));
+        }
+        if !builder.provinces.contains_key(&ship.location) {
+            err(key, format!("location '{}' is not defined", ship.location));
+        }
+        match (&ship.class, &ship.captain) {
+            (ShipClass::Capital, None) => {
+                err(key, "capital ships must have a captain".to_owned());
+            }
+            (_, Some(captain)) if !builder.characters.contains_key(captain) => {
+                err(key, format!("captain '{captain}' is not defined"));
+            }
+            _ => {}
         }
     }
 
