@@ -52,6 +52,24 @@ pub enum ScriptEffect {
     /// Collect Imperial tithes: every house pays a twentieth of its
     /// wealth to the owner. Valid only for the Sanctora Imperim.
     CollectTithes,
+    /// Create or settle a political obligation between the houses behind
+    /// two job-context roles.
+    Obligation {
+        /// What to do to the ledger.
+        action: ObligationAction,
+        /// Which kind of obligation: favour, promise, or grievance.
+        kind: String,
+        /// Role whose house owes, or is resented.
+        debtor: String,
+        /// Role whose house is owed, or resents.
+        creditor: String,
+        /// How much it weighs.
+        weight: i32,
+        /// Days until it lapses; `None` never lapses.
+        days: Option<i64>,
+        /// Where it came from, in plain words.
+        origin: String,
+    },
     /// Change provincial order, either where the job acted or across
     /// every province the owner holds.
     Order {
@@ -60,6 +78,17 @@ pub enum ScriptEffect {
         /// Signed change, in order points.
         amount: i32,
     },
+}
+
+/// What an [`ScriptEffect::Obligation`] does to the ledger.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ObligationAction {
+    /// Record a new obligation.
+    Create,
+    /// Mark an existing one honoured.
+    Fulfil,
+    /// Mark an existing one repudiated.
+    Break,
 }
 
 /// Which provinces an [`ScriptEffect::Order`] applies to.
@@ -205,6 +234,55 @@ pub fn parse_effects(value: Dynamic) -> Result<Vec<ScriptEffect>, EffectParseErr
                 effects.push(ScriptEffect::FormArmy {
                     manpower: get_int("manpower")?,
                     supplies: get_int("supplies")?,
+                });
+            }
+            "obligation" => {
+                let get_str = |field: &str| -> Result<String, EffectParseError> {
+                    map.get(field)
+                        .and_then(|v| v.clone().into_string().ok())
+                        .ok_or_else(|| EffectParseError::BadField {
+                            index,
+                            kind: kind.clone(),
+                            field: field.to_owned(),
+                            expected: "string".to_owned(),
+                        })
+                };
+                let action = match get_str("action")?.as_str() {
+                    "create" => ObligationAction::Create,
+                    "fulfil" => ObligationAction::Fulfil,
+                    "break" => ObligationAction::Break,
+                    _ => {
+                        return Err(EffectParseError::BadField {
+                            index,
+                            kind: kind.clone(),
+                            field: "action".to_owned(),
+                            expected: "\"create\", \"fulfil\" or \"break\"".to_owned(),
+                        });
+                    }
+                };
+                let obligation_kind = get_str("obligation")?;
+                if !["favour", "promise", "grievance"].contains(&obligation_kind.as_str()) {
+                    return Err(EffectParseError::BadField {
+                        index,
+                        kind: kind.clone(),
+                        field: "obligation".to_owned(),
+                        expected: "\"favour\", \"promise\" or \"grievance\"".to_owned(),
+                    });
+                }
+                effects.push(ScriptEffect::Obligation {
+                    action,
+                    kind: obligation_kind,
+                    debtor: get_str("debtor")?,
+                    creditor: get_str("creditor")?,
+                    weight: map
+                        .get("weight")
+                        .and_then(|v| v.as_int().ok())
+                        .unwrap_or(20) as i32,
+                    days: map.get("days").and_then(|v| v.as_int().ok()),
+                    origin: map
+                        .get("origin")
+                        .and_then(|v| v.clone().into_string().ok())
+                        .unwrap_or_else(|| "a past dealing".to_owned()),
                 });
             }
             "order" => {

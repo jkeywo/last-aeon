@@ -499,3 +499,57 @@ define_army(#{
     owner: "sanctora-imperim", general: "commander-dray", province: "spire-decks",
     manpower: 700, supplies: 180,
 });
+
+// ---------------------------------------------------------------------------
+// Standing obligations
+//
+// The succession does not begin from nothing: the houses arrive owing and
+// resenting one another. These are political facts, separate from opinion —
+// a house may loathe its creditor and still be bound.
+// ---------------------------------------------------------------------------
+
+define_obligation(#{
+    id: "harrow-owes-veyrin",
+    kind: "favour", debtor: "harrow", creditor: "veyrin", weight: 30,
+    origin: "Veyrin gold paid the Harrow levies through the last dearth",
+});
+define_obligation(#{
+    id: "veyrin-owes-calder",
+    kind: "favour", debtor: "veyrin", creditor: "calder", weight: 25,
+    origin: "Calder ships carried the Veyrin household through the blockade of 402",
+});
+define_obligation(#{
+    id: "draksha-promise-koszev",
+    kind: "promise", debtor: "draksha", creditor: "koszev", weight: 35, days: 1440,
+    origin: "Draksha swore Koszev a seat at the Consulate table",
+});
+define_obligation(#{
+    id: "meloch-promise-emberlyn",
+    kind: "promise", debtor: "meloch", creditor: "emberlyn", weight: 30, days: 1080,
+    origin: "Meloch promised Emberlyn the revenues of the Ashen Reach",
+});
+define_obligation(#{
+    id: "rusk-resents-draksha",
+    kind: "grievance", debtor: "draksha", creditor: "rusk", weight: 40,
+    origin: "Draksha hanged two Rusk cousins after the Thassik affair",
+});
+define_obligation(#{
+    id: "skarn-resents-meloch",
+    kind: "grievance", debtor: "meloch", creditor: "skarn", weight: 30,
+    origin: "Meloch took Ulmgorn from Skarn hands within living memory",
+});
+define_obligation(#{
+    id: "pell-resents-veyrin",
+    kind: "grievance", debtor: "veyrin", creditor: "pell", weight: 35,
+    origin: "Veyrin barred Pell from the Consular lists for a generation",
+});
+define_obligation(#{
+    id: "szel-owes-sanctora",
+    kind: "favour", debtor: "szel", creditor: "sanctora-imperim", weight: 20,
+    origin: "The Sanctora forgave the Szel tithe arrears of 407",
+});
+define_obligation(#{
+    id: "okonn-resents-vantar",
+    kind: "grievance", debtor: "vantar", creditor: "okonn", weight: 25,
+    origin: "A Vantar marriage suit to Okonn was broken off in insult",
+});

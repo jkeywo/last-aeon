@@ -49,6 +49,12 @@ pub struct CampaignState {
     pub jobs: crate::jobs::JobsState,
     /// Ships and armies.
     pub forces: crate::forces::ForcesState,
+    /// The political obligation ledger.
+    #[serde(default)]
+    pub obligations: crate::obligations::Obligations,
+    /// Contextual-event cooldowns and history.
+    #[serde(default)]
+    pub events: crate::events::EventState,
     /// Next command sequence number.
     pub next_command_seq: u64,
     /// Commands accepted but not yet applied, in `(day, seq)` order.
@@ -136,6 +142,8 @@ pub fn capture_state(world: &World) -> CampaignState {
         politics: crate::politics::capture_politics(world),
         jobs: crate::jobs::capture_jobs(world),
         forces: crate::forces::capture_forces(world),
+        obligations: crate::obligations::capture(world),
+        events: crate::events::capture(world),
         next_command_seq: log.next_seq,
         pending_commands: world.resource::<PendingCommands>().entries().to_vec(),
         applied_commands: log.applied.clone(),
@@ -188,4 +196,6 @@ pub fn restore_state(world: &mut World, state: CampaignState) {
         next_seq: state.next_command_seq,
         applied: state.applied_commands,
     });
+    crate::obligations::restore(world, &state.obligations);
+    crate::events::restore(world, &state.events);
 }

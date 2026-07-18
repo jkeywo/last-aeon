@@ -18,6 +18,7 @@ use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
 use aeon_sim::forecast::Permille;
 use aeon_sim::jobs::CharacterCondition;
 use aeon_sim::map::{BodyRecord, DisplayName, GeoPosition, ProvinceRecord};
+use aeon_sim::obligations::{ObligationRecord, Obligations};
 use aeon_sim::order::{ORDER_MAX, ProvincialOrder};
 use aeon_sim::politics::{
     ADULT_AGE, CharacterSkills, CharacterTraits, CharacterView, Lineage, OpinionLedger, opinion_of,
@@ -199,6 +200,7 @@ pub struct PanelData<'w, 's> {
     conditions: Query<'w, 's, &'static CharacterCondition>,
     active_jobs: Query<'w, 's, &'static ActiveJob>,
     order: Query<'w, 's, (&'static ProvinceRecord, &'static ProvincialOrder)>,
+    obligations: Option<Res<'w, Obligations>>,
 }
 
 /// What the inspector's context-job section is anchored to.
@@ -1426,6 +1428,72 @@ pub fn draw_panels(
                                     .filter(|t| t.holder == TitleHolder::Org(id))
                                     .count();
                                 ui.label(format!("Titles held: {held}"));
+
+                                // Standing obligations: what this house is
+                                // bound by, kept apart from what it feels.
+                                if let Some(ledger) = &data.obligations {
+                                    let mut entries: Vec<&ObligationRecord> =
+                                        ledger.involving(id).collect();
+                                    entries.sort_by_key(|entry| (entry.kind, entry.id));
+                                    if !entries.is_empty() {
+                                        ui.separator();
+                                        ui.label("Obligations:").on_hover_text(
+                                            "Favours, promises and grievances binding this                                              house. These are political facts, separate                                              from how anyone feels: a house may dislike                                              its creditor and still owe it.",
+                                        );
+                                        for entry in entries {
+                                            let other = if entry.debtor == id {
+                                                entry.creditor
+                                            } else {
+                                                entry.debtor
+                                            };
+                                            let owes_out = entry.debtor == id;
+                                            let colour = match (entry.kind, owes_out) {
+                                                (aeon_sim::ObligationKind::Grievance, _) => {
+                                                    egui::Color32::from_rgb(224, 130, 120)
+                                                }
+                                                (_, true) => egui::Color32::from_rgb(224, 190, 120),
+                                                (_, false) => egui::Color32::from_rgb(150, 200, 150),
+                                            };
+                                            let mut detail = format!(
+                                                "{}
+Origin: {}",
+                                                entry.summary(|org| org_name(
+                                                    &content.0,
+                                                    &org_records,
+                                                    org
+                                                )),
+                                                entry.origin
+                                            );
+                                            match entry.expires {
+                                                Some(expiry) => detail.push_str(&format!(
+                                                    "
+Lapses {expiry} ({} days)",
+                                                    date.days_until(expiry).max(0)
+                                                )),
+                                                None => {
+                                                    detail.push_str("
+Stands until settled")
+                                                }
+                                            }
+                                            detail.push_str(&format!("
+Weight {}", entry.weight));
+                                            ui.horizontal(|ui| {
+                                                ui.colored_label(
+                                                    colour,
+                                                    format!(
+                                                        "{} {}",
+                                                        entry.kind.label(),
+                                                        if owes_out { "to" } else { "from" }
+                                                    ),
+                                                )
+                                                .on_hover_text(&detail);
+                                                if linked(ui, &org_label(other), &org_hover(other)) {
+                                                    view.selected = Some(Selection::Org(other));
+                                                }
+                                            });
+                                        }
+                                    }
+                                }
 
                                 ui.separator();
                                 ui.label("Members:");

@@ -81,6 +81,11 @@ fn log(world: &mut World, org: Option<OrgId>, text: String) {
         .push(LogEntry::new(date, text, LogChannel::Politics).by(org));
 }
 
+/// An organisation's display name, for log lines elsewhere in the sim.
+pub fn org_display_name(world: &World, org: OrgId) -> String {
+    org_name(world, org)
+}
+
 fn org_name(world: &World, org: OrgId) -> String {
     let index = world.resource::<PoliticsIndex>();
     index

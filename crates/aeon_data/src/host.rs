@@ -22,10 +22,11 @@ use rhai::{AST, Dynamic, Engine, Map, Scope};
 use crate::effect::{EffectParseError, ScriptEffect, parse_effects};
 use crate::key::ContentKey;
 use crate::model::{
-    ArmyDef, BodyDef, BodyKind, CharacterDef, ContentSet, Gender, GoverningSkill, HouseTier,
-    JobCategory, JobDef, JobResultDef, JobResultKind, JobTargetKind, MilitaryOp, NamePoolDef,
-    OfficeDef, OrgDef, OrgKind, PopupChoiceDef, ProvinceDef, RiskTag, ScenarioDef, ScriptFnRef,
-    ShipClass, ShipDef, SkillsDef, TitleDef, TitleHolderDef, TitleKindDef, TraitDef,
+    ArmyDef, BodyDef, BodyKind, CharacterDef, ContentSet, EventChoiceDef, EventDef, EventFamily,
+    EventRequires, Gender, GoverningSkill, HouseTier, JobCategory, JobDef, JobResultDef,
+    JobResultKind, JobTargetKind, MilitaryOp, NamePoolDef, ObligationDef, OfficeDef, OrgDef,
+    OrgKind, PopupChoiceDef, ProvinceDef, RiskTag, ScenarioDef, ScriptFnRef, ShipClass, ShipDef,
+    SkillsDef, TitleDef, TitleHolderDef, TitleKindDef, TraitDef,
 };
 use crate::report::{ContentReport, Severity};
 
@@ -90,6 +91,8 @@ struct BuilderState {
     offices: BTreeMap<ContentKey, OfficeDef>,
     ships: BTreeMap<ContentKey, ShipDef>,
     armies: BTreeMap<ContentKey, ArmyDef>,
+    obligations: BTreeMap<ContentKey, ObligationDef>,
+    events: BTreeMap<ContentKey, EventDef>,
     scenario: Option<ScenarioDef>,
 }
 
@@ -1395,6 +1398,245 @@ fn define_army(state: &mut BuilderState, map: Map) {
     );
 }
 
+/// Reads an optional `effect_fn` field, bound to the file being loaded.
+fn opt_fn_ref(
+    state: &mut BuilderState,
+    map: &Map,
+    field: &str,
+    owner: &str,
+) -> Option<ScriptFnRef> {
+    match map.get(field) {
+        None => None,
+        Some(value) => match value.clone().into_string() {
+            Ok(name) => Some(ScriptFnRef {
+                path: state.current_path.clone(),
+                name,
+            }),
+            Err(_) => {
+                state.error(Some(owner), format!("{field} must be a string"));
+                None
+            }
+        },
+    }
+}
+
+fn define_event(state: &mut BuilderState, map: Map) {
+    let Some(key) = req_key(state, &map) else {
+        return;
+    };
+    warn_unknown_fields(
+        state,
+        &map,
+        Some(key.as_str()),
+        &[
+            "id",
+            "title",
+            "family",
+            "weight",
+            "cooldown_days",
+            "weighty",
+            "text",
+            "log_text",
+            "requires",
+            "choices",
+            "effect_fn",
+        ],
+    );
+    let Some(title) = req_str(state, &map, "title") else {
+        return;
+    };
+    let Some(text) = req_str(state, &map, "text") else {
+        return;
+    };
+    let family = match map
+        .get("family")
+        .and_then(|v| v.clone().into_string().ok())
+        .unwrap_or_else(|| "province".to_owned())
+        .as_str()
+    {
+        "province" => EventFamily::Province,
+        "political" => EventFamily::Political,
+        "travel" => EventFamily::Travel,
+        "job" => EventFamily::Job,
+        other => {
+            state.error(
+                Some(key.as_str()),
+                format!(
+                    "unknown event family '{other}' (expected province, political, travel, job)"
+                ),
+            );
+            return;
+        }
+    };
+    let Some(weight) = opt_int(state, &map, "weight", 100) else {
+        return;
+    };
+    let Some(cooldown) = opt_int(state, &map, "cooldown_days", 720) else {
+        return;
+    };
+    let weighty = map
+        .get("weighty")
+        .and_then(|v| v.as_bool().ok())
+        .unwrap_or(false);
+    let log_text = map
+        .get("log_text")
+        .and_then(|v| v.clone().into_string().ok());
+    let effect_fn = opt_fn_ref(state, &map, "effect_fn", key.as_str());
+
+    let mut requires = EventRequires::default();
+    if let Some(raw) = map.get("requires") {
+        match raw.clone().try_cast::<Map>() {
+            None => state.error(Some(key.as_str()), "requires must be a map"),
+            Some(conditions) => {
+                requires.player_only = conditions
+                    .get("player_only")
+                    .and_then(|v| v.as_bool().ok())
+                    .unwrap_or(false);
+                requires.occupied = conditions
+                    .get("occupied")
+                    .and_then(|v| v.as_bool().ok())
+                    .unwrap_or(false);
+                requires.has_open_obligation = conditions
+                    .get("has_open_obligation")
+                    .and_then(|v| v.as_bool().ok())
+                    .unwrap_or(false);
+                requires.max_order = conditions
+                    .get("max_order")
+                    .and_then(|v| v.as_int().ok())
+                    .map(|v| v as i32);
+                requires.min_order = conditions
+                    .get("min_order")
+                    .and_then(|v| v.as_int().ok())
+                    .map(|v| v as i32);
+            }
+        }
+    }
+
+    let mut choices = Vec::new();
+    if let Some(raw) = map.get("choices") {
+        match raw.clone().try_cast::<rhai::Array>() {
+            None => state.error(Some(key.as_str()), "choices must be an array"),
+            Some(array) => {
+                for element in array {
+                    let Some(choice) = element.try_cast::<Map>() else {
+                        state.error(Some(key.as_str()), "each choice must be a map");
+                        continue;
+                    };
+                    let Some(id) = req_key(state, &choice) else {
+                        continue;
+                    };
+                    let Some(label) = req_str(state, &choice, "label") else {
+                        continue;
+                    };
+                    let effect_fn = opt_fn_ref(state, &choice, "effect_fn", id.as_str());
+                    choices.push(EventChoiceDef {
+                        id,
+                        label,
+                        effect_fn,
+                    });
+                }
+            }
+        }
+    }
+    if weighty && choices.is_empty() {
+        state.error(
+            Some(key.as_str()),
+            "a weighty event must offer at least one choice",
+        );
+        return;
+    }
+    if state.events.contains_key(&key) {
+        state.error(Some(key.as_str()), "duplicate event id");
+        return;
+    }
+    state.events.insert(
+        key.clone(),
+        EventDef {
+            key,
+            title,
+            family,
+            weight: weight.max(1) as u32,
+            cooldown_days: cooldown.max(0) as u32,
+            weighty,
+            text,
+            log_text,
+            requires,
+            choices,
+            effect_fn,
+        },
+    );
+}
+
+fn define_obligation(state: &mut BuilderState, map: Map) {
+    let Some(key) = req_key(state, &map) else {
+        return;
+    };
+    warn_unknown_fields(
+        state,
+        &map,
+        Some(key.as_str()),
+        &[
+            "id", "kind", "debtor", "creditor", "origin", "weight", "days",
+        ],
+    );
+    let Some(kind) = req_str(state, &map, "kind") else {
+        return;
+    };
+    if !["favour", "promise", "grievance"].contains(&kind.as_str()) {
+        state.error(
+            Some(key.as_str()),
+            "kind must be favour, promise, or grievance",
+        );
+        return;
+    }
+    let Some(debtor) = req_key_field(state, &map, "debtor") else {
+        return;
+    };
+    let Some(creditor) = req_key_field(state, &map, "creditor") else {
+        return;
+    };
+    if debtor == creditor {
+        state.error(
+            Some(key.as_str()),
+            "an obligation needs two different parties",
+        );
+        return;
+    }
+    let Some(origin) = req_str(state, &map, "origin") else {
+        return;
+    };
+    let Some(weight) = opt_int(state, &map, "weight", 20) else {
+        return;
+    };
+    let days = match map.get("days") {
+        None => None,
+        Some(_) => match opt_int(state, &map, "days", 0) {
+            Some(days) if days > 0 => Some(days),
+            Some(_) => {
+                state.error(Some(key.as_str()), "days must be positive when given");
+                return;
+            }
+            None => return,
+        },
+    };
+    if state.obligations.contains_key(&key) {
+        state.error(Some(key.as_str()), "duplicate obligation id");
+        return;
+    }
+    state.obligations.insert(
+        key.clone(),
+        ObligationDef {
+            key,
+            kind,
+            debtor,
+            creditor,
+            origin,
+            weight: weight.max(0) as i32,
+            days,
+        },
+    );
+}
+
 fn define_title(state: &mut BuilderState, map: Map) {
     let Some(key) = req_key(state, &map) else {
         return;
@@ -1582,6 +1824,16 @@ fn loading_engine(state: Arc<Mutex<BuilderState>>) -> Engine {
         let mut s = army_state.lock().expect("builder state lock");
         define_army(&mut s, map);
     });
+    let obligation_state = state.clone();
+    engine.register_fn("define_obligation", move |map: Map| {
+        let mut s = obligation_state.lock().expect("builder state lock");
+        define_obligation(&mut s, map);
+    });
+    let event_state = state.clone();
+    engine.register_fn("define_event", move |map: Map| {
+        let mut s = event_state.lock().expect("builder state lock");
+        define_event(&mut s, map);
+    });
     engine
 }
 
@@ -1667,6 +1919,8 @@ pub fn load_content(sources: &[ContentSource]) -> (Option<ContentSet>, ContentRe
         offices: builder.offices,
         ships: builder.ships,
         armies: builder.armies,
+        obligations: builder.obligations,
+        events: builder.events,
         scenario: builder.scenario,
         asts,
         content_hash: content_hash(&sources),
@@ -1691,6 +1945,8 @@ impl BuilderState {
             offices: std::mem::take(&mut self.offices),
             ships: std::mem::take(&mut self.ships),
             armies: std::mem::take(&mut self.armies),
+            obligations: std::mem::take(&mut self.obligations),
+            events: std::mem::take(&mut self.events),
             scenario: self.scenario.take(),
         }
     }
@@ -2005,6 +2261,21 @@ fn validate_political_references(
                 );
             }
             Some(_) => {}
+        }
+    }
+
+    for (key, obligation) in &builder.obligations {
+        if !builder.organisations.contains_key(&obligation.debtor) {
+            err(
+                key,
+                format!("debtor '{}' is not defined", obligation.debtor),
+            );
+        }
+        if !builder.organisations.contains_key(&obligation.creditor) {
+            err(
+                key,
+                format!("creditor '{}' is not defined", obligation.creditor),
+            );
         }
     }
 

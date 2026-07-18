@@ -22,12 +22,14 @@ pub mod command;
 pub mod config;
 pub mod crisis;
 pub mod economy;
+pub mod events;
 pub mod forces;
 pub mod forecast;
 pub mod host;
 pub mod ids;
 pub mod jobs;
 pub mod map;
+pub mod obligations;
 pub mod order;
 pub mod persistence;
 pub mod politics;
@@ -42,6 +44,7 @@ pub use clock::{CampaignClock, DailyTick, MonthlyPulse, TickSet, YearlyPulse, ad
 pub use command::{CommandEnvelope, CommandRejection, PlayerCommand};
 pub use config::CampaignConfig;
 pub use economy::OrgResources;
+pub use events::{EventOccurrence, EventState, EventSubject};
 pub use forces::{ArmyRecord, ForcesIndex, ShipRecord};
 pub use forecast::{ForecastResult, ForecastRisk, JobForecast, Permille};
 pub use host::SimHost;
@@ -51,6 +54,7 @@ pub use jobs::{
     PendingPopups,
 };
 pub use map::{BodyRecord, DisplayName, GeoPosition, MapIndex, ProvinceRecord};
+pub use obligations::{ObligationKind, ObligationRecord, ObligationStatus, Obligations};
 pub use order::ProvincialOrder;
 pub use politics::{
     CampaignOver, CharacterRecord, OfficeRecord, OrgRecord, PlayerHouse, PoliticsIndex,
@@ -77,6 +81,8 @@ impl Plugin for AeonSimPlugin {
         presence::install(app);
         forces::install(app);
         order::install(app);
+        obligations::install(app);
+        events::install(app);
         warfare::install(app);
     }
 }

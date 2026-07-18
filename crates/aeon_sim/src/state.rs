@@ -63,6 +63,7 @@ pub fn start_campaign_with_content(
     crate::map::spawn_from_content(world, &content);
     crate::politics::spawn_from_content(world, &content);
     crate::forces::spawn_from_content(world, &content);
+    crate::obligations::seed_from_content(world, &content);
     crate::jobs::init_jobs(world);
     world.insert_resource(ContentDb(content));
 }

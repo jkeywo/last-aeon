@@ -294,6 +294,10 @@ pub struct ContentSet {
     pub ships: BTreeMap<ContentKey, ShipDef>,
     /// Starting armies by key.
     pub armies: BTreeMap<ContentKey, ArmyDef>,
+    /// Obligations standing at campaign start, by key.
+    pub obligations: BTreeMap<ContentKey, ObligationDef>,
+    /// Contextual events, by key.
+    pub events: BTreeMap<ContentKey, EventDef>,
     /// The scenario, if this content set defines one.
     pub scenario: Option<ScenarioDef>,
     /// Compiled ASTs by content-relative path, for runtime function calls.
@@ -543,6 +547,97 @@ pub struct ArmyDef {
     pub manpower: i64,
     /// Supplies in its train.
     pub supplies: i64,
+}
+
+/// The kind of situation an event arises from.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EventFamily {
+    /// Pressure in a province.
+    #[default]
+    Province,
+    /// Politics between houses.
+    Political,
+    /// Something on the road.
+    Travel,
+    /// A complication in a job under way.
+    Job,
+}
+
+/// Declarative conditions an event needs before it may fire.
+///
+/// Conditions are data rather than script so they can be validated at
+/// load and evaluated identically on every replay.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EventRequires {
+    /// Only fire for the player's own house.
+    pub player_only: bool,
+    /// Province order must be at or below this.
+    pub max_order: Option<i32>,
+    /// Province order must be at or above this.
+    pub min_order: Option<i32>,
+    /// A hostile army must be standing in the province.
+    pub occupied: bool,
+    /// The subject's house must be party to an open obligation.
+    pub has_open_obligation: bool,
+}
+
+/// One answer the player may give to a weighty event.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EventChoiceDef {
+    /// Stable choice id.
+    pub id: ContentKey,
+    /// Button label.
+    pub label: String,
+    /// Effect function applied when chosen.
+    pub effect_fn: Option<ScriptFnRef>,
+}
+
+/// An authored contextual event.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EventDef {
+    /// The event's stable content key.
+    pub key: ContentKey,
+    /// Player-facing title.
+    pub title: String,
+    /// What kind of situation it arises from.
+    pub family: EventFamily,
+    /// Relative selection weight among eligible candidates.
+    pub weight: u32,
+    /// Days before this may fire against the same subject again.
+    pub cooldown_days: u32,
+    /// Whether this interrupts with a choice popup, or only writes to the
+    /// log.
+    pub weighty: bool,
+    /// Situation text, templated with `{subject}`.
+    pub text: String,
+    /// Log line; falls back to the situation text.
+    pub log_text: Option<String>,
+    /// Conditions required before it may fire.
+    pub requires: EventRequires,
+    /// Choices offered by a weighty event.
+    pub choices: Vec<EventChoiceDef>,
+    /// Effect applied immediately by a minor event.
+    pub effect_fn: Option<ScriptFnRef>,
+}
+
+/// An authored political obligation standing at campaign start.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ObligationDef {
+    /// The obligation's stable content key.
+    pub key: ContentKey,
+    /// Favour, promise, or grievance.
+    pub kind: String,
+    /// The organisation that owes, or is resented.
+    pub debtor: ContentKey,
+    /// The organisation that is owed, or resents.
+    pub creditor: ContentKey,
+    /// Where it came from, in plain words.
+    pub origin: String,
+    /// How much it weighs.
+    pub weight: i32,
+    /// Days until it lapses; `None` never lapses.
+    pub days: Option<i64>,
 }
 
 /// An authored office: a revocable appointment held by a character.

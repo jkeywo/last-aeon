@@ -714,6 +714,65 @@ pub fn apply_effects(
                     crate::crisis::collect_tithes(world, owner);
                 }
             }
+            ScriptEffect::Obligation {
+                action,
+                kind,
+                debtor,
+                creditor,
+                weight,
+                days,
+                origin,
+            } => {
+                // Obligations bind houses, so each role resolves to the
+                // organisation behind the character standing in it.
+                let house_of = |role: &str| -> Option<OrgId> {
+                    let character = roles.resolve_toward(role)?;
+                    let index = world.resource::<PoliticsIndex>();
+                    index
+                        .characters
+                        .get(&character)
+                        .and_then(|entity| world.get::<CharacterRecord>(*entity))
+                        .and_then(|record| record.organisation)
+                };
+                let obligation_kind = match kind.as_str() {
+                    "favour" => crate::obligations::ObligationKind::Favour,
+                    "promise" => crate::obligations::ObligationKind::Promise,
+                    _ => crate::obligations::ObligationKind::Grievance,
+                };
+                if let (Some(debtor), Some(creditor)) = (house_of(debtor), house_of(creditor)) {
+                    match action {
+                        aeon_data::effect::ObligationAction::Create => {
+                            crate::obligations::create(
+                                world,
+                                obligation_kind,
+                                debtor,
+                                creditor,
+                                origin.clone(),
+                                *weight,
+                                *days,
+                            );
+                        }
+                        aeon_data::effect::ObligationAction::Fulfil => {
+                            crate::obligations::settle(
+                                world,
+                                obligation_kind,
+                                debtor,
+                                creditor,
+                                crate::obligations::ObligationStatus::Fulfilled,
+                            );
+                        }
+                        aeon_data::effect::ObligationAction::Break => {
+                            crate::obligations::settle(
+                                world,
+                                obligation_kind,
+                                debtor,
+                                creditor,
+                                crate::obligations::ObligationStatus::Broken,
+                            );
+                        }
+                    }
+                }
+            }
             ScriptEffect::Order { scope, amount } => match scope {
                 aeon_data::effect::OrderScope::TargetProvince => {
                     if let Some(province) = roles.province {
@@ -1000,6 +1059,16 @@ pub fn answer_popup(
     }
 
     let content = world.resource::<ContentDb>().0.clone();
+    // A popup raised by a contextual event carries the event's key where a
+    // job popup carries the job's; the event runtime settles those.
+    if content.events.contains_key(&popup.job) {
+        crate::events::answer_event(world, &popup.job, choice, &popup.roles);
+        world
+            .resource_mut::<PendingPopups>()
+            .popups
+            .retain(|p| p.id != popup_id);
+        return Ok(());
+    }
     let effect_fn = content
         .jobs
         .get(&popup.job)

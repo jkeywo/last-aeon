@@ -376,3 +376,55 @@ fn endorsement_success(ctx) {
 fn endorsement_disaster(ctx) {
     [#{ kind: "opinion", from: "consul", toward: "owner-head", amount: -15, days: 1440, reason: "rebuffed" }]
 }
+
+define_job(#{
+    id: "call-in-a-favour",
+    title: "Call in a Favour",
+    summary: "Ask a house that owes you to make good on it. Spends the debt, whatever they think of you.",
+    category: "consequential",
+    duration_days: 25,
+    skill: "diplomacy",
+    difficulty: 8,
+    target: "organisation",
+    ai_available: true,
+    influence_cost: 5,
+    results: #{
+        critical_success: #{
+            weight: 200, log: true,
+            log_text: "{target} honoured its debt to {leader} handsomely.",
+            effect_fn: "favour_called_well",
+        },
+        success: #{
+            weight: 500, log: true,
+            log_text: "{target} made good on what it owed {leader}.",
+            effect_fn: "favour_called",
+        },
+        failure: #{
+            weight: 250, log: true,
+            log_text: "{target} put {leader} off with promises.",
+        },
+        disaster: #{
+            weight: 50, popup: true, log: true,
+            popup_text: "{target} denies owing {leader} anything at all, and says so publicly.",
+            log_text: "{target} repudiated its debt to {leader}.",
+            effect_fn: "favour_repudiated",
+        },
+    },
+});
+fn favour_called_well(ctx) {
+    [#{ kind: "obligation", action: "fulfil", obligation: "favour",
+        debtor: "target-head", creditor: "owner-head" },
+     #{ kind: "opinion", from: "target-head", toward: "owner-head",
+        amount: 10, days: 720, reason: "debt-honoured" }]
+}
+fn favour_called(ctx) {
+    [#{ kind: "obligation", action: "fulfil", obligation: "favour",
+        debtor: "target-head", creditor: "owner-head" }]
+}
+fn favour_repudiated(ctx) {
+    [#{ kind: "obligation", action: "break", obligation: "favour",
+        debtor: "target-head", creditor: "owner-head" },
+     #{ kind: "obligation", action: "create", obligation: "grievance",
+        debtor: "target-head", creditor: "owner-head", weight: 25,
+        origin: "a debt publicly repudiated" }]
+}
