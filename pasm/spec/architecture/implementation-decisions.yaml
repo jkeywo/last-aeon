@@ -743,3 +743,49 @@ entities:
         - define-army-content-type
         - full-scenario-cast-and-allocation
         - military-standing-orders
+
+  - decision: political-globe-region-texture
+    core:
+      status: accepted
+      confidence: confirmed
+      title: The Globe Is a Baked Political Region Map
+      summary: >-
+        Each body's globe is a custom UV sphere whose equirectangular UVs
+        match, texel-for-texel, a texture baked from the simulation's
+        holdings: every texel takes the colour of its nearest province
+        centre (great-circle nearest), black where it borders a different
+        province, neutral where unheld. Two map modes colour by the direct
+        holder or by the great house at the top of the holder's liege
+        chain. The texture rebakes only when the focused body, the map
+        mode, or a holding changes, tracked by a holdings fingerprint.
+        Picking raycasts the globe and selects the nearest province to the
+        hit point, marked by a pin; an egui overlay projects province names
+        and army/ship badges, culling the far hemisphere.
+      rationale:
+        - Painting provinces as bordered regions coloured by their holder reads as a real political map, which marker dots never did, while baking on change keeps the per-frame cost at zero.
+      references:
+        - mvp-3d-world-and-system-with-2d-details
+        - egui-for-information-panels
+        - starting-armies-per-faction
+
+  - decision: context-sensitive-job-ui
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Jobs Start from Context Buttons on the Selection
+      summary: >-
+        The player starts a job from action buttons on the inspected
+        entity rather than a separate form. A member of the player's house
+        lists the jobs they can lead (target-less jobs on one click, others
+        via an inline picker and Confirm); an outside character offers the
+        schemes that target them plus Petition the Consul when they hold
+        that title; a province offers the military jobs with an inline army
+        or ship picker and itself pre-filled. Ineligible leaders are
+        filtered and rejections surface inline. Every action still issues
+        the same PlayerCommand::StartJob through the authoritative pipeline.
+      rationale:
+        - Anchoring the available jobs to what the player is looking at makes the action set legible and surfaces otherwise-buried jobs such as recruiting an army, without changing the authoritative command path.
+      references:
+        - character-led-jobs-are-primary-actions
+        - headless-authoritative-simulation
+        - egui-for-information-panels

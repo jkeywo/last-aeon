@@ -10,6 +10,11 @@ deterministic, headless, data-driven simulation and Rhai-authored content.
 **▶ Play in the browser:** <https://jkeywo.github.io/last-aeon/>
 (published from `main` by CI; lead House Harrow through the Ashkarr Succession).
 
+Each body's globe is a political map — provinces painted by their holding
+house (or top great house) with black borders, standing armies and ships
+shown where they are. Click a province, house, or character to inspect it,
+search by name, and start jobs from context buttons on the selection.
+
 ## Repository layout
 
 | Path | Contents |
