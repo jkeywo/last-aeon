@@ -8,6 +8,7 @@
 
 mod camera;
 mod content;
+mod forecast_view;
 mod jobs_ui;
 mod map_overlay;
 mod panels;
@@ -43,6 +44,8 @@ fn main() {
         .init_resource::<view::SearchState>()
         .init_resource::<view::MapMode>()
         .init_resource::<scene::GlobeBake>()
+        .init_resource::<forecast_view::ForecastCache>()
+        .init_resource::<jobs_ui::LogFilter>()
         .add_systems(
             Startup,
             (
@@ -68,6 +71,7 @@ fn main() {
                 camera::drive_camera,
                 jobs_ui::auto_pause_on_popups,
                 jobs_ui::flush_ui_commands,
+                forecast_view::refresh_forecast,
             ),
         )
         .add_systems(

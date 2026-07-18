@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::clock::{CampaignClock, DailyTick, TickSet};
 use crate::forces::{ArmyRecord, ForcesIndex, ShipRecord};
 use crate::ids::{ArmyId, OrgId, ProvinceId};
-use crate::jobs::{ActiveJob, JobTarget, JobsIndex, LogEntry, MessageLog};
+use crate::jobs::{ActiveJob, JobTarget, JobsIndex, LogChannel, LogEntry, MessageLog};
 use crate::politics::{PoliticsIndex, TitleHolder, TitleKind, TitleRecord};
 use crate::state::{CampaignSeed, ContentDb};
 
@@ -208,11 +208,10 @@ pub fn resolve_engagement(
 
 fn log(world: &mut World, org: OrgId, text: String) {
     let date = world.resource::<CampaignClock>().date;
-    world.resource_mut::<MessageLog>().entries.push(LogEntry {
-        date,
-        text,
-        org: Some(org),
-    });
+    world
+        .resource_mut::<MessageLog>()
+        .entries
+        .push(LogEntry::new(date, text, LogChannel::Military).by(Some(org)));
 }
 
 /// Applies a military operation when its job succeeds. Returns `false`

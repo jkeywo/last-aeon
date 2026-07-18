@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use aeon_core::calendar::CalendarDate;
-use aeon_data::model::RiskTag;
+use aeon_data::model::{JobResultKind, RiskTag};
 use aeon_data::{ContentKey, ContentSource, load_content};
 use aeon_sim::jobs::{CharacterCondition, apply_risk};
 use aeon_sim::politics::process_death;
@@ -104,6 +104,23 @@ define_job(#{
 fn share_find(ctx) {
     [#{ kind: "log", message: "The find was shared with the court." }]
 }
+
+// A spread of outcomes, each logged distinctly, so a forecast can be
+// checked against what actually happens. Difficulty matches Cera's
+// stewardship, so effectiveness is zero and the authored weights apply
+// unshifted: 100 / 300 / 400 / 200 permille.
+define_job(#{
+    id: "even-gamble", title: "Even Gamble", summary: "s",
+    category: "consequential", duration_days: 5,
+    skill: "stewardship", difficulty: 8, ai_available: false,
+    risks: ["injury"],
+    results: #{
+        critical_success: #{ weight: 100, log: true, log_text: "OUTCOME-CRIT" },
+        success: #{ weight: 300, log: true, log_text: "OUTCOME-SUCCESS" },
+        failure: #{ weight: 400, log: true, log_text: "OUTCOME-FAILURE" },
+        disaster: #{ weight: 200, log: true, log_text: "OUTCOME-DISASTER" },
+    },
+});
 
 // AI-available job so autonomous organisations act.
 define_job(#{
@@ -398,4 +415,170 @@ fn job_world_is_deterministic_and_survives_snapshots() {
     a.advance_days(100);
     restored.advance_days(100);
     assert_eq!(restored.state_hash(), a.state_hash());
+}
+
+// ---------------------------------------------------------------------------
+// Forecasts
+// ---------------------------------------------------------------------------
+
+/// Runs `even-gamble` once per seed and tallies which outcome actually
+/// occurred, read back from the distinct log lines each result writes.
+fn sample_outcomes(trials: u64) -> [u32; 4] {
+    let shared = content();
+    let mut tally = [0u32; 4];
+    for seed in 0..trials {
+        let mut h = SimHost::new_with_content(
+            CampaignConfig {
+                name: "Forecast Trial".to_owned(),
+                seed,
+                start_date: CalendarDate {
+                    year: 411,
+                    month: 1,
+                    day: 1,
+                }
+                .to_date()
+                .unwrap(),
+            },
+            Arc::clone(&shared),
+        );
+        let cera = char_id(&mut h, "cera-ash");
+        h.submit(PlayerCommand::StartJob {
+            job: key("even-gamble"),
+            leader: cera,
+            target: JobTarget::None,
+        })
+        .unwrap();
+        h.advance_days(12);
+        let log = h.world_mut().resource::<MessageLog>().clone();
+        let seen = |needle: &str| log.entries.iter().any(|e| e.text.contains(needle));
+        if seen("OUTCOME-CRIT") {
+            tally[0] += 1;
+        } else if seen("OUTCOME-SUCCESS") {
+            tally[1] += 1;
+        } else if seen("OUTCOME-FAILURE") {
+            tally[2] += 1;
+        } else if seen("OUTCOME-DISASTER") {
+            tally[3] += 1;
+        } else {
+            panic!("seed {seed} produced no recognisable outcome");
+        }
+    }
+    tally
+}
+
+#[test]
+fn a_forecast_reports_the_odds_that_actually_resolve() {
+    let mut h = host(1);
+    let cera = char_id(&mut h, "cera-ash");
+    let ash = org_id(&mut h, "ash");
+    let forecast = aeon_sim::forecast::forecast(
+        h.world_mut(),
+        ash,
+        &key("even-gamble"),
+        cera,
+        JobTarget::None,
+    )
+    .expect("job is defined");
+
+    // Difficulty equals the leader's skill, so the authored weights stand.
+    assert_eq!(forecast.effectiveness, 0);
+    assert_eq!(forecast.skill_value, 8);
+    assert_eq!(forecast.difficulty, 8);
+    let chance = |kind: JobResultKind| -> u32 {
+        forecast
+            .results
+            .iter()
+            .find(|r| r.kind == kind)
+            .map(|r| r.chance)
+            .expect("kind present")
+    };
+    assert_eq!(chance(JobResultKind::CriticalSuccess), 100);
+    assert_eq!(chance(JobResultKind::Success), 300);
+    assert_eq!(chance(JobResultKind::Failure), 400);
+    assert_eq!(chance(JobResultKind::Disaster), 200);
+    assert_eq!(forecast.success_chance(), 400);
+
+    // What the player was promised is what the simulation delivers. The
+    // tolerance is wide enough never to flake but far tighter than any
+    // real divergence between the forecast and resolution would produce.
+    const TRIALS: u64 = 1500;
+    let tally = sample_outcomes(TRIALS);
+    let observed: Vec<u32> = tally
+        .iter()
+        .map(|count| (u64::from(*count) * 1000 / TRIALS) as u32)
+        .collect();
+    for (index, kind) in JobResultKind::ALL.iter().enumerate() {
+        let forecast_chance = chance(*kind);
+        let seen = observed[index];
+        let drift = forecast_chance.abs_diff(seen);
+        assert!(
+            drift <= 60,
+            "{kind:?}: forecast {forecast_chance}permille but observed {seen}permille",
+        );
+    }
+}
+
+#[test]
+fn a_forecast_quotes_costs_duration_delay_and_risks() {
+    let mut h = host(3);
+    let cera = char_id(&mut h, "cera-ash");
+    let ash = org_id(&mut h, "ash");
+    let forecast = aeon_sim::forecast::forecast(
+        h.world_mut(),
+        ash,
+        &key("even-gamble"),
+        cera,
+        JobTarget::None,
+    )
+    .expect("job is defined");
+
+    assert_eq!(forecast.duration_days, 5, "authored duration is quoted");
+    assert!(
+        forecast.order_delay_days >= 0,
+        "an order delay is always reported"
+    );
+    assert!(forecast.startable(), "an eligible leader is not blocked");
+    assert_eq!(forecast.risks.len(), 1, "the authored risk is surfaced");
+    let injury = forecast.risks[0];
+    assert_eq!(injury.tag, RiskTag::Injury);
+    assert!(
+        injury.on_disaster > injury.on_failure,
+        "a disaster must be the more dangerous outcome"
+    );
+    assert!(
+        forecast.military_op.is_none(),
+        "a civil job has no conditional field contest"
+    );
+}
+
+#[test]
+fn a_forecast_explains_why_a_job_cannot_be_started() {
+    let mut h = host(4);
+    let cera = char_id(&mut h, "cera-ash");
+    let ash = org_id(&mut h, "ash");
+    // Put Cera to work, then forecast a second job for her.
+    h.submit(PlayerCommand::StartJob {
+        job: key("even-gamble"),
+        leader: cera,
+        target: JobTarget::None,
+    })
+    .unwrap();
+    h.advance_days(1);
+
+    let forecast = aeon_sim::forecast::forecast(
+        h.world_mut(),
+        ash,
+        &key("even-gamble"),
+        cera,
+        JobTarget::None,
+    )
+    .expect("job is defined");
+    assert!(!forecast.startable(), "a busy leader cannot start a job");
+    assert_eq!(
+        forecast.blocked,
+        Some(aeon_sim::jobs::JobRejection::LeaderBusy)
+    );
+    // The forecast still describes the job, so the player can plan ahead.
+    assert_eq!(forecast.duration_days, 5);
+    assert_eq!(forecast.success_chance(), 400);
 }

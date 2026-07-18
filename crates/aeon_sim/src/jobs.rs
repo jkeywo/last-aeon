@@ -11,9 +11,7 @@ use std::collections::BTreeMap;
 
 use aeon_core::calendar::GameDate;
 use aeon_core::rng::DeterministicRng;
-use aeon_data::model::{
-    GoverningSkill, JobCategory, JobDef, JobResultKind, JobTargetKind, RiskTag,
-};
+use aeon_data::model::{JobCategory, JobDef, JobResultKind, JobTargetKind, RiskTag};
 use aeon_data::{ContentKey, ScriptEffect, ScriptHost};
 use bevy::app::App;
 use bevy::prelude::{Component, Entity, IntoScheduleConfigs, Resource, World};
@@ -22,8 +20,8 @@ use serde::{Deserialize, Serialize};
 use crate::clock::{CampaignClock, DailyTick, MonthlyPulse, TickSet};
 use crate::ids::{ArmyId, CharacterId, JobId, OrgId, ProvinceId, ShipId};
 use crate::politics::{
-    CampaignOver, CharacterRecord, CharacterSkills, OpinionEntry, OpinionLedger, OrgRecord,
-    PlayerHouse, PoliticsIndex, process_death,
+    CampaignOver, CharacterRecord, OpinionEntry, OpinionLedger, OrgRecord, PlayerHouse,
+    PoliticsIndex, process_death,
 };
 use crate::state::{CampaignIds, CampaignSeed, ContentDb};
 
@@ -93,6 +91,55 @@ pub struct JobsIndex {
     pub jobs: BTreeMap<JobId, Entity>,
 }
 
+/// What a log entry is chiefly about, so a reader can navigate to it.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LogSubject {
+    /// A character.
+    Character(CharacterId),
+    /// An organisation.
+    Org(OrgId),
+    /// A province.
+    Province(ProvinceId),
+}
+
+/// Which stream an entry belongs to, so the log can be filtered.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+pub enum LogChannel {
+    /// Job starts, results, and abandonment.
+    #[default]
+    Jobs,
+    /// Titles, succession, offices, and standing.
+    Politics,
+    /// Operations, engagements, and conquest.
+    Military,
+    /// Resources, provincial output, and order.
+    Economy,
+    /// Contextual events and their consequences.
+    Events,
+}
+
+impl LogChannel {
+    /// Every channel, in a stable display order.
+    pub const ALL: [LogChannel; 5] = [
+        LogChannel::Jobs,
+        LogChannel::Politics,
+        LogChannel::Military,
+        LogChannel::Economy,
+        LogChannel::Events,
+    ];
+
+    /// A short player-facing label.
+    pub fn label(self) -> &'static str {
+        match self {
+            LogChannel::Jobs => "Jobs",
+            LogChannel::Politics => "Politics",
+            LogChannel::Military => "Military",
+            LogChannel::Economy => "Economy",
+            LogChannel::Events => "Events",
+        }
+    }
+}
+
 /// One notable-result log entry.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LogEntry {
@@ -102,6 +149,37 @@ pub struct LogEntry {
     pub text: String,
     /// The organisation involved, if any.
     pub org: Option<OrgId>,
+    /// What the entry is about, for filtering and navigation.
+    #[serde(default)]
+    pub subject: Option<LogSubject>,
+    /// The stream this entry belongs to.
+    #[serde(default)]
+    pub channel: LogChannel,
+}
+
+impl LogEntry {
+    /// A new entry on a channel, with no subject or organisation yet.
+    pub fn new(date: GameDate, text: impl Into<String>, channel: LogChannel) -> Self {
+        Self {
+            date,
+            text: text.into(),
+            org: None,
+            subject: None,
+            channel,
+        }
+    }
+
+    /// Attributes the entry to an organisation.
+    pub fn by(mut self, org: Option<OrgId>) -> Self {
+        self.org = org;
+        self
+    }
+
+    /// Points the entry at the subject it is chiefly about.
+    pub fn about(mut self, subject: LogSubject) -> Self {
+        self.subject = Some(subject);
+        self
+    }
 }
 
 /// The notable-result message log: selective ongoing awareness of the
@@ -183,7 +261,7 @@ impl JobRoles {
 }
 
 /// Why a job could not be started or answered.
-#[derive(Debug, PartialEq, Eq, thiserror::Error)]
+#[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
 pub enum JobRejection {
     /// The campaign has ended.
     #[error("the campaign is over")]
@@ -365,10 +443,10 @@ pub fn start_job(
 ) -> JobId {
     let date = world.resource::<CampaignClock>().date;
     let (duration, costs) = {
-        let content = world.resource::<ContentDb>();
-        let def = &content.0.jobs[def_key];
+        let content = world.resource::<ContentDb>().0.clone();
+        let def = &content.jobs[def_key];
         (
-            i64::from(def.duration_days),
+            crate::forecast::job_duration_days(world, def, target),
             (
                 def.wealth_cost,
                 def.manpower_cost,
@@ -383,16 +461,6 @@ pub fn start_job(
             resources.spend(costs.0, costs.1, costs.2, costs.3);
         }
     }
-    // Marches take at least the army's travel time to the objective.
-    let march_days = match target {
-        JobTarget::ArmyToProvince(army, destination) => world
-            .get_resource::<crate::forces::ForcesIndex>()
-            .and_then(|forces| forces.armies.get(&army).copied())
-            .and_then(|entity| world.get::<crate::forces::ArmyRecord>(entity))
-            .map(|record| crate::presence::travel_days(world, record.location, destination) * 2),
-        _ => None,
-    };
-    let duration = march_days.map_or(duration, |march| duration.max(march));
     let id: JobId = world.resource_mut::<CampaignIds>().0.allocate();
     let entity = world
         .spawn(ActiveJob {
@@ -413,36 +481,10 @@ pub fn start_job(
 // Resolution
 // ---------------------------------------------------------------------------
 
-fn governing_skill(world: &World, leader: CharacterId, skill: GoverningSkill) -> i32 {
-    let index = world.resource::<PoliticsIndex>();
-    let Some(entity) = index.characters.get(&leader) else {
-        return 0;
-    };
-    let skills = world
-        .get::<CharacterSkills>(*entity)
-        .map(|s| s.0)
-        .unwrap_or_default();
-    match skill {
-        GoverningSkill::Command => skills.command,
-        GoverningSkill::Diplomacy => skills.diplomacy,
-        GoverningSkill::Intrigue => skills.intrigue,
-        GoverningSkill::Stewardship => skills.stewardship,
-    }
-}
-
-/// Shifts a result weight by skill-versus-difficulty effectiveness.
-///
-/// Positive outcomes scale up with effectiveness, negative outcomes scale
-/// down, both floored at a fifth of the authored weight.
-fn shifted_weight(base: u32, kind: JobResultKind, effectiveness: i32) -> u64 {
-    let swing = 40i64 * i64::from(effectiveness);
-    let factor = match kind {
-        JobResultKind::CriticalSuccess | JobResultKind::Success => 1000 + swing,
-        JobResultKind::Failure | JobResultKind::Disaster => 1000 - swing,
-    }
-    .max(200);
-    (u64::from(base) * factor as u64) / 1000
-}
+// Outcome weighting, duration, and risk chances live in `forecast`, so the
+// numbers quoted to the player before a job are the numbers used to resolve
+// it. Re-exported here for the resolution code below.
+use crate::forecast::{result_weights, risk_permille};
 
 /// The character standing behind each effect role for a job.
 fn resolve_roles(world: &World, job: &ActiveJob) -> JobRoles {
@@ -570,11 +612,10 @@ pub fn apply_effects(
     for effect in effects {
         match effect {
             ScriptEffect::Log { message } => {
-                world.resource_mut::<MessageLog>().entries.push(LogEntry {
-                    date,
-                    text: message.clone(),
-                    org: owner,
-                });
+                world
+                    .resource_mut::<MessageLog>()
+                    .entries
+                    .push(LogEntry::new(date, message.clone(), LogChannel::Jobs).by(owner));
             }
             ScriptEffect::FormArmy { manpower, supplies } => {
                 let Some(owner) = owner else {
@@ -654,17 +695,6 @@ pub fn apply_effects(
             }
         }
     }
-}
-
-fn risk_permille(tag: RiskTag, disaster: bool) -> u32 {
-    let base = match tag {
-        RiskTag::Injury => 80,
-        RiskTag::Capture => 40,
-        RiskTag::Scandal => 80,
-        RiskTag::Incapacity => 50,
-        RiskTag::Death => 25,
-    };
-    if disaster { base * 2 } else { base }
 }
 
 /// Applies one personal-risk consequence to a character. Public so event
@@ -755,31 +785,28 @@ pub fn resolve_due_jobs(world: &mut World) {
                 .is_some_and(|r| r.alive())
         };
         if !leader_alive {
-            world.resource_mut::<MessageLog>().entries.push(LogEntry {
-                date,
-                text: format!("'{}' was abandoned; its leader is gone.", def.title),
-                org: Some(job.owner),
-            });
+            world.resource_mut::<MessageLog>().entries.push(
+                LogEntry::new(
+                    date,
+                    format!("'{}' was abandoned; its leader is gone.", def.title),
+                    LogChannel::Jobs,
+                )
+                .by(Some(job.owner))
+                .about(LogSubject::Character(job.leader)),
+            );
             world.despawn(entity);
             world.resource_mut::<JobsIndex>().jobs.remove(&job_id);
             continue;
         }
 
-        // Outcome.
-        let effectiveness = governing_skill(world, job.leader, def.skill) - def.difficulty;
+        // Outcome, rolled against exactly the table the forecast reports.
+        let effectiveness = crate::forecast::effectiveness(world, job.leader, &def);
         let mut rng = DeterministicRng::derive(
             seed,
             "job-resolution",
             &[job_id.raw(), date.days_since_epoch() as u64],
         );
-        let weights: Vec<(JobResultKind, u64)> = JobResultKind::ALL
-            .iter()
-            .filter_map(|kind| {
-                def.results
-                    .get(kind)
-                    .map(|r| (*kind, shifted_weight(r.weight, *kind, effectiveness)))
-            })
-            .collect();
+        let weights: Vec<(JobResultKind, u64)> = result_weights(&def, effectiveness);
         let total: u64 = weights.iter().map(|(_, w)| w).sum();
         let mut roll = rng.roll(total.max(1));
         let mut outcome = weights
@@ -841,11 +868,14 @@ pub fn resolve_due_jobs(world: &mut World) {
             match effects {
                 Ok(effects) => apply_effects(world, &effects, &roles, Some(job.owner)),
                 Err(err) => {
-                    world.resource_mut::<MessageLog>().entries.push(LogEntry {
-                        date,
-                        text: format!("script error resolving '{}': {err}", def.title),
-                        org: Some(job.owner),
-                    });
+                    world.resource_mut::<MessageLog>().entries.push(
+                        LogEntry::new(
+                            date,
+                            format!("script error resolving '{}': {err}", def.title),
+                            LogChannel::Jobs,
+                        )
+                        .by(Some(job.owner)),
+                    );
                 }
             }
         }
@@ -859,11 +889,11 @@ pub fn resolve_due_jobs(world: &mut World) {
                 .unwrap_or_else(|| {
                     format!("{leader_name} finished '{}' ({outcome:?}).", def.title)
                 });
-            world.resource_mut::<MessageLog>().entries.push(LogEntry {
-                date,
-                text,
-                org: Some(job.owner),
-            });
+            world.resource_mut::<MessageLog>().entries.push(
+                LogEntry::new(date, text, LogChannel::Jobs)
+                    .by(Some(job.owner))
+                    .about(LogSubject::Character(job.leader)),
+            );
         }
 
         // Player popups.

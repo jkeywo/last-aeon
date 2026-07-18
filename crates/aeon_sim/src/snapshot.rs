@@ -20,7 +20,7 @@ use crate::state::{CampaignIds, CampaignMeta, CampaignSeed};
 /// Bump on any change to [`CampaignState`]'s serialised shape, and provide a
 /// migration for every version a release has ever written. No release has
 /// shipped yet, so pre-release bumps carry no migrations.
-pub const SNAPSHOT_FORMAT_VERSION: u32 = 6;
+pub const SNAPSHOT_FORMAT_VERSION: u32 = 7;
 
 /// The complete authoritative campaign state.
 ///

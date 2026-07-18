@@ -10,9 +10,12 @@ use std::collections::BTreeMap;
 
 use aeon_core::calendar::GameDate;
 use aeon_data::ContentSet;
-use aeon_data::model::{BodyKind, HouseTier, JobDef, JobTargetKind, OrgKind, ShipClass};
+use aeon_data::model::{
+    BodyKind, HouseTier, JobDef, JobResultKind, JobTargetKind, OrgKind, ShipClass,
+};
 use aeon_sim::economy::OrgResources;
 use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
+use aeon_sim::forecast::Permille;
 use aeon_sim::jobs::CharacterCondition;
 use aeon_sim::map::{BodyRecord, DisplayName, GeoPosition, ProvinceRecord};
 use aeon_sim::politics::{
@@ -29,6 +32,7 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
+use crate::forecast_view::ForecastCache;
 use crate::jobs_ui::{JobForm, UiCommandQueue};
 use crate::sim_driver::{SPEED_STEPS, TimeControl};
 use crate::view::{MapMode, MapView, SearchState, Selection, ViewState};
@@ -244,6 +248,7 @@ fn draw_context_jobs(
     player_head: Option<CharacterId>,
     date: GameDate,
     data: &PanelData,
+    cache: &ForecastCache,
     form: &mut JobForm,
     queue: &mut UiCommandQueue,
 ) {
@@ -298,6 +303,8 @@ fn draw_context_jobs(
     ui.separator();
     ui.strong("Actions");
 
+    // Every action expands to a forecast before it can be confirmed, so
+    // nothing is ever committed to unseen.
     match scope {
         JobScope::OwnCharacter(leader) => {
             if !leader_ok(leader) {
@@ -315,79 +322,31 @@ fn draw_context_jobs(
                         .on_hover_text(job_hover(def))
                         .clicked()
                     {
+                        form.reset();
+                        form.job = Some(key.clone());
+                        form.leader = Some(leader);
                         if def.target == JobTargetKind::None {
-                            queue.0.push(PlayerCommand::StartJob {
-                                job: key.clone(),
-                                leader,
-                                target: JobTarget::None,
-                            });
-                            form.reset();
-                            form.notice = None;
-                        } else {
-                            form.reset();
-                            form.job = Some(key.clone());
-                            form.leader = Some(leader);
+                            form.target = Some(JobTarget::None);
                         }
                     }
-                    // Inline target picker for the expanded job.
                     let expanded = form.job.as_ref() == Some(key) && form.leader == Some(leader);
-                    if expanded && def.target != JobTargetKind::None {
+                    if expanded {
                         ui.indent(key.to_string(), |ui| {
-                            pick_target(ui, def.target, content, politics, player_org, data, form);
-                            let ready = form.target.is_some();
-                            if ui
-                                .add_enabled(ready, egui::Button::new("Confirm"))
-                                .clicked()
-                                && let Some(target) = form.target
-                            {
-                                queue.0.push(PlayerCommand::StartJob {
-                                    job: key.clone(),
-                                    leader,
-                                    target,
-                                });
-                                form.reset();
-                                form.notice = None;
+                            if def.target != JobTargetKind::None {
+                                pick_target(
+                                    ui, def.target, content, politics, player_org, data, form,
+                                );
                             }
+                            draw_forecast(ui, cache, form);
+                            confirm_job(ui, key, form, queue);
                         });
                     }
                 }
             }
         }
         JobScope::OutsideCharacter(target_char) => {
-            let jobs = jobs_of(&[JobTargetKind::Character]);
-            for (key, def) in &jobs {
-                if ui
-                    .button(&def.title)
-                    .on_hover_text(job_hover(def))
-                    .clicked()
-                {
-                    form.reset();
-                    form.job = Some(key.clone());
-                    form.target = Some(JobTarget::Character(target_char));
-                    form.leader = player_head.filter(|h| leader_ok(*h));
-                }
-                let expanded = form.job.as_ref() == Some(key)
-                    && form.target == Some(JobTarget::Character(target_char));
-                if expanded {
-                    ui.indent(key.to_string(), |ui| {
-                        pick_leader(ui, &eligible_leaders(), form);
-                        let ready = form.leader.is_some();
-                        if ui
-                            .add_enabled(ready, egui::Button::new("Confirm"))
-                            .clicked()
-                            && let Some(leader) = form.leader
-                        {
-                            queue.0.push(PlayerCommand::StartJob {
-                                job: key.clone(),
-                                leader,
-                                target: JobTarget::Character(target_char),
-                            });
-                            form.reset();
-                            form.notice = None;
-                        }
-                    });
-                }
-            }
+            let mut offered: Vec<(aeon_data::ContentKey, JobDef)> =
+                jobs_of(&[JobTargetKind::Character]);
             // If this character holds the Consul title, the head can petition.
             let is_consul = data.titles.iter().any(|t| {
                 t.kind == TitleKind::Consul && t.holder == TitleHolder::Character(target_char)
@@ -397,19 +356,35 @@ fn draw_context_jobs(
                     .jobs
                     .iter()
                     .find(|(k, _)| k.as_str() == "petition-the-consul")
-                && let Some(head) = player_head.filter(|h| leader_ok(*h))
-                && ui
+            {
+                offered.push((key.clone(), def.clone()));
+            }
+
+            for (key, def) in &offered {
+                let targets_them = def.target == JobTargetKind::Character;
+                if ui
                     .button(&def.title)
                     .on_hover_text(job_hover(def))
                     .clicked()
-            {
-                queue.0.push(PlayerCommand::StartJob {
-                    job: key.clone(),
-                    leader: head,
-                    target: JobTarget::None,
-                });
-                form.reset();
-                form.notice = None;
+                {
+                    form.reset();
+                    form.job = Some(key.clone());
+                    form.target = Some(if targets_them {
+                        JobTarget::Character(target_char)
+                    } else {
+                        JobTarget::None
+                    });
+                    form.leader = player_head.filter(|h| leader_ok(*h));
+                    form.about = Some(target_char);
+                }
+                let expanded = form.job.as_ref() == Some(key) && form.about == Some(target_char);
+                if expanded {
+                    ui.indent(key.to_string(), |ui| {
+                        pick_leader(ui, &eligible_leaders(), form);
+                        draw_forecast(ui, cache, form);
+                        confirm_job(ui, key, form, queue);
+                    });
+                }
             }
         }
         JobScope::Province(province) => {
@@ -436,22 +411,14 @@ fn draw_context_jobs(
                         } else {
                             pick_army(ui, player_org, data, form);
                         }
+                        // Publish the resolved target and leader so the
+                        // forecast is for exactly what would be ordered.
                         let (target, leader) =
                             province_action(def.target, province, data, form, player_head);
-                        let ready = target.is_some() && leader.is_some();
-                        if ui
-                            .add_enabled(ready, egui::Button::new("Confirm"))
-                            .clicked()
-                            && let (Some(target), Some(leader)) = (target, leader)
-                        {
-                            queue.0.push(PlayerCommand::StartJob {
-                                job: key.clone(),
-                                leader,
-                                target,
-                            });
-                            form.reset();
-                            form.notice = None;
-                        }
+                        form.target = target;
+                        form.leader = leader;
+                        draw_forecast(ui, cache, form);
+                        confirm_job(ui, key, form, queue);
                     });
                 }
             }
@@ -460,6 +427,197 @@ fn draw_context_jobs(
 
     if let Some(notice) = &form.notice {
         ui.colored_label(egui::Color32::from_rgb(220, 60, 60), notice);
+    }
+}
+
+/// A permille chance as a player-facing percentage.
+fn permille_text(value: Permille) -> String {
+    format!("{}.{}%", value / 10, value % 10)
+}
+
+/// Colour and label for a graded outcome.
+fn result_style(kind: JobResultKind) -> (&'static str, egui::Color32) {
+    match kind {
+        JobResultKind::CriticalSuccess => {
+            ("Critical success", egui::Color32::from_rgb(120, 220, 130))
+        }
+        JobResultKind::Success => ("Success", egui::Color32::from_rgb(150, 200, 140)),
+        JobResultKind::Failure => ("Failure", egui::Color32::from_rgb(220, 170, 90)),
+        JobResultKind::Disaster => ("Disaster", egui::Color32::from_rgb(220, 90, 90)),
+    }
+}
+
+/// The Confirm button for an expanded action.
+fn confirm_job(
+    ui: &mut egui::Ui,
+    key: &aeon_data::ContentKey,
+    form: &mut JobForm,
+    queue: &mut UiCommandQueue,
+) {
+    let ready = form.leader.is_some() && form.target.is_some();
+    if ui
+        .add_enabled(ready, egui::Button::new("Confirm"))
+        .clicked()
+        && let (Some(leader), Some(target)) = (form.leader, form.target)
+    {
+        queue.0.push(PlayerCommand::StartJob {
+            job: key.clone(),
+            leader,
+            target,
+        });
+        form.reset();
+        form.notice = None;
+    }
+}
+
+/// Renders the simulation's forecast for the expanded action: what it
+/// costs, how long it takes, the exact odds it would roll now, what each
+/// outcome does, and what the leader personally risks. Every figure comes
+/// from the simulation; nothing here is recomputed in the client.
+fn draw_forecast(ui: &mut egui::Ui, cache: &ForecastCache, form: &mut JobForm) {
+    let Some(view) = &cache.forecast else {
+        ui.weak("Choose the remaining details to see the forecast.");
+        return;
+    };
+
+    egui::Frame::group(ui.style()).show(ui, |ui| {
+        // Timing.
+        ui.horizontal_wrapped(|ui| {
+            ui.label(format!("Takes {} days", view.duration_days))
+                .on_hover_text(
+                    "Days from the order taking effect until it resolves. A march \
+                     takes at least as long as the army needs to reach its objective.",
+                );
+            if view.order_delay_days > 0 {
+                ui.label(format!("· begins in {}d", view.order_delay_days))
+                    .on_hover_text(
+                        "Your order has to physically reach the leader first. \
+                         Distance from your head, and any travel in progress, add \
+                         this delay before the job even starts.",
+                    );
+            }
+        });
+
+        // Immediate costs.
+        let mut costs = Vec::new();
+        if view.wealth_cost > 0 {
+            costs.push(format!("W {}", view.wealth_cost));
+        }
+        if view.manpower_cost > 0 {
+            costs.push(format!("M {}", view.manpower_cost));
+        }
+        if view.supplies_cost > 0 {
+            costs.push(format!("S {}", view.supplies_cost));
+        }
+        if view.influence_cost > 0 {
+            costs.push(format!("I {}", view.influence_cost));
+        }
+        if !costs.is_empty() {
+            ui.label(format!("Costs {}", costs.join(" · ")))
+                .on_hover_text(
+                    "Taken from your house's stores the moment the job begins. \
+                     This is spent whatever the outcome — a guaranteed cost, not \
+                     a risk.",
+                );
+        }
+
+        // The skill contest behind the odds.
+        ui.label(format!(
+            "{:?} {} vs difficulty {} → {:+}",
+            view.skill, view.skill_value, view.difficulty, view.effectiveness
+        ))
+        .on_hover_text(
+            "The leader's governing skill against the job's authored difficulty. \
+             Each point of advantage shifts weight out of the bad outcomes and \
+             into the good ones; each point of deficit does the reverse.",
+        );
+
+        ui.separator();
+        ui.label("If ordered now").on_hover_text(
+            "The exact outcome distribution the simulation would roll against \
+             today. It moves with the leader you choose and their skill.",
+        );
+        for result in &view.results {
+            let (label, colour) = result_style(result.kind);
+            ui.horizontal(|ui| {
+                ui.colored_label(colour, permille_text(result.chance));
+                let mut text = label.to_owned();
+                if result.popup {
+                    text.push_str("  (asks you)");
+                }
+                let response = ui.label(text);
+                match &result.text {
+                    Some(detail) => {
+                        response.on_hover_text(detail);
+                    }
+                    None => {
+                        response.on_hover_text("No authored consequence for this outcome.");
+                    }
+                }
+            });
+        }
+
+        // Personal risks: conditional on a bad outcome, not on the order.
+        for risk in &view.risks {
+            ui.colored_label(
+                egui::Color32::from_rgb(220, 140, 90),
+                format!(
+                    "{:?} risk — {} on a failure, {} on a disaster",
+                    risk.tag,
+                    permille_text(risk.on_failure),
+                    permille_text(risk.on_disaster)
+                ),
+            )
+            .on_hover_text(
+                "A personal consequence for the leader, rolled only if the job \
+                 goes badly. It is conditional on the outcome above, not an \
+                 additional chance on the order itself.",
+            );
+        }
+
+        // A military operation is settled after the roll, not by it.
+        if let Some(op) = view.military_op {
+            ui.colored_label(
+                egui::Color32::from_rgb(150, 180, 230),
+                format!("Then contested in the field ({op:?})"),
+            )
+            .on_hover_text(
+                "These chances cover the order itself. Even a successful order is \
+                 then decided by the operation — the strength, supply and order of \
+                 the forces present settle it, and that contest is deliberately \
+                 not folded into the percentages above.",
+            );
+        }
+
+        if let Some(reason) = &view.blocked {
+            ui.colored_label(
+                egui::Color32::from_rgb(220, 60, 60),
+                format!("Cannot start: {reason}"),
+            );
+        }
+    });
+
+    // Compare the alternatives, and switch to one.
+    if cache.leaders.len() > 1 {
+        ui.collapsing("Compare leaders", |ui| {
+            for option in &cache.leaders {
+                let chosen = form.leader == Some(option.id);
+                let label = format!(
+                    "{} — skill {} — {}",
+                    option.name,
+                    option.skill_value,
+                    permille_text(option.success)
+                );
+                let response = ui.selectable_label(chosen, label);
+                let response = match &option.blocked {
+                    Some(reason) => response.on_hover_text(format!("Unavailable: {reason}")),
+                    None => response.on_hover_text("Chance of a success or better."),
+                };
+                if response.clicked() && option.blocked.is_none() {
+                    form.leader = Some(option.id);
+                }
+            }
+        });
     }
 }
 
@@ -703,6 +861,7 @@ pub fn draw_panels(
     mut search: ResMut<SearchState>,
     mut mode: ResMut<MapMode>,
     mut form: ResMut<JobForm>,
+    cache: Res<ForecastCache>,
     data: PanelData,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
@@ -920,372 +1079,408 @@ pub fn draw_panels(
         .show(&mut viewport, |ui| {
             ui.heading("Inspector");
             ui.separator();
-            match view.selected {
-                None => {
-                    ui.label("Select a body, province, house, or character.");
-                }
-                Some(Selection::Body(id)) => {
-                    if let Some((record, name)) =
-                        data.bodies.iter().find(|(record, _)| record.id == id)
-                    {
-                        ui.strong(&name.0);
-                        ui.label(kind_label(record.kind));
-                        ui.separator();
-                        egui::Grid::new("body-facts").show(ui, |ui| {
-                            ui.label("Stable ID");
-                            ui.monospace(record.id.to_string());
-                            ui.end_row();
-                            ui.label("Radius");
-                            ui.label(format!("{} km", record.radius_km));
-                            ui.end_row();
-                            ui.label("Provinces");
-                            ui.label(
-                                data.provinces
-                                    .iter()
-                                    .filter(|(p, _, _)| p.body == id)
-                                    .count()
-                                    .to_string(),
-                            );
-                            ui.end_row();
-                        });
-                        if ui.button("Open strategic view").clicked() {
-                            view.view = MapView::Body(id);
+            // A forecast and its leader comparison can outgrow the panel,
+            // so the whole inspector scrolls.
+            egui::ScrollArea::vertical()
+                .id_salt("inspector-scroll")
+                .show(ui, |ui| {
+                    match view.selected {
+                        None => {
+                            ui.label("Select a body, province, house, or character.");
                         }
-                    }
-                }
-                Some(Selection::Province(id)) => {
-                    if let Some((record, name, geo)) =
-                        data.provinces.iter().find(|(record, _, _)| record.id == id)
-                    {
-                        ui.strong(&name.0);
-                        let body_name = data
-                            .bodies
-                            .iter()
-                            .find(|(body, _)| body.id == record.body)
-                            .map(|(_, name)| name.0.as_str())
-                            .unwrap_or("Unknown");
-                        ui.label(format!("Province of {body_name}"));
-                        ui.separator();
-
-                        let holder = politics
-                            .province_titles
-                            .get(&id)
-                            .and_then(|title_id| politics.titles.get(title_id))
-                            .and_then(|entity| data.titles.get(*entity).ok())
-                            .map(|title| title.holder);
-                        egui::Grid::new("province-facts").show(ui, |ui| {
-                            ui.label("Held by");
-                            match holder {
-                                Some(TitleHolder::Org(org)) => {
-                                    if linked(ui, &org_label(org), &org_hover(org)) {
-                                        view.selected = Some(Selection::Org(org));
-                                    }
-                                }
-                                Some(TitleHolder::Character(character)) => {
-                                    let name = chars
-                                        .get(&character)
-                                        .map(|(r, ..)| r.name.clone())
-                                        .unwrap_or_default();
-                                    if linked(ui, &name, &char_hover(character)) {
-                                        view.selected = Some(Selection::Character(character));
-                                    }
-                                }
-                                _ => {
-                                    ui.label("No one");
+                        Some(Selection::Body(id)) => {
+                            if let Some((record, name)) =
+                                data.bodies.iter().find(|(record, _)| record.id == id)
+                            {
+                                ui.strong(&name.0);
+                                ui.label(kind_label(record.kind));
+                                ui.separator();
+                                egui::Grid::new("body-facts").show(ui, |ui| {
+                                    ui.label("Stable ID");
+                                    ui.monospace(record.id.to_string());
+                                    ui.end_row();
+                                    ui.label("Radius");
+                                    ui.label(format!("{} km", record.radius_km));
+                                    ui.end_row();
+                                    ui.label("Provinces");
+                                    ui.label(
+                                        data.provinces
+                                            .iter()
+                                            .filter(|(p, _, _)| p.body == id)
+                                            .count()
+                                            .to_string(),
+                                    );
+                                    ui.end_row();
+                                });
+                                if ui.button("Open strategic view").clicked() {
+                                    view.view = MapView::Body(id);
                                 }
                             }
-                            ui.end_row();
-                            if let Some(def) = content.0.provinces.get(&record.key) {
-                                ui.label("Monthly output");
-                                ui.label(format!(
-                                    "W {} / M {} / S {}",
-                                    def.wealth_output, def.manpower_output, def.supplies_output
-                                ));
-                                ui.end_row();
-                            }
-                            ui.label("Latitude");
-                            ui.label(format!("{:.2}\u{00b0}", geo.latitude_mdeg as f32 / 1000.0));
-                            ui.end_row();
-                            ui.label("Longitude");
-                            ui.label(format!("{:.2}\u{00b0}", geo.longitude_mdeg as f32 / 1000.0));
-                            ui.end_row();
-                        });
+                        }
+                        Some(Selection::Province(id)) => {
+                            if let Some((record, name, geo)) =
+                                data.provinces.iter().find(|(record, _, _)| record.id == id)
+                            {
+                                ui.strong(&name.0);
+                                let body_name = data
+                                    .bodies
+                                    .iter()
+                                    .find(|(body, _)| body.id == record.body)
+                                    .map(|(_, name)| name.0.as_str())
+                                    .unwrap_or("Unknown");
+                                ui.label(format!("Province of {body_name}"));
+                                ui.separator();
 
-                        // Forces standing at this province.
-                        let armies_here: Vec<&ArmyRecord> =
-                            data.armies.iter().filter(|a| a.location == id).collect();
-                        let ships_here: Vec<&ShipRecord> = data
+                                let holder = politics
+                                    .province_titles
+                                    .get(&id)
+                                    .and_then(|title_id| politics.titles.get(title_id))
+                                    .and_then(|entity| data.titles.get(*entity).ok())
+                                    .map(|title| title.holder);
+                                egui::Grid::new("province-facts").show(ui, |ui| {
+                                    ui.label("Held by");
+                                    match holder {
+                                        Some(TitleHolder::Org(org)) => {
+                                            if linked(ui, &org_label(org), &org_hover(org)) {
+                                                view.selected = Some(Selection::Org(org));
+                                            }
+                                        }
+                                        Some(TitleHolder::Character(character)) => {
+                                            let name = chars
+                                                .get(&character)
+                                                .map(|(r, ..)| r.name.clone())
+                                                .unwrap_or_default();
+                                            if linked(ui, &name, &char_hover(character)) {
+                                                view.selected =
+                                                    Some(Selection::Character(character));
+                                            }
+                                        }
+                                        _ => {
+                                            ui.label("No one");
+                                        }
+                                    }
+                                    ui.end_row();
+                                    if let Some(def) = content.0.provinces.get(&record.key) {
+                                        ui.label("Monthly output");
+                                        ui.label(format!(
+                                            "W {} / M {} / S {}",
+                                            def.wealth_output,
+                                            def.manpower_output,
+                                            def.supplies_output
+                                        ));
+                                        ui.end_row();
+                                    }
+                                    ui.label("Latitude");
+                                    ui.label(format!(
+                                        "{:.2}\u{00b0}",
+                                        geo.latitude_mdeg as f32 / 1000.0
+                                    ));
+                                    ui.end_row();
+                                    ui.label("Longitude");
+                                    ui.label(format!(
+                                        "{:.2}\u{00b0}",
+                                        geo.longitude_mdeg as f32 / 1000.0
+                                    ));
+                                    ui.end_row();
+                                });
+
+                                // Forces standing at this province.
+                                let armies_here: Vec<&ArmyRecord> =
+                                    data.armies.iter().filter(|a| a.location == id).collect();
+                                let ships_here: Vec<&ShipRecord> = data
                             .ships
                             .iter()
                             .filter(|s| matches!(s.location, ShipLocation::Docked(p) if p == id))
                             .collect();
-                        if !armies_here.is_empty() || !ships_here.is_empty() {
-                            ui.separator();
-                            ui.label("Forces here:");
-                            for army in armies_here {
-                                ui.horizontal(|ui| {
-                                    ui.label(format!(
-                                        "\u{2694} {} ({} men)",
-                                        army.name, army.manpower
-                                    ));
-                                    if let Some((general, ..)) = chars.get(&army.general) {
-                                        ui.label("·");
-                                        if linked(ui, &general.name, &char_hover(army.general)) {
-                                            view.selected =
-                                                Some(Selection::Character(army.general));
-                                        }
+                                if !armies_here.is_empty() || !ships_here.is_empty() {
+                                    ui.separator();
+                                    ui.label("Forces here:");
+                                    for army in armies_here {
+                                        ui.horizontal(|ui| {
+                                            ui.label(format!(
+                                                "\u{2694} {} ({} men)",
+                                                army.name, army.manpower
+                                            ));
+                                            if let Some((general, ..)) = chars.get(&army.general) {
+                                                ui.label("·");
+                                                if linked(
+                                                    ui,
+                                                    &general.name,
+                                                    &char_hover(army.general),
+                                                ) {
+                                                    view.selected =
+                                                        Some(Selection::Character(army.general));
+                                                }
+                                            }
+                                        });
                                     }
-                                });
-                            }
-                            for ship in ships_here {
-                                ui.horizontal(|ui| {
-                                    ui.label(format!("\u{2693} {}", ship.name));
-                                    if let Some(captain) = ship.captain
-                                        && let Some((c, ..)) = chars.get(&captain)
-                                    {
-                                        ui.label("·");
-                                        if linked(ui, &c.name, &char_hover(captain)) {
-                                            view.selected = Some(Selection::Character(captain));
-                                        }
+                                    for ship in ships_here {
+                                        ui.horizontal(|ui| {
+                                            ui.label(format!("\u{2693} {}", ship.name));
+                                            if let Some(captain) = ship.captain
+                                                && let Some((c, ..)) = chars.get(&captain)
+                                            {
+                                                ui.label("·");
+                                                if linked(ui, &c.name, &char_hover(captain)) {
+                                                    view.selected =
+                                                        Some(Selection::Character(captain));
+                                                }
+                                            }
+                                        });
                                     }
-                                });
-                            }
-                        }
+                                }
 
-                        if let Some(org) = player_org {
-                            draw_context_jobs(
-                                ui,
-                                JobScope::Province(id),
-                                &content.0,
-                                &politics,
-                                org,
-                                player_head,
-                                date,
-                                &data,
-                                &mut form,
-                                &mut queue,
-                            );
+                                if let Some(org) = player_org {
+                                    draw_context_jobs(
+                                        ui,
+                                        JobScope::Province(id),
+                                        &content.0,
+                                        &politics,
+                                        org,
+                                        player_head,
+                                        date,
+                                        &data,
+                                        &cache,
+                                        &mut form,
+                                        &mut queue,
+                                    );
+                                }
+                            }
                         }
-                    }
-                }
-                Some(Selection::Org(id)) => {
-                    if let Some((record, resources)) = org_records.get(&id).copied() {
-                        let def = content.0.organisations.get(&record.key);
-                        ui.strong(def.map(|d| d.name.as_str()).unwrap_or("Unknown"));
-                        match (record.kind, record.tier) {
-                            (OrgKind::SanctoraImperim, _) => {
-                                ui.label("Imperial government");
-                            }
-                            (_, Some(HouseTier::Great)) => {
-                                ui.label("Great house");
-                            }
-                            (_, Some(HouseTier::Vassal)) => {
+                        Some(Selection::Org(id)) => {
+                            if let Some((record, resources)) = org_records.get(&id).copied() {
+                                let def = content.0.organisations.get(&record.key);
+                                ui.strong(def.map(|d| d.name.as_str()).unwrap_or("Unknown"));
+                                match (record.kind, record.tier) {
+                                    (OrgKind::SanctoraImperim, _) => {
+                                        ui.label("Imperial government");
+                                    }
+                                    (_, Some(HouseTier::Great)) => {
+                                        ui.label("Great house");
+                                    }
+                                    (_, Some(HouseTier::Vassal)) => {
+                                        ui.horizontal(|ui| {
+                                            ui.label("Vassal of");
+                                            match record.liege {
+                                                Some(liege) => {
+                                                    if linked(
+                                                        ui,
+                                                        &org_label(liege),
+                                                        &org_hover(liege),
+                                                    ) {
+                                                        view.selected = Some(Selection::Org(liege));
+                                                    }
+                                                }
+                                                None => {
+                                                    ui.label("—");
+                                                }
+                                            }
+                                        });
+                                    }
+                                    (_, Some(HouseTier::Independent)) => {
+                                        ui.label("Independent house");
+                                    }
+                                    _ => {}
+                                }
+                                if record.defunct {
+                                    ui.colored_label(
+                                        egui::Color32::from_rgb(220, 60, 60),
+                                        "DEFUNCT",
+                                    );
+                                }
+                                if let Some(resources) = resources {
+                                    ui.horizontal(|ui| resource_readout(ui, resources));
+                                }
+                                ui.separator();
+
                                 ui.horizontal(|ui| {
-                                    ui.label("Vassal of");
-                                    match record.liege {
-                                        Some(liege) => {
-                                            if linked(ui, &org_label(liege), &org_hover(liege)) {
-                                                view.selected = Some(Selection::Org(liege));
+                                    ui.label("Head:");
+                                    match record.head.and_then(|h| chars.get(&h)) {
+                                        Some((head_record, ..)) => {
+                                            if linked(
+                                                ui,
+                                                &head_record.name,
+                                                &char_hover(head_record.id),
+                                            ) {
+                                                view.selected =
+                                                    Some(Selection::Character(head_record.id));
                                             }
                                         }
                                         None => {
-                                            ui.label("—");
+                                            ui.label("None");
                                         }
                                     }
                                 });
-                            }
-                            (_, Some(HouseTier::Independent)) => {
-                                ui.label("Independent house");
-                            }
-                            _ => {}
-                        }
-                        if record.defunct {
-                            ui.colored_label(egui::Color32::from_rgb(220, 60, 60), "DEFUNCT");
-                        }
-                        if let Some(resources) = resources {
-                            ui.horizontal(|ui| resource_readout(ui, resources));
-                        }
-                        ui.separator();
 
-                        ui.horizontal(|ui| {
-                            ui.label("Head:");
-                            match record.head.and_then(|h| chars.get(&h)) {
-                                Some((head_record, ..)) => {
-                                    if linked(ui, &head_record.name, &char_hover(head_record.id)) {
-                                        view.selected = Some(Selection::Character(head_record.id));
+                                let held = data
+                                    .titles
+                                    .iter()
+                                    .filter(|t| t.holder == TitleHolder::Org(id))
+                                    .count();
+                                ui.label(format!("Titles held: {held}"));
+
+                                ui.separator();
+                                ui.label("Members:");
+                                for (char_id, (record, ..)) in &chars {
+                                    if record.organisation != Some(id) || !record.alive() {
+                                        continue;
+                                    }
+                                    if linked(ui, &record.name, &char_hover(*char_id)) {
+                                        view.selected = Some(Selection::Character(*char_id));
                                     }
                                 }
-                                None => {
-                                    ui.label("None");
-                                }
-                            }
-                        });
-
-                        let held = data
-                            .titles
-                            .iter()
-                            .filter(|t| t.holder == TitleHolder::Org(id))
-                            .count();
-                        ui.label(format!("Titles held: {held}"));
-
-                        ui.separator();
-                        ui.label("Members:");
-                        egui::ScrollArea::vertical().show(ui, |ui| {
-                            for (char_id, (record, ..)) in &chars {
-                                if record.organisation != Some(id) || !record.alive() {
-                                    continue;
-                                }
-                                if linked(ui, &record.name, &char_hover(*char_id)) {
-                                    view.selected = Some(Selection::Character(*char_id));
-                                }
-                            }
-                        });
-                    }
-                }
-                Some(Selection::Character(id)) => {
-                    if let Some((record, skills, char_traits, lineage, _)) = chars.get(&id).copied()
-                    {
-                        ui.strong(&record.name);
-                        match record.death {
-                            None => {
-                                ui.label(format!("Age {}", record.age_years(date)));
-                            }
-                            Some(death) => {
-                                ui.label(format!("Died {death}"));
                             }
                         }
-                        if let Some(org) = record.organisation {
-                            ui.horizontal(|ui| {
-                                if linked(ui, &org_label(org), &org_hover(org)) {
-                                    view.selected = Some(Selection::Org(org));
+                        Some(Selection::Character(id)) => {
+                            if let Some((record, skills, char_traits, lineage, _)) =
+                                chars.get(&id).copied()
+                            {
+                                ui.strong(&record.name);
+                                match record.death {
+                                    None => {
+                                        ui.label(format!("Age {}", record.age_years(date)));
+                                    }
+                                    Some(death) => {
+                                        ui.label(format!("Died {death}"));
+                                    }
                                 }
-                            });
-                        }
-
-                        // Location and travel.
-                        let location = politics
-                            .characters
-                            .get(&id)
-                            .and_then(|e| data.locations.get(*e).ok());
-                        ui.label(format!("At: {}", location_label(location)));
-                        if record.alive()
-                            && record.organisation == player_org
-                            && let Some(Location::Province(at)) = location.map(|l| l.0)
-                        {
-                            egui::ComboBox::from_id_salt("travel-to")
-                                .selected_text("Travel to...")
-                                .show_ui(ui, |ui| {
-                                    let mut sorted: Vec<_> = province_names.iter().collect();
-                                    sorted.sort_by_key(|(id, _)| **id);
-                                    for (province, name) in sorted {
-                                        if *province == at {
-                                            continue;
+                                if let Some(org) = record.organisation {
+                                    ui.horizontal(|ui| {
+                                        if linked(ui, &org_label(org), &org_hover(org)) {
+                                            view.selected = Some(Selection::Org(org));
                                         }
-                                        if ui.selectable_label(false, *name).clicked() {
-                                            queue.0.push(PlayerCommand::Travel {
-                                                character: id,
-                                                destination: *province,
-                                            });
+                                    });
+                                }
+
+                                // Location and travel.
+                                let location = politics
+                                    .characters
+                                    .get(&id)
+                                    .and_then(|e| data.locations.get(*e).ok());
+                                ui.label(format!("At: {}", location_label(location)));
+                                if record.alive()
+                                    && record.organisation == player_org
+                                    && let Some(Location::Province(at)) = location.map(|l| l.0)
+                                {
+                                    egui::ComboBox::from_id_salt("travel-to")
+                                        .selected_text("Travel to...")
+                                        .show_ui(ui, |ui| {
+                                            let mut sorted: Vec<_> =
+                                                province_names.iter().collect();
+                                            sorted.sort_by_key(|(id, _)| **id);
+                                            for (province, name) in sorted {
+                                                if *province == at {
+                                                    continue;
+                                                }
+                                                if ui.selectable_label(false, *name).clicked() {
+                                                    queue.0.push(PlayerCommand::Travel {
+                                                        character: id,
+                                                        destination: *province,
+                                                    });
+                                                }
+                                            }
+                                        });
+                                }
+                                ui.separator();
+
+                                egui::Grid::new("skills").show(ui, |ui| {
+                                    ui.label("Command");
+                                    ui.label(skills.0.command.to_string());
+                                    ui.end_row();
+                                    ui.label("Diplomacy");
+                                    ui.label(skills.0.diplomacy.to_string());
+                                    ui.end_row();
+                                    ui.label("Intrigue");
+                                    ui.label(skills.0.intrigue.to_string());
+                                    ui.end_row();
+                                    ui.label("Stewardship");
+                                    ui.label(skills.0.stewardship.to_string());
+                                    ui.end_row();
+                                });
+
+                                let trait_names: Vec<String> = char_traits
+                                    .0
+                                    .iter()
+                                    .filter_map(|key| content.0.traits.get(key))
+                                    .map(|def| def.name.clone())
+                                    .collect();
+                                if !trait_names.is_empty() {
+                                    ui.label(format!("Traits: {}", trait_names.join(", ")));
+                                }
+
+                                ui.separator();
+                                if let Some(spouse) = lineage.spouse
+                                    && let Some((spouse_record, ..)) = chars.get(&spouse)
+                                {
+                                    ui.horizontal(|ui| {
+                                        ui.label("Spouse:");
+                                        if linked(ui, &spouse_record.name, &char_hover(spouse)) {
+                                            view.selected = Some(Selection::Character(spouse));
+                                        }
+                                    });
+                                }
+                                for parent in &lineage.parents {
+                                    if let Some((parent_record, ..)) = chars.get(parent) {
+                                        ui.horizontal(|ui| {
+                                            ui.label("Parent:");
+                                            if linked(ui, &parent_record.name, &char_hover(*parent))
+                                            {
+                                                view.selected = Some(Selection::Character(*parent));
+                                            }
+                                        });
+                                    }
+                                }
+
+                                if let Some(head_id) = player_head
+                                    && head_id != id
+                                    && let (Some(head), Some(them)) =
+                                        (chars.get(&head_id), chars.get(&id))
+                                {
+                                    fn as_view<'a>(p: &CharacterParts<'a>) -> CharacterView<'a> {
+                                        CharacterView {
+                                            record: p.0,
+                                            traits: p.2,
+                                            lineage: p.3,
+                                            ledger: p.4,
                                         }
                                     }
-                                });
-                        }
-                        ui.separator();
-
-                        egui::Grid::new("skills").show(ui, |ui| {
-                            ui.label("Command");
-                            ui.label(skills.0.command.to_string());
-                            ui.end_row();
-                            ui.label("Diplomacy");
-                            ui.label(skills.0.diplomacy.to_string());
-                            ui.end_row();
-                            ui.label("Intrigue");
-                            ui.label(skills.0.intrigue.to_string());
-                            ui.end_row();
-                            ui.label("Stewardship");
-                            ui.label(skills.0.stewardship.to_string());
-                            ui.end_row();
-                        });
-
-                        let trait_names: Vec<String> = char_traits
-                            .0
-                            .iter()
-                            .filter_map(|key| content.0.traits.get(key))
-                            .map(|def| def.name.clone())
-                            .collect();
-                        if !trait_names.is_empty() {
-                            ui.label(format!("Traits: {}", trait_names.join(", ")));
-                        }
-
-                        ui.separator();
-                        if let Some(spouse) = lineage.spouse
-                            && let Some((spouse_record, ..)) = chars.get(&spouse)
-                        {
-                            ui.horizontal(|ui| {
-                                ui.label("Spouse:");
-                                if linked(ui, &spouse_record.name, &char_hover(spouse)) {
-                                    view.selected = Some(Selection::Character(spouse));
+                                    ui.separator();
+                                    ui.label(format!(
+                                        "Your head's opinion of them: {:+}",
+                                        opinion_of(&content.0, date, as_view(head), as_view(them)),
+                                    ));
+                                    ui.label(format!(
+                                        "Their opinion of your head: {:+}",
+                                        opinion_of(&content.0, date, as_view(them), as_view(head)),
+                                    ));
                                 }
-                            });
-                        }
-                        for parent in &lineage.parents {
-                            if let Some((parent_record, ..)) = chars.get(parent) {
-                                ui.horizontal(|ui| {
-                                    ui.label("Parent:");
-                                    if linked(ui, &parent_record.name, &char_hover(*parent)) {
-                                        view.selected = Some(Selection::Character(*parent));
-                                    }
-                                });
-                            }
-                        }
 
-                        if let Some(head_id) = player_head
-                            && head_id != id
-                            && let (Some(head), Some(them)) = (chars.get(&head_id), chars.get(&id))
-                        {
-                            fn as_view<'a>(p: &CharacterParts<'a>) -> CharacterView<'a> {
-                                CharacterView {
-                                    record: p.0,
-                                    traits: p.2,
-                                    lineage: p.3,
-                                    ledger: p.4,
+                                if record.alive()
+                                    && let Some(org) = player_org
+                                {
+                                    let scope = if record.organisation == Some(org) {
+                                        JobScope::OwnCharacter(id)
+                                    } else {
+                                        JobScope::OutsideCharacter(id)
+                                    };
+                                    draw_context_jobs(
+                                        ui,
+                                        scope,
+                                        &content.0,
+                                        &politics,
+                                        org,
+                                        player_head,
+                                        date,
+                                        &data,
+                                        &cache,
+                                        &mut form,
+                                        &mut queue,
+                                    );
                                 }
                             }
-                            ui.separator();
-                            ui.label(format!(
-                                "Your head's opinion of them: {:+}",
-                                opinion_of(&content.0, date, as_view(head), as_view(them)),
-                            ));
-                            ui.label(format!(
-                                "Their opinion of your head: {:+}",
-                                opinion_of(&content.0, date, as_view(them), as_view(head)),
-                            ));
-                        }
-
-                        if record.alive()
-                            && let Some(org) = player_org
-                        {
-                            let scope = if record.organisation == Some(org) {
-                                JobScope::OwnCharacter(id)
-                            } else {
-                                JobScope::OutsideCharacter(id)
-                            };
-                            draw_context_jobs(
-                                ui,
-                                scope,
-                                &content.0,
-                                &politics,
-                                org,
-                                player_head,
-                                date,
-                                &data,
-                                &mut form,
-                                &mut queue,
-                            );
                         }
                     }
-                }
-            }
+                });
         });
 
     egui::Panel::right("listing")

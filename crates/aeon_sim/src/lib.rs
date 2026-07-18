@@ -23,6 +23,7 @@ pub mod config;
 pub mod crisis;
 pub mod economy;
 pub mod forces;
+pub mod forecast;
 pub mod host;
 pub mod ids;
 pub mod jobs;
@@ -41,9 +42,13 @@ pub use command::{CommandEnvelope, CommandRejection, PlayerCommand};
 pub use config::CampaignConfig;
 pub use economy::OrgResources;
 pub use forces::{ArmyRecord, ForcesIndex, ShipRecord};
+pub use forecast::{ForecastResult, ForecastRisk, JobForecast, Permille};
 pub use host::SimHost;
 pub use ids::{ArmyId, BodyId, CharacterId, JobId, OfficeId, OrgId, ProvinceId, ShipId, TitleId};
-pub use jobs::{ActiveJob, JobTarget, JobsIndex, MessageLog, PendingPopups};
+pub use jobs::{
+    ActiveJob, JobRejection, JobTarget, JobsIndex, LogChannel, LogEntry, LogSubject, MessageLog,
+    PendingPopups,
+};
 pub use map::{BodyRecord, DisplayName, GeoPosition, MapIndex, ProvinceRecord};
 pub use politics::{
     CampaignOver, CharacterRecord, OfficeRecord, OrgRecord, PlayerHouse, PoliticsIndex,

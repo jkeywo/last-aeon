@@ -13,7 +13,7 @@ use bevy::prelude::World;
 
 use crate::economy::OrgResources;
 use crate::ids::{BodyId, OrgId, TitleId};
-use crate::jobs::{LogEntry, MessageLog};
+use crate::jobs::{LogChannel, LogEntry, MessageLog};
 use crate::map::ProvinceRecord;
 use crate::politics::{OrgRecord, PoliticsIndex, TitleHolder, TitleKind, TitleRecord};
 use crate::state::ContentDb;
@@ -78,7 +78,7 @@ fn log(world: &mut World, org: Option<OrgId>, text: String) {
     world
         .resource_mut::<MessageLog>()
         .entries
-        .push(LogEntry { date, text, org });
+        .push(LogEntry::new(date, text, LogChannel::Politics).by(org));
 }
 
 fn org_name(world: &World, org: OrgId) -> String {

@@ -3,17 +3,22 @@
 //! pipeline. Jobs are *started* from context buttons in the inspector
 //! (see `panels.rs`); this module runs everything after they are queued.
 
+use std::collections::BTreeSet;
+
 use aeon_data::ContentKey;
 use aeon_sim::command::submit_command;
+use aeon_sim::map::ProvinceRecord;
 use aeon_sim::state::ContentDb;
 use aeon_sim::{
-    ActiveJob, ArmyId, CampaignClock, CharacterId, CharacterRecord, JobTarget, MessageLog,
-    PendingPopups, PlayerCommand, PlayerHouse, PoliticsIndex, ShipId,
+    ActiveJob, ArmyId, CampaignClock, CharacterId, CharacterRecord, JobTarget, LogChannel,
+    LogEntry, LogSubject, MessageLog, OrgId, PendingPopups, PlayerCommand, PlayerHouse,
+    PoliticsIndex, ShipId,
 };
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
 use crate::sim_driver::TimeControl;
+use crate::view::{MapView, Selection, ViewState};
 
 /// Player intents collected by UI systems this frame, submitted as
 /// commands by [`flush_ui_commands`].
@@ -36,6 +41,9 @@ pub struct JobForm {
     pub ship: Option<ShipId>,
     /// Chosen destination province, for compound military targets.
     pub province: Option<aeon_sim::ProvinceId>,
+    /// The outside character an expanded action is anchored to, so the
+    /// picker does not follow the selection to someone else.
+    pub about: Option<CharacterId>,
     /// Last rejection message, shown until the next attempt.
     pub notice: Option<String>,
 }
@@ -49,6 +57,42 @@ impl JobForm {
         self.army = None;
         self.ship = None;
         self.province = None;
+        self.about = None;
+    }
+}
+
+/// What the message log is currently showing.
+#[derive(Resource, Clone, Debug)]
+pub struct LogFilter {
+    /// Which channels are visible.
+    pub channels: BTreeSet<LogChannel>,
+    /// Free-text filter over entry text.
+    pub text: String,
+    /// Restrict to entries concerning the player's own house.
+    pub mine_only: bool,
+}
+
+impl Default for LogFilter {
+    fn default() -> Self {
+        Self {
+            channels: LogChannel::ALL.into_iter().collect(),
+            text: String::new(),
+            mine_only: false,
+        }
+    }
+}
+
+impl LogFilter {
+    /// Whether an entry passes the current filter.
+    fn admits(&self, entry: &LogEntry, player_org: OrgId) -> bool {
+        if !self.channels.contains(&entry.channel) {
+            return false;
+        }
+        if self.mine_only && entry.org != Some(player_org) {
+            return false;
+        }
+        let needle = self.text.trim().to_lowercase();
+        needle.is_empty() || entry.text.to_lowercase().contains(&needle)
     }
 }
 
@@ -89,8 +133,11 @@ pub fn draw_jobs_ui(
     popups: Option<Res<PendingPopups>>,
     log: Option<Res<MessageLog>>,
     mut queue: ResMut<UiCommandQueue>,
+    mut filter: ResMut<LogFilter>,
+    mut view: ResMut<ViewState>,
     jobs: Query<&ActiveJob>,
     characters: Query<&CharacterRecord>,
+    provinces: Query<&ProvinceRecord>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -120,14 +167,77 @@ pub fn draw_jobs_ui(
         .default_size(150.0)
         .show(&mut viewport, |ui| {
             ui.columns(2, |columns| {
-                // Message log.
-                columns[0].heading("Log");
+                // Message log, filterable and linked to its subjects.
+                columns[0].horizontal_wrapped(|ui| {
+                    ui.heading("Log");
+                    for channel in LogChannel::ALL {
+                        let mut on = filter.channels.contains(&channel);
+                        if ui.toggle_value(&mut on, channel.label()).changed() {
+                            if on {
+                                filter.channels.insert(channel);
+                            } else {
+                                filter.channels.remove(&channel);
+                            }
+                        }
+                    }
+                    ui.toggle_value(&mut filter.mine_only, "Mine")
+                        .on_hover_text("Show only entries concerning your own house.");
+                    ui.add(
+                        egui::TextEdit::singleline(&mut filter.text)
+                            .hint_text("Filter…")
+                            .desired_width(90.0),
+                    );
+                });
                 egui::ScrollArea::vertical()
                     .id_salt("log-scroll")
                     .stick_to_bottom(true)
                     .show(&mut columns[0], |ui| {
-                        for entry in log.entries.iter().rev().take(100).rev() {
-                            ui.label(format!("{}  {}", entry.date, entry.text));
+                        let visible: Vec<&LogEntry> = log
+                            .entries
+                            .iter()
+                            .filter(|entry| filter.admits(entry, player_org))
+                            .rev()
+                            .take(200)
+                            .collect();
+                        if visible.is_empty() {
+                            ui.weak("Nothing matches this filter.");
+                        }
+                        for entry in visible.into_iter().rev() {
+                            ui.horizontal_wrapped(|ui| {
+                                ui.weak(entry.date.to_string());
+                                match entry.subject {
+                                    // A subject makes the entry a way in.
+                                    Some(subject) => {
+                                        if ui
+                                            .link(&entry.text)
+                                            .on_hover_text("Show what this is about")
+                                            .clicked()
+                                        {
+                                            match subject {
+                                                LogSubject::Character(id) => {
+                                                    view.selected = Some(Selection::Character(id));
+                                                }
+                                                LogSubject::Org(id) => {
+                                                    view.selected = Some(Selection::Org(id));
+                                                }
+                                                LogSubject::Province(id) => {
+                                                    view.selected = Some(Selection::Province(id));
+                                                    if let Some(body) = provinces
+                                                        .iter()
+                                                        .find(|record| record.id == id)
+                                                        .map(|record| record.body)
+                                                    {
+                                                        view.view = MapView::Body(body);
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    None => {
+                                        ui.label(&entry.text);
+                                    }
+                                }
+                            });
                         }
                     });
 
