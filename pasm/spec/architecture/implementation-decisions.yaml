@@ -546,3 +546,62 @@ entities:
         - persistent-armies
         - effects-returned-not-emitted
         - legitimacy-caps-and-regenerates-influence
+
+  - decision: engine-owned-military-operations
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Military Operations Are Engine-Owned, Declared by Content
+      summary: >-
+        Jobs may declare a military operation - move, resupply, patrol,
+        besiege, raid, blockade - whose operational semantics (marching
+        with road-time minimums, garrison engagements, title-transferring
+        conquest, loot, blockades halving wealth output) are simulation
+        code. Content declares pacing, costs, risks, and flavour; army
+        operations are always led by the army's general, and defeat in
+        the field overrides the job's rolled result to failure.
+      rationale:
+        - Engagements and conquest touch titles, forces, and resources at once; putting them behind the script-effect boundary would either widen it unsafely or duplicate the simulation in content.
+      references:
+        - job-based-operational-warfare
+        - military-operation-system
+        - scripts-emit-validated-effects-only
+
+  - decision: strategic-engagement-formula
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Engagements Resolve from Strength, Command, Supply, and Walls
+      summary: >-
+        A field engagement compares army strengths - manpower scaled five
+        percent per point of the general's command, sixty percent when the
+        supply train is dry, and a twenty percent bonus for defending home
+        ground - each with a bounded fifteen-percent swing from a derived
+        stream. Winners lose five to fifteen percent of their men, losers
+        twenty to thirty-five; losers retreat to their nearest holding or
+        disband.
+      rationale:
+        - The formula makes preparation, supply, leadership, and position decide battles, which is exactly what job-based operational warfare promises instead of tactical play.
+      references:
+        - job-based-operational-warfare
+        - assignment-quality-and-presence-matter
+        - hand-rolled-deterministic-rng
+
+  - decision: standing-orders-fire-for-idle-armies
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Standing Orders Start Reactive Jobs Only for Idle Armies
+      summary: >-
+        An army set to defend holdings reacts to hostile besiege or raid
+        operations against its owner's provinces on its body by starting a
+        real, visible answer-the-alarm job. Standing orders only fire for
+        armies with no active job, so a bespoke player job automatically
+        takes precedence, and autonomous organisations rely on standing
+        orders rather than initiating military operations through random
+        agency.
+      rationale:
+        - Reactive automation as ordinary jobs keeps every military action inside one pipeline, cancellable and inspectable like anything else.
+      references:
+        - military-standing-orders
+        - ai-agency-through-the-job-catalogue

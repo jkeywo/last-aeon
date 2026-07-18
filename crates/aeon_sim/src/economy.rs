@@ -100,8 +100,22 @@ pub fn monthly_economy(world: &mut World) {
             let Some(def) = content.provinces.get(key) else {
                 continue;
             };
+            // A blockaded province yields half its wealth.
+            let blockaded = world
+                .get_resource::<crate::forces::ForcesIndex>()
+                .is_some_and(|forces| {
+                    forces.ships.values().any(|ship_entity| {
+                        world
+                            .get::<crate::forces::ShipRecord>(*ship_entity)
+                            .is_some_and(|ship| ship.blockading == Some(province))
+                    })
+                });
             let entry = income.entry(org).or_default();
-            entry.0 += def.wealth_output;
+            entry.0 += if blockaded {
+                def.wealth_output / 2
+            } else {
+                def.wealth_output
+            };
             entry.1 += def.manpower_output;
             entry.2 += def.supplies_output;
         }

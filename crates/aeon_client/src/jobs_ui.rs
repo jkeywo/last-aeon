@@ -5,13 +5,14 @@
 use aeon_data::ContentKey;
 use aeon_data::model::JobTargetKind;
 use aeon_sim::command::submit_command;
+use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
 use aeon_sim::jobs::CharacterCondition;
 use aeon_sim::map::DisplayName;
 use aeon_sim::politics::ADULT_AGE;
 use aeon_sim::state::ContentDb;
 use aeon_sim::{
-    ActiveJob, CampaignClock, CharacterId, CharacterRecord, JobTarget, MessageLog, OrgRecord,
-    PendingPopups, PlayerCommand, PlayerHouse, PoliticsIndex, ProvinceRecord,
+    ActiveJob, ArmyId, CampaignClock, CharacterId, CharacterRecord, JobTarget, MessageLog,
+    OrgRecord, PendingPopups, PlayerCommand, PlayerHouse, PoliticsIndex, ProvinceRecord, ShipId,
 };
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
@@ -32,6 +33,12 @@ pub struct JobForm {
     pub leader: Option<CharacterId>,
     /// Chosen target.
     pub target: Option<JobTarget>,
+    /// Chosen army, for military targets.
+    pub army: Option<ArmyId>,
+    /// Chosen ship, for blockade targets.
+    pub ship: Option<ShipId>,
+    /// Chosen destination province, for compound military targets.
+    pub province: Option<aeon_sim::ProvinceId>,
     /// Last rejection message, shown until the next attempt.
     pub notice: Option<String>,
 }
@@ -78,6 +85,8 @@ pub fn draw_jobs_ui(
     characters: Query<(&CharacterRecord, &CharacterCondition)>,
     orgs: Query<&OrgRecord>,
     provinces: Query<(&ProvinceRecord, &DisplayName)>,
+    armies: Query<&ArmyRecord>,
+    ships: Query<&ShipRecord>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -168,6 +177,8 @@ pub fn draw_jobs_ui(
                     &characters,
                     &orgs,
                     &provinces,
+                    &armies,
+                    &ships,
                 );
             });
         });
@@ -210,6 +221,8 @@ fn draw_start_form(
     characters: &Query<(&CharacterRecord, &CharacterCondition)>,
     orgs: &Query<&OrgRecord>,
     provinces: &Query<(&ProvinceRecord, &DisplayName)>,
+    armies: &Query<&ArmyRecord>,
+    ships: &Query<&ShipRecord>,
 ) {
     // Job picker.
     let job_label = form
@@ -372,6 +385,115 @@ fn draw_start_form(
                     }
                 });
         }
+        JobTargetKind::OwnArmy | JobTargetKind::OwnArmyAndProvince => {
+            // The army's general leads; pick the army (and destination).
+            let army_label = form
+                .army
+                .and_then(|id| armies.iter().find(|a| a.id == id))
+                .map(|a| a.name.clone())
+                .unwrap_or_else(|| "Choose an army".to_owned());
+            egui::ComboBox::from_label("Army")
+                .selected_text(army_label)
+                .show_ui(ui, |ui| {
+                    let mut sorted: Vec<&ArmyRecord> =
+                        armies.iter().filter(|a| a.owner == player_org).collect();
+                    sorted.sort_by_key(|a| a.id);
+                    for army in sorted {
+                        if ui
+                            .selectable_label(form.army == Some(army.id), &army.name)
+                            .clicked()
+                        {
+                            form.army = Some(army.id);
+                            form.leader = Some(army.general);
+                        }
+                    }
+                });
+            if def.target == JobTargetKind::OwnArmyAndProvince {
+                let label = form
+                    .province
+                    .and_then(|id| {
+                        provinces
+                            .iter()
+                            .find(|(r, _)| r.id == id)
+                            .map(|(_, n)| n.0.clone())
+                    })
+                    .unwrap_or_else(|| "Choose a destination".to_owned());
+                egui::ComboBox::from_label("Destination")
+                    .selected_text(label)
+                    .show_ui(ui, |ui| {
+                        let mut sorted: Vec<_> = provinces.iter().collect();
+                        sorted.sort_by_key(|(r, _)| r.id);
+                        for (record, name) in sorted {
+                            if ui
+                                .selectable_label(form.province == Some(record.id), &name.0)
+                                .clicked()
+                            {
+                                form.province = Some(record.id);
+                            }
+                        }
+                    });
+            }
+            form.target = match (def.target, form.army, form.province) {
+                (JobTargetKind::OwnArmy, Some(army), _) => Some(JobTarget::OwnArmy(army)),
+                (JobTargetKind::OwnArmyAndProvince, Some(army), Some(province)) => {
+                    Some(JobTarget::ArmyToProvince(army, province))
+                }
+                _ => None,
+            };
+        }
+        JobTargetKind::OwnShipAndProvince => {
+            let ship_label = form
+                .ship
+                .and_then(|id| ships.iter().find(|s| s.id == id))
+                .map(|s| s.name.clone())
+                .unwrap_or_else(|| "Choose a ship".to_owned());
+            egui::ComboBox::from_label("Ship")
+                .selected_text(ship_label)
+                .show_ui(ui, |ui| {
+                    let mut sorted: Vec<&ShipRecord> = ships
+                        .iter()
+                        .filter(|s| {
+                            s.owner == player_org && matches!(s.location, ShipLocation::Docked(_))
+                        })
+                        .collect();
+                    sorted.sort_by_key(|s| s.id);
+                    for ship in sorted {
+                        if ui
+                            .selectable_label(form.ship == Some(ship.id), &ship.name)
+                            .clicked()
+                        {
+                            form.ship = Some(ship.id);
+                        }
+                    }
+                });
+            let label = form
+                .province
+                .and_then(|id| {
+                    provinces
+                        .iter()
+                        .find(|(r, _)| r.id == id)
+                        .map(|(_, n)| n.0.clone())
+                })
+                .unwrap_or_else(|| "Choose a target".to_owned());
+            egui::ComboBox::from_label("Blockade target")
+                .selected_text(label)
+                .show_ui(ui, |ui| {
+                    let mut sorted: Vec<_> = provinces.iter().collect();
+                    sorted.sort_by_key(|(r, _)| r.id);
+                    for (record, name) in sorted {
+                        if ui
+                            .selectable_label(form.province == Some(record.id), &name.0)
+                            .clicked()
+                        {
+                            form.province = Some(record.id);
+                        }
+                    }
+                });
+            form.target = match (form.ship, form.province) {
+                (Some(ship), Some(province)) => Some(JobTarget::ShipToProvince(ship, province)),
+                _ => None,
+            };
+        }
     }
 
     let ready = form.leader.is_some() && form.target.is_some();
@@ -387,6 +509,9 @@ fn draw_start_form(
         form.notice = None;
         form.leader = None;
         form.target = None;
+        form.army = None;
+        form.ship = None;
+        form.province = None;
     }
     if let Some(notice) = &form.notice {
         ui.colored_label(egui::Color32::from_rgb(220, 60, 60), notice);

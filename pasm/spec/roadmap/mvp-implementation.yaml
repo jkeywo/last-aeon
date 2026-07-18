@@ -218,7 +218,7 @@ entities:
 
   - milestone: mvp-operational-warfare
     core:
-      status: proposed
+      status: implemented
       confidence: confirmed
       title: "M7: Operational Warfare and Standing Orders"
       summary: >-
@@ -232,6 +232,17 @@ entities:
         - military-standing-orders
         - persistent-armies
         - tracked-starships
+    implementation:
+      paths:
+        - crates/aeon_sim/src/warfare.rs
+        - assets/content/core/warfare.rhai
+      tests:
+        - crates/aeon_sim/tests/warfare.rs
+      status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/warfare.rs
+        summary: Tests verify marches with road-time minimums, sieges that beat garrisons and transfer province titles, strong garrisons breaking weak sieges, raids moving wealth between organisations, blockades halving wealth output, standing orders creating reactive relief jobs that arrive in time to hold a province, HoldFast armies ignoring alarms, and full determinism with snapshot fidelity through battles.
 
   - milestone: mvp-authored-scenario
     core:

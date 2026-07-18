@@ -51,6 +51,8 @@ pub struct ShipRecord {
     pub captain: Option<CharacterId>,
     /// Current location.
     pub location: ShipLocation,
+    /// The province this ship is blockading, if any.
+    pub blockading: Option<ProvinceId>,
 }
 
 /// A persistent army.
@@ -70,6 +72,8 @@ pub struct ArmyRecord {
     pub supplies: i64,
     /// The province it stands in.
     pub location: ProvinceId,
+    /// The order followed while idle.
+    pub standing_order: crate::warfare::StandingOrder,
 }
 
 /// Lookup for ships and armies.
@@ -102,6 +106,7 @@ pub fn spawn_from_content(world: &mut World, content: &ContentSet) {
                 owner: politics.org_keys[&def.owner],
                 captain: def.captain.as_ref().map(|c| politics.character_keys[c]),
                 location: ShipLocation::Docked(map_index.province_keys[&def.location]),
+                blockading: None,
             })
             .id();
         index.ships.insert(id, entity);
@@ -148,6 +153,7 @@ pub fn form_army(
             manpower,
             supplies,
             location,
+            standing_order: crate::warfare::StandingOrder::default(),
         })
         .id();
     world
@@ -238,6 +244,9 @@ pub struct ShipState {
     pub captain: Option<CharacterId>,
     /// Location.
     pub location: ShipLocation,
+    /// Blockade target.
+    #[serde(default)]
+    pub blockading: Option<ProvinceId>,
 }
 
 /// Serialised army.
@@ -257,6 +266,9 @@ pub struct ArmyState {
     pub supplies: i64,
     /// Location.
     pub location: ProvinceId,
+    /// Standing order.
+    #[serde(default)]
+    pub standing_order: crate::warfare::StandingOrder,
 }
 
 /// The complete serialised forces state.
@@ -286,6 +298,7 @@ pub fn capture_forces(world: &World) -> ForcesState {
                     key: ship.key.clone(),
                     captain: ship.captain,
                     location: ship.location,
+                    blockading: ship.blockading,
                 }
             })
             .collect(),
@@ -302,6 +315,7 @@ pub fn capture_forces(world: &World) -> ForcesState {
                     manpower: army.manpower,
                     supplies: army.supplies,
                     location: army.location,
+                    standing_order: army.standing_order,
                 }
             })
             .collect(),
@@ -332,6 +346,7 @@ pub fn restore_forces(world: &mut World, state: &ForcesState, content: &ContentS
                 owner: politics.org_keys[&def.owner],
                 captain: ship.captain,
                 location: ship.location,
+                blockading: ship.blockading,
             })
             .id();
         index.ships.insert(ship.id, entity);
@@ -347,6 +362,7 @@ pub fn restore_forces(world: &mut World, state: &ForcesState, content: &ContentS
                 manpower: army.manpower,
                 supplies: army.supplies,
                 location: army.location,
+                standing_order: army.standing_order,
             })
             .id();
         index.armies.insert(army.id, entity);

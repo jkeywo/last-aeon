@@ -786,7 +786,7 @@ entities:
 
   - component: military-operation-system
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Character-Led Military Operation System
       summary: Military play is a sequence of jobs to raise, supply, move, patrol, blockade, besiege, raid, and negotiate. Engagements resolve from forces, preparation, terrain or orbit, commanders, ships, intelligence, morale, and local support rather than tactical battle control.
@@ -795,6 +795,12 @@ entities:
       kind: simulation-subsystem
       classification: domain
       authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_sim/src/warfare.rs
+      tests:
+        - crates/aeon_sim/tests/warfare.rs
+      status: declared
 
   - decision: job-based-operational-warfare
     core:

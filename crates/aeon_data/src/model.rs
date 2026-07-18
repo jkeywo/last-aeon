@@ -117,6 +117,34 @@ pub enum JobTargetKind {
     Organisation,
     /// Targets a province.
     Province,
+    /// Targets one of the owner's armies.
+    OwnArmy,
+    /// Targets one of the owner's armies and a destination province.
+    OwnArmyAndProvince,
+    /// Targets one of the owner's ships and a destination province.
+    OwnShipAndProvince,
+}
+
+/// An engine-owned military operation a job performs on success.
+///
+/// Content declares pacing, costs, and flavour; the simulation owns the
+/// operational semantics (movement, engagements, conquest, loot,
+/// blockade).
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum MilitaryOp {
+    /// March the army to the target province.
+    Move,
+    /// Refill the army's supply train from the owner's stores.
+    Resupply,
+    /// Stand guard where the army is; deters and intercepts hostiles.
+    Patrol,
+    /// Besiege the target province; success takes its title.
+    Besiege,
+    /// Raid the target province for loot.
+    Raid,
+    /// Blockade the target province with the ship.
+    Blockade,
 }
 
 /// The skill that governs a job's outcome.
@@ -154,6 +182,8 @@ pub struct JobDef {
     pub target: JobTargetKind,
     /// Personal risks the leader is exposed to on failure or disaster.
     pub risks: Vec<RiskTag>,
+    /// The engine-owned military operation this job performs, if any.
+    pub military_op: Option<MilitaryOp>,
     /// Whether autonomous organisations may start this job.
     pub ai_available: bool,
     /// Wealth deducted when the job starts.

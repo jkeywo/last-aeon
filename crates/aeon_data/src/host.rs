@@ -23,9 +23,9 @@ use crate::effect::{EffectParseError, ScriptEffect, parse_effects};
 use crate::key::ContentKey;
 use crate::model::{
     BodyDef, BodyKind, CharacterDef, ContentSet, Gender, GoverningSkill, HouseTier, JobCategory,
-    JobDef, JobResultDef, JobResultKind, JobTargetKind, NamePoolDef, OfficeDef, OrgDef, OrgKind,
-    PopupChoiceDef, ProvinceDef, RiskTag, ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SkillsDef,
-    TitleDef, TitleHolderDef, TitleKindDef, TraitDef,
+    JobDef, JobResultDef, JobResultKind, JobTargetKind, MilitaryOp, NamePoolDef, OfficeDef, OrgDef,
+    OrgKind, PopupChoiceDef, ProvinceDef, RiskTag, ScenarioDef, ScriptFnRef, ShipClass, ShipDef,
+    SkillsDef, TitleDef, TitleHolderDef, TitleKindDef, TraitDef,
 };
 use crate::report::{ContentReport, Severity};
 
@@ -211,6 +211,7 @@ fn define_job(state: &mut BuilderState, map: Map) {
             "difficulty",
             "target",
             "risks",
+            "military_op",
             "ai_available",
             "wealth_cost",
             "manpower_cost",
@@ -283,6 +284,9 @@ fn define_job(state: &mut BuilderState, map: Map) {
                 "character" => JobTargetKind::Character,
                 "organisation" => JobTargetKind::Organisation,
                 "province" => JobTargetKind::Province,
+                "own-army" => JobTargetKind::OwnArmy,
+                "own-army-and-province" => JobTargetKind::OwnArmyAndProvince,
+                "own-ship-and-province" => JobTargetKind::OwnShipAndProvince,
                 other => {
                     state.error(Some(key.as_str()), format!("unknown target kind '{other}'"));
                     return;
@@ -314,6 +318,42 @@ fn define_job(state: &mut BuilderState, map: Map) {
     }
     risks.sort();
     risks.dedup();
+    let military_op = match map.get("military_op") {
+        None => None,
+        Some(value) => match value.clone().into_string() {
+            Ok(raw) => match raw.as_str() {
+                "move" => Some(MilitaryOp::Move),
+                "resupply" => Some(MilitaryOp::Resupply),
+                "patrol" => Some(MilitaryOp::Patrol),
+                "besiege" => Some(MilitaryOp::Besiege),
+                "raid" => Some(MilitaryOp::Raid),
+                "blockade" => Some(MilitaryOp::Blockade),
+                other => {
+                    state.error(Some(key.as_str()), format!("unknown military_op '{other}'"));
+                    return;
+                }
+            },
+            Err(_) => {
+                state.error(Some(key.as_str()), "field 'military_op' must be a string");
+                return;
+            }
+        },
+    };
+    let op_target_ok = match military_op {
+        None => true,
+        Some(MilitaryOp::Resupply | MilitaryOp::Patrol) => target == JobTargetKind::OwnArmy,
+        Some(MilitaryOp::Move | MilitaryOp::Besiege | MilitaryOp::Raid) => {
+            target == JobTargetKind::OwnArmyAndProvince
+        }
+        Some(MilitaryOp::Blockade) => target == JobTargetKind::OwnShipAndProvince,
+    };
+    if !op_target_ok {
+        state.error(
+            Some(key.as_str()),
+            "military_op and target kind do not match",
+        );
+        return;
+    }
     let Some(ai_available) = opt_bool(state, &map, "ai_available", true) else {
         return;
     };
@@ -526,6 +566,7 @@ fn define_job(state: &mut BuilderState, map: Map) {
             difficulty: difficulty as i32,
             target,
             risks,
+            military_op,
             ai_available,
             wealth_cost,
             manpower_cost,

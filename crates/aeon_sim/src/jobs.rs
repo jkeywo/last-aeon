@@ -20,7 +20,7 @@ use bevy::prelude::{Component, Entity, IntoScheduleConfigs, Resource, World};
 use serde::{Deserialize, Serialize};
 
 use crate::clock::{CampaignClock, DailyTick, MonthlyPulse, TickSet};
-use crate::ids::{CharacterId, JobId, OrgId, ProvinceId};
+use crate::ids::{ArmyId, CharacterId, JobId, OrgId, ProvinceId, ShipId};
 use crate::politics::{
     CampaignOver, CharacterRecord, CharacterSkills, OpinionEntry, OpinionLedger, OrgRecord,
     PlayerHouse, PoliticsIndex, process_death,
@@ -38,6 +38,12 @@ pub enum JobTarget {
     Org(OrgId),
     /// A province.
     Province(ProvinceId),
+    /// One of the owner's armies.
+    OwnArmy(ArmyId),
+    /// One of the owner's armies marching on a province.
+    ArmyToProvince(ArmyId, ProvinceId),
+    /// One of the owner's ships sent against a province.
+    ShipToProvince(ShipId, ProvinceId),
 }
 
 /// A running job.
@@ -254,8 +260,22 @@ fn leader_eligible(
     Ok(())
 }
 
+fn owned_army(world: &World, owner: OrgId, army: ArmyId) -> bool {
+    world
+        .get_resource::<crate::forces::ForcesIndex>()
+        .and_then(|forces| forces.armies.get(&army).copied())
+        .and_then(|entity| world.get::<crate::forces::ArmyRecord>(entity))
+        .is_some_and(|record| record.owner == owner)
+}
+
 fn target_valid(world: &World, def: &JobDef, owner: OrgId, target: JobTarget) -> bool {
     let index = world.resource::<PoliticsIndex>();
+    let province_known = |id: ProvinceId| {
+        world
+            .resource::<crate::map::MapIndex>()
+            .provinces
+            .contains_key(&id)
+    };
     match (def.target, target) {
         (JobTargetKind::None, JobTarget::None) => true,
         (JobTargetKind::Character, JobTarget::Character(id)) => index
@@ -266,10 +286,19 @@ fn target_valid(world: &World, def: &JobDef, owner: OrgId, target: JobTarget) ->
         (JobTargetKind::Organisation, JobTarget::Org(id)) => {
             id != owner && index.orgs.contains_key(&id)
         }
-        (JobTargetKind::Province, JobTarget::Province(id)) => world
-            .resource::<crate::map::MapIndex>()
-            .provinces
-            .contains_key(&id),
+        (JobTargetKind::Province, JobTarget::Province(id)) => province_known(id),
+        (JobTargetKind::OwnArmy, JobTarget::OwnArmy(army)) => owned_army(world, owner, army),
+        (JobTargetKind::OwnArmyAndProvince, JobTarget::ArmyToProvince(army, province)) => {
+            owned_army(world, owner, army) && province_known(province)
+        }
+        (JobTargetKind::OwnShipAndProvince, JobTarget::ShipToProvince(ship, province)) => {
+            province_known(province)
+                && world
+                    .get_resource::<crate::forces::ForcesIndex>()
+                    .and_then(|forces| forces.ships.get(&ship).copied())
+                    .and_then(|entity| world.get::<crate::forces::ShipRecord>(entity))
+                    .is_some_and(|record| record.owner == owner)
+        }
         _ => false,
     }
 }
@@ -293,6 +322,17 @@ pub fn validate_start(
     leader_eligible(world, org, leader, date)?;
     if !target_valid(world, def, org, target) {
         return Err(JobRejection::BadTarget);
+    }
+    // Army operations are led by the army's general, nobody else.
+    if let JobTarget::OwnArmy(army) | JobTarget::ArmyToProvince(army, _) = target {
+        let general = world
+            .get_resource::<crate::forces::ForcesIndex>()
+            .and_then(|forces| forces.armies.get(&army).copied())
+            .and_then(|entity| world.get::<crate::forces::ArmyRecord>(entity))
+            .map(|record| record.general);
+        if general != Some(leader) {
+            return Err(JobRejection::IneligibleLeader);
+        }
     }
     let affordable = {
         let index = world.resource::<PoliticsIndex>();
@@ -343,6 +383,16 @@ pub fn start_job(
             resources.spend(costs.0, costs.1, costs.2, costs.3);
         }
     }
+    // Marches take at least the army's travel time to the objective.
+    let march_days = match target {
+        JobTarget::ArmyToProvince(army, destination) => world
+            .get_resource::<crate::forces::ForcesIndex>()
+            .and_then(|forces| forces.armies.get(&army).copied())
+            .and_then(|entity| world.get::<crate::forces::ArmyRecord>(entity))
+            .map(|record| crate::presence::travel_days(world, record.location, destination) * 2),
+        _ => None,
+    };
+    let duration = march_days.map_or(duration, |march| duration.max(march));
     let id: JobId = world.resource_mut::<CampaignIds>().0.allocate();
     let entity = world
         .spawn(ActiveJob {
@@ -489,6 +539,15 @@ fn target_name(world: &World, target: JobTarget) -> String {
                 .and_then(|e| world.get::<crate::map::DisplayName>(*e))
                 .map(|n| n.0.clone())
                 .unwrap_or_else(|| id.to_string())
+        }
+        JobTarget::OwnArmy(army) => world
+            .get_resource::<crate::forces::ForcesIndex>()
+            .and_then(|forces| forces.armies.get(&army).copied())
+            .and_then(|entity| world.get::<crate::forces::ArmyRecord>(entity))
+            .map(|record| record.name.clone())
+            .unwrap_or_default(),
+        JobTarget::ArmyToProvince(_, province) | JobTarget::ShipToProvince(_, province) => {
+            target_name(world, JobTarget::Province(province))
         }
     }
 }
@@ -724,7 +783,20 @@ pub fn resolve_due_jobs(world: &mut World) {
             }
             roll -= *weight;
         }
-        let result = def.results[&outcome].clone();
+        if matches!(
+            outcome,
+            JobResultKind::Success | JobResultKind::CriticalSuccess
+        ) && let Some(op) = def.military_op
+            && !crate::warfare::apply_military_op(world, op, &job)
+        {
+            // The operation was defeated in the field.
+            outcome = JobResultKind::Failure;
+        }
+        let result = def
+            .results
+            .get(&outcome)
+            .cloned()
+            .unwrap_or_else(|| def.results[&JobResultKind::Failure].clone());
 
         // Personal risks on bad outcomes.
         if matches!(outcome, JobResultKind::Failure | JobResultKind::Disaster) {
@@ -997,6 +1069,12 @@ pub fn ai_start_jobs(world: &mut World) {
                     }
                 }
             }
+            // Autonomous organisations do not initiate military
+            // operations through random agency; their armies act through
+            // standing orders instead.
+            JobTargetKind::OwnArmy
+            | JobTargetKind::OwnArmyAndProvince
+            | JobTargetKind::OwnShipAndProvince => continue,
         };
 
         if validate_start(world, org_id, &def.key, head, target).is_ok() {

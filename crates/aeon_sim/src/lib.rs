@@ -31,6 +31,7 @@ pub mod politics;
 pub mod presence;
 pub mod snapshot;
 pub mod state;
+pub mod warfare;
 
 use bevy::app::{App, Plugin};
 
@@ -67,6 +68,7 @@ impl Plugin for AeonSimPlugin {
         economy::install(app);
         presence::install(app);
         forces::install(app);
+        warfare::install(app);
     }
 }
 

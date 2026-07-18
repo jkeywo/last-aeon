@@ -73,6 +73,13 @@ pub enum PlayerCommand {
         /// The army.
         army: ArmyId,
     },
+    /// Sets a standing order for one of the player's armies.
+    SetStandingOrder {
+        /// The army.
+        army: ArmyId,
+        /// The order to follow while idle.
+        order: crate::warfare::StandingOrder,
+    },
 }
 
 /// A command bound to its execution day and order.
@@ -277,6 +284,22 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
                 Err(JobRejection::BadJob.into())
             }
         }
+        PlayerCommand::SetStandingOrder { army, .. } => {
+            let org = world
+                .get_resource::<PlayerHouse>()
+                .and_then(|p| p.0)
+                .ok_or(JobRejection::NoPlayerOrg)?;
+            let owned = world
+                .get_resource::<crate::forces::ForcesIndex>()
+                .and_then(|forces| forces.armies.get(army).copied())
+                .and_then(|entity| world.get::<crate::forces::ArmyRecord>(entity))
+                .is_some_and(|a| a.owner == org);
+            if owned {
+                Ok(())
+            } else {
+                Err(JobRejection::BadJob.into())
+            }
+        }
     }
 }
 
@@ -351,6 +374,16 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
         }
         PlayerCommand::DisbandArmy { army } => {
             crate::forces::disband_army(world, *army);
+        }
+        PlayerCommand::SetStandingOrder { army, order } => {
+            let entity = world
+                .get_resource::<crate::forces::ForcesIndex>()
+                .and_then(|forces| forces.armies.get(army).copied());
+            if let Some(entity) = entity
+                && let Some(mut record) = world.get_mut::<crate::forces::ArmyRecord>(entity)
+            {
+                record.standing_order = *order;
+            }
         }
     }
 }

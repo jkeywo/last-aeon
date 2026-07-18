@@ -574,10 +574,31 @@ pub fn draw_panels(
                                     "{} — {} men, {} supplies — {place}",
                                     army.name, army.manpower, army.supplies
                                 ));
-                                if Some(army.owner) == player_org
-                                    && ui.small_button("Disband").clicked()
-                                {
-                                    queue.0.push(PlayerCommand::DisbandArmy { army: army.id });
+                                if Some(army.owner) == player_org {
+                                    let defending = army.standing_order
+                                        == aeon_sim::warfare::StandingOrder::DefendHoldings;
+                                    let label = if defending { "Defending" } else { "Hold fast" };
+                                    if ui
+                                        .small_button(label)
+                                        .on_hover_text(
+                                            "Toggle the standing order: defending armies \
+                                             march to answer threats against your holdings",
+                                        )
+                                        .clicked()
+                                    {
+                                        let order = if defending {
+                                            aeon_sim::warfare::StandingOrder::HoldFast
+                                        } else {
+                                            aeon_sim::warfare::StandingOrder::DefendHoldings
+                                        };
+                                        queue.0.push(PlayerCommand::SetStandingOrder {
+                                            army: army.id,
+                                            order,
+                                        });
+                                    }
+                                    if ui.small_button("Disband").clicked() {
+                                        queue.0.push(PlayerCommand::DisbandArmy { army: army.id });
+                                    }
                                 }
                             });
                         }
