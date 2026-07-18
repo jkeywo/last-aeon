@@ -1,18 +1,32 @@
-//! The 3D map scene: system view and per-body globe views.
+//! The 3D map scene: system view and per-body political globes.
 //!
-//! Visual entities are presentation-side mirrors of the simulation's map
-//! entities, linked by stable ID. Programmer art on purpose: flat-shaded
-//! spheres, clear political-ready colours, readable selection feedback.
+//! The system view shows each body in its orbit. A body's globe paints its
+//! provinces as coloured regions with black borders onto the sphere,
+//! baked into an equirectangular texture from the simulation's holdings.
+//! Two map modes colour by the direct holder or by the top-liege great
+//! house. Programmer art, but a real political map rather than marker dots.
 
-use aeon_data::model::BodyKind;
+use std::collections::BTreeMap;
+
+use aeon_data::ContentSet;
+use aeon_data::model::{BodyKind, HouseTier};
 use aeon_sim::map::{BodyRecord, DisplayName, GeoPosition, ProvinceRecord};
-use aeon_sim::{BodyId, CampaignClock, ProvinceId};
+use aeon_sim::state::ContentDb;
+use aeon_sim::{
+    BodyId, CampaignClock, OrgId, OrgRecord, PoliticsIndex, ProvinceId, TitleHolder, TitleRecord,
+};
+use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
+use bevy::render::mesh::{Indices, PrimitiveTopology};
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
-use crate::view::{MapView, Selection, ViewState, geo_to_unit};
+use crate::view::{MapMode, MapView, Selection, ViewState, geo_to_unit};
 
 /// Radius of a body-view globe in render units.
 pub const GLOBE_RADIUS: f32 = 2.5;
+/// Baked political-texture resolution.
+const TEX_W: usize = 768;
+const TEX_H: usize = 384;
 
 /// A body's marker in the system view.
 #[derive(Component, Copy, Clone)]
@@ -21,26 +35,34 @@ pub struct SystemBodyVisual {
     pub body: BodyId,
 }
 
-/// A body's globe in its body view.
-#[derive(Component, Copy, Clone)]
+/// A body's political globe in its body view.
+#[derive(Component, Clone)]
 pub struct GlobeVisual {
     /// The simulation body this globe shows.
     pub body: BodyId,
+    /// Unit-sphere centroids of the body's provinces, for picking, the
+    /// texture bake, and label projection.
+    pub centroids: Vec<(ProvinceId, Vec3)>,
+    /// The political texture this globe paints (mutated on rebake).
+    pub texture: Handle<Image>,
 }
 
-/// A province marker on a globe.
-#[derive(Component, Copy, Clone)]
-pub struct ProvinceMarker {
-    /// The simulation province this marker mirrors.
-    pub province: ProvinceId,
-}
+/// The bright pin marking the selected province on a globe.
+#[derive(Component)]
+pub struct SelectionPin;
 
-/// Base colour of a visual, so hover/selection tints can restore it.
+/// Base colour of a system-view body, so selection tint can restore it.
 #[derive(Component, Copy, Clone)]
 pub struct BaseColor(pub Color);
 
+/// Tracks what the focused globe's texture was last baked from, so it is
+/// rebuilt only when the body, map mode, or holdings actually change.
+#[derive(Resource, Default)]
+pub struct GlobeBake {
+    baked: Option<(BodyId, MapMode, u64)>,
+}
+
 fn body_display_radius(record: &BodyRecord) -> f32 {
-    // Cube-root compression keeps the starbase visible next to the planet.
     (record.radius_km as f32).cbrt() / 8.0
 }
 
@@ -60,13 +82,225 @@ fn body_color(kind: BodyKind) -> Color {
     }
 }
 
-/// Spawns lights, camera scaffolding, and all map visuals from the
-/// simulation's map entities. Runs once at startup, after the campaign
-/// begins.
+/// The texel's latitude/longitude in millidegrees, matching the globe
+/// mesh's equirectangular UVs (u: longitude -180..180, v: latitude
+/// +90 (top) .. -90 (bottom)).
+fn texel_unit(x: usize, y: usize) -> Vec3 {
+    let u = (x as f32 + 0.5) / TEX_W as f32;
+    let v = (y as f32 + 0.5) / TEX_H as f32;
+    let lon = (u * 360.0 - 180.0).to_radians();
+    let lat = (90.0 - v * 180.0).to_radians();
+    Vec3::new(lat.cos() * lon.cos(), lat.sin(), -(lat.cos() * lon.sin()))
+}
+
+/// Builds a UV sphere whose vertex UVs match [`texel_unit`], so a baked
+/// equirectangular texture lands exactly where its texels say.
+fn build_globe_mesh(radius: f32, sectors: usize, stacks: usize) -> Mesh {
+    let mut positions = Vec::with_capacity((sectors + 1) * (stacks + 1));
+    let mut normals = Vec::with_capacity(positions.capacity());
+    let mut uvs = Vec::with_capacity(positions.capacity());
+    for stack in 0..=stacks {
+        let v = stack as f32 / stacks as f32;
+        let lat = (90.0 - v * 180.0).to_radians();
+        for sector in 0..=sectors {
+            let u = sector as f32 / sectors as f32;
+            let lon = (u * 360.0 - 180.0).to_radians();
+            let dir = Vec3::new(lat.cos() * lon.cos(), lat.sin(), -(lat.cos() * lon.sin()));
+            positions.push((dir * radius).to_array());
+            normals.push(dir.to_array());
+            uvs.push([u, v]);
+        }
+    }
+    let mut indices = Vec::with_capacity(sectors * stacks * 6);
+    let row = sectors + 1;
+    for stack in 0..stacks {
+        for sector in 0..sectors {
+            let a = (stack * row + sector) as u32;
+            let b = a + row as u32;
+            indices.extend_from_slice(&[a, b, a + 1, a + 1, b, b + 1]);
+        }
+    }
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD,
+    );
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    mesh.insert_indices(Indices::U32(indices));
+    mesh
+}
+
+/// The nearest province centroid to a unit direction, by great-circle
+/// proximity (max dot product).
+pub fn nearest_province(dir: Vec3, centroids: &[(ProvinceId, Vec3)]) -> Option<ProvinceId> {
+    centroids
+        .iter()
+        .map(|(id, c)| (*id, c.dot(dir)))
+        .max_by(|a, b| a.1.partial_cmp(&b.1).unwrap_or(std::cmp::Ordering::Equal))
+        .map(|(id, _)| id)
+}
+
+/// Bakes the political texture: each texel takes the colour of its nearest
+/// province, black where it borders a different province, neutral grey
+/// where a province is unheld.
+fn bake_texture(
+    centroids: &[(ProvinceId, Vec3)],
+    colours: &BTreeMap<ProvinceId, [u8; 3]>,
+) -> Vec<u8> {
+    // Grid of nearest-province indices (into `centroids`).
+    let mut grid = vec![u16::MAX; TEX_W * TEX_H];
+    for y in 0..TEX_H {
+        for x in 0..TEX_W {
+            let dir = texel_unit(x, y);
+            let mut best = 0usize;
+            let mut best_dot = f32::MIN;
+            for (i, (_, c)) in centroids.iter().enumerate() {
+                let d = c.dot(dir);
+                if d > best_dot {
+                    best_dot = d;
+                    best = i;
+                }
+            }
+            grid[y * TEX_W + x] = best as u16;
+        }
+    }
+
+    let neutral = [90u8, 90, 96];
+    let mut data = vec![0u8; TEX_W * TEX_H * 4];
+    for y in 0..TEX_H {
+        for x in 0..TEX_W {
+            let i = y * TEX_W + x;
+            let prov = grid[i];
+            // Border where a 4-neighbour belongs to a different province.
+            let border = [
+                grid[y * TEX_W + x.wrapping_sub(1).min(TEX_W - 1)],
+                grid[y * TEX_W + (x + 1).min(TEX_W - 1)],
+                grid[y.saturating_sub(1) * TEX_W + x],
+                grid[(y + 1).min(TEX_H - 1) * TEX_W + x],
+            ]
+            .iter()
+            .any(|n| *n != prov);
+            let rgb = if border {
+                [12u8, 12, 14]
+            } else {
+                centroids
+                    .get(prov as usize)
+                    .and_then(|(id, _)| colours.get(id))
+                    .copied()
+                    .unwrap_or(neutral)
+            };
+            let o = i * 4;
+            data[o] = rgb[0];
+            data[o + 1] = rgb[1];
+            data[o + 2] = rgb[2];
+            data[o + 3] = 255;
+        }
+    }
+    data
+}
+
+/// Walks an organisation's liege chain to the great house at its top;
+/// returns the org itself if it is not a vassal.
+fn great_house_of(
+    start: OrgId,
+    orgs: &BTreeMap<OrgId, (Option<OrgId>, Option<HouseTier>)>,
+) -> OrgId {
+    let mut current = start;
+    for _ in 0..16 {
+        match orgs.get(&current) {
+            Some((Some(liege), Some(HouseTier::Vassal))) => current = *liege,
+            _ => break,
+        }
+    }
+    current
+}
+
+/// The colour each province on `body` should paint in the given map mode.
+fn province_colours(
+    body: BodyId,
+    mode: MapMode,
+    politics: &PoliticsIndex,
+    titles: &Query<&TitleRecord>,
+    orgs: &Query<&OrgRecord>,
+    content: &ContentSet,
+    provinces: &Query<(&ProvinceRecord, &DisplayName, &GeoPosition)>,
+) -> BTreeMap<ProvinceId, [u8; 3]> {
+    // Liege/tier lookup for great-house resolution.
+    let org_liege: BTreeMap<OrgId, (Option<OrgId>, Option<HouseTier>)> =
+        orgs.iter().map(|o| (o.id, (o.liege, o.tier))).collect();
+    let colour_of = |org: OrgId| -> [u8; 3] {
+        let effective = match mode {
+            MapMode::Holder => org,
+            MapMode::GreatHouse => great_house_of(org, &org_liege),
+        };
+        politics
+            .orgs
+            .get(&effective)
+            .and_then(|e| orgs.get(*e).ok())
+            .and_then(|r| content.organisations.get(&r.key))
+            .map(|d| [d.color.0, d.color.1, d.color.2])
+            .unwrap_or([90, 90, 96])
+    };
+
+    let mut colours = BTreeMap::new();
+    for (record, _, _) in provinces.iter() {
+        if record.body != body {
+            continue;
+        }
+        let holder = politics
+            .province_titles
+            .get(&record.id)
+            .and_then(|title_id| politics.titles.get(title_id))
+            .and_then(|entity| titles.get(*entity).ok())
+            .map(|t| t.holder);
+        if let Some(TitleHolder::Org(org)) = holder {
+            colours.insert(record.id, colour_of(org));
+        }
+    }
+    colours
+}
+
+/// A stable fingerprint of a body's holdings, so the texture rebakes only
+/// when a province changes hands.
+fn holdings_fingerprint(
+    body: BodyId,
+    politics: &PoliticsIndex,
+    titles: &Query<&TitleRecord>,
+    provinces: &Query<(&ProvinceRecord, &DisplayName, &GeoPosition)>,
+) -> u64 {
+    let mut acc = 0u64;
+    for (record, _, _) in provinces.iter() {
+        if record.body != body {
+            continue;
+        }
+        let holder = politics
+            .province_titles
+            .get(&record.id)
+            .and_then(|title_id| politics.titles.get(title_id))
+            .and_then(|entity| titles.get(*entity).ok())
+            .map(|t| t.holder);
+        let holder_raw = match holder {
+            Some(TitleHolder::Org(org)) => org.raw(),
+            _ => 0,
+        };
+        acc ^= record
+            .id
+            .raw()
+            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
+            .rotate_left(17)
+            ^ holder_raw.wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
+    }
+    acc
+}
+
+/// Spawns lights, system-view body markers, per-body political globes, and
+/// the selection pin.
 pub fn spawn_scene(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut images: ResMut<Assets<Image>>,
     bodies: Query<(&BodyRecord, &DisplayName)>,
     provinces: Query<(&ProvinceRecord, &DisplayName, &GeoPosition)>,
 ) {
@@ -77,6 +311,8 @@ pub fn spawn_scene(
         },
         Transform::from_xyz(30.0, 18.0, 14.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
+
+    let globe_mesh = meshes.add(build_globe_mesh(GLOBE_RADIUS, 96, 48));
 
     // System-view body markers.
     for (record, name) in &bodies {
@@ -97,51 +333,63 @@ pub fn spawn_scene(
         ));
     }
 
-    // Per-body globes with province markers, hidden until focused.
+    // Per-body political globes, hidden until focused.
     for (record, name) in &bodies {
-        let color = body_color(record.kind);
-        let globe = commands
-            .spawn((
-                GlobeVisual { body: record.id },
-                BaseColor(color),
-                Mesh3d(meshes.add(Sphere::new(GLOBE_RADIUS).mesh().ico(5).unwrap())),
-                MeshMaterial3d(materials.add(StandardMaterial {
-                    base_color: color.darker(0.05),
-                    perceptual_roughness: 0.95,
-                    metallic: 0.0,
-                    ..Default::default()
-                })),
-                Transform::default(),
-                Visibility::Hidden,
-                Name::new(format!("globe:{}", name.0)),
-            ))
-            .id();
-
-        for (province, province_name, geo) in &provinces {
-            if province.body != record.id {
-                continue;
-            }
-            let position = geo_to_unit(geo.latitude_mdeg, geo.longitude_mdeg) * GLOBE_RADIUS;
-            let marker_color = Color::srgb(0.82, 0.78, 0.70);
-            let marker = commands
-                .spawn((
-                    ProvinceMarker {
-                        province: province.id,
-                    },
-                    BaseColor(marker_color),
-                    Mesh3d(meshes.add(Sphere::new(0.07).mesh().ico(2).unwrap())),
-                    MeshMaterial3d(materials.add(StandardMaterial {
-                        base_color: marker_color,
-                        perceptual_roughness: 0.6,
-                        ..Default::default()
-                    })),
-                    Transform::from_translation(position),
-                    Name::new(format!("province:{}", province_name.0)),
-                ))
-                .id();
-            commands.entity(globe).add_child(marker);
-        }
+        let centroids: Vec<(ProvinceId, Vec3)> = provinces
+            .iter()
+            .filter(|(p, _, _)| p.body == record.id)
+            .map(|(p, _, geo)| (p.id, geo_to_unit(geo.latitude_mdeg, geo.longitude_mdeg)))
+            .collect();
+        // Blank texture; the refresh system paints it on first focus.
+        let texture = images.add(blank_texture());
+        commands.spawn((
+            GlobeVisual {
+                body: record.id,
+                centroids,
+                texture: texture.clone(),
+            },
+            Mesh3d(globe_mesh.clone()),
+            MeshMaterial3d(materials.add(StandardMaterial {
+                base_color: Color::WHITE,
+                base_color_texture: Some(texture),
+                perceptual_roughness: 1.0,
+                metallic: 0.0,
+                ..Default::default()
+            })),
+            Transform::default(),
+            Visibility::Hidden,
+            Name::new(format!("globe:{}", name.0)),
+        ));
     }
+
+    // A single reusable selection pin.
+    commands.spawn((
+        SelectionPin,
+        Mesh3d(meshes.add(Sphere::new(0.09).mesh().ico(2).unwrap())),
+        MeshMaterial3d(materials.add(StandardMaterial {
+            base_color: Color::srgb(0.98, 0.88, 0.30),
+            unlit: true,
+            ..Default::default()
+        })),
+        Transform::default(),
+        Visibility::Hidden,
+        Name::new("selection-pin"),
+    ));
+}
+
+fn blank_texture() -> Image {
+    let data = vec![80u8; TEX_W * TEX_H * 4];
+    Image::new(
+        Extent3d {
+            width: TEX_W as u32,
+            height: TEX_H as u32,
+            depth_or_array_layers: 1,
+        },
+        TextureDimension::D2,
+        data,
+        TextureFormat::Rgba8UnormSrgb,
+        RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD,
+    )
 }
 
 /// Positions system-view bodies along their orbits from the campaign date.
@@ -197,52 +445,71 @@ pub fn apply_view_visibility(
     }
 }
 
-/// Recolours province markers by their holder's political colour.
-///
-/// Runs when politics may have changed hands; cheap at MVP scale.
-pub fn apply_political_colors(
-    clock: Option<Res<aeon_sim::CampaignClock>>,
-    politics: Option<Res<aeon_sim::PoliticsIndex>>,
-    content: Option<Res<aeon_sim::state::ContentDb>>,
-    titles: Query<&aeon_sim::TitleRecord>,
-    orgs: Query<&aeon_sim::OrgRecord>,
-    mut markers: Query<(&ProvinceMarker, &mut BaseColor)>,
+/// Rebakes the focused globe's political texture when the body, map mode,
+/// or its holdings change.
+#[allow(clippy::too_many_arguments)]
+pub fn refresh_globe_texture(
+    view: Res<ViewState>,
+    mode: Res<MapMode>,
+    mut bake: ResMut<GlobeBake>,
+    politics: Option<Res<PoliticsIndex>>,
+    content: Option<Res<ContentDb>>,
+    mut images: ResMut<Assets<Image>>,
+    globes: Query<&GlobeVisual>,
+    titles: Query<&TitleRecord>,
+    orgs: Query<&OrgRecord>,
+    provinces: Query<(&ProvinceRecord, &DisplayName, &GeoPosition)>,
 ) {
-    let (Some(clock), Some(politics), Some(content)) = (clock, politics, content) else {
+    let (Some(politics), Some(content)) = (politics, content) else {
         return;
     };
-    // Refresh on the first frame of each day; holdings move slowly.
-    if !clock.is_changed() {
+    let MapView::Body(body) = view.view else {
+        return;
+    };
+    let fingerprint = holdings_fingerprint(body, &politics, &titles, &provinces);
+    if bake.baked == Some((body, *mode, fingerprint)) {
         return;
     }
+    let Some(globe) = globes.iter().find(|g| g.body == body) else {
+        return;
+    };
+    let colours = province_colours(
+        body, *mode, &politics, &titles, &orgs, &content.0, &provinces,
+    );
+    let data = bake_texture(&globe.centroids, &colours);
+    if let Some(mut image) = images.get_mut(&globe.texture) {
+        image.data = Some(data);
+    }
+    bake.baked = Some((body, *mode, fingerprint));
+}
 
-    for (marker, mut base) in &mut markers {
-        let Some(title_id) = politics.province_titles.get(&marker.province) else {
-            continue;
-        };
-        let Some(title_entity) = politics.titles.get(title_id) else {
-            continue;
-        };
-        let Ok(title) = titles.get(*title_entity) else {
-            continue;
-        };
-        let color = match title.holder {
-            aeon_sim::TitleHolder::Org(org_id) => politics
-                .orgs
-                .get(&org_id)
-                .and_then(|entity| orgs.get(*entity).ok())
-                .and_then(|org| content.0.organisations.get(&org.key))
-                .map(|def| Color::srgb_u8(def.color.0, def.color.1, def.color.2)),
-            _ => None,
-        };
-        base.0 = color.unwrap_or(Color::srgb(0.35, 0.35, 0.38));
+/// Moves the selection pin to the selected province on the focused globe,
+/// or hides it.
+pub fn update_selection_pin(
+    view: Res<ViewState>,
+    provinces: Query<(&ProvinceRecord, &DisplayName, &GeoPosition)>,
+    mut pins: Query<(&mut Transform, &mut Visibility), With<SelectionPin>>,
+) {
+    let Ok((mut transform, mut visibility)) = pins.single_mut() else {
+        return;
+    };
+    let target = match (view.view, view.selected) {
+        (MapView::Body(body), Some(Selection::Province(id))) => provinces
+            .iter()
+            .find(|(p, _, _)| p.id == id && p.body == body)
+            .map(|(_, _, geo)| geo_to_unit(geo.latitude_mdeg, geo.longitude_mdeg)),
+        _ => None,
+    };
+    match target {
+        Some(dir) => {
+            transform.translation = dir * (GLOBE_RADIUS * 1.03);
+            *visibility = Visibility::Inherited;
+        }
+        None => *visibility = Visibility::Hidden,
     }
 }
 
-/// Applies base political colours plus selection highlights to visuals.
-///
-/// Materials are only written when the target colour actually differs, so
-/// asset change detection stays quiet on idle frames.
+/// Tints hovered/selected system-view bodies so feedback is unmissable.
 pub fn apply_selection_tint(
     view: Res<ViewState>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -251,39 +518,19 @@ pub fn apply_selection_tint(
         &BaseColor,
         &MeshMaterial3d<StandardMaterial>,
     )>,
-    markers: Query<(
-        &ProvinceMarker,
-        &BaseColor,
-        &MeshMaterial3d<StandardMaterial>,
-    )>,
 ) {
-    let mut apply =
-        |selected: bool, base: &BaseColor, handle: &MeshMaterial3d<StandardMaterial>| {
-            let target = if selected {
-                Color::srgb(0.98, 0.88, 0.30)
-            } else {
-                base.0
-            };
-            let differs = materials
-                .get(&handle.0)
-                .is_some_and(|m| m.base_color != target);
-            if differs && let Some(mut material) = materials.get_mut(&handle.0) {
-                material.base_color = target;
-            }
-        };
-
     for (visual, base, handle) in &system_visuals {
-        apply(
-            view.selected == Some(Selection::Body(visual.body)),
-            base,
-            handle,
-        );
-    }
-    for (marker, base, handle) in &markers {
-        apply(
-            view.selected == Some(Selection::Province(marker.province)),
-            base,
-            handle,
-        );
+        let selected = view.selected == Some(Selection::Body(visual.body));
+        let target = if selected {
+            Color::srgb(0.98, 0.88, 0.30)
+        } else {
+            base.0
+        };
+        let differs = materials
+            .get(&handle.0)
+            .is_some_and(|m| m.base_color != target);
+        if differs && let Some(mut material) = materials.get_mut(&handle.0) {
+            material.base_color = target;
+        }
     }
 }

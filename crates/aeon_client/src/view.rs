@@ -53,6 +53,35 @@ pub struct SearchState {
     pub query: String,
 }
 
+/// How the political globe colours provinces.
+#[derive(Resource, Copy, Clone, Debug, PartialEq, Eq, Default)]
+pub enum MapMode {
+    /// Colour each province by the house that directly holds it.
+    #[default]
+    Holder,
+    /// Colour each province by the great house at the top of its holder's
+    /// liege chain.
+    GreatHouse,
+}
+
+impl MapMode {
+    /// The next mode in the toggle cycle.
+    pub fn toggled(self) -> Self {
+        match self {
+            MapMode::Holder => MapMode::GreatHouse,
+            MapMode::GreatHouse => MapMode::Holder,
+        }
+    }
+
+    /// A short label for the toggle button.
+    pub fn label(self) -> &'static str {
+        match self {
+            MapMode::Holder => "Map: Holder",
+            MapMode::GreatHouse => "Map: Great House",
+        }
+    }
+}
+
 /// Converts a latitude/longitude in millidegrees to a unit vector on the
 /// globe (Y up, longitude zero on +X, east positive toward -Z).
 pub fn geo_to_unit(latitude_mdeg: i32, longitude_mdeg: i32) -> bevy::math::Vec3 {

@@ -29,7 +29,7 @@ use bevy_egui::{EguiContexts, egui};
 
 use crate::jobs_ui::UiCommandQueue;
 use crate::sim_driver::{SPEED_STEPS, TimeControl};
-use crate::view::{MapView, SearchState, Selection, ViewState};
+use crate::view::{MapMode, MapView, SearchState, Selection, ViewState};
 
 /// Character lookup shared across the panel helpers.
 type CharMap<'a> = BTreeMap<CharacterId, CharacterParts<'a>>;
@@ -203,6 +203,7 @@ pub fn draw_panels(
     mut view: ResMut<ViewState>,
     mut queue: ResMut<UiCommandQueue>,
     mut search: ResMut<SearchState>,
+    mut mode: ResMut<MapMode>,
     data: PanelData,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
@@ -316,6 +317,17 @@ pub fn draw_panels(
                         .map(|(_, name)| name.0.as_str())
                         .unwrap_or("Unknown");
                     ui.label(name);
+                    ui.separator();
+                    if ui
+                        .button(mode.label())
+                        .on_hover_text(
+                            "Toggle province colouring between the direct holder \
+                             and its top great house.",
+                        )
+                        .clicked()
+                    {
+                        *mode = mode.toggled();
+                    }
                 }
             }
 

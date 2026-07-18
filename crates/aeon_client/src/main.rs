@@ -9,6 +9,7 @@
 mod camera;
 mod content;
 mod jobs_ui;
+mod map_overlay;
 mod panels;
 mod scene;
 mod selection;
@@ -40,6 +41,8 @@ fn main() {
         .init_resource::<jobs_ui::UiCommandQueue>()
         .init_resource::<jobs_ui::JobForm>()
         .init_resource::<view::SearchState>()
+        .init_resource::<view::MapMode>()
+        .init_resource::<scene::GlobeBake>()
         .add_systems(
             Startup,
             (
@@ -58,7 +61,8 @@ fn main() {
                 selection::view_hotkeys,
                 scene::update_system_positions,
                 scene::apply_view_visibility,
-                scene::apply_political_colors,
+                scene::refresh_globe_texture,
+                scene::update_selection_pin,
                 scene::apply_selection_tint,
                 camera::retarget_on_view_change,
                 camera::drive_camera,
@@ -68,7 +72,12 @@ fn main() {
         )
         .add_systems(
             EguiPrimaryContextPass,
-            (panels::draw_panels, jobs_ui::draw_jobs_ui).chain(),
+            (
+                map_overlay::draw_map_overlay,
+                panels::draw_panels,
+                jobs_ui::draw_jobs_ui,
+            )
+                .chain(),
         )
         .run();
 }
