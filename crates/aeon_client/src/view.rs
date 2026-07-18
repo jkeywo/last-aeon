@@ -3,7 +3,7 @@
 //! Pure presentation — none of this is authoritative simulation state, and
 //! none of it appears in snapshots.
 
-use aeon_sim::{BodyId, ProvinceId};
+use aeon_sim::{BodyId, CharacterId, OrgId, ProvinceId};
 use bevy::prelude::Resource;
 
 /// Which map the player is looking at.
@@ -22,6 +22,10 @@ pub enum Selection {
     Body(BodyId),
     /// A province.
     Province(ProvinceId),
+    /// An organisation.
+    Org(OrgId),
+    /// A character.
+    Character(CharacterId),
 }
 
 /// The active view and selection.

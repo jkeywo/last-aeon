@@ -46,7 +46,7 @@ entities:
 
   - component: organisation-agency-model
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Organisation Agency Model
       summary: Every non-player organisation acts autonomously through its own leader, characters, jobs, resources, priorities, and political rules. The initial MVP landscape consists of AI-controlled dynastic houses and the Sanctora Imperim.
@@ -55,6 +55,12 @@ entities:
       kind: simulation-subsystem
       classification: domain
       authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_sim/src/politics.rs
+      tests:
+        - crates/aeon_sim/tests/politics.rs
+      status: declared
 
   - organisation_type: dynastic-house
     core:
@@ -448,7 +454,7 @@ entities:
 
   - component: imperial-appointment-contest
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Imperial Appointment Contest
       summary: When the Consul title becomes vacant, any eligible character can seek it. The distant Golden Tsar formally appoints the successor, but the practical result is determined through local political jobs that advance, obstruct, endorse, or discredit candidates.
@@ -457,6 +463,12 @@ entities:
       kind: simulation-subsystem
       classification: domain
       authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_sim/src/politics.rs
+      tests:
+        - crates/aeon_sim/tests/politics.rs
+      status: declared
 
   - decision: consul-vacancy-is-a-contested-appointment
     core:
@@ -494,7 +506,7 @@ entities:
 
   - component: organisation-control-model
     core:
-      status: proposed
+      status: implemented
       confidence: confirmed
       title: Organisation Control Model
       summary: The authoritative simulation boundary that binds the active player organisation to its current head and applies the rules that determine which organisation forms are eligible in a given game mode.
@@ -504,6 +516,12 @@ entities:
       classification: domain
       authority: authoritative
       owns: [player-organisation, organisation-head]
+    implementation:
+      paths:
+        - crates/aeon_sim/src/politics.rs
+      tests:
+        - crates/aeon_sim/tests/politics.rs
+      status: declared
 
   - component: campaign-map
     core:
@@ -581,7 +599,7 @@ entities:
 
   - component: character-simulation-scope
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Character Simulation Scope
       summary: The simulation models the player house, close family, court, vassals, rivals, and leading figures of neighbouring powers as individual characters. The broader population is abstracted.
@@ -590,6 +608,12 @@ entities:
       kind: simulation-subsystem
       classification: domain
       authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_sim/src/politics.rs
+      tests:
+        - crates/aeon_sim/tests/politics.rs
+      status: declared
 
   - component: physical-presence-and-order-delay
     core:
@@ -852,7 +876,7 @@ entities:
 
   - component: legal-holdings-and-obligations
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Legal Holdings and Obligations
       summary: Provinces and other strategic holdings are legal titles with holders and obligations. A title may be personally held by a house, administered for a superior, leased, or otherwise controlled under a recognised political arrangement.
@@ -861,6 +885,12 @@ entities:
       kind: simulation-subsystem
       classification: domain
       authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_sim/src/politics.rs
+      tests:
+        - crates/aeon_sim/tests/politics.rs
+      status: declared
 
   - decision: title-based-territorial-politics
     core:
@@ -874,7 +904,7 @@ entities:
 
   - component: offices-and-appointments
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Offices and Appointments
       summary: Offices are temporary, revocable grants of authority and responsibility held by characters. They can include planetary governor, starbase commander, military command, and Sanctora-appointed consul.
@@ -883,10 +913,16 @@ entities:
       kind: simulation-subsystem
       classification: domain
       authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_sim/src/politics.rs
+      tests:
+        - crates/aeon_sim/tests/politics.rs
+      status: declared
 
   - component: character-opinion-model
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Derived Character Opinion Model
       summary: A character's opinion of another character is derived from their traits and current world state, then adjusted by directional, target-specific modifiers stored on one or both involved characters. Modifiers may be temporary or persistent.
@@ -895,6 +931,12 @@ entities:
       kind: simulation-subsystem
       classification: domain
       authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_sim/src/politics.rs
+      tests:
+        - crates/aeon_sim/tests/politics.rs
+      status: declared
 
   - decision: no-generic-relationship-entity
     core:
@@ -1033,7 +1075,7 @@ entities:
 
   - component: succession-framework
     core:
-      status: accepted
+      status: implemented
       confidence: confirmed
       title: Organisation Succession Framework
       summary: The game resolves a change of organisation head according to the succession rules of that organisation type. This framework supports distinct future rules for houses and other factions.
@@ -1043,6 +1085,12 @@ entities:
       classification: domain
       authority: authoritative
       owns: [organisation-head]
+    implementation:
+      paths:
+        - crates/aeon_sim/src/politics.rs
+      tests:
+        - crates/aeon_sim/tests/politics.rs
+      status: declared
 
   - decision: mvp-dynastic-succession
     core:

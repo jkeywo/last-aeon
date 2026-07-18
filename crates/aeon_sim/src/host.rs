@@ -109,8 +109,10 @@ impl SimHost {
         let mut app = App::new();
         app.add_plugins(AeonSimPlugin);
         let map_state = state.map.clone();
+        let politics_state = state.politics.clone();
         restore_state(app.world_mut(), state);
         crate::map::restore_map(app.world_mut(), &map_state, &content);
+        crate::politics::restore_politics(app.world_mut(), &politics_state, &content);
         app.world_mut().insert_resource(ContentDb(content));
         Ok(Self { app })
     }

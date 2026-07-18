@@ -20,7 +20,7 @@ use crate::state::{CampaignIds, CampaignMeta, CampaignSeed};
 /// Bump on any change to [`CampaignState`]'s serialised shape, and provide a
 /// migration for every version a release has ever written. No release has
 /// shipped yet, so pre-release bumps carry no migrations.
-pub const SNAPSHOT_FORMAT_VERSION: u32 = 3;
+pub const SNAPSHOT_FORMAT_VERSION: u32 = 4;
 
 /// The complete authoritative campaign state.
 ///
@@ -43,6 +43,8 @@ pub struct CampaignState {
     pub id_allocator: IdAllocator,
     /// The map's ID-to-key bindings.
     pub map: crate::map::MapState,
+    /// The political world.
+    pub politics: crate::politics::PoliticsState,
     /// Next command sequence number.
     pub next_command_seq: u64,
     /// Commands accepted but not yet applied, in `(day, seq)` order.
@@ -127,6 +129,7 @@ pub fn capture_state(world: &World) -> CampaignState {
             .map(|db| db.0.content_hash),
         id_allocator: world.resource::<CampaignIds>().0.clone(),
         map: crate::map::capture_map(world),
+        politics: crate::politics::capture_politics(world),
         next_command_seq: log.next_seq,
         pending_commands: world.resource::<PendingCommands>().entries().to_vec(),
         applied_commands: log.applied.clone(),

@@ -22,8 +22,9 @@ use rhai::{AST, Dynamic, Engine, Map, Scope};
 use crate::effect::{EffectParseError, ScriptEffect, parse_effects};
 use crate::key::ContentKey;
 use crate::model::{
-    BodyDef, BodyKind, ContentSet, JobCategory, JobDef, JobResultDef, JobResultKind, ProvinceDef,
-    ScenarioDef, ScriptFnRef,
+    BodyDef, BodyKind, CharacterDef, ContentSet, Gender, HouseTier, JobCategory, JobDef,
+    JobResultDef, JobResultKind, NamePoolDef, OfficeDef, OrgDef, OrgKind, ProvinceDef, ScenarioDef,
+    ScriptFnRef, SkillsDef, TitleDef, TitleHolderDef, TitleKindDef, TraitDef,
 };
 use crate::report::{ContentReport, Severity};
 
@@ -80,6 +81,12 @@ struct BuilderState {
     jobs: BTreeMap<ContentKey, JobDef>,
     bodies: BTreeMap<ContentKey, BodyDef>,
     provinces: BTreeMap<ContentKey, ProvinceDef>,
+    traits: BTreeMap<ContentKey, TraitDef>,
+    name_pools: BTreeMap<ContentKey, NamePoolDef>,
+    characters: BTreeMap<ContentKey, CharacterDef>,
+    organisations: BTreeMap<ContentKey, OrgDef>,
+    titles: BTreeMap<ContentKey, TitleDef>,
+    offices: BTreeMap<ContentKey, OfficeDef>,
     scenario: Option<ScenarioDef>,
 }
 
@@ -483,7 +490,14 @@ fn define_scenario(state: &mut BuilderState, map: Map) {
         state,
         &map,
         Some(key.as_str()),
-        &["id", "name", "start_year", "start_month", "start_day"],
+        &[
+            "id",
+            "name",
+            "start_year",
+            "start_month",
+            "start_day",
+            "player_house",
+        ],
     );
     let Some(name) = req_str(state, &map, "name") else {
         return;
@@ -504,6 +518,9 @@ fn define_scenario(state: &mut BuilderState, map: Map) {
         );
         return;
     }
+    let Some(player_house) = opt_key(state, &map, "player_house") else {
+        return;
+    };
     if state.scenario.is_some() {
         state.error(
             Some(key.as_str()),
@@ -517,7 +534,566 @@ fn define_scenario(state: &mut BuilderState, map: Map) {
         start_year,
         start_month: start_month as u8,
         start_day: start_day as u8,
+        player_house,
     });
+}
+
+/// Reads an optional content-key field. `Some(None)` means absent;
+/// `None` means present but invalid (already reported).
+fn opt_key(state: &mut BuilderState, map: &Map, field: &str) -> Option<Option<ContentKey>> {
+    match map.get(field) {
+        None => Some(None),
+        Some(value) => match value.clone().into_string() {
+            Ok(raw) => match ContentKey::new(&raw) {
+                Ok(key) => Some(Some(key)),
+                Err(err) => {
+                    state.error(None, format!("field '{field}': {err}"));
+                    None
+                }
+            },
+            Err(_) => {
+                state.error(None, format!("field '{field}' must be a string"));
+                None
+            }
+        },
+    }
+}
+
+/// Reads a required content-key field (other than `id`).
+fn req_key_field(state: &mut BuilderState, map: &Map, field: &str) -> Option<ContentKey> {
+    match opt_key(state, map, field) {
+        Some(Some(key)) => Some(key),
+        Some(None) => {
+            state.error(None, format!("missing required field '{field}'"));
+            None
+        }
+        None => None,
+    }
+}
+
+/// Reads an optional list of content keys (defaults to empty).
+fn key_list(state: &mut BuilderState, map: &Map, field: &str) -> Option<Vec<ContentKey>> {
+    let Some(value) = map.get(field) else {
+        return Some(Vec::new());
+    };
+    let Some(array) = value.clone().try_cast::<rhai::Array>() else {
+        state.error(None, format!("field '{field}' must be an array of keys"));
+        return None;
+    };
+    let mut keys = Vec::with_capacity(array.len());
+    for element in array {
+        let Ok(raw) = element.into_string() else {
+            state.error(None, format!("field '{field}' entries must be strings"));
+            return None;
+        };
+        match ContentKey::new(&raw) {
+            Ok(key) => keys.push(key),
+            Err(err) => {
+                state.error(None, format!("field '{field}': {err}"));
+                return None;
+            }
+        }
+    }
+    Some(keys)
+}
+
+fn define_trait(state: &mut BuilderState, map: Map) {
+    let Some(key) = req_key(state, &map) else {
+        return;
+    };
+    warn_unknown_fields(
+        state,
+        &map,
+        Some(key.as_str()),
+        &[
+            "id",
+            "name",
+            "summary",
+            "opinion_same",
+            "opinion_opposed",
+            "opposites",
+        ],
+    );
+    let Some(name) = req_str(state, &map, "name") else {
+        return;
+    };
+    let Some(summary) = req_str(state, &map, "summary") else {
+        return;
+    };
+    let Some(opinion_same) = opt_int(state, &map, "opinion_same", 0) else {
+        return;
+    };
+    let Some(opinion_opposed) = opt_int(state, &map, "opinion_opposed", 0) else {
+        return;
+    };
+    let Some(opposites) = key_list(state, &map, "opposites") else {
+        return;
+    };
+    if state.traits.contains_key(&key) {
+        state.error(Some(key.as_str()), "duplicate trait id");
+        return;
+    }
+    state.traits.insert(
+        key.clone(),
+        TraitDef {
+            key,
+            name,
+            summary,
+            opinion_same: opinion_same as i32,
+            opinion_opposed: opinion_opposed as i32,
+            opposites,
+        },
+    );
+}
+
+fn define_character(state: &mut BuilderState, map: Map) {
+    let Some(key) = req_key(state, &map) else {
+        return;
+    };
+    warn_unknown_fields(
+        state,
+        &map,
+        Some(key.as_str()),
+        &[
+            "id",
+            "name",
+            "gender",
+            "birth_year",
+            "birth_month",
+            "birth_day",
+            "organisation",
+            "parents",
+            "spouse",
+            "traits",
+            "skills",
+        ],
+    );
+    let Some(name) = req_str(state, &map, "name") else {
+        return;
+    };
+    let Some(gender_raw) = req_str(state, &map, "gender") else {
+        return;
+    };
+    let gender = match gender_raw.as_str() {
+        "male" => Gender::Male,
+        "female" => Gender::Female,
+        other => {
+            state.error(
+                Some(key.as_str()),
+                format!("unknown gender '{other}' (expected male or female)"),
+            );
+            return;
+        }
+    };
+    let Some(birth_year) = req_int(state, &map, "birth_year") else {
+        return;
+    };
+    let Some(birth_month) = opt_int(state, &map, "birth_month", 1) else {
+        return;
+    };
+    let Some(birth_day) = opt_int(state, &map, "birth_day", 1) else {
+        return;
+    };
+    if !(1..=12).contains(&birth_month) || !(1..=30).contains(&birth_day) {
+        state.error(
+            Some(key.as_str()),
+            "birth_month must be 1..=12 and birth_day 1..=30",
+        );
+        return;
+    }
+    let Some(organisation) = opt_key(state, &map, "organisation") else {
+        return;
+    };
+    let Some(parents) = key_list(state, &map, "parents") else {
+        return;
+    };
+    if parents.len() > 2 {
+        state.error(Some(key.as_str()), "characters have at most two parents");
+        return;
+    }
+    let Some(spouse) = opt_key(state, &map, "spouse") else {
+        return;
+    };
+    let Some(traits) = key_list(state, &map, "traits") else {
+        return;
+    };
+    let skills = match map.get("skills") {
+        None => SkillsDef::default(),
+        Some(value) => {
+            let Some(skills_map) = value.clone().try_cast::<Map>() else {
+                state.error(Some(key.as_str()), "field 'skills' must be a map");
+                return;
+            };
+            warn_unknown_fields(
+                state,
+                &skills_map,
+                Some(key.as_str()),
+                &["command", "diplomacy", "intrigue", "stewardship"],
+            );
+            let (Some(command), Some(diplomacy), Some(intrigue), Some(stewardship)) = (
+                opt_int(state, &skills_map, "command", 0),
+                opt_int(state, &skills_map, "diplomacy", 0),
+                opt_int(state, &skills_map, "intrigue", 0),
+                opt_int(state, &skills_map, "stewardship", 0),
+            ) else {
+                return;
+            };
+            SkillsDef {
+                command: command as i32,
+                diplomacy: diplomacy as i32,
+                intrigue: intrigue as i32,
+                stewardship: stewardship as i32,
+            }
+        }
+    };
+    if state.characters.contains_key(&key) {
+        state.error(Some(key.as_str()), "duplicate character id");
+        return;
+    }
+    state.characters.insert(
+        key.clone(),
+        CharacterDef {
+            key,
+            name,
+            gender,
+            birth_year,
+            birth_month: birth_month as u8,
+            birth_day: birth_day as u8,
+            organisation,
+            parents,
+            spouse,
+            traits,
+            skills,
+        },
+    );
+}
+
+fn org_color(state: &mut BuilderState, map: &Map, key: &ContentKey) -> Option<(u8, u8, u8)> {
+    let Some(value) = map.get("color") else {
+        state.error(Some(key.as_str()), "missing required field 'color'");
+        return None;
+    };
+    let Some(array) = value.clone().try_cast::<rhai::Array>() else {
+        state.error(Some(key.as_str()), "field 'color' must be [r, g, b]");
+        return None;
+    };
+    if array.len() != 3 {
+        state.error(Some(key.as_str()), "field 'color' must be [r, g, b]");
+        return None;
+    }
+    let mut channels = [0u8; 3];
+    for (slot, element) in channels.iter_mut().zip(array) {
+        match element.as_int() {
+            Ok(v) if (0..=255).contains(&v) => *slot = v as u8,
+            _ => {
+                state.error(
+                    Some(key.as_str()),
+                    "colour channels must be integers 0..=255",
+                );
+                return None;
+            }
+        }
+    }
+    Some((channels[0], channels[1], channels[2]))
+}
+
+fn insert_org(state: &mut BuilderState, org: OrgDef) {
+    if state.organisations.contains_key(&org.key) {
+        state.error(Some(org.key.as_str()), "duplicate organisation id");
+        return;
+    }
+    state.organisations.insert(org.key.clone(), org);
+}
+
+fn define_house(state: &mut BuilderState, map: Map) {
+    let Some(key) = req_key(state, &map) else {
+        return;
+    };
+    warn_unknown_fields(
+        state,
+        &map,
+        Some(key.as_str()),
+        &[
+            "id",
+            "name",
+            "surname",
+            "tier",
+            "liege",
+            "head",
+            "provinces",
+            "color",
+        ],
+    );
+    let Some(name) = req_str(state, &map, "name") else {
+        return;
+    };
+    let Some(tier_raw) = req_str(state, &map, "tier") else {
+        return;
+    };
+    let tier = match tier_raw.as_str() {
+        "great" => HouseTier::Great,
+        "vassal" => HouseTier::Vassal,
+        "independent" => HouseTier::Independent,
+        other => {
+            state.error(
+                Some(key.as_str()),
+                format!("unknown tier '{other}' (expected great, vassal, independent)"),
+            );
+            return;
+        }
+    };
+    let Some(liege) = opt_key(state, &map, "liege") else {
+        return;
+    };
+    let surname = match map.get("surname") {
+        None => None,
+        Some(value) => match value.clone().into_string() {
+            Ok(text) => Some(text),
+            Err(_) => {
+                state.error(Some(key.as_str()), "field 'surname' must be a string");
+                return;
+            }
+        },
+    };
+    let Some(head) = opt_key(state, &map, "head") else {
+        return;
+    };
+    let Some(provinces) = key_list(state, &map, "provinces") else {
+        return;
+    };
+    let Some(color) = org_color(state, &map, &key) else {
+        return;
+    };
+    insert_org(
+        state,
+        OrgDef {
+            key,
+            name,
+            kind: OrgKind::DynasticHouse,
+            tier: Some(tier),
+            liege,
+            surname,
+            head,
+            provinces,
+            color,
+        },
+    );
+}
+
+fn string_list(state: &mut BuilderState, map: &Map, field: &str) -> Option<Vec<String>> {
+    let Some(value) = map.get(field) else {
+        return Some(Vec::new());
+    };
+    let Some(array) = value.clone().try_cast::<rhai::Array>() else {
+        state.error(None, format!("field '{field}' must be an array of strings"));
+        return None;
+    };
+    let mut items = Vec::with_capacity(array.len());
+    for element in array {
+        match element.into_string() {
+            Ok(text) => items.push(text),
+            Err(_) => {
+                state.error(None, format!("field '{field}' entries must be strings"));
+                return None;
+            }
+        }
+    }
+    Some(items)
+}
+
+fn define_name_pool(state: &mut BuilderState, map: Map) {
+    let Some(key) = req_key(state, &map) else {
+        return;
+    };
+    warn_unknown_fields(state, &map, Some(key.as_str()), &["id", "male", "female"]);
+    let (Some(male), Some(female)) = (
+        string_list(state, &map, "male"),
+        string_list(state, &map, "female"),
+    ) else {
+        return;
+    };
+    if male.is_empty() || female.is_empty() {
+        state.error(
+            Some(key.as_str()),
+            "name pools need at least one male and one female name",
+        );
+        return;
+    }
+    if state.name_pools.contains_key(&key) {
+        state.error(Some(key.as_str()), "duplicate name pool id");
+        return;
+    }
+    state
+        .name_pools
+        .insert(key.clone(), NamePoolDef { key, male, female });
+}
+
+fn define_organisation(state: &mut BuilderState, map: Map) {
+    let Some(key) = req_key(state, &map) else {
+        return;
+    };
+    warn_unknown_fields(
+        state,
+        &map,
+        Some(key.as_str()),
+        &["id", "name", "kind", "head", "provinces", "color"],
+    );
+    let Some(name) = req_str(state, &map, "name") else {
+        return;
+    };
+    let Some(kind_raw) = req_str(state, &map, "kind") else {
+        return;
+    };
+    let kind = match kind_raw.as_str() {
+        "sanctora-imperim" => OrgKind::SanctoraImperim,
+        "dynastic-house" => {
+            state.error(
+                Some(key.as_str()),
+                "dynastic houses are defined with define_house",
+            );
+            return;
+        }
+        other => {
+            state.error(
+                Some(key.as_str()),
+                format!("unknown organisation kind '{other}'"),
+            );
+            return;
+        }
+    };
+    let Some(head) = opt_key(state, &map, "head") else {
+        return;
+    };
+    let Some(provinces) = key_list(state, &map, "provinces") else {
+        return;
+    };
+    let Some(color) = org_color(state, &map, &key) else {
+        return;
+    };
+    insert_org(
+        state,
+        OrgDef {
+            key,
+            name,
+            kind,
+            tier: None,
+            liege: None,
+            surname: None,
+            head,
+            provinces,
+            color,
+        },
+    );
+}
+
+fn define_title(state: &mut BuilderState, map: Map) {
+    let Some(key) = req_key(state, &map) else {
+        return;
+    };
+    warn_unknown_fields(
+        state,
+        &map,
+        Some(key.as_str()),
+        &[
+            "id",
+            "name",
+            "kind",
+            "body",
+            "holder_org",
+            "holder_character",
+        ],
+    );
+    let Some(name) = req_str(state, &map, "name") else {
+        return;
+    };
+    let Some(kind_raw) = req_str(state, &map, "kind") else {
+        return;
+    };
+    let kind = match kind_raw.as_str() {
+        "paramount" => {
+            let Some(body) = req_key_field(state, &map, "body") else {
+                return;
+            };
+            TitleKindDef::Paramount { body }
+        }
+        "consul" => TitleKindDef::Consul,
+        other => {
+            state.error(
+                Some(key.as_str()),
+                format!("unknown title kind '{other}' (expected paramount or consul)"),
+            );
+            return;
+        }
+    };
+    let (Some(holder_org), Some(holder_character)) = (
+        opt_key(state, &map, "holder_org"),
+        opt_key(state, &map, "holder_character"),
+    ) else {
+        return;
+    };
+    let holder = match (holder_org, holder_character) {
+        (Some(_), Some(_)) => {
+            state.error(
+                Some(key.as_str()),
+                "a title declares holder_org or holder_character, not both",
+            );
+            return;
+        }
+        (Some(org), None) => TitleHolderDef::Organisation(org),
+        (None, Some(character)) => TitleHolderDef::Character(character),
+        (None, None) => TitleHolderDef::Vacant,
+    };
+    if state.titles.contains_key(&key) {
+        state.error(Some(key.as_str()), "duplicate title id");
+        return;
+    }
+    state.titles.insert(
+        key.clone(),
+        TitleDef {
+            key,
+            name,
+            kind,
+            holder,
+        },
+    );
+}
+
+fn define_office(state: &mut BuilderState, map: Map) {
+    let Some(key) = req_key(state, &map) else {
+        return;
+    };
+    warn_unknown_fields(
+        state,
+        &map,
+        Some(key.as_str()),
+        &["id", "name", "organisation", "province", "holder"],
+    );
+    let Some(name) = req_str(state, &map, "name") else {
+        return;
+    };
+    let Some(organisation) = req_key_field(state, &map, "organisation") else {
+        return;
+    };
+    let (Some(province), Some(holder)) = (
+        opt_key(state, &map, "province"),
+        opt_key(state, &map, "holder"),
+    ) else {
+        return;
+    };
+    if state.offices.contains_key(&key) {
+        state.error(Some(key.as_str()), "duplicate office id");
+        return;
+    }
+    state.offices.insert(
+        key.clone(),
+        OfficeDef {
+            key,
+            name,
+            organisation,
+            province,
+            holder,
+        },
+    );
 }
 
 /// Builds the loading engine with `define_*` functions bound to `state`.
@@ -551,6 +1127,41 @@ fn loading_engine(state: Arc<Mutex<BuilderState>>) -> Engine {
     engine.register_fn("define_scenario", move |map: Map| {
         let mut s = scenario_state.lock().expect("builder state lock");
         define_scenario(&mut s, map);
+    });
+    let trait_state = state.clone();
+    engine.register_fn("define_trait", move |map: Map| {
+        let mut s = trait_state.lock().expect("builder state lock");
+        define_trait(&mut s, map);
+    });
+    let character_state = state.clone();
+    engine.register_fn("define_character", move |map: Map| {
+        let mut s = character_state.lock().expect("builder state lock");
+        define_character(&mut s, map);
+    });
+    let house_state = state.clone();
+    engine.register_fn("define_house", move |map: Map| {
+        let mut s = house_state.lock().expect("builder state lock");
+        define_house(&mut s, map);
+    });
+    let org_state = state.clone();
+    engine.register_fn("define_organisation", move |map: Map| {
+        let mut s = org_state.lock().expect("builder state lock");
+        define_organisation(&mut s, map);
+    });
+    let title_state = state.clone();
+    engine.register_fn("define_title", move |map: Map| {
+        let mut s = title_state.lock().expect("builder state lock");
+        define_title(&mut s, map);
+    });
+    let office_state = state.clone();
+    engine.register_fn("define_office", move |map: Map| {
+        let mut s = office_state.lock().expect("builder state lock");
+        define_office(&mut s, map);
+    });
+    let name_pool_state = state.clone();
+    engine.register_fn("define_name_pool", move |map: Map| {
+        let mut s = name_pool_state.lock().expect("builder state lock");
+        define_name_pool(&mut s, map);
     });
     engine
 }
@@ -629,6 +1240,12 @@ pub fn load_content(sources: &[ContentSource]) -> (Option<ContentSet>, ContentRe
         jobs: builder.jobs,
         bodies: builder.bodies,
         provinces: builder.provinces,
+        traits: builder.traits,
+        name_pools: builder.name_pools,
+        characters: builder.characters,
+        organisations: builder.organisations,
+        titles: builder.titles,
+        offices: builder.offices,
         scenario: builder.scenario,
         asts,
         content_hash: content_hash(&sources),
@@ -645,6 +1262,12 @@ impl BuilderState {
             jobs: std::mem::take(&mut self.jobs),
             bodies: std::mem::take(&mut self.bodies),
             provinces: std::mem::take(&mut self.provinces),
+            traits: std::mem::take(&mut self.traits),
+            name_pools: std::mem::take(&mut self.name_pools),
+            characters: std::mem::take(&mut self.characters),
+            organisations: std::mem::take(&mut self.organisations),
+            titles: std::mem::take(&mut self.titles),
+            offices: std::mem::take(&mut self.offices),
             scenario: self.scenario.take(),
         }
     }
@@ -732,8 +1355,212 @@ fn validate_cross_references(
         }
     }
 
+    validate_political_references(builder, &mut findings);
+
     for (path, key, message) in findings {
         builder.report.error(&path, key.as_deref(), message);
+    }
+}
+
+/// Cross-reference validation for traits, characters, organisations,
+/// titles, and offices.
+fn validate_political_references(
+    builder: &BuilderState,
+    findings: &mut Vec<(String, Option<String>, String)>,
+) {
+    if !builder.characters.is_empty() && builder.name_pools.is_empty() {
+        findings.push((
+            String::new(),
+            None,
+            "content with characters must define a name pool (births need names)".to_owned(),
+        ));
+    }
+
+    let mut err = |key: &ContentKey, message: String| {
+        findings.push((String::new(), Some(key.to_string()), message));
+    };
+
+    for (key, trait_def) in &builder.traits {
+        for opposite in &trait_def.opposites {
+            if !builder.traits.contains_key(opposite) {
+                err(key, format!("opposite trait '{opposite}' is not defined"));
+            }
+        }
+    }
+
+    for (key, character) in &builder.characters {
+        if let Some(org) = &character.organisation
+            && !builder.organisations.contains_key(org)
+        {
+            err(key, format!("organisation '{org}' is not defined"));
+        }
+        for parent in &character.parents {
+            if !builder.characters.contains_key(parent) {
+                err(key, format!("parent '{parent}' is not defined"));
+            }
+        }
+        if let Some(spouse) = &character.spouse {
+            match builder.characters.get(spouse) {
+                None => err(key, format!("spouse '{spouse}' is not defined")),
+                Some(_) if spouse == key => {
+                    err(key, "characters cannot marry themselves".to_owned());
+                }
+                Some(other) => {
+                    // Marriage is symmetric; the simulation mirrors
+                    // one-sided declarations, but a conflicting
+                    // declaration is an authoring error.
+                    if let Some(their_spouse) = &other.spouse
+                        && their_spouse != key
+                    {
+                        err(
+                            key,
+                            format!(
+                                "spouse '{spouse}' declares a different spouse '{their_spouse}'"
+                            ),
+                        );
+                    }
+                }
+            }
+        }
+        for trait_key in &character.traits {
+            if !builder.traits.contains_key(trait_key) {
+                err(key, format!("trait '{trait_key}' is not defined"));
+            }
+        }
+    }
+
+    let mut province_holders: BTreeMap<&ContentKey, &ContentKey> = BTreeMap::new();
+    for (key, org) in &builder.organisations {
+        match org.kind {
+            OrgKind::DynasticHouse => match (org.tier, &org.liege) {
+                (Some(HouseTier::Vassal), None) => {
+                    err(key, "vassal houses must declare a liege".to_owned());
+                }
+                (Some(HouseTier::Vassal), Some(liege)) => match builder.organisations.get(liege) {
+                    None => err(key, format!("liege '{liege}' is not defined")),
+                    Some(liege_org) if liege_org.tier != Some(HouseTier::Great) => {
+                        err(key, format!("liege '{liege}' must be a great house"));
+                    }
+                    Some(_) => {}
+                },
+                (Some(_), Some(_)) => {
+                    err(key, "only vassal houses declare a liege".to_owned());
+                }
+                (Some(_), None) => {}
+                (None, _) => err(key, "houses must declare a tier".to_owned()),
+            },
+            OrgKind::SanctoraImperim => {
+                if org.tier.is_some() || org.liege.is_some() {
+                    err(
+                        key,
+                        "the Sanctora Imperim has neither tier nor liege".to_owned(),
+                    );
+                }
+            }
+        }
+        if let Some(head) = &org.head {
+            match builder.characters.get(head) {
+                None => err(key, format!("head '{head}' is not defined")),
+                Some(character) if character.organisation.as_ref() != Some(key) => {
+                    err(
+                        key,
+                        format!("head '{head}' does not belong to this organisation"),
+                    );
+                }
+                Some(_) => {}
+            }
+        }
+        for province in &org.provinces {
+            if !builder.provinces.contains_key(province) {
+                err(key, format!("province '{province}' is not defined"));
+            }
+            if let Some(other) = province_holders.insert(province, key) {
+                err(
+                    key,
+                    format!("province '{province}' is already held by '{other}'"),
+                );
+            }
+        }
+    }
+
+    for (key, title) in &builder.titles {
+        if let TitleKindDef::Paramount { body } = &title.kind
+            && !builder.bodies.contains_key(body)
+        {
+            err(key, format!("body '{body}' is not defined"));
+        }
+        match &title.holder {
+            TitleHolderDef::Organisation(org) => {
+                if !builder.organisations.contains_key(org) {
+                    err(key, format!("holder organisation '{org}' is not defined"));
+                }
+            }
+            TitleHolderDef::Character(character) => {
+                if !builder.characters.contains_key(character) {
+                    err(
+                        key,
+                        format!("holder character '{character}' is not defined"),
+                    );
+                }
+            }
+            TitleHolderDef::Vacant => {}
+        }
+        if matches!(title.kind, TitleKindDef::Consul)
+            && matches!(title.holder, TitleHolderDef::Organisation(_))
+        {
+            err(
+                key,
+                "the Consul title is held personally, not by an organisation".to_owned(),
+            );
+        }
+    }
+
+    for (key, office) in &builder.offices {
+        if !builder.organisations.contains_key(&office.organisation) {
+            err(
+                key,
+                format!("organisation '{}' is not defined", office.organisation),
+            );
+        }
+        if let Some(province) = &office.province
+            && !builder.provinces.contains_key(province)
+        {
+            err(key, format!("province '{province}' is not defined"));
+        }
+        if let Some(holder) = &office.holder
+            && !builder.characters.contains_key(holder)
+        {
+            err(key, format!("holder '{holder}' is not defined"));
+        }
+    }
+
+    if let Some(scenario) = &builder.scenario
+        && let Some(player_house) = &scenario.player_house
+    {
+        match builder.organisations.get(player_house) {
+            None => {
+                findings.push((
+                    String::new(),
+                    Some(scenario.key.to_string()),
+                    format!("player_house '{player_house}' is not defined"),
+                ));
+            }
+            Some(org) if org.kind != OrgKind::DynasticHouse => {
+                findings.push((
+                    String::new(),
+                    Some(scenario.key.to_string()),
+                    "player_house must be a dynastic house".to_owned(),
+                ));
+            }
+            Some(org) if org.head.is_none() => {
+                findings.push((
+                    String::new(),
+                    Some(scenario.key.to_string()),
+                    "player_house must have an authored head".to_owned(),
+                ));
+            }
+            Some(_) => {}
+        }
     }
 }
 

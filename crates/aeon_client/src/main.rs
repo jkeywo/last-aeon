@@ -54,6 +54,7 @@ fn main() {
                 selection::view_hotkeys,
                 scene::update_system_positions,
                 scene::apply_view_visibility,
+                scene::apply_political_colors,
                 scene::apply_selection_tint,
                 camera::retarget_on_view_change,
                 camera::drive_camera,

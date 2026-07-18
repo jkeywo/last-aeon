@@ -336,3 +336,83 @@ entities:
         - mvp-provincial-composition
         - mvp-starbase-province
         - invented-canon-scenario-content
+
+  - decision: gender-blind-primogeniture
+    core:
+      status: accepted
+      confidence: confirmed
+      title: MVP Succession Is Gender-Blind Primogeniture
+      summary: >-
+        Dynastic succession passes to the eldest living child of the dead
+        head, then the eldest sibling, then the eldest living house member.
+        Biological sex is recorded for lineage modelling but succession law
+        ignores it. A house with no living members is defunct; if it is the
+        player house, the campaign ends.
+      rationale:
+        - A single clear legal order keeps succession dramatic but legible, and underage or unpopular heirs create the constrained situations the vision wants.
+        - Gender-blind law fits a far-future setting and halves the rule surface without weakening play.
+      references:
+        - mvp-dynastic-succession
+        - succession-framework
+        - mvp-has-no-victory-condition
+
+  - decision: titles-hold-by-org-offices-by-character
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Territorial Titles Are Held by Organisations, Personal Titles and Offices by Characters
+      summary: >-
+        Province and paramount titles are held by organisations and
+        exercised through their current head, so succession moves whole
+        holdings without retitling. The Consul title and all offices are
+        held personally by characters and never inherited. Province titles
+        are implicit - the simulation creates one per province - while
+        paramountcies and Imperial titles are authored.
+      rationale:
+        - Organisation-held territory matches the vision's model of houses persisting across leaders.
+        - Implicit province titles avoid forty-one lines of authored boilerplate that carry no information.
+      references:
+        - legal-holdings-and-obligations
+        - titles-and-offices-are-separate
+        - consul-and-starbase-command-hierarchy
+
+  - decision: consul-contest-scoring
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Consular Contests Score Diplomacy, Stewardship, and Sanctora Opinion
+      summary: >-
+        A Consular vacancy opens a 120-day contest. Living adult
+        organisation heads and adult Sanctora members stand as candidates.
+        The Tsar's appointment goes to the highest score of twice diplomacy
+        plus stewardship plus the summed opinions of living Sanctora
+        members toward the candidate, plus a small derived-stream jitter;
+        ties resolve to the lower stable ID. Because opinion terms feed the
+        score, political jobs that shift Sanctora opinion manipulate the
+        appointment - the jobs milestone plugs directly into this.
+      rationale:
+        - Scoring through opinion makes the contest a genuine political arena rather than a dice roll, exactly as the vision's appointment-contest component demands.
+      references:
+        - imperial-appointment-contest
+        - consul-vacancy-is-a-contested-appointment
+        - character-opinion-model
+
+  - decision: background-life-simulation
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Yearly Life-Cycle Pulses Keep the Character Pool Alive
+      summary: >-
+        Yearly pulses resolve age-based mortality, opinion-driven marriage
+        matching among adult house members, and births to married couples,
+        all through derived random streams keyed by character and year.
+        Children join the head parent's house, take names from authored
+        name pools with the house surname, and get stable IDs from the
+        campaign allocator.
+      rationale:
+        - Succession, ambition, and dynastic play need a population that replenishes itself over decades without authored intervention.
+        - Per-character-per-year derived streams keep every life event replay-stable regardless of system ordering.
+      references:
+        - mvp-selective-character-simulation
+        - character-simulation-scope
+        - hand-rolled-deterministic-rng

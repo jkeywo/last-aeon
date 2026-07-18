@@ -121,7 +121,7 @@ entities:
 
   - milestone: mvp-political-model
     core:
-      status: proposed
+      status: implemented
       confidence: confirmed
       title: "M4: Characters, Houses, Titles, and Offices"
       summary: >-
@@ -140,6 +140,17 @@ entities:
         - organisation-agency-model
         - consul-and-starbase-command-hierarchy
         - consul-vacancy-is-a-contested-appointment
+    implementation:
+      paths:
+        - crates/aeon_sim/src/politics.rs
+        - assets/content/scenario
+      tests:
+        - crates/aeon_sim/tests/politics.rs
+      status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/politics.rs
+        summary: Tests verify deterministic political spawning, exact opinion derivation from traits, bonds, and directional modifiers with expiry, gender-blind primogeniture, campaign end on player-house extinction, the 120-day contested Consular appointment updating Sanctora leadership, Consular office appointment, forty years of deterministic births, marriages, and deaths, and identical continuation after snapshot restore.
 
   - milestone: mvp-jobs-and-events
     core:

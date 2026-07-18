@@ -24,6 +24,7 @@ pub mod host;
 pub mod ids;
 pub mod map;
 pub mod persistence;
+pub mod politics;
 pub mod snapshot;
 pub mod state;
 
@@ -33,8 +34,12 @@ pub use clock::{CampaignClock, DailyTick, MonthlyPulse, TickSet, YearlyPulse, ad
 pub use command::{CommandEnvelope, CommandRejection, PlayerCommand};
 pub use config::CampaignConfig;
 pub use host::SimHost;
-pub use ids::{BodyId, ProvinceId};
+pub use ids::{BodyId, CharacterId, OfficeId, OrgId, ProvinceId, TitleId};
 pub use map::{BodyRecord, DisplayName, GeoPosition, MapIndex, ProvinceRecord};
+pub use politics::{
+    CampaignOver, CharacterRecord, OfficeRecord, OrgRecord, PlayerHouse, PoliticsIndex,
+    TitleHolder, TitleKind, TitleRecord, opinion_between,
+};
 pub use snapshot::{CampaignSnapshot, CampaignState, SNAPSHOT_FORMAT_VERSION, SnapshotError};
 
 /// Root plugin installing the authoritative simulation into a Bevy [`App`].
@@ -49,6 +54,7 @@ impl Plugin for AeonSimPlugin {
     fn build(&self, app: &mut App) {
         clock::install(app);
         command::install(app);
+        politics::install(app);
     }
 }
 

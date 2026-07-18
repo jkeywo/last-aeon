@@ -197,7 +197,52 @@ pub fn apply_view_visibility(
     }
 }
 
-/// Tints hovered and selected visuals so feedback is unmissable.
+/// Recolours province markers by their holder's political colour.
+///
+/// Runs when politics may have changed hands; cheap at MVP scale.
+pub fn apply_political_colors(
+    clock: Option<Res<aeon_sim::CampaignClock>>,
+    politics: Option<Res<aeon_sim::PoliticsIndex>>,
+    content: Option<Res<aeon_sim::state::ContentDb>>,
+    titles: Query<&aeon_sim::TitleRecord>,
+    orgs: Query<&aeon_sim::OrgRecord>,
+    mut markers: Query<(&ProvinceMarker, &mut BaseColor)>,
+) {
+    let (Some(clock), Some(politics), Some(content)) = (clock, politics, content) else {
+        return;
+    };
+    // Refresh on the first frame of each day; holdings move slowly.
+    if !clock.is_changed() {
+        return;
+    }
+
+    for (marker, mut base) in &mut markers {
+        let Some(title_id) = politics.province_titles.get(&marker.province) else {
+            continue;
+        };
+        let Some(title_entity) = politics.titles.get(title_id) else {
+            continue;
+        };
+        let Ok(title) = titles.get(*title_entity) else {
+            continue;
+        };
+        let color = match title.holder {
+            aeon_sim::TitleHolder::Org(org_id) => politics
+                .orgs
+                .get(&org_id)
+                .and_then(|entity| orgs.get(*entity).ok())
+                .and_then(|org| content.0.organisations.get(&org.key))
+                .map(|def| Color::srgb_u8(def.color.0, def.color.1, def.color.2)),
+            _ => None,
+        };
+        base.0 = color.unwrap_or(Color::srgb(0.35, 0.35, 0.38));
+    }
+}
+
+/// Applies base political colours plus selection highlights to visuals.
+///
+/// Materials are only written when the target colour actually differs, so
+/// asset change detection stays quiet on idle frames.
 pub fn apply_selection_tint(
     view: Res<ViewState>,
     mut materials: ResMut<Assets<StandardMaterial>>,
@@ -212,27 +257,33 @@ pub fn apply_selection_tint(
         &MeshMaterial3d<StandardMaterial>,
     )>,
 ) {
-    if !view.is_changed() {
-        return;
-    }
-    for (visual, base, material) in &system_visuals {
-        if let Some(mut material) = materials.get_mut(&material.0) {
-            let selected = view.selected == Some(Selection::Body(visual.body));
-            material.base_color = if selected {
-                Color::srgb(0.95, 0.85, 0.35)
-            } else {
-                base.0
-            };
-        }
-    }
-    for (marker, base, material) in &markers {
-        if let Some(mut material) = materials.get_mut(&material.0) {
-            let selected = view.selected == Some(Selection::Province(marker.province));
-            material.base_color = if selected {
+    let mut apply =
+        |selected: bool, base: &BaseColor, handle: &MeshMaterial3d<StandardMaterial>| {
+            let target = if selected {
                 Color::srgb(0.98, 0.88, 0.30)
             } else {
                 base.0
             };
-        }
+            let differs = materials
+                .get(&handle.0)
+                .is_some_and(|m| m.base_color != target);
+            if differs && let Some(mut material) = materials.get_mut(&handle.0) {
+                material.base_color = target;
+            }
+        };
+
+    for (visual, base, handle) in &system_visuals {
+        apply(
+            view.selected == Some(Selection::Body(visual.body)),
+            base,
+            handle,
+        );
+    }
+    for (marker, base, handle) in &markers {
+        apply(
+            view.selected == Some(Selection::Province(marker.province)),
+            base,
+            handle,
+        );
     }
 }

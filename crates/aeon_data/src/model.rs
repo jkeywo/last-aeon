@@ -147,6 +147,8 @@ pub struct ScenarioDef {
     pub start_month: u8,
     /// Campaign start day, 1..=30.
     pub start_day: u8,
+    /// The house the player leads.
+    pub player_house: Option<ContentKey>,
 }
 
 /// A loaded, validated content database.
@@ -160,6 +162,18 @@ pub struct ContentSet {
     pub bodies: BTreeMap<ContentKey, BodyDef>,
     /// Provinces by key.
     pub provinces: BTreeMap<ContentKey, ProvinceDef>,
+    /// Trait definitions by key.
+    pub traits: BTreeMap<ContentKey, TraitDef>,
+    /// Name pools by key.
+    pub name_pools: BTreeMap<ContentKey, NamePoolDef>,
+    /// Characters by key.
+    pub characters: BTreeMap<ContentKey, CharacterDef>,
+    /// Organisations by key.
+    pub organisations: BTreeMap<ContentKey, OrgDef>,
+    /// Authored titles by key.
+    pub titles: BTreeMap<ContentKey, TitleDef>,
+    /// Offices by key.
+    pub offices: BTreeMap<ContentKey, OfficeDef>,
     /// The scenario, if this content set defines one.
     pub scenario: Option<ScenarioDef>,
     /// Compiled ASTs by content-relative path, for runtime function calls.
@@ -175,7 +189,194 @@ impl ContentSet {
         self.jobs == other.jobs
             && self.bodies == other.bodies
             && self.provinces == other.provinces
+            && self.traits == other.traits
+            && self.name_pools == other.name_pools
+            && self.characters == other.characters
+            && self.organisations == other.organisations
+            && self.titles == other.titles
+            && self.offices == other.offices
             && self.scenario == other.scenario
             && self.content_hash == other.content_hash
     }
+}
+
+/// A pool of given names for characters born during play.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct NamePoolDef {
+    /// The pool's stable content key.
+    pub key: ContentKey,
+    /// Given names for male characters.
+    pub male: Vec<String>,
+    /// Given names for female characters.
+    pub female: Vec<String>,
+}
+
+/// A character trait: personality facts that drive opinion and, later,
+/// job effectiveness.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TraitDef {
+    /// The trait's stable content key.
+    pub key: ContentKey,
+    /// Player-facing name.
+    pub name: String,
+    /// One-line description.
+    pub summary: String,
+    /// Opinion bonus between two characters sharing this trait.
+    pub opinion_same: i32,
+    /// Opinion penalty between holders of this trait and its opposites.
+    pub opinion_opposed: i32,
+    /// Keys of traits this one is opposed to.
+    pub opposites: Vec<ContentKey>,
+}
+
+/// The four practical skills characters bring to jobs and rule.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SkillsDef {
+    /// Military leadership.
+    pub command: i32,
+    /// Negotiation, courtship, persuasion.
+    pub diplomacy: i32,
+    /// Schemes, secrets, subversion.
+    pub intrigue: i32,
+    /// Administration and economics.
+    pub stewardship: i32,
+}
+
+/// Biological sex recorded for lineage and procreation modelling.
+///
+/// Succession law in the setting is blind to it.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Gender {
+    /// Male.
+    Male,
+    /// Female.
+    Female,
+}
+
+/// An authored character.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct CharacterDef {
+    /// The character's stable content key.
+    pub key: ContentKey,
+    /// Full player-facing name.
+    pub name: String,
+    /// Biological sex.
+    pub gender: Gender,
+    /// Birth date in scenario year numbering.
+    pub birth_year: i64,
+    /// Birth month, 1..=12.
+    pub birth_month: u8,
+    /// Birth day, 1..=30.
+    pub birth_day: u8,
+    /// Organisation this character belongs to, if any.
+    pub organisation: Option<ContentKey>,
+    /// Authored parents (0..=2), for lineage.
+    pub parents: Vec<ContentKey>,
+    /// Authored spouse.
+    pub spouse: Option<ContentKey>,
+    /// Trait keys.
+    pub traits: Vec<ContentKey>,
+    /// Base skills before trait or situational modifiers.
+    pub skills: SkillsDef,
+}
+
+/// The organisation forms the MVP simulates.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum OrgKind {
+    /// A hereditary dynastic house.
+    DynasticHouse,
+    /// The Tsar-appointed civilian government; rules-distinct.
+    SanctoraImperim,
+}
+
+/// A dynastic house's standing in the local hierarchy.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HouseTier {
+    /// One of the great houses contesting the planet.
+    Great,
+    /// Bound to a named great house.
+    Vassal,
+    /// Outside the great-house hierarchy.
+    Independent,
+}
+
+/// An authored organisation (house or the Sanctora Imperim).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrgDef {
+    /// The organisation's stable content key.
+    pub key: ContentKey,
+    /// Player-facing name.
+    pub name: String,
+    /// What kind of organisation this is.
+    pub kind: OrgKind,
+    /// Hierarchy tier; houses only.
+    pub tier: Option<HouseTier>,
+    /// The liege house; vassal houses only.
+    pub liege: Option<ContentKey>,
+    /// Family surname, used to name children born during play.
+    pub surname: Option<String>,
+    /// The character who leads at campaign start.
+    pub head: Option<ContentKey>,
+    /// Provinces this organisation holds at campaign start.
+    pub provinces: Vec<ContentKey>,
+    /// Political map colour, 0..=255 each.
+    pub color: (u8, u8, u8),
+}
+
+/// The authored higher dignities. Province titles are implicit — the
+/// simulation creates one per province — so authored titles cover only
+/// paramountcies and personal Imperial titles.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct TitleDef {
+    /// The title's stable content key.
+    pub key: ContentKey,
+    /// Player-facing name.
+    pub name: String,
+    /// What the title is over.
+    pub kind: TitleKindDef,
+    /// The starting holder: an organisation key, character key, or vacant.
+    pub holder: TitleHolderDef,
+}
+
+/// What an authored title covers.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TitleKindDef {
+    /// Paramount title over a body's provinces.
+    Paramount {
+        /// The body this paramountcy claims.
+        body: ContentKey,
+    },
+    /// The Tsar-appointed Consul title; held personally, never inherited.
+    Consul,
+}
+
+/// Starting holder of an authored title.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TitleHolderDef {
+    /// Held by an organisation.
+    Organisation(ContentKey),
+    /// Held personally by a character.
+    Character(ContentKey),
+    /// Vacant or contested.
+    Vacant,
+}
+
+/// An authored office: a revocable appointment held by a character.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OfficeDef {
+    /// The office's stable content key.
+    pub key: ContentKey,
+    /// Player-facing name.
+    pub name: String,
+    /// The organisation whose authority the office carries.
+    pub organisation: ContentKey,
+    /// The province this office administers, if any.
+    pub province: Option<ContentKey>,
+    /// The starting holder.
+    pub holder: Option<ContentKey>,
 }
