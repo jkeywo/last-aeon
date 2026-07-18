@@ -706,3 +706,40 @@ entities:
         - shared-native-and-web-delivery
         - client-embeds-content-at-build-time
         - github-actions-ci-and-pages-delivery
+
+  - decision: define-army-content-type
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Starting Armies Are Authored Content
+      summary: >-
+        A define_army content type declares an army present at campaign
+        start with an owner, a general (validated to be a member of the
+        owner), a province, manpower, and supplies. These spawn in
+        content-key order alongside authored ships when the campaign
+        begins, then live as ordinary runtime armies (snapshots already
+        round-trip army state, so no snapshot-format change is needed).
+      rationale:
+        - Authoring starting armies as content, rather than seeding them in code, keeps the whole opening military situation in the same validated, greppable place as the rest of the scenario.
+      references:
+        - persistent-armies
+        - mvp-hand-authored-scenario
+        - army-formation-through-job-effects
+
+  - decision: starting-armies-per-faction
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Every Faction Fields a Standing Army at Start
+      summary: >-
+        The scenario opens with seventeen standing armies: two for each
+        great house, one for each vassal and independent house, and a
+        Sanctora garrison on the Aurelian Spire, each led by an assigned
+        general. Starting armies are pre-fielded forces separate from an
+        organisation's recruitable manpower pool.
+      rationale:
+        - A populated military map from turn one makes presence, standing orders, and the province-level force picture legible immediately, which the marker-only map did not convey.
+      references:
+        - define-army-content-type
+        - full-scenario-cast-and-allocation
+        - military-standing-orders

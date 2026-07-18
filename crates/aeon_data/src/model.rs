@@ -292,6 +292,8 @@ pub struct ContentSet {
     pub offices: BTreeMap<ContentKey, OfficeDef>,
     /// Ships by key.
     pub ships: BTreeMap<ContentKey, ShipDef>,
+    /// Starting armies by key.
+    pub armies: BTreeMap<ContentKey, ArmyDef>,
     /// The scenario, if this content set defines one.
     pub scenario: Option<ScenarioDef>,
     /// Compiled ASTs by content-relative path, for runtime function calls.
@@ -314,6 +316,7 @@ impl ContentSet {
             && self.titles == other.titles
             && self.offices == other.offices
             && self.ships == other.ships
+            && self.armies == other.armies
             && self.scenario == other.scenario
             && self.content_hash == other.content_hash
     }
@@ -521,6 +524,25 @@ pub struct ShipDef {
     pub captain: Option<ContentKey>,
     /// Starting dock province.
     pub location: ContentKey,
+}
+
+/// An authored starting army, present in a province at campaign start.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ArmyDef {
+    /// The army's stable content key.
+    pub key: ContentKey,
+    /// Player-facing name.
+    pub name: String,
+    /// Owning organisation.
+    pub owner: ContentKey,
+    /// The general commanding it (a member of the owner).
+    pub general: ContentKey,
+    /// The province it stands in.
+    pub province: ContentKey,
+    /// Soldiers under arms.
+    pub manpower: i64,
+    /// Supplies in its train.
+    pub supplies: i64,
 }
 
 /// An authored office: a revocable appointment held by a character.

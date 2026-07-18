@@ -61,6 +61,7 @@ fn scenario_has_the_full_authored_field() {
     assert_eq!(content.provinces.len(), 41, "province count");
     assert_eq!(content.bodies.len(), 3, "bodies");
     assert_eq!(content.ships.len(), 6, "ships");
+    assert_eq!(content.armies.len(), 17, "starting armies");
     assert_eq!(
         content
             .scenario
@@ -81,6 +82,39 @@ fn scenario_has_the_full_authored_field() {
         }
     }
     assert_eq!(held.len(), 41, "every province is allocated");
+
+    // Every starting army has a general who belongs to the owning house.
+    for army in content.armies.values() {
+        let general = content
+            .characters
+            .get(&army.general)
+            .unwrap_or_else(|| panic!("army {} general defined", army.key));
+        assert_eq!(
+            general.organisation.as_ref(),
+            Some(&army.owner),
+            "army {} general belongs to its owner",
+            army.key
+        );
+    }
+}
+
+#[test]
+fn starting_armies_spawn_deterministically_at_their_provinces() {
+    let mut a = scenario_host(9);
+    let b = scenario_host(9);
+    assert_eq!(a.state_hash(), b.state_hash());
+
+    let world = a.world_mut();
+    let forces = world.resource::<aeon_sim::ForcesIndex>().clone();
+    assert_eq!(forces.armies.len(), 17, "all starting armies spawned");
+    // Each army stands in a real province with positive manpower and a
+    // living general.
+    let politics = world.resource::<PoliticsIndex>().clone();
+    for entity in forces.armies.values() {
+        let army = world.get::<aeon_sim::ArmyRecord>(*entity).unwrap();
+        assert!(army.manpower > 0);
+        assert!(politics.characters.contains_key(&army.general));
+    }
 }
 
 #[test]

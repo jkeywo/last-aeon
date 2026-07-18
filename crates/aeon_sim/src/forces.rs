@@ -89,7 +89,10 @@ pub struct ForcesIndex {
     pub armies_raised: BTreeMap<OrgId, u32>,
 }
 
-/// Spawns authored ships for a fresh campaign.
+/// Spawns authored ships and starting armies for a fresh campaign.
+///
+/// IDs are allocated in content-key order (ships then armies) so the
+/// starting forces are identical across runs of the same content.
 pub fn spawn_from_content(world: &mut World, content: &ContentSet) {
     let mut index = ForcesIndex::default();
     let map_index = world.resource::<MapIndex>().clone();
@@ -111,6 +114,27 @@ pub fn spawn_from_content(world: &mut World, content: &ContentSet) {
             .id();
         index.ships.insert(id, entity);
         index.ship_keys.insert(key.clone(), id);
+    }
+
+    for def in content.armies.values() {
+        let owner = politics.org_keys[&def.owner];
+        let id: ArmyId = world.resource_mut::<CampaignIds>().0.allocate();
+        let entity = world
+            .spawn(ArmyRecord {
+                id,
+                name: def.name.clone(),
+                owner,
+                general: politics.character_keys[&def.general],
+                manpower: def.manpower,
+                supplies: def.supplies,
+                location: map_index.province_keys[&def.province],
+                standing_order: crate::warfare::StandingOrder::default(),
+            })
+            .id();
+        index.armies.insert(id, entity);
+        // Count authored armies toward the owner's raised total so
+        // later mustered armies are numbered after them.
+        *index.armies_raised.entry(owner).or_default() += 1;
     }
 
     world.insert_resource(index);

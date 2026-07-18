@@ -412,3 +412,90 @@ define_ship(#{
     id: "spire-picket", name: "Spire Picket", class: "patrol",
     owner: "sanctora-imperim", location: "spire-decks",
 });
+
+// --- Starting armies (every faction fields a standing force) ---
+define_army(#{
+    id: "veyrin-first", name: "1. Veyrin Host",
+    owner: "veyrin", general: "casimir-veyrin", province: "karvessa",
+    manpower: 1200, supplies: 260,
+});
+define_army(#{
+    id: "veyrin-second", name: "2. Veyrin Levy",
+    owner: "veyrin", general: "aldric-veyrin", province: "dreghal",
+    manpower: 800, supplies: 170,
+});
+define_army(#{
+    id: "draksha-first", name: "1. Draksha Host",
+    owner: "draksha", general: "zorka-draksha", province: "palensk",
+    manpower: 1100, supplies: 240,
+});
+define_army(#{
+    id: "draksha-second", name: "2. Draksha Levy",
+    owner: "draksha", general: "maruk-draksha", province: "vhorruk",
+    manpower: 900, supplies: 190,
+});
+define_army(#{
+    id: "meloch-first", name: "1. Meloch Host",
+    owner: "meloch", general: "avram-meloch", province: "thassik",
+    manpower: 1000, supplies: 220,
+});
+define_army(#{
+    id: "meloch-second", name: "2. Meloch Levy",
+    owner: "meloch", general: "tomasz-meloch", province: "ulmgorn",
+    manpower: 800, supplies: 170,
+});
+define_army(#{
+    id: "harrow-guard", name: "Harrow Guard",
+    owner: "harrow", general: "edrun-harrow", province: "hyperions-rest",
+    manpower: 600, supplies: 140,
+});
+define_army(#{
+    id: "vantar-levy", name: "Vantar Levy",
+    owner: "vantar", general: "perrin-vantar", province: "greyspire",
+    manpower: 450, supplies: 100,
+});
+define_army(#{
+    id: "koszev-levy", name: "Koszev Levy",
+    owner: "koszev", general: "milena-koszev", province: "koszevny-flats",
+    manpower: 450, supplies: 100,
+});
+define_army(#{
+    id: "rusk-levy", name: "Rusk Levy",
+    owner: "rusk", general: "tomasz-rusk", province: "calders-folly",
+    manpower: 400, supplies: 90,
+});
+define_army(#{
+    id: "emberlyn-levy", name: "Emberlyn Levy",
+    owner: "emberlyn", general: "sorel-emberlyn", province: "emberwash",
+    manpower: 500, supplies: 110,
+});
+define_army(#{
+    id: "skarn-levy", name: "Skarn Levy",
+    owner: "skarn", general: "vael-skarn", province: "skarnos",
+    manpower: 500, supplies: 110,
+});
+define_army(#{
+    id: "okonn-levy", name: "Okonn Levy",
+    owner: "okonn", general: "petra-okonn", province: "port-vesk",
+    manpower: 500, supplies: 110,
+});
+define_army(#{
+    id: "calder-levy", name: "Calder Levy",
+    owner: "calder", general: "ludo-calder", province: "regolith-verge",
+    manpower: 350, supplies: 80,
+});
+define_army(#{
+    id: "pell-host", name: "Pell Host",
+    owner: "pell", general: "casold-pell", province: "pellamir",
+    manpower: 650, supplies: 150,
+});
+define_army(#{
+    id: "szel-reavers", name: "Szel Reavers",
+    owner: "szel", general: "janos-szel", province: "stillmere",
+    manpower: 550, supplies: 120,
+});
+define_army(#{
+    id: "spire-garrison", name: "Aurelian Guard",
+    owner: "sanctora-imperim", general: "commander-dray", province: "spire-decks",
+    manpower: 700, supplies: 180,
+});

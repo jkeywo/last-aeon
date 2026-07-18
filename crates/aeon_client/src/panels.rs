@@ -499,6 +499,47 @@ pub fn draw_panels(
                             ui.label(format!("{:.2}\u{00b0}", geo.longitude_mdeg as f32 / 1000.0));
                             ui.end_row();
                         });
+
+                        // Forces standing at this province.
+                        let armies_here: Vec<&ArmyRecord> =
+                            data.armies.iter().filter(|a| a.location == id).collect();
+                        let ships_here: Vec<&ShipRecord> = data
+                            .ships
+                            .iter()
+                            .filter(|s| matches!(s.location, ShipLocation::Docked(p) if p == id))
+                            .collect();
+                        if !armies_here.is_empty() || !ships_here.is_empty() {
+                            ui.separator();
+                            ui.label("Forces here:");
+                            for army in armies_here {
+                                ui.horizontal(|ui| {
+                                    ui.label(format!(
+                                        "\u{2694} {} ({} men)",
+                                        army.name, army.manpower
+                                    ));
+                                    if let Some((general, ..)) = chars.get(&army.general) {
+                                        ui.label("·");
+                                        if linked(ui, &general.name, &char_hover(army.general)) {
+                                            view.selected =
+                                                Some(Selection::Character(army.general));
+                                        }
+                                    }
+                                });
+                            }
+                            for ship in ships_here {
+                                ui.horizontal(|ui| {
+                                    ui.label(format!("\u{2693} {}", ship.name));
+                                    if let Some(captain) = ship.captain
+                                        && let Some((c, ..)) = chars.get(&captain)
+                                    {
+                                        ui.label("·");
+                                        if linked(ui, &c.name, &char_hover(captain)) {
+                                            view.selected = Some(Selection::Character(captain));
+                                        }
+                                    }
+                                });
+                            }
+                        }
                     }
                 }
                 Some(Selection::Org(id)) => {

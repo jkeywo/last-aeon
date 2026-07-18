@@ -22,10 +22,10 @@ use rhai::{AST, Dynamic, Engine, Map, Scope};
 use crate::effect::{EffectParseError, ScriptEffect, parse_effects};
 use crate::key::ContentKey;
 use crate::model::{
-    BodyDef, BodyKind, CharacterDef, ContentSet, Gender, GoverningSkill, HouseTier, JobCategory,
-    JobDef, JobResultDef, JobResultKind, JobTargetKind, MilitaryOp, NamePoolDef, OfficeDef, OrgDef,
-    OrgKind, PopupChoiceDef, ProvinceDef, RiskTag, ScenarioDef, ScriptFnRef, ShipClass, ShipDef,
-    SkillsDef, TitleDef, TitleHolderDef, TitleKindDef, TraitDef,
+    ArmyDef, BodyDef, BodyKind, CharacterDef, ContentSet, Gender, GoverningSkill, HouseTier,
+    JobCategory, JobDef, JobResultDef, JobResultKind, JobTargetKind, MilitaryOp, NamePoolDef,
+    OfficeDef, OrgDef, OrgKind, PopupChoiceDef, ProvinceDef, RiskTag, ScenarioDef, ScriptFnRef,
+    ShipClass, ShipDef, SkillsDef, TitleDef, TitleHolderDef, TitleKindDef, TraitDef,
 };
 use crate::report::{ContentReport, Severity};
 
@@ -89,6 +89,7 @@ struct BuilderState {
     titles: BTreeMap<ContentKey, TitleDef>,
     offices: BTreeMap<ContentKey, OfficeDef>,
     ships: BTreeMap<ContentKey, ShipDef>,
+    armies: BTreeMap<ContentKey, ArmyDef>,
     scenario: Option<ScenarioDef>,
 }
 
@@ -1342,6 +1343,58 @@ fn define_ship(state: &mut BuilderState, map: Map) {
     );
 }
 
+fn define_army(state: &mut BuilderState, map: Map) {
+    let Some(key) = req_key(state, &map) else {
+        return;
+    };
+    warn_unknown_fields(
+        state,
+        &map,
+        Some(key.as_str()),
+        &[
+            "id", "name", "owner", "general", "province", "manpower", "supplies",
+        ],
+    );
+    let Some(name) = req_str(state, &map, "name") else {
+        return;
+    };
+    let Some(owner) = req_key_field(state, &map, "owner") else {
+        return;
+    };
+    let Some(general) = req_key_field(state, &map, "general") else {
+        return;
+    };
+    let Some(province) = req_key_field(state, &map, "province") else {
+        return;
+    };
+    let Some(manpower) = opt_int(state, &map, "manpower", 500) else {
+        return;
+    };
+    let Some(supplies) = opt_int(state, &map, "supplies", 100) else {
+        return;
+    };
+    if manpower <= 0 {
+        state.error(Some(key.as_str()), "manpower must be positive");
+        return;
+    }
+    if state.armies.contains_key(&key) {
+        state.error(Some(key.as_str()), "duplicate army id");
+        return;
+    }
+    state.armies.insert(
+        key.clone(),
+        ArmyDef {
+            key,
+            name,
+            owner,
+            general,
+            province,
+            manpower,
+            supplies: supplies.max(0),
+        },
+    );
+}
+
 fn define_title(state: &mut BuilderState, map: Map) {
     let Some(key) = req_key(state, &map) else {
         return;
@@ -1524,6 +1577,11 @@ fn loading_engine(state: Arc<Mutex<BuilderState>>) -> Engine {
         let mut s = ship_state.lock().expect("builder state lock");
         define_ship(&mut s, map);
     });
+    let army_state = state.clone();
+    engine.register_fn("define_army", move |map: Map| {
+        let mut s = army_state.lock().expect("builder state lock");
+        define_army(&mut s, map);
+    });
     engine
 }
 
@@ -1608,6 +1666,7 @@ pub fn load_content(sources: &[ContentSource]) -> (Option<ContentSet>, ContentRe
         titles: builder.titles,
         offices: builder.offices,
         ships: builder.ships,
+        armies: builder.armies,
         scenario: builder.scenario,
         asts,
         content_hash: content_hash(&sources),
@@ -1631,6 +1690,7 @@ impl BuilderState {
             titles: std::mem::take(&mut self.titles),
             offices: std::mem::take(&mut self.offices),
             ships: std::mem::take(&mut self.ships),
+            armies: std::mem::take(&mut self.armies),
             scenario: self.scenario.take(),
         }
     }
@@ -1923,6 +1983,28 @@ fn validate_political_references(
                 err(key, format!("captain '{captain}' is not defined"));
             }
             _ => {}
+        }
+    }
+
+    for (key, army) in &builder.armies {
+        if !builder.organisations.contains_key(&army.owner) {
+            err(key, format!("owner '{}' is not defined", army.owner));
+        }
+        if !builder.provinces.contains_key(&army.province) {
+            err(key, format!("province '{}' is not defined", army.province));
+        }
+        match builder.characters.get(&army.general) {
+            None => err(key, format!("general '{}' is not defined", army.general)),
+            Some(general) if general.organisation.as_ref() != Some(&army.owner) => {
+                err(
+                    key,
+                    format!(
+                        "general '{}' does not belong to the owning house",
+                        army.general
+                    ),
+                );
+            }
+            Some(_) => {}
         }
     }
 
