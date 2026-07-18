@@ -45,6 +45,13 @@ pub enum ScriptEffect {
         /// Supplies committed from the organisation's stores.
         supplies: i64,
     },
+    /// Press the owner's claim to the vacant paramountcy. The simulation
+    /// validates the claim: the title must be vacant and the owner must
+    /// hold strictly more planetary provinces than any rival.
+    ClaimParamountcy,
+    /// Collect Imperial tithes: every house pays a twentieth of its
+    /// wealth to the owner. Valid only for the Sanctora Imperim.
+    CollectTithes,
 }
 
 /// Why a script's returned effects were rejected.
@@ -160,6 +167,12 @@ pub fn parse_effects(value: Dynamic) -> Result<Vec<ScriptEffect>, EffectParseErr
                     days,
                     reason: get_str("reason")?,
                 });
+            }
+            "claim-paramountcy" => {
+                effects.push(ScriptEffect::ClaimParamountcy);
+            }
+            "collect-tithes" => {
+                effects.push(ScriptEffect::CollectTithes);
             }
             "form-army" => {
                 let get_int = |field: &str| {

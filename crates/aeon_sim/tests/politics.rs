@@ -400,6 +400,7 @@ fn repository_content_runs_a_political_decade() {
     let world = host.world_mut();
     assert!(world.get_resource::<CampaignOver>().is_none());
     let index = world.resource::<PoliticsIndex>().clone();
-    assert_eq!(index.orgs.len(), 7);
+    // 3 great + 8 vassal + 2 independent houses + the Sanctora Imperim.
+    assert_eq!(index.orgs.len(), 14);
     assert_eq!(index.titles.len(), 43); // 41 provinces + paramountcy + consulate
 }

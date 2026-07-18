@@ -40,18 +40,41 @@ pub const SPEED_STEPS: [f32; 3] = [1.0, 3.0, 10.0];
 
 pub fn begin_dev_campaign(world: &mut World) {
     let content = content::load_embedded();
+    // The campaign name and start date come from the authored scenario, so
+    // the client runs exactly what the scenario declares.
+    let (name, start_date) = content
+        .scenario
+        .as_ref()
+        .map(|scenario| {
+            (
+                scenario.name.clone(),
+                CalendarDate {
+                    year: scenario.start_year,
+                    month: scenario.start_month,
+                    day: scenario.start_day,
+                }
+                .to_date()
+                .expect("authored scenario start date is valid"),
+            )
+        })
+        .unwrap_or_else(|| {
+            (
+                "Development Campaign".to_owned(),
+                CalendarDate {
+                    year: 411,
+                    month: 1,
+                    day: 1,
+                }
+                .to_date()
+                .expect("fallback start date is valid"),
+            )
+        });
     start_campaign_with_content(
         world,
         CampaignConfig {
-            name: "Development Campaign".to_owned(),
+            name,
             seed: DEV_SEED,
-            start_date: CalendarDate {
-                year: 411,
-                month: 1,
-                day: 1,
-            }
-            .to_date()
-            .expect("dev start date is valid"),
+            start_date,
         },
         content,
     );

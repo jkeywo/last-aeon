@@ -258,3 +258,104 @@ fn muster_crit(ctx) {
 fn muster_success(ctx) {
     [#{ kind: "form-army", manpower: 500, supplies: 100 }]
 }
+
+// --- The planetary succession crisis ---
+
+define_job(#{
+    id: "press-claim-to-the-paramountcy",
+    title: "Press the Claim to the Paramountcy",
+    summary: "Advance your house's claim to the vacant planetary Paramountcy. Succeeds only if you hold more of the planet than any rival.",
+    category: "consequential",
+    duration_days: 90,
+    skill: "diplomacy",
+    difficulty: 12,
+    influence_cost: 40,
+    risks: ["scandal"],
+    ai_available: true,
+    results: #{
+        critical_success: #{
+            weight: 200, popup: true, log: true,
+            popup_text: "The assembled houses could find no rival to {leader}'s claim. The Paramountcy is yours.",
+            log_text: "{leader} pressed a claim to the Paramountcy.",
+            effect_fn: "press_claim",
+        },
+        success: #{
+            weight: 500, log: true,
+            log_text: "{leader} pressed a claim to the Paramountcy.",
+            effect_fn: "press_claim",
+        },
+        failure: #{ weight: 300, log: true, log_text: "{leader}'s claim to the Paramountcy went nowhere." },
+    },
+});
+
+fn press_claim(ctx) {
+    [#{ kind: "claim-paramountcy" }]
+}
+
+define_job(#{
+    id: "collect-imperial-tithes",
+    title: "Collect the Imperial Tithes",
+    summary: "Exercise the Consul's authority to levy a tithe on every house of the planet.",
+    category: "consequential",
+    duration_days: 60,
+    skill: "stewardship",
+    difficulty: 10,
+    ai_available: true,
+    results: #{
+        success: #{
+            weight: 700, log: true,
+            log_text: "{leader} levied the Imperial tithes.",
+            effect_fn: "levy_tithes",
+        },
+        failure: #{ weight: 300 },
+    },
+});
+
+fn levy_tithes(ctx) {
+    [#{ kind: "collect-tithes" }]
+}
+
+define_job(#{
+    id: "seek-consular-endorsement",
+    title: "Seek the Consul's Endorsement",
+    summary: "Court the Consul's public backing for your house's ambitions. Helpful, but never decisive.",
+    category: "consequential",
+    duration_days: 45,
+    skill: "diplomacy",
+    difficulty: 13,
+    influence_cost: 15,
+    risks: ["scandal"],
+    ai_available: true,
+    results: #{
+        critical_success: #{
+            weight: 100, popup: true, log: true,
+            popup_text: "The Consul receives {leader} warmly and lets it be known that the Spire looks kindly on the house.",
+            log_text: "The Consul endorsed {leader}'s house.",
+            effect_fn: "endorsement_crit",
+        },
+        success: #{
+            weight: 450, log: true,
+            log_text: "The Consul gave {leader} a guarded hearing.",
+            effect_fn: "endorsement_success",
+        },
+        failure: #{ weight: 350 },
+        disaster: #{
+            weight: 100, log: true,
+            log_text: "{leader}'s approach to the Consul was rebuffed and remembered.",
+            effect_fn: "endorsement_disaster",
+        },
+    },
+});
+
+fn endorsement_crit(ctx) {
+    [#{ kind: "opinion", from: "consul", toward: "owner-head", amount: 25, days: 1440, reason: "endorsed" },
+     #{ kind: "opinion", from: "sanctora", toward: "owner-head", amount: 10, days: 1440, reason: "endorsed" }]
+}
+
+fn endorsement_success(ctx) {
+    [#{ kind: "opinion", from: "consul", toward: "owner-head", amount: 12, days: 1080, reason: "endorsed" }]
+}
+
+fn endorsement_disaster(ctx) {
+    [#{ kind: "opinion", from: "consul", toward: "owner-head", amount: -15, days: 1440, reason: "rebuffed" }]
+}

@@ -605,3 +605,65 @@ entities:
       references:
         - military-standing-orders
         - ai-agency-through-the-job-catalogue
+
+  - decision: province-count-paramountcy-claim
+    core:
+      status: accepted
+      confidence: confirmed
+      title: The Paramountcy Is Claimed by Planetary Province Dominance
+      summary: >-
+        The vacant planetary paramountcy can be claimed through a job whose
+        effect succeeds only if the claimant holds strictly more of the
+        planet's provinces than any rival. The three great houses open tied
+        at five planetary provinces apiece, so the title stays contested
+        until play shifts the balance through conquest or seizure. Consular
+        endorsement is a separate opinion-bearing job that helps a house's
+        standing without gating the claim.
+      rationale:
+        - A hard, legible dominance test makes the succession crisis a concrete territorial problem rather than an opaque score, and the opening tie makes it genuinely contested exactly as the crisis premise requires.
+        - Keeping endorsement soft honours the decision that Consular endorsement is helpful, not required.
+      references:
+        - planetary-paramount-title-is-contested
+        - planetary-succession-crisis-origin
+        - consul-endorsement-is-helpful-not-required
+        - great-houses-contest-the-planet
+
+  - decision: imperial-tithes-as-a-sanctora-lever
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Imperial Tithes Are a Sanctora-Only Wealth Lever
+      summary: >-
+        A Consular job levies a twentieth of every house's wealth to the
+        Sanctora Imperim. The effect self-validates that its owner is the
+        Sanctora, so only the Consul's institution can wield it, giving the
+        Sanctora an economic hold over the whole planetary field.
+      rationale:
+        - Tithe collection realises the Consul's entitlement to exercise Imperial authority through special jobs, and makes the Sanctora a live economic actor rather than a scenic power.
+      references:
+        - consul-title
+        - consul-and-starbase-command-hierarchy
+        - imperial-appointment-contest
+
+  - decision: full-scenario-cast-and-allocation
+    core:
+      status: accepted
+      confidence: confirmed
+      title: "Authored Cast: Fourteen Organisations, Thirty-Eight Characters, Full Allocation"
+      summary: >-
+        The scenario authors three great houses, eight vassal houses (the
+        player's House Harrow among them, bound to Veyrin), two independent
+        houses, and the Sanctora Imperim, with every one of the 41
+        provinces allocated to a holder and per-province economic output.
+        Thirty-eight named characters carry the political web, and six
+        ships (three capital, with captains) seed local-space play. Every
+        vassal names one great-house liege; some vassals and one
+        independent are lunar.
+      rationale:
+        - A fully allocated, densely populated field makes the opening political web immediate and legible, satisfying the hand-authored-scenario and organisation-landscape decisions in one authored content set.
+      references:
+        - mvp-hand-authored-scenario
+        - mvp-three-overhouses-and-eight-vassals
+        - mvp-vassal-allegiance-and-independents
+        - great-houses-contest-the-planet
+        - invented-canon-scenario-content

@@ -246,7 +246,7 @@ entities:
 
   - milestone: mvp-authored-scenario
     core:
-      status: proposed
+      status: implemented
       confidence: confirmed
       title: "M8: Forty-One Province Succession Crisis"
       summary: >-
@@ -265,6 +265,18 @@ entities:
         - planetary-paramount-title-is-contested
         - planetary-succession-crisis-origin
         - consul-endorsement-is-helpful-not-required
+    implementation:
+      paths:
+        - assets/content/scenario/ashkarr-succession.rhai
+        - assets/content/system/provinces.rhai
+        - crates/aeon_sim/src/crisis.rs
+      tests:
+        - crates/aeon_sim/tests/scenario.rs
+      status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/scenario.rs
+        summary: Tests verify the full authored field (14 organisations, all 41 provinces allocated exactly once, 6 ships, player House Harrow), the paramountcy starting vacant with the great houses tied five-five-five so none can claim, a dominant house successfully claiming, tithes moving a twentieth of each house's wealth to the Sanctora only, and a deterministic decade-long playthrough plus mid-campaign snapshot fidelity on the real repository content.
 
   - milestone: mvp-acceptance-and-release
     core:

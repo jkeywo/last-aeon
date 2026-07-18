@@ -20,6 +20,7 @@
 pub mod clock;
 pub mod command;
 pub mod config;
+pub mod crisis;
 pub mod economy;
 pub mod forces;
 pub mod host;

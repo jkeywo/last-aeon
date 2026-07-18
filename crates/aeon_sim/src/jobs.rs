@@ -642,6 +642,16 @@ pub fn apply_effects(
                     }
                 }
             }
+            ScriptEffect::ClaimParamountcy => {
+                if let Some(owner) = owner {
+                    crate::crisis::claim_paramountcy(world, owner);
+                }
+            }
+            ScriptEffect::CollectTithes => {
+                if let Some(owner) = owner {
+                    crate::crisis::collect_tithes(world, owner);
+                }
+            }
         }
     }
 }
