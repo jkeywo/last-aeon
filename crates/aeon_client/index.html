@@ -19,9 +19,83 @@
         height: 100%;
         outline: none;
       }
+      /* Loading overlay, shown until the Bevy canvas appears. */
+      #loading {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1.4rem;
+        background: #04050a;
+        color: #c8b78a;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        letter-spacing: 0.04em;
+        z-index: 10;
+        transition: opacity 0.4s ease;
+      }
+      #loading.hidden {
+        opacity: 0;
+        pointer-events: none;
+      }
+      #loading .spinner {
+        width: 48px;
+        height: 48px;
+        border: 4px solid rgba(200, 183, 138, 0.25);
+        border-top-color: #d4af37;
+        border-radius: 50%;
+        animation: spin 0.9s linear infinite;
+      }
+      #loading .title {
+        font-size: 1.15rem;
+        font-weight: 600;
+      }
+      #loading .sub {
+        font-size: 0.85rem;
+        opacity: 0.7;
+      }
+      @keyframes spin {
+        to {
+          transform: rotate(360deg);
+        }
+      }
     </style>
   </head>
   <body>
+    <div id="loading">
+      <div class="spinner"></div>
+      <div class="title">The Last Aeons</div>
+      <div class="sub">Loading the local system&hellip;</div>
+    </div>
     <link data-trunk rel="rust" data-bin="last_aeons" />
+    <script>
+      // Remove the loading overlay once the Bevy canvas has been created
+      // and sized. The wasm bundle is large, so this can take a moment.
+      // A setInterval poll is used rather than requestAnimationFrame so it
+      // keeps firing after Bevy takes over the animation-frame loop.
+      (function () {
+        function dismiss() {
+          var overlay = document.getElementById("loading");
+          if (overlay) {
+            overlay.classList.add("hidden");
+            setTimeout(function () {
+              overlay.remove();
+            }, 500);
+          }
+        }
+        var start = Date.now();
+        var poll = setInterval(function () {
+          var canvas = document.querySelector("canvas");
+          var ready = canvas && canvas.clientWidth > 0 && canvas.clientHeight > 0;
+          // Dismiss once the canvas is up, or after a hard timeout so the
+          // overlay can never get stuck.
+          if (ready || Date.now() - start > 30000) {
+            clearInterval(poll);
+            dismiss();
+          }
+        }, 150);
+      })();
+    </script>
   </body>
 </html>

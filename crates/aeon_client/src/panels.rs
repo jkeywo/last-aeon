@@ -8,6 +8,8 @@
 
 use std::collections::BTreeMap;
 
+use aeon_core::calendar::GameDate;
+use aeon_data::ContentSet;
 use aeon_data::model::{BodyKind, HouseTier, OrgKind, ShipClass};
 use aeon_sim::economy::OrgResources;
 use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
@@ -27,7 +29,12 @@ use bevy_egui::{EguiContexts, egui};
 
 use crate::jobs_ui::UiCommandQueue;
 use crate::sim_driver::{SPEED_STEPS, TimeControl};
-use crate::view::{MapView, Selection, ViewState};
+use crate::view::{MapView, SearchState, Selection, ViewState};
+
+/// Character lookup shared across the panel helpers.
+type CharMap<'a> = BTreeMap<CharacterId, CharacterParts<'a>>;
+/// Organisation lookup shared across the panel helpers.
+type OrgMap<'a> = BTreeMap<OrgId, (&'a OrgRecord, Option<&'a OrgResources>)>;
 
 fn kind_label(kind: BodyKind) -> &'static str {
     match kind {
@@ -35,6 +42,114 @@ fn kind_label(kind: BodyKind) -> &'static str {
         BodyKind::Moon => "Moon",
         BodyKind::Starbase => "Starbase",
     }
+}
+
+/// The player-facing name of an organisation.
+fn org_name(content: &ContentSet, org_records: &OrgMap, id: OrgId) -> String {
+    org_records
+        .get(&id)
+        .and_then(|(record, _)| content.organisations.get(&record.key))
+        .map(|def| def.name.clone())
+        .unwrap_or_else(|| id.to_string())
+}
+
+/// A one-line hover summary for a character link.
+fn character_summary(
+    content: &ContentSet,
+    org_records: &OrgMap,
+    chars: &CharMap,
+    id: CharacterId,
+    date: GameDate,
+) -> String {
+    let Some((record, skills, traits, ..)) = chars.get(&id).copied() else {
+        return String::new();
+    };
+    let house = record
+        .organisation
+        .map(|o| org_name(content, org_records, o))
+        .unwrap_or_else(|| "no house".to_owned());
+    let age = match record.death {
+        None => format!("age {}", record.age_years(date)),
+        Some(death) => format!("died {death}"),
+    };
+    let trait_names: Vec<&str> = traits
+        .0
+        .iter()
+        .filter_map(|k| content.traits.get(k).map(|d| d.name.as_str()))
+        .collect();
+    let mut summary = format!(
+        "{} — {house}, {age}\nCmd {} · Dip {} · Int {} · Ste {}",
+        record.name, skills.0.command, skills.0.diplomacy, skills.0.intrigue, skills.0.stewardship,
+    );
+    if !trait_names.is_empty() {
+        summary.push_str(&format!("\n{}", trait_names.join(", ")));
+    }
+    summary
+}
+
+/// A one-line hover summary for an organisation link.
+fn org_summary(
+    content: &ContentSet,
+    org_records: &OrgMap,
+    chars: &CharMap,
+    titles_held: usize,
+    id: OrgId,
+) -> String {
+    let Some((record, resources)) = org_records.get(&id).copied() else {
+        return String::new();
+    };
+    let name = org_name(content, org_records, id);
+    let standing = match (record.kind, record.tier) {
+        (OrgKind::SanctoraImperim, _) => "Imperial government".to_owned(),
+        (_, Some(HouseTier::Great)) => "great house".to_owned(),
+        (_, Some(HouseTier::Vassal)) => match record.liege {
+            Some(liege) => format!("vassal of {}", org_name(content, org_records, liege)),
+            None => "vassal house".to_owned(),
+        },
+        (_, Some(HouseTier::Independent)) => "independent house".to_owned(),
+        _ => String::new(),
+    };
+    let head = record
+        .head
+        .and_then(|h| chars.get(&h))
+        .map(|(r, ..)| r.name.as_str())
+        .unwrap_or("none");
+    let mut summary = format!("{name} — {standing}\nHead: {head} · {titles_held} titles held");
+    if let Some(r) = resources {
+        summary.push_str(&format!(
+            "\nW {} · M {} · S {} · I {}/{}",
+            r.wealth, r.manpower, r.supplies, r.influence, r.legitimacy
+        ));
+    }
+    summary
+}
+
+/// Renders a link with a hover summary, returning whether it was clicked.
+fn linked(ui: &mut egui::Ui, label: &str, summary: &str) -> bool {
+    ui.link(label).on_hover_text(summary).clicked()
+}
+
+/// Renders the W/M/S/I resource readout, each value with its own tooltip.
+fn resource_readout(ui: &mut egui::Ui, r: &OrgResources) {
+    ui.label(format!("W {}", r.wealth))
+        .on_hover_text("Wealth — funds jobs, personnel, and construction");
+    ui.label(format!("M {}", r.manpower))
+        .on_hover_text("Manpower — people to staff jobs, garrisons, and armies");
+    ui.label(format!("S {}", r.supplies))
+        .on_hover_text("Supplies — sustains armies, fleets, and expeditions");
+    ui.label(format!("I {}/{}", r.influence, r.legitimacy))
+        .on_hover_text(
+            "Influence / Legitimacy — spendable political capital, capped and \
+             recharged by your standing",
+        );
+}
+
+/// One global-search result.
+enum SearchHit {
+    Character(CharacterId),
+    Org(OrgId),
+    /// A province and the body it sits on (so the view can focus it).
+    Province(ProvinceId, aeon_sim::BodyId),
 }
 
 type CharacterQuery = (
@@ -87,6 +202,7 @@ pub fn draw_panels(
     mut control: ResMut<TimeControl>,
     mut view: ResMut<ViewState>,
     mut queue: ResMut<UiCommandQueue>,
+    mut search: ResMut<SearchState>,
     data: PanelData,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
@@ -137,6 +253,19 @@ pub fn draw_panels(
     let player_head: Option<CharacterId> =
         player_org.and_then(|org| org_records.get(&org).and_then(|(r, _)| r.head));
 
+    // Hover-summary builders, reused at every link site.
+    let titles = &data.titles;
+    let org_hover = |id: OrgId| -> String {
+        let held = titles
+            .iter()
+            .filter(|t| t.holder == TitleHolder::Org(id))
+            .count();
+        org_summary(&content.0, &org_records, &chars, held, id)
+    };
+    let char_hover = |id: CharacterId| -> String {
+        character_summary(&content.0, &org_records, &chars, id, date)
+    };
+
     let mut viewport = egui::Ui::new(
         ctx.clone(),
         "viewport".into(),
@@ -153,15 +282,7 @@ pub fn draw_panels(
             ui.separator();
 
             if let Some((_, Some(resources))) = player_org.and_then(|org| org_records.get(&org)) {
-                ui.label(format!(
-                    "W {}  M {}  S {}  I {}/{}",
-                    resources.wealth,
-                    resources.manpower,
-                    resources.supplies,
-                    resources.influence,
-                    resources.legitimacy,
-                ))
-                .on_hover_text("Wealth, Manpower, Supplies, Influence / Legitimacy");
+                resource_readout(ui, resources);
                 ui.separator();
             }
 
@@ -205,8 +326,83 @@ pub fn draw_panels(
                     format!("CAMPAIGN OVER — {}", over.reason),
                 );
             }
+
+            // Search box, pushed to the right end of the bar.
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                ui.add(
+                    egui::TextEdit::singleline(&mut search.query)
+                        .hint_text("Search…")
+                        .desired_width(150.0),
+                );
+                ui.label("\u{1f50d}");
+            });
         });
     });
+
+    // Search results, floating below the top bar while the query is set.
+    let query = search.query.trim().to_lowercase();
+    if !query.is_empty() {
+        let mut hits: Vec<(String, SearchHit)> = Vec::new();
+        for (id, (record, ..)) in &chars {
+            if record.name.to_lowercase().contains(&query) {
+                hits.push((record.name.clone(), SearchHit::Character(*id)));
+            }
+        }
+        for (id, (record, _)) in &org_records {
+            let name = org_name(&content.0, &org_records, *id);
+            if name.to_lowercase().contains(&query) {
+                let _ = record;
+                hits.push((name, SearchHit::Org(*id)));
+            }
+        }
+        for (record, name, _) in &data.provinces {
+            if name.0.to_lowercase().contains(&query) {
+                hits.push((name.0.clone(), SearchHit::Province(record.id, record.body)));
+            }
+        }
+        hits.sort_by(|a, b| a.0.cmp(&b.0));
+        hits.truncate(30);
+
+        egui::Area::new("search-results".into())
+            .fixed_pos(egui::pos2(ctx.viewport_rect().width() - 260.0, 34.0))
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.set_min_width(240.0);
+                    if hits.is_empty() {
+                        ui.label("No matches.");
+                    }
+                    egui::ScrollArea::vertical()
+                        .max_height(320.0)
+                        .show(ui, |ui| {
+                            for (label, hit) in &hits {
+                                let tag = match hit {
+                                    SearchHit::Character(_) => "character",
+                                    SearchHit::Org(_) => "house",
+                                    SearchHit::Province(..) => "province",
+                                };
+                                if ui
+                                    .selectable_label(false, format!("{label}  ({tag})"))
+                                    .clicked()
+                                {
+                                    match hit {
+                                        SearchHit::Character(id) => {
+                                            view.selected = Some(Selection::Character(*id));
+                                        }
+                                        SearchHit::Org(id) => {
+                                            view.selected = Some(Selection::Org(*id));
+                                        }
+                                        SearchHit::Province(id, body) => {
+                                            view.view = MapView::Body(*body);
+                                            view.selected = Some(Selection::Province(*id));
+                                        }
+                                    }
+                                    search.query.clear();
+                                }
+                            }
+                        });
+                });
+            });
+    }
 
     egui::Panel::left("inspector")
         .default_size(260.0)
@@ -270,7 +466,7 @@ pub fn draw_panels(
                             ui.label("Held by");
                             match holder {
                                 Some(TitleHolder::Org(org)) => {
-                                    if ui.link(org_label(org)).clicked() {
+                                    if linked(ui, &org_label(org), &org_hover(org)) {
                                         view.selected = Some(Selection::Org(org));
                                     }
                                 }
@@ -279,7 +475,7 @@ pub fn draw_panels(
                                         .get(&character)
                                         .map(|(r, ..)| r.name.clone())
                                         .unwrap_or_default();
-                                    if ui.link(name).clicked() {
+                                    if linked(ui, &name, &char_hover(character)) {
                                         view.selected = Some(Selection::Character(character));
                                     }
                                 }
@@ -309,43 +505,54 @@ pub fn draw_panels(
                     if let Some((record, resources)) = org_records.get(&id).copied() {
                         let def = content.0.organisations.get(&record.key);
                         ui.strong(def.map(|d| d.name.as_str()).unwrap_or("Unknown"));
-                        let standing = match (record.kind, record.tier) {
-                            (OrgKind::SanctoraImperim, _) => "Imperial government".to_owned(),
-                            (_, Some(HouseTier::Great)) => "Great house".to_owned(),
-                            (_, Some(HouseTier::Vassal)) => match record.liege {
-                                Some(liege) => format!("Vassal of {}", org_label(liege)),
-                                None => "Vassal".to_owned(),
-                            },
-                            (_, Some(HouseTier::Independent)) => "Independent house".to_owned(),
-                            _ => String::new(),
-                        };
-                        ui.label(standing);
+                        match (record.kind, record.tier) {
+                            (OrgKind::SanctoraImperim, _) => {
+                                ui.label("Imperial government");
+                            }
+                            (_, Some(HouseTier::Great)) => {
+                                ui.label("Great house");
+                            }
+                            (_, Some(HouseTier::Vassal)) => {
+                                ui.horizontal(|ui| {
+                                    ui.label("Vassal of");
+                                    match record.liege {
+                                        Some(liege) => {
+                                            if linked(ui, &org_label(liege), &org_hover(liege)) {
+                                                view.selected = Some(Selection::Org(liege));
+                                            }
+                                        }
+                                        None => {
+                                            ui.label("—");
+                                        }
+                                    }
+                                });
+                            }
+                            (_, Some(HouseTier::Independent)) => {
+                                ui.label("Independent house");
+                            }
+                            _ => {}
+                        }
                         if record.defunct {
                             ui.colored_label(egui::Color32::from_rgb(220, 60, 60), "DEFUNCT");
                         }
                         if let Some(resources) = resources {
-                            ui.label(format!(
-                                "W {}  M {}  S {}  I {}/{}",
-                                resources.wealth,
-                                resources.manpower,
-                                resources.supplies,
-                                resources.influence,
-                                resources.legitimacy,
-                            ));
+                            ui.horizontal(|ui| resource_readout(ui, resources));
                         }
                         ui.separator();
 
-                        ui.label("Head:");
-                        match record.head.and_then(|h| chars.get(&h)) {
-                            Some((head_record, ..)) => {
-                                if ui.link(&head_record.name).clicked() {
-                                    view.selected = Some(Selection::Character(head_record.id));
+                        ui.horizontal(|ui| {
+                            ui.label("Head:");
+                            match record.head.and_then(|h| chars.get(&h)) {
+                                Some((head_record, ..)) => {
+                                    if linked(ui, &head_record.name, &char_hover(head_record.id)) {
+                                        view.selected = Some(Selection::Character(head_record.id));
+                                    }
+                                }
+                                None => {
+                                    ui.label("None");
                                 }
                             }
-                            None => {
-                                ui.label("None");
-                            }
-                        }
+                        });
 
                         let held = data
                             .titles
@@ -361,7 +568,7 @@ pub fn draw_panels(
                                 if record.organisation != Some(id) || !record.alive() {
                                     continue;
                                 }
-                                if ui.link(&record.name).clicked() {
+                                if linked(ui, &record.name, &char_hover(*char_id)) {
                                     view.selected = Some(Selection::Character(*char_id));
                                 }
                             }
@@ -380,10 +587,12 @@ pub fn draw_panels(
                                 ui.label(format!("Died {death}"));
                             }
                         }
-                        if let Some(org) = record.organisation
-                            && ui.link(org_label(org)).clicked()
-                        {
-                            view.selected = Some(Selection::Org(org));
+                        if let Some(org) = record.organisation {
+                            ui.horizontal(|ui| {
+                                if linked(ui, &org_label(org), &org_hover(org)) {
+                                    view.selected = Some(Selection::Org(org));
+                                }
+                            });
                         }
 
                         // Location and travel.
@@ -447,7 +656,7 @@ pub fn draw_panels(
                         {
                             ui.horizontal(|ui| {
                                 ui.label("Spouse:");
-                                if ui.link(&spouse_record.name).clicked() {
+                                if linked(ui, &spouse_record.name, &char_hover(spouse)) {
                                     view.selected = Some(Selection::Character(spouse));
                                 }
                             });
@@ -456,7 +665,7 @@ pub fn draw_panels(
                             if let Some((parent_record, ..)) = chars.get(parent) {
                                 ui.horizontal(|ui| {
                                     ui.label("Parent:");
-                                    if ui.link(&parent_record.name).clicked() {
+                                    if linked(ui, &parent_record.name, &char_hover(*parent)) {
                                         view.selected = Some(Selection::Character(*parent));
                                     }
                                 });

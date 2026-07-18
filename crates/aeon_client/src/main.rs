@@ -39,6 +39,7 @@ fn main() {
         .init_resource::<camera::OrbitCamera>()
         .init_resource::<jobs_ui::UiCommandQueue>()
         .init_resource::<jobs_ui::JobForm>()
+        .init_resource::<view::SearchState>()
         .add_systems(
             Startup,
             (

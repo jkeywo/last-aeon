@@ -46,6 +46,13 @@ impl Default for ViewState {
     }
 }
 
+/// The global search box's current query.
+#[derive(Resource, Clone, Debug, Default)]
+pub struct SearchState {
+    /// The text the player has typed; empty hides the results.
+    pub query: String,
+}
+
 /// Converts a latitude/longitude in millidegrees to a unit vector on the
 /// globe (Y up, longitude zero on +X, east positive toward -Z).
 pub fn geo_to_unit(latitude_mdeg: i32, longitude_mdeg: i32) -> bevy::math::Vec3 {
