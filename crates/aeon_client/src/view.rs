@@ -54,6 +54,10 @@ pub struct SearchState {
 }
 
 /// How the political globe colours provinces.
+///
+/// Each mode answers one strategic question. The political modes paint
+/// house colours; the rest paint a graded scale, and always pair it with a
+/// numeric value on the map so the answer never depends on colour alone.
 #[derive(Resource, Copy, Clone, Debug, PartialEq, Eq, Default)]
 pub enum MapMode {
     /// Colour each province by the house that directly holds it.
@@ -62,23 +66,74 @@ pub enum MapMode {
     /// Colour each province by the great house at the top of its holder's
     /// liege chain.
     GreatHouse,
+    /// Shade by provincial order, marking unrest.
+    Order,
+    /// Shade by what the province is worth.
+    Wealth,
+    /// Shade by the fighting strength standing in the province.
+    Military,
+    /// Shade by how its holder regards the player's house.
+    PlayerRelations,
+    /// Shade by each province's weight in the race for the paramountcy.
+    ClaimPressure,
 }
 
 impl MapMode {
-    /// The next mode in the toggle cycle.
+    /// Every mode, in display order.
+    pub const ALL: [MapMode; 7] = [
+        MapMode::Holder,
+        MapMode::GreatHouse,
+        MapMode::Order,
+        MapMode::Wealth,
+        MapMode::Military,
+        MapMode::PlayerRelations,
+        MapMode::ClaimPressure,
+    ];
+
+    /// The next mode in the cycle.
     pub fn toggled(self) -> Self {
+        let index = MapMode::ALL.iter().position(|m| *m == self).unwrap_or(0);
+        MapMode::ALL[(index + 1) % MapMode::ALL.len()]
+    }
+
+    /// A short label for the mode selector.
+    pub fn label(self) -> &'static str {
         match self {
-            MapMode::Holder => MapMode::GreatHouse,
-            MapMode::GreatHouse => MapMode::Holder,
+            MapMode::Holder => "Holder",
+            MapMode::GreatHouse => "Great House",
+            MapMode::Order => "Order",
+            MapMode::Wealth => "Wealth",
+            MapMode::Military => "Military",
+            MapMode::PlayerRelations => "Relations",
+            MapMode::ClaimPressure => "Claim",
         }
     }
 
-    /// A short label for the toggle button.
-    pub fn label(self) -> &'static str {
+    /// The strategic question this mode answers.
+    pub fn description(self) -> &'static str {
         match self {
-            MapMode::Holder => "Map: Holder",
-            MapMode::GreatHouse => "Map: Great House",
+            MapMode::Holder => "Who directly holds each province.",
+            MapMode::GreatHouse => {
+                "Which great house each province ultimately answers to, \
+                 following its holder's liege chain."
+            }
+            MapMode::Order => {
+                "How governable each province is. Provinces in unrest are \
+                 marked, and will throw off their ruler if left."
+            }
+            MapMode::Wealth => "What each province is worth in monthly output.",
+            MapMode::Military => "Where the fighting strength stands.",
+            MapMode::PlayerRelations => "How each province's holder regards your house.",
+            MapMode::ClaimPressure => {
+                "Each province's weight in the race for the Paramountcy: who \
+                 leads, who is contesting, and who is out of it."
+            }
         }
+    }
+
+    /// Whether this mode paints house colours rather than a graded scale.
+    pub fn is_political(self) -> bool {
+        matches!(self, MapMode::Holder | MapMode::GreatHouse)
     }
 }
 

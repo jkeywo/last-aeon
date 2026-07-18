@@ -317,8 +317,30 @@ fn blockades_halve_wealth_output() {
         .get::<OrgResources>(index.orgs[&birch])
         .unwrap()
         .wealth;
-    // Beta authored at 40 wealth (blockaded -> 20), Gamma default 10.
-    assert_eq!(after - before, 20 + 10);
+    // Beta authored at 40 wealth, halved to 20 by the blockade, then
+    // scaled again by the order the blockade has been eroding all month;
+    // Gamma is untouched at its default 10.
+    let (beta_order, gamma_order) = {
+        let map = world.resource::<aeon_sim::MapIndex>().clone();
+        let read = |province| {
+            aeon_sim::order::output_factor_permille(
+                aeon_sim::order::province_order(world, province).order,
+            )
+        };
+        (read(beta), read(map.province_keys[&key("gamma")]))
+    };
+    assert_eq!(
+        after - before,
+        20 * beta_order / 1000 + 10 * gamma_order / 1000
+    );
+    assert!(
+        beta_order < 1000,
+        "a month under blockade should have cost Beta some order"
+    );
+    assert!(
+        after - before < 30,
+        "a blockade should bite through both output and order"
+    );
 }
 
 #[test]

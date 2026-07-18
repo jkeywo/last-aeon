@@ -18,6 +18,7 @@ use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
 use aeon_sim::forecast::Permille;
 use aeon_sim::jobs::CharacterCondition;
 use aeon_sim::map::{BodyRecord, DisplayName, GeoPosition, ProvinceRecord};
+use aeon_sim::order::{ORDER_MAX, ProvincialOrder};
 use aeon_sim::politics::{
     ADULT_AGE, CharacterSkills, CharacterTraits, CharacterView, Lineage, OpinionLedger, opinion_of,
 };
@@ -34,6 +35,7 @@ use bevy_egui::{EguiContexts, egui};
 
 use crate::forecast_view::ForecastCache;
 use crate::jobs_ui::{JobForm, UiCommandQueue};
+use crate::map_modes::MapReadout;
 use crate::sim_driver::{SPEED_STEPS, TimeControl};
 use crate::view::{MapMode, MapView, SearchState, Selection, ViewState};
 
@@ -196,6 +198,7 @@ pub struct PanelData<'w, 's> {
     armies: Query<'w, 's, &'static ArmyRecord>,
     conditions: Query<'w, 's, &'static CharacterCondition>,
     active_jobs: Query<'w, 's, &'static ActiveJob>,
+    order: Query<'w, 's, (&'static ProvinceRecord, &'static ProvincialOrder)>,
 }
 
 /// What the inspector's context-job section is anchored to.
@@ -862,6 +865,7 @@ pub fn draw_panels(
     mut mode: ResMut<MapMode>,
     mut form: ResMut<JobForm>,
     cache: Res<ForecastCache>,
+    readout: Res<MapReadout>,
     data: PanelData,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
@@ -1074,6 +1078,68 @@ pub fn draw_panels(
             });
     }
 
+    // ------------------------------------------------------------------
+    // Situation strip: what needs attention, and a way straight to it.
+    // ------------------------------------------------------------------
+    if matches!(view.view, MapView::Body(_)) && !readout.situation.is_empty() {
+        egui::Area::new("situation-strip".into())
+            .fixed_pos(egui::pos2(276.0, 34.0))
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.horizontal_wrapped(|ui| {
+                        ui.strong("Needs attention:")
+                            .on_hover_text("Threats to your holdings. Click one to go to it.");
+                        for item in &readout.situation {
+                            let colour = if item.urgent {
+                                egui::Color32::from_rgb(235, 110, 100)
+                            } else {
+                                egui::Color32::from_rgb(228, 190, 110)
+                            };
+                            if ui
+                                .add(egui::Button::new(
+                                    egui::RichText::new(&item.headline).color(colour),
+                                ))
+                                .on_hover_text(&item.detail)
+                                .clicked()
+                            {
+                                view.view = MapView::Body(item.body);
+                                view.selected = Some(Selection::Province(item.province));
+                            }
+                        }
+                    });
+                });
+            });
+    }
+
+    // ------------------------------------------------------------------
+    // Legend for the active map mode.
+    // ------------------------------------------------------------------
+    if matches!(view.view, MapView::Body(_)) && !readout.legend.is_empty() {
+        let bottom = ctx.viewport_rect().height() - 180.0;
+        egui::Area::new("map-legend".into())
+            .fixed_pos(egui::pos2(276.0, bottom))
+            .show(ctx, |ui| {
+                egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.strong(mode.label()).on_hover_text(mode.description());
+                    for (label, colour) in &readout.legend {
+                        ui.horizontal(|ui| {
+                            let (rect, _) = ui
+                                .allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+                            ui.painter().rect_filled(
+                                rect,
+                                2.0,
+                                egui::Color32::from_rgb(colour[0], colour[1], colour[2]),
+                            );
+                            ui.label(label);
+                        });
+                    }
+                    if !mode.is_political() {
+                        ui.weak("Values are printed on the map.");
+                    }
+                });
+            });
+    }
+
     egui::Panel::left("inspector")
         .default_size(260.0)
         .show(&mut viewport, |ui| {
@@ -1183,6 +1249,48 @@ pub fn draw_panels(
                                     ));
                                     ui.end_row();
                                 });
+
+                                // What the active map mode says about it.
+                                if let Some(entry) = readout.provinces.get(&id)
+                                    && !entry.hint.is_empty()
+                                {
+                                    ui.separator();
+                                    ui.horizontal_wrapped(|ui| {
+                                        ui.weak(format!("{}:", mode.label()));
+                                        ui.label(&entry.hint);
+                                    });
+                                }
+
+                                // How governable the province is, and why.
+                                if let Some((_, state)) =
+                                    data.order.iter().find(|(record, _)| record.id == id)
+                                {
+                                    ui.separator();
+                                    let percent = state.order * 100 / ORDER_MAX;
+                                    ui.horizontal(|ui| {
+                                        ui.label("Order");
+                                        let colour = if state.in_unrest() {
+                                            egui::Color32::from_rgb(230, 90, 90)
+                                        } else if percent < 50 {
+                                            egui::Color32::from_rgb(225, 175, 80)
+                                        } else {
+                                            egui::Color32::from_rgb(140, 200, 140)
+                                        };
+                                        ui.colored_label(colour, format!("{percent}%"))
+                                            .on_hover_text(
+                                                "How governable this province is. It scales                                                  what the province pays and how reliably it                                                  is defended, and a province left in unrest                                                  will throw off its ruler entirely.",
+                                            );
+                                    });
+                                    if let Some(days) = state.days_to_revolt() {
+                                        ui.colored_label(
+                                            egui::Color32::from_rgb(230, 90, 90),
+                                            format!("In unrest — revolts in {days} days"),
+                                        )
+                                        .on_hover_text(
+                                            "Garrison it, go there in person, or hold court                                              to restore order before the province is lost.",
+                                        );
+                                    }
+                                }
 
                                 // Forces standing at this province.
                                 let armies_here: Vec<&ArmyRecord> =

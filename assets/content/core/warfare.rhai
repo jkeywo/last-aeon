@@ -42,7 +42,7 @@ define_job(#{
 define_job(#{
     id: "patrol-the-province",
     title: "Patrol",
-    summary: "Stand guard where the army is; a visible deterrent to raiders.",
+    summary: "Stand guard where the army is; a visible deterrent to raiders, and a steadying presence.",
     category: "routine",
     duration_days: 30,
     skill: "command",
@@ -51,10 +51,13 @@ define_job(#{
     military_op: "patrol",
     ai_available: false,
     results: #{
-        success: #{ weight: 900 },
+        success: #{ weight: 900, effect_fn: "patrol_kept" },
         failure: #{ weight: 100 },
     },
 });
+fn patrol_kept(ctx) {
+    [#{ kind: "order", scope: "target-province", amount: 80 }]
+}
 
 define_job(#{
     id: "lay-siege",

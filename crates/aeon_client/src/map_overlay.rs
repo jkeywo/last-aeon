@@ -12,6 +12,7 @@ use aeon_sim::map::{DisplayName, GeoPosition, ProvinceRecord};
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
+use crate::map_modes::MapReadout;
 use crate::scene::GLOBE_RADIUS;
 use crate::view::{MapView, Selection, ViewState, geo_to_unit};
 
@@ -19,6 +20,7 @@ use crate::view::{MapView, Selection, ViewState, geo_to_unit};
 pub fn draw_map_overlay(
     mut contexts: EguiContexts,
     view: Res<ViewState>,
+    readout: Res<MapReadout>,
     cameras: Query<(&Camera, &GlobalTransform)>,
     provinces: Query<(&ProvinceRecord, &DisplayName, &GeoPosition)>,
     armies: Query<&ArmyRecord>,
@@ -68,7 +70,16 @@ pub fn draw_map_overlay(
         let pos = egui::pos2(screen.x, screen.y);
 
         let selected = view.selected == Some(Selection::Province(record.id));
+        let entry = readout.provinces.get(&record.id);
         let mut label = name.0.clone();
+        // The active mode's value is printed on the map, so the reading
+        // never depends on telling colours apart.
+        if let Some(value) = entry.and_then(|entry| entry.value.as_deref()) {
+            label.push_str(&format!("  {value}"));
+        }
+        if entry.is_some_and(|entry| entry.alert) {
+            label.push_str("  !");
+        }
         let armies_here = army_count.get(&record.id).copied().unwrap_or(0);
         let ships_here = ship_count.get(&record.id).copied().unwrap_or(0);
         if armies_here > 0 {
@@ -81,6 +92,8 @@ pub fn draw_map_overlay(
         let font = egui::FontId::proportional(if selected { 15.0 } else { 12.5 });
         let text_color = if selected {
             egui::Color32::from_rgb(255, 236, 150)
+        } else if entry.is_some_and(|entry| entry.alert) {
+            egui::Color32::from_rgb(255, 180, 170)
         } else {
             egui::Color32::from_rgb(238, 238, 244)
         };

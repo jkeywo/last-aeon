@@ -8,18 +8,15 @@
 
 use std::collections::BTreeMap;
 
-use aeon_data::ContentSet;
-use aeon_data::model::{BodyKind, HouseTier};
+use aeon_data::model::BodyKind;
 use aeon_sim::map::{BodyRecord, DisplayName, GeoPosition, ProvinceRecord};
-use aeon_sim::state::ContentDb;
-use aeon_sim::{
-    BodyId, CampaignClock, OrgId, OrgRecord, PoliticsIndex, ProvinceId, TitleHolder, TitleRecord,
-};
+use aeon_sim::{BodyId, CampaignClock, ProvinceId};
 use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
+use crate::map_modes::MapReadout;
 use crate::view::{MapMode, MapView, Selection, ViewState, geo_to_unit};
 
 /// Radius of a body-view globe in render units.
@@ -200,96 +197,21 @@ fn bake_texture(
     data
 }
 
-/// Walks an organisation's liege chain to the great house at its top;
-/// returns the org itself if it is not a vassal.
-fn great_house_of(
-    start: OrgId,
-    orgs: &BTreeMap<OrgId, (Option<OrgId>, Option<HouseTier>)>,
-) -> OrgId {
-    let mut current = start;
-    for _ in 0..16 {
-        match orgs.get(&current) {
-            Some((Some(liege), Some(HouseTier::Vassal))) => current = *liege,
-            _ => break,
+/// A stable fingerprint of what the focused globe is painting, so the
+/// texture rebakes only when the picture would actually change.
+fn readout_fingerprint(readout: &MapReadout) -> u64 {
+    // Accumulated in province order rather than xor-ed: xor would cancel
+    // identical contributions, so a map where every province shares one
+    // colour would fingerprint the same whatever that colour was.
+    let mut acc = 0xcbf2_9ce4_8422_2325u64;
+    for (province, entry) in &readout.provinces {
+        let colour = u64::from(entry.colour[0]) << 16
+            | u64::from(entry.colour[1]) << 8
+            | u64::from(entry.colour[2]);
+        for value in [province.raw(), colour] {
+            acc ^= value;
+            acc = acc.wrapping_mul(0x100_0000_01b3);
         }
-    }
-    current
-}
-
-/// The colour each province on `body` should paint in the given map mode.
-fn province_colours(
-    body: BodyId,
-    mode: MapMode,
-    politics: &PoliticsIndex,
-    titles: &Query<&TitleRecord>,
-    orgs: &Query<&OrgRecord>,
-    content: &ContentSet,
-    provinces: &Query<(&ProvinceRecord, &DisplayName, &GeoPosition)>,
-) -> BTreeMap<ProvinceId, [u8; 3]> {
-    // Liege/tier lookup for great-house resolution.
-    let org_liege: BTreeMap<OrgId, (Option<OrgId>, Option<HouseTier>)> =
-        orgs.iter().map(|o| (o.id, (o.liege, o.tier))).collect();
-    let colour_of = |org: OrgId| -> [u8; 3] {
-        let effective = match mode {
-            MapMode::Holder => org,
-            MapMode::GreatHouse => great_house_of(org, &org_liege),
-        };
-        politics
-            .orgs
-            .get(&effective)
-            .and_then(|e| orgs.get(*e).ok())
-            .and_then(|r| content.organisations.get(&r.key))
-            .map(|d| [d.color.0, d.color.1, d.color.2])
-            .unwrap_or([90, 90, 96])
-    };
-
-    let mut colours = BTreeMap::new();
-    for (record, _, _) in provinces.iter() {
-        if record.body != body {
-            continue;
-        }
-        let holder = politics
-            .province_titles
-            .get(&record.id)
-            .and_then(|title_id| politics.titles.get(title_id))
-            .and_then(|entity| titles.get(*entity).ok())
-            .map(|t| t.holder);
-        if let Some(TitleHolder::Org(org)) = holder {
-            colours.insert(record.id, colour_of(org));
-        }
-    }
-    colours
-}
-
-/// A stable fingerprint of a body's holdings, so the texture rebakes only
-/// when a province changes hands.
-fn holdings_fingerprint(
-    body: BodyId,
-    politics: &PoliticsIndex,
-    titles: &Query<&TitleRecord>,
-    provinces: &Query<(&ProvinceRecord, &DisplayName, &GeoPosition)>,
-) -> u64 {
-    let mut acc = 0u64;
-    for (record, _, _) in provinces.iter() {
-        if record.body != body {
-            continue;
-        }
-        let holder = politics
-            .province_titles
-            .get(&record.id)
-            .and_then(|title_id| politics.titles.get(title_id))
-            .and_then(|entity| titles.get(*entity).ok())
-            .map(|t| t.holder);
-        let holder_raw = match holder {
-            Some(TitleHolder::Org(org)) => org.raw(),
-            _ => 0,
-        };
-        acc ^= record
-            .id
-            .raw()
-            .wrapping_mul(0x9E37_79B9_7F4A_7C15)
-            .rotate_left(17)
-            ^ holder_raw.wrapping_mul(0xC2B2_AE3D_27D4_EB4F);
     }
     acc
 }
@@ -445,37 +367,34 @@ pub fn apply_view_visibility(
     }
 }
 
-/// Rebakes the focused globe's political texture when the body, map mode,
-/// or its holdings change.
-#[allow(clippy::too_many_arguments)]
+/// Rebakes the focused globe's texture when the body, the map mode, or
+/// what the mode is showing actually changes.
 pub fn refresh_globe_texture(
     view: Res<ViewState>,
     mode: Res<MapMode>,
+    readout: Res<MapReadout>,
     mut bake: ResMut<GlobeBake>,
-    politics: Option<Res<PoliticsIndex>>,
-    content: Option<Res<ContentDb>>,
     mut images: ResMut<Assets<Image>>,
     globes: Query<&GlobeVisual>,
-    titles: Query<&TitleRecord>,
-    orgs: Query<&OrgRecord>,
-    provinces: Query<(&ProvinceRecord, &DisplayName, &GeoPosition)>,
 ) {
-    let (Some(politics), Some(content)) = (politics, content) else {
-        return;
-    };
     let MapView::Body(body) = view.view else {
         return;
     };
-    let fingerprint = holdings_fingerprint(body, &politics, &titles, &provinces);
+    if readout.provinces.is_empty() {
+        return;
+    }
+    let fingerprint = readout_fingerprint(&readout);
     if bake.baked == Some((body, *mode, fingerprint)) {
         return;
     }
     let Some(globe) = globes.iter().find(|g| g.body == body) else {
         return;
     };
-    let colours = province_colours(
-        body, *mode, &politics, &titles, &orgs, &content.0, &provinces,
-    );
+    let colours: BTreeMap<ProvinceId, [u8; 3]> = readout
+        .provinces
+        .iter()
+        .map(|(id, entry)| (*id, entry.colour))
+        .collect();
     let data = bake_texture(&globe.centroids, &colours);
     if let Some(mut image) = images.get_mut(&globe.texture) {
         image.data = Some(data);

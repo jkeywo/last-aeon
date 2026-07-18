@@ -153,11 +153,39 @@ fn provinces_produce_and_influence_recharges_to_cap() {
 
     h.advance_days(30); // one monthly pulse
     let after = ash_resources(&mut h);
-    // Alpha (20/30/10) plus Luna Port defaults (10/10/10); ship upkeep -1.
-    assert_eq!(after.wealth, 100 + 30);
-    assert_eq!(after.manpower, 2000 + 40);
-    assert_eq!(after.supplies, 300 + 20 - 1);
+
+    // Alpha (20/30/10) plus Luna Port defaults (10/10/10), scaled by each
+    // province's order, less 1 supply of ship upkeep. Ash's people stand
+    // in Alpha, so a month of their presence has lifted it above the
+    // settled baseline and it pays a little over its authored output.
+    let (alpha_factor, port_factor) = h_order(&mut h);
+    let expected = |base_alpha: i64, base_port: i64| -> i64 {
+        base_alpha * alpha_factor / 1000 + base_port * port_factor / 1000
+    };
+    assert_eq!(after.wealth, 100 + expected(20, 10));
+    assert_eq!(after.manpower, 2000 + expected(30, 10));
+    assert_eq!(after.supplies, 300 + expected(10, 10) - 1);
     assert_eq!(after.influence, 6); // legitimacy 60 / 10
+
+    // The premium is real but bounded: presence helped, it did not double
+    // the province's yield.
+    assert!(
+        (1000..=1200).contains(&alpha_factor),
+        "attended order should pay a modest premium, got {alpha_factor}"
+    );
+}
+
+/// The output factors currently applying to Alpha and Luna Port.
+fn h_order(h: &mut SimHost) -> (i64, i64) {
+    let world = h.world_mut();
+    let index = world.resource::<aeon_sim::MapIndex>().clone();
+    let factor = |name: &str| -> i64 {
+        let province = index.province_keys[&key(name)];
+        aeon_sim::order::output_factor_permille(
+            aeon_sim::order::province_order(world, province).order,
+        )
+    };
+    (factor("alpha"), factor("luna-port"))
 }
 
 #[test]

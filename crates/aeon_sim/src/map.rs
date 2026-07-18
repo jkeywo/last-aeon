@@ -91,6 +91,9 @@ pub struct MapState {
     pub bodies: Vec<(BodyId, ContentKey)>,
     /// Province bindings in ID order.
     pub provinces: Vec<(ProvinceId, ContentKey)>,
+    /// Provincial order in ID order; absent entries take the default.
+    #[serde(default)]
+    pub order: Vec<(ProvinceId, crate::order::ProvincialOrder)>,
 }
 
 fn spawn_body(world: &mut World, id: BodyId, def: &BodyDef, parent: Option<BodyId>) -> Entity {
@@ -123,6 +126,7 @@ fn spawn_province(world: &mut World, id: ProvinceId, def: &ProvinceDef, body: Bo
                 latitude_mdeg: def.latitude_mdeg,
                 longitude_mdeg: def.longitude_mdeg,
             },
+            crate::order::ProvincialOrder::default(),
         ))
         .id()
 }
@@ -173,6 +177,15 @@ pub fn capture_map(world: &World) -> MapState {
                 .iter()
                 .map(|(id, key)| (*id, key.clone()))
                 .collect(),
+            order: index
+                .provinces
+                .iter()
+                .filter_map(|(id, entity)| {
+                    world
+                        .get::<crate::order::ProvincialOrder>(*entity)
+                        .map(|state| (*id, *state))
+                })
+                .collect(),
         },
     }
 }
@@ -210,6 +223,13 @@ pub fn restore_map(world: &mut World, state: &MapState, content: &ContentSet) {
         index.province_keys.insert(key.clone(), *id);
         index.province_ids.insert(*id, key.clone());
         index.provinces.insert(*id, entity);
+    }
+
+    // Restore persisted order over the spawned defaults.
+    for (id, order) in &state.order {
+        if let Some(entity) = index.provinces.get(id) {
+            world.entity_mut(*entity).insert(*order);
+        }
     }
 
     world.insert_resource(index);

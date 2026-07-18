@@ -239,6 +239,9 @@ pub struct JobRoles {
     pub consul: Option<CharacterId>,
     /// `sanctora`: every living Sanctora member.
     pub sanctora: Vec<CharacterId>,
+    /// The province the job acted on, for province-scoped effects.
+    #[serde(default)]
+    pub province: Option<ProvinceId>,
 }
 
 impl JobRoles {
@@ -533,6 +536,23 @@ fn resolve_roles(world: &World, job: &ActiveJob) -> JobRoles {
         .map(|(id, _)| *id)
         .collect();
 
+    // Where the job acted: an explicit province target, the province an
+    // ordered force stands in, or failing both the leader's own location.
+    let province = match job.target {
+        JobTarget::Province(province)
+        | JobTarget::ArmyToProvince(_, province)
+        | JobTarget::ShipToProvince(_, province) => Some(province),
+        JobTarget::OwnArmy(army) => world
+            .get_resource::<crate::forces::ForcesIndex>()
+            .and_then(|forces| forces.armies.get(&army).copied())
+            .and_then(|entity| world.get::<crate::forces::ArmyRecord>(entity))
+            .map(|record| record.location),
+        _ => match crate::presence::character_location(world, job.leader) {
+            Some(crate::presence::Location::Province(province)) => Some(province),
+            _ => None,
+        },
+    };
+
     JobRoles {
         leader: Some(job.leader),
         target,
@@ -541,6 +561,7 @@ fn resolve_roles(world: &World, job: &ActiveJob) -> JobRoles {
         liege_head: owner_record.and_then(|r| r.liege).and_then(org_head),
         consul,
         sanctora,
+        province,
     }
 }
 
@@ -693,6 +714,20 @@ pub fn apply_effects(
                     crate::crisis::collect_tithes(world, owner);
                 }
             }
+            ScriptEffect::Order { scope, amount } => match scope {
+                aeon_data::effect::OrderScope::TargetProvince => {
+                    if let Some(province) = roles.province {
+                        crate::order::adjust_order(world, province, *amount);
+                    }
+                }
+                aeon_data::effect::OrderScope::AllHeld => {
+                    if let Some(owner) = owner {
+                        for province in crate::order::held_provinces(world, owner) {
+                            crate::order::adjust_order(world, province, *amount);
+                        }
+                    }
+                }
+            },
         }
     }
 }

@@ -10,6 +10,7 @@ mod camera;
 mod content;
 mod forecast_view;
 mod jobs_ui;
+mod map_modes;
 mod map_overlay;
 mod panels;
 mod scene;
@@ -46,6 +47,7 @@ fn main() {
         .init_resource::<scene::GlobeBake>()
         .init_resource::<forecast_view::ForecastCache>()
         .init_resource::<jobs_ui::LogFilter>()
+        .init_resource::<map_modes::MapReadout>()
         .add_systems(
             Startup,
             (
@@ -64,7 +66,6 @@ fn main() {
                 selection::view_hotkeys,
                 scene::update_system_positions,
                 scene::apply_view_visibility,
-                scene::refresh_globe_texture,
                 scene::update_selection_pin,
                 scene::apply_selection_tint,
                 camera::retarget_on_view_change,
@@ -72,6 +73,8 @@ fn main() {
                 jobs_ui::auto_pause_on_popups,
                 jobs_ui::flush_ui_commands,
                 forecast_view::refresh_forecast,
+                // The bake must observe the readout computed this frame.
+                (map_modes::refresh_map_readout, scene::refresh_globe_texture).chain(),
             ),
         )
         .add_systems(

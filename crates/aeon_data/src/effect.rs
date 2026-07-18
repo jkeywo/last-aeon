@@ -52,6 +52,23 @@ pub enum ScriptEffect {
     /// Collect Imperial tithes: every house pays a twentieth of its
     /// wealth to the owner. Valid only for the Sanctora Imperim.
     CollectTithes,
+    /// Change provincial order, either where the job acted or across
+    /// every province the owner holds.
+    Order {
+        /// Which provinces the change reaches.
+        scope: OrderScope,
+        /// Signed change, in order points.
+        amount: i32,
+    },
+}
+
+/// Which provinces an [`ScriptEffect::Order`] applies to.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum OrderScope {
+    /// The province the job targeted, or the leader's own location.
+    TargetProvince,
+    /// Every province the owning organisation holds.
+    AllHeld,
 }
 
 /// Why a script's returned effects were rejected.
@@ -188,6 +205,33 @@ pub fn parse_effects(value: Dynamic) -> Result<Vec<ScriptEffect>, EffectParseErr
                 effects.push(ScriptEffect::FormArmy {
                     manpower: get_int("manpower")?,
                     supplies: get_int("supplies")?,
+                });
+            }
+            "order" => {
+                let scope = match map.get("scope").and_then(|v| v.clone().into_string().ok()) {
+                    Some(text) if text == "target-province" => OrderScope::TargetProvince,
+                    Some(text) if text == "all-held" => OrderScope::AllHeld,
+                    _ => {
+                        return Err(EffectParseError::BadField {
+                            index,
+                            kind: kind.clone(),
+                            field: "scope".to_owned(),
+                            expected: "\"target-province\" or \"all-held\"".to_owned(),
+                        });
+                    }
+                };
+                let amount = map
+                    .get("amount")
+                    .and_then(|v| v.as_int().ok())
+                    .ok_or_else(|| EffectParseError::BadField {
+                        index,
+                        kind: kind.clone(),
+                        field: "amount".to_owned(),
+                        expected: "integer".to_owned(),
+                    })?;
+                effects.push(ScriptEffect::Order {
+                    scope,
+                    amount: amount as i32,
                 });
             }
             other => {

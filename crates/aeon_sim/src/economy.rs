@@ -110,14 +110,20 @@ pub fn monthly_economy(world: &mut World) {
                             .is_some_and(|ship| ship.blockading == Some(province))
                     })
                 });
+            // A province yields in proportion to its order: a compliant
+            // population pays and musters, a resentful one does neither.
+            let factor = crate::order::output_factor_permille(
+                crate::order::province_order(world, province).order,
+            );
+            let scaled = |amount: i64| -> i64 { amount * factor / 1000 };
             let entry = income.entry(org).or_default();
-            entry.0 += if blockaded {
+            entry.0 += scaled(if blockaded {
                 def.wealth_output / 2
             } else {
                 def.wealth_output
-            };
-            entry.1 += def.manpower_output;
-            entry.2 += def.supplies_output;
+            });
+            entry.1 += scaled(def.manpower_output);
+            entry.2 += scaled(def.supplies_output);
         }
     }
 

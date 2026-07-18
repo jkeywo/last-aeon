@@ -28,6 +28,7 @@ pub mod host;
 pub mod ids;
 pub mod jobs;
 pub mod map;
+pub mod order;
 pub mod persistence;
 pub mod politics;
 pub mod presence;
@@ -50,6 +51,7 @@ pub use jobs::{
     PendingPopups,
 };
 pub use map::{BodyRecord, DisplayName, GeoPosition, MapIndex, ProvinceRecord};
+pub use order::ProvincialOrder;
 pub use politics::{
     CampaignOver, CharacterRecord, OfficeRecord, OrgRecord, PlayerHouse, PoliticsIndex,
     TitleHolder, TitleKind, TitleRecord, opinion_between,
@@ -74,6 +76,7 @@ impl Plugin for AeonSimPlugin {
         economy::install(app);
         presence::install(app);
         forces::install(app);
+        order::install(app);
         warfare::install(app);
     }
 }

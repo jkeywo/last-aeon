@@ -8,30 +8,36 @@
 define_job(#{
     id: "manage-estates",
     title: "Manage the Estates",
-    summary: "Routine administration of the house's provincial holdings.",
+    summary: "Routine administration of the house's provincial holdings; steadies order everywhere you rule.",
     category: "routine",
     duration_days: 30,
     skill: "stewardship",
     difficulty: 6,
     results: #{
-        success: #{ weight: 850 },
+        success: #{ weight: 850, effect_fn: "estates_kept" },
         failure: #{ weight: 150 },
     },
 });
+fn estates_kept(ctx) {
+    [#{ kind: "order", scope: "all-held", amount: 25 }]
+}
 
 define_job(#{
     id: "hold-court",
     title: "Hold Court",
-    summary: "Hear petitions and settle disputes among your household.",
+    summary: "Hear petitions and settle disputes among your household; settles the province you sit in.",
     category: "routine",
     duration_days: 20,
     skill: "diplomacy",
     difficulty: 5,
     results: #{
-        success: #{ weight: 800 },
+        success: #{ weight: 800, effect_fn: "court_settled" },
         failure: #{ weight: 200 },
     },
 });
+fn court_settled(ctx) {
+    [#{ kind: "order", scope: "target-province", amount: 60 }]
+}
 
 define_job(#{
     id: "court-a-rival-house",
@@ -180,16 +186,27 @@ define_job(#{
         critical_success: #{
             weight: 150, log: true,
             log_text: "{leader}'s tour of the holdings is met with genuine warmth.",
+            effect_fn: "tour_triumph",
         },
-        success: #{ weight: 550 },
+        success: #{ weight: 550, effect_fn: "tour_done" },
         failure: #{ weight: 250 },
         disaster: #{
             weight: 50, popup: true, log: true,
             popup_text: "An accident on the road; {leader} is hurt, and the tour is remembered badly.",
             log_text: "{leader}'s tour ended in an ugly accident.",
+            effect_fn: "tour_soured",
         },
     },
 });
+fn tour_triumph(ctx) {
+    [#{ kind: "order", scope: "all-held", amount: 120 }]
+}
+fn tour_done(ctx) {
+    [#{ kind: "order", scope: "all-held", amount: 60 }]
+}
+fn tour_soured(ctx) {
+    [#{ kind: "order", scope: "all-held", amount: -40 }]
+}
 
 define_job(#{
     id: "petition-the-consul",

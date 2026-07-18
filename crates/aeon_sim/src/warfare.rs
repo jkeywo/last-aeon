@@ -139,7 +139,13 @@ pub fn resolve_engagement(
         strength * (100 + rng.roll_range(-15, 15)) / 100
     };
     let attack = swing(&mut rng, army_strength(world, &attacker_record, false));
-    let defence = swing(&mut rng, army_strength(world, &defender_record, true));
+    // Defenders are only as reliable as the ground they stand on: a
+    // garrison among a hostile population gives way sooner.
+    let order_factor = crate::order::defence_factor_permille(
+        crate::order::province_order(world, defender_record.location).order,
+    );
+    let defence =
+        swing(&mut rng, army_strength(world, &defender_record, true)) * order_factor / 1000;
     let attacker_won = attack > defence;
 
     let loss = |rng: &mut DeterministicRng, manpower: i64, winner: bool| -> i64 {
@@ -283,6 +289,9 @@ pub fn apply_military_op(world: &mut World, op: MilitaryOp, job: &ActiveJob) -> 
                 record.holder = TitleHolder::Org(job.owner);
                 log(world, job.owner, format!("{name} has fallen to siege."));
             }
+            // Conquest breeds resentment: the province starts its new
+            // allegiance badly out of order.
+            crate::order::reset_order(world, target, crate::order::ORDER_AFTER_CONQUEST);
             true
         }
         (MilitaryOp::Raid, JobTarget::ArmyToProvince(army, target)) => {
@@ -311,6 +320,8 @@ pub fn apply_military_op(world: &mut World, op: MilitaryOp, job: &ActiveJob) -> 
                     r.wealth += looted;
                 }
             }
+            // A raided province is left shaken and harder to govern.
+            crate::order::adjust_order(world, target, -crate::order::ORDER_RAID_LOSS);
             true
         }
         (MilitaryOp::Blockade, JobTarget::ShipToProvince(ship, target)) => {
