@@ -202,6 +202,10 @@ pub struct PanelData<'w, 's> {
     order: Query<'w, 's, (&'static ProvinceRecord, &'static ProvincialOrder)>,
     obligations: Option<Res<'w, Obligations>>,
     availability: Res<'w, AvailabilityView>,
+    character_records: Query<'w, 's, &'static CharacterRecord>,
+    province_records: Query<'w, 's, &'static ProvinceRecord>,
+    cache: Res<'w, ForecastCache>,
+    readout: Res<'w, MapReadout>,
 }
 
 /// What the inspector's context-job section is anchored to.
@@ -954,8 +958,8 @@ pub fn draw_panels(
     mut search: ResMut<SearchState>,
     mut mode: ResMut<MapMode>,
     mut form: ResMut<JobForm>,
-    cache: Res<ForecastCache>,
-    readout: Res<MapReadout>,
+    log: Option<Res<aeon_sim::MessageLog>>,
+    mut filter: ResMut<crate::jobs_ui::LogFilter>,
     data: PanelData,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
@@ -1171,7 +1175,7 @@ pub fn draw_panels(
     // ------------------------------------------------------------------
     // Situation strip: what needs attention, and a way straight to it.
     // ------------------------------------------------------------------
-    if matches!(view.view, MapView::Body(_)) && !readout.situation.is_empty() {
+    if matches!(view.view, MapView::Body(_)) && !data.readout.situation.is_empty() {
         egui::Area::new("situation-strip".into())
             .fixed_pos(egui::pos2(276.0, 34.0))
             .show(ctx, |ui| {
@@ -1179,7 +1183,7 @@ pub fn draw_panels(
                     ui.horizontal_wrapped(|ui| {
                         ui.strong("Needs attention:")
                             .on_hover_text("Threats to your holdings. Click one to go to it.");
-                        for item in &readout.situation {
+                        for item in &data.readout.situation {
                             let colour = if item.urgent {
                                 egui::Color32::from_rgb(235, 110, 100)
                             } else {
@@ -1204,14 +1208,14 @@ pub fn draw_panels(
     // ------------------------------------------------------------------
     // Legend for the active map mode.
     // ------------------------------------------------------------------
-    if matches!(view.view, MapView::Body(_)) && !readout.legend.is_empty() {
+    if matches!(view.view, MapView::Body(_)) && !data.readout.legend.is_empty() {
         let bottom = ctx.viewport_rect().height() - 180.0;
         egui::Area::new("map-legend".into())
             .fixed_pos(egui::pos2(276.0, bottom))
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.strong(mode.label()).on_hover_text(mode.description());
-                    for (label, colour) in &readout.legend {
+                    for (label, colour) in &data.readout.legend {
                         ui.horizontal(|ui| {
                             let (rect, _) = ui
                                 .allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
@@ -1228,6 +1232,25 @@ pub fn draw_panels(
                     }
                 });
             });
+    }
+
+    // The bottom bar is declared before the side panels so they stop
+    // above it rather than running underneath.
+    if let Some(log) = &log {
+        crate::jobs_ui::draw_bottom_bar(
+            &mut viewport,
+            &content,
+            &politics,
+            date,
+            player_org,
+            log,
+            &mut filter,
+            &mut view,
+            &mut queue,
+            &data.active_jobs,
+            &data.character_records,
+            &data.province_records,
+        );
     }
 
     egui::Panel::left("inspector")
@@ -1341,7 +1364,7 @@ pub fn draw_panels(
                                 });
 
                                 // What the active map mode says about it.
-                                if let Some(entry) = readout.provinces.get(&id)
+                                if let Some(entry) = data.readout.provinces.get(&id)
                                     && !entry.hint.is_empty()
                                 {
                                     ui.separator();
@@ -1438,7 +1461,7 @@ pub fn draw_panels(
                                         player_head,
                                         date,
                                         &data,
-                                        &cache,
+                                        &data.cache,
                                         &mut form,
                                         &mut queue,
                                     );
@@ -1736,7 +1759,7 @@ Weight {}", entry.weight));
                                         player_head,
                                         date,
                                         &data,
-                                        &cache,
+                                        &data.cache,
                                         &mut form,
                                         &mut queue,
                                     );

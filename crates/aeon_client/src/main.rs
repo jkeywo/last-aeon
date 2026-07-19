@@ -84,7 +84,7 @@ fn main() {
             (
                 map_overlay::draw_map_overlay,
                 panels::draw_panels,
-                jobs_ui::draw_jobs_ui,
+                jobs_ui::draw_popups,
             )
                 .chain(),
         )

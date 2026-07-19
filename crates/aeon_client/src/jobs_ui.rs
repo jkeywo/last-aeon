@@ -10,9 +10,8 @@ use aeon_sim::command::submit_command;
 use aeon_sim::map::ProvinceRecord;
 use aeon_sim::state::ContentDb;
 use aeon_sim::{
-    ActiveJob, ArmyId, CampaignClock, CharacterId, CharacterRecord, JobTarget, LogChannel,
-    LogEntry, LogSubject, MessageLog, OrgId, PendingPopups, PlayerCommand, PlayerHouse,
-    PoliticsIndex, ShipId,
+    ActiveJob, ArmyId, CharacterId, CharacterRecord, JobTarget, LogChannel, LogEntry, LogSubject,
+    MessageLog, OrgId, PendingPopups, PlayerCommand, PoliticsIndex, ShipId,
 };
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
@@ -84,11 +83,11 @@ impl Default for LogFilter {
 
 impl LogFilter {
     /// Whether an entry passes the current filter.
-    fn admits(&self, entry: &LogEntry, player_org: OrgId) -> bool {
+    fn admits(&self, entry: &LogEntry, player_org: Option<OrgId>) -> bool {
         if !self.channels.contains(&entry.channel) {
             return false;
         }
-        if self.mine_only && entry.org != Some(player_org) {
+        if self.mine_only && (player_org.is_none() || entry.org != player_org) {
             return false;
         }
         let needle = self.text.trim().to_lowercase();
@@ -123,49 +122,40 @@ pub fn auto_pause_on_popups(
     }
 }
 
+/// Height of the bottom bar.
+///
+/// Fixed rather than content-derived: egui persists a panel's *measured*
+/// size after the first frame, so a bar whose height is decided by a
+/// scroll area that in turn sizes itself from the available height will
+/// collapse toward the 20px floor and take its contents with it.
+const BOTTOM_BAR_HEIGHT: f32 = 190.0;
+
+/// Draws the bottom bar — message log and active jobs — into the shell's
+/// viewport.
+///
+/// Takes the shell's `Ui` rather than building its own: two independent
+/// root `Ui`s over the same rect do not know about each other's panels,
+/// which is what left this bar overlapping the side panels and splitting
+/// its columns at the middle of the *screen* instead of the middle of the
+/// bar.
 #[allow(clippy::too_many_arguments)]
-pub fn draw_jobs_ui(
-    mut contexts: EguiContexts,
-    clock: Option<Res<CampaignClock>>,
-    content: Option<Res<ContentDb>>,
-    politics: Option<Res<PoliticsIndex>>,
-    player: Option<Res<PlayerHouse>>,
-    popups: Option<Res<PendingPopups>>,
-    log: Option<Res<MessageLog>>,
-    mut queue: ResMut<UiCommandQueue>,
-    mut filter: ResMut<LogFilter>,
-    mut view: ResMut<ViewState>,
-    jobs: Query<&ActiveJob>,
-    characters: Query<&CharacterRecord>,
-    provinces: Query<&ProvinceRecord>,
+pub(crate) fn draw_bottom_bar(
+    viewport: &mut egui::Ui,
+    content: &ContentDb,
+    politics: &PoliticsIndex,
+    date: aeon_core::calendar::GameDate,
+    player_org: Option<aeon_sim::OrgId>,
+    log: &MessageLog,
+    filter: &mut LogFilter,
+    view: &mut ViewState,
+    queue: &mut UiCommandQueue,
+    jobs: &Query<&ActiveJob>,
+    characters: &Query<&CharacterRecord>,
+    provinces: &Query<&ProvinceRecord>,
 ) {
-    let Ok(ctx) = contexts.ctx_mut() else {
-        return;
-    };
-    let (Some(clock), Some(content), Some(politics), Some(player), Some(popups), Some(log)) =
-        (clock, content, politics, player, popups, log)
-    else {
-        return;
-    };
-    let date = clock.date;
-    let Some(player_org) = player.0 else {
-        return;
-    };
-
-    let mut viewport = egui::Ui::new(
-        ctx.clone(),
-        "jobs-viewport".into(),
-        egui::UiBuilder::new()
-            .layer_id(egui::LayerId::background())
-            .max_rect(ctx.viewport_rect()),
-    );
-
-    // ------------------------------------------------------------------
-    // Bottom panel: message log | active jobs.
-    // ------------------------------------------------------------------
     egui::Panel::bottom("jobs-bar")
-        .default_size(150.0)
-        .show(&mut viewport, |ui| {
+        .exact_size(BOTTOM_BAR_HEIGHT)
+        .show(viewport, |ui| {
             ui.columns(2, |columns| {
                 // Message log, filterable and linked to its subjects.
                 columns[0].horizontal_wrapped(|ui| {
@@ -190,6 +180,7 @@ pub fn draw_jobs_ui(
                 });
                 egui::ScrollArea::vertical()
                     .id_salt("log-scroll")
+                    .max_height(BOTTOM_BAR_HEIGHT - 48.0)
                     .stick_to_bottom(true)
                     .show(&mut columns[0], |ui| {
                         let visible: Vec<&LogEntry> = log
@@ -245,9 +236,12 @@ pub fn draw_jobs_ui(
                 columns[1].heading("Active Jobs");
                 egui::ScrollArea::vertical()
                     .id_salt("jobs-scroll")
+                    .max_height(BOTTOM_BAR_HEIGHT - 48.0)
                     .show(&mut columns[1], |ui| {
-                        let mut sorted: Vec<&ActiveJob> =
-                            jobs.iter().filter(|j| j.owner == player_org).collect();
+                        let mut sorted: Vec<&ActiveJob> = jobs
+                            .iter()
+                            .filter(|j| Some(j.owner) == player_org)
+                            .collect();
                         sorted.sort_by_key(|j| j.id);
                         if sorted.is_empty() {
                             ui.label("No jobs under way.");
@@ -276,10 +270,23 @@ pub fn draw_jobs_ui(
                     });
             });
         });
+}
 
-    // ------------------------------------------------------------------
-    // Result popups: modal-style windows, oldest first.
-    // ------------------------------------------------------------------
+/// Result popups: modal-style windows over the whole interface.
+///
+/// These float above every panel, so they need no place in the layout and
+/// keep their own system.
+pub fn draw_popups(
+    mut contexts: EguiContexts,
+    popups: Option<Res<PendingPopups>>,
+    mut queue: ResMut<UiCommandQueue>,
+) {
+    let Ok(ctx) = contexts.ctx_mut() else {
+        return;
+    };
+    let Some(popups) = popups else {
+        return;
+    };
     if let Some(popup) = popups.popups.first() {
         egui::Window::new("A Matter Requires Your Attention")
             .collapsible(false)
