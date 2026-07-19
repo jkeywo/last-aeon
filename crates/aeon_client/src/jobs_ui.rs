@@ -158,3 +158,61 @@ pub fn draw_popups(
             });
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aeon_core::calendar::GameDate;
+
+    fn entry(channel: LogChannel, text: &str, org: Option<u64>) -> LogEntry {
+        LogEntry::new(GameDate::from_days(1), text, channel)
+            .by(org.map(|raw| OrgId::from_raw(raw).unwrap()))
+    }
+
+    #[test]
+    fn the_default_filter_admits_everything() {
+        let filter = LogFilter::default();
+        for channel in LogChannel::ALL {
+            assert!(filter.admits(&entry(channel, "anything", Some(1)), None));
+        }
+    }
+
+    #[test]
+    fn hidden_channels_are_filtered_out() {
+        let mut filter = LogFilter::default();
+        filter.channels.remove(&LogChannel::Military);
+        assert!(!filter.admits(&entry(LogChannel::Military, "battle", Some(1)), None));
+        assert!(filter.admits(&entry(LogChannel::Politics, "intrigue", Some(1)), None));
+    }
+
+    #[test]
+    fn mine_only_keeps_the_players_own_entries() {
+        let filter = LogFilter {
+            mine_only: true,
+            ..Default::default()
+        };
+        let player = OrgId::from_raw(1);
+        assert!(filter.admits(&entry(LogChannel::Jobs, "ours", Some(1)), player));
+        assert!(!filter.admits(&entry(LogChannel::Jobs, "theirs", Some(2)), player));
+        assert!(
+            !filter.admits(&entry(LogChannel::Jobs, "ours", Some(1)), None),
+            "with no player house, mine-only admits nothing"
+        );
+    }
+
+    #[test]
+    fn the_text_filter_is_a_case_insensitive_substring() {
+        let filter = LogFilter {
+            text: "  Harrow ".to_owned(),
+            ..Default::default()
+        };
+        assert!(filter.admits(
+            &entry(LogChannel::Jobs, "House harrow marches", Some(1)),
+            None
+        ));
+        assert!(!filter.admits(
+            &entry(LogChannel::Jobs, "House Veyrin marches", Some(1)),
+            None
+        ));
+    }
+}

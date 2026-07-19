@@ -228,7 +228,13 @@ pub fn draw_context_jobs(
                         }
                         // Publish the resolved target and leader so the
                         // forecast is for exactly what would be ordered.
-                        let action = province_action(def.target, province, data, form);
+                        let army = form
+                            .army
+                            .and_then(|id| data.armies.iter().find(|a| a.id == id));
+                        let ship = form
+                            .ship
+                            .and_then(|id| data.ships.iter().find(|s| s.id == id));
+                        let action = province_action(def.target, province, army, ship);
                         form.target = action.target;
                         form.leader = action.leader;
                         // An obstacle is stated where the choice is made,
@@ -393,6 +399,7 @@ fn draw_leader_slot(
 /// A force is led by the character who commands it and nobody else, so a
 /// ship with no captain has no order to give — reported here rather than
 /// silently substituting the head of the house and failing later.
+#[derive(Debug, PartialEq, Eq)]
 struct ProvinceAction {
     target: Option<JobTarget>,
     leader: Option<CharacterId>,
@@ -400,30 +407,27 @@ struct ProvinceAction {
     obstacle: Option<String>,
 }
 
+/// Resolves the order a chosen force would carry out against a province.
+///
+/// Pure over the chosen force's records, so what the interface offers —
+/// and refuses — is testable without a world or a frame.
 fn province_action(
     kind: JobTargetKind,
     province: ProvinceId,
-    data: &PanelData,
-    form: &JobForm,
+    army: Option<&ArmyRecord>,
+    ship: Option<&ShipRecord>,
 ) -> ProvinceAction {
-    let army = form
-        .army
-        .and_then(|id| data.armies.iter().find(|a| a.id == id));
-    let ship = form
-        .ship
-        .and_then(|id| data.ships.iter().find(|s| s.id == id));
-
     match kind {
         JobTargetKind::OwnArmy | JobTargetKind::OwnArmyAndProvince => ProvinceAction {
-            target: form.army.map(|id| match kind {
-                JobTargetKind::OwnArmy => JobTarget::OwnArmy(id),
-                _ => JobTarget::ArmyToProvince(id, province),
+            target: army.map(|a| match kind {
+                JobTargetKind::OwnArmy => JobTarget::OwnArmy(a.id),
+                _ => JobTarget::ArmyToProvince(a.id, province),
             }),
             leader: army.map(|a| a.general),
             obstacle: None,
         },
         JobTargetKind::OwnShipAndProvince => ProvinceAction {
-            target: form.ship.map(|id| JobTarget::ShipToProvince(id, province)),
+            target: ship.map(|s| JobTarget::ShipToProvince(s.id, province)),
             leader: ship.and_then(|s| s.captain),
             obstacle: match ship {
                 Some(ship) if ship.captain.is_none() => Some(format!(
@@ -608,4 +612,101 @@ fn pick_ship(ui: &mut egui::Ui, player_org: OrgId, data: &PanelData, form: &mut 
                 }
             }
         });
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use aeon_sim::warfare::StandingOrder;
+    use aeon_sim::{ArmyId, ShipId};
+
+    fn army(general: u64) -> ArmyRecord {
+        ArmyRecord {
+            id: ArmyId::from_raw(10).unwrap(),
+            name: "First Levy".to_owned(),
+            owner: OrgId::from_raw(1).unwrap(),
+            general: CharacterId::from_raw(general).unwrap(),
+            manpower: 500,
+            supplies: 100,
+            location: ProvinceId::from_raw(3).unwrap(),
+            standing_order: StandingOrder::default(),
+        }
+    }
+
+    fn ship(captain: Option<u64>) -> ShipRecord {
+        ShipRecord {
+            id: ShipId::from_raw(20).unwrap(),
+            key: aeon_data::ContentKey::new("lantern").unwrap(),
+            name: "The Lantern".to_owned(),
+            class: aeon_data::model::ShipClass::Capital,
+            owner: OrgId::from_raw(1).unwrap(),
+            captain: captain.map(|c| CharacterId::from_raw(c).unwrap()),
+            location: ShipLocation::Docked(ProvinceId::from_raw(3).unwrap()),
+            blockading: None,
+        }
+    }
+
+    fn province() -> ProvinceId {
+        ProvinceId::from_raw(7).unwrap()
+    }
+
+    #[test]
+    fn a_march_is_led_by_the_armys_general() {
+        let army = army(42);
+        let action = province_action(
+            JobTargetKind::OwnArmyAndProvince,
+            province(),
+            Some(&army),
+            None,
+        );
+        assert_eq!(
+            action.target,
+            Some(JobTarget::ArmyToProvince(army.id, province()))
+        );
+        assert_eq!(action.leader, Some(army.general));
+        assert_eq!(action.obstacle, None);
+    }
+
+    #[test]
+    fn a_ship_without_a_captain_has_no_order_to_give() {
+        let ship = ship(None);
+        let action = province_action(
+            JobTargetKind::OwnShipAndProvince,
+            province(),
+            None,
+            Some(&ship),
+        );
+        assert_eq!(action.leader, None, "nobody is silently substituted");
+        assert!(
+            action
+                .obstacle
+                .as_deref()
+                .is_some_and(|o| o.contains("no captain")),
+            "the obstacle is stated where the choice is made"
+        );
+    }
+
+    #[test]
+    fn a_captained_ship_is_ordered_by_its_captain() {
+        let ship = ship(Some(9));
+        let action = province_action(
+            JobTargetKind::OwnShipAndProvince,
+            province(),
+            None,
+            Some(&ship),
+        );
+        assert_eq!(
+            action.target,
+            Some(JobTarget::ShipToProvince(ship.id, province()))
+        );
+        assert_eq!(action.leader, ship.captain);
+        assert_eq!(action.obstacle, None);
+    }
+
+    #[test]
+    fn no_chosen_force_means_nothing_to_confirm() {
+        let action = province_action(JobTargetKind::OwnArmy, province(), None, None);
+        assert_eq!(action.target, None);
+        assert_eq!(action.leader, None);
+    }
 }
