@@ -26,6 +26,9 @@ use bevy::prelude::*;
 use crate::view::{MapMode, MapView, ViewState};
 
 /// Neutral grey for provinces a mode has nothing to say about.
+///
+/// Mirrors `semantics.map_neutral` in the theme; kept as a constant here
+/// because the bake runs before any egui context exists.
 const NEUTRAL: [u8; 3] = [90, 90, 96];
 
 /// What one mode says about one province.

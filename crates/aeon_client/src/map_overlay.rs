@@ -14,13 +14,16 @@ use bevy_egui::{EguiContexts, egui};
 
 use crate::map_modes::MapReadout;
 use crate::scene::GLOBE_RADIUS;
+use crate::ui::theme::UiTheme;
 use crate::view::{MapView, Selection, ViewState, geo_to_unit};
 
 /// Draws province name labels and force badges over the focused globe.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_map_overlay(
     mut contexts: EguiContexts,
     view: Res<ViewState>,
     readout: Res<MapReadout>,
+    theme: Res<UiTheme>,
     cameras: Query<(&Camera, &GlobalTransform)>,
     provinces: Query<(&ProvinceRecord, &DisplayName, &GeoPosition)>,
     armies: Query<&ArmyRecord>,
@@ -91,11 +94,11 @@ pub fn draw_map_overlay(
 
         let font = egui::FontId::proportional(if selected { 15.0 } else { 12.5 });
         let text_color = if selected {
-            egui::Color32::from_rgb(255, 236, 150)
+            egui::Color32::from(theme.semantics.map_label_selected)
         } else if entry.is_some_and(|entry| entry.alert) {
-            egui::Color32::from_rgb(255, 180, 170)
+            egui::Color32::from(theme.semantics.map_label_alert)
         } else {
-            egui::Color32::from_rgb(238, 238, 244)
+            egui::Color32::from(theme.semantics.map_label)
         };
         // A dark drop-shadow first, for legibility over any region colour.
         painter.text(
@@ -103,7 +106,7 @@ pub fn draw_map_overlay(
             egui::Align2::CENTER_CENTER,
             &label,
             font.clone(),
-            egui::Color32::from_black_alpha(200),
+            egui::Color32::from(theme.semantics.map_label_shadow),
         );
         painter.text(pos, egui::Align2::CENTER_CENTER, &label, font, text_color);
     }

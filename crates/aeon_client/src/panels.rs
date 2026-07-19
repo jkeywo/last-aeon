@@ -38,6 +38,7 @@ use crate::forecast_view::{AvailabilityView, ForecastCache};
 use crate::jobs_ui::{JobForm, UiCommandQueue};
 use crate::map_modes::MapReadout;
 use crate::sim_driver::{SPEED_STEPS, TimeControl};
+use crate::ui::theme::{TargetState, UiTheme};
 use crate::view::{MapMode, MapView, SearchState, Selection, ViewState};
 
 /// Character lookup shared across the panel helpers.
@@ -206,6 +207,7 @@ pub struct PanelData<'w, 's> {
     province_records: Query<'w, 's, &'static ProvinceRecord>,
     cache: Res<'w, ForecastCache>,
     readout: Res<'w, MapReadout>,
+    theme: Res<'w, UiTheme>,
 }
 
 /// What the inspector's context-job section is anchored to.
@@ -361,7 +363,7 @@ fn draw_context_jobs(
                                     ui, def.target, content, politics, player_org, data, form,
                                 );
                             }
-                            draw_forecast(ui, content, cache, form);
+                            draw_forecast(ui, content, &data.theme, cache, form);
                             confirm_job(ui, key, cache, form, queue);
                         });
                     }
@@ -405,7 +407,7 @@ fn draw_context_jobs(
                 if expanded {
                     ui.indent(key.to_string(), |ui| {
                         pick_leader(ui, &eligible_leaders(), form);
-                        draw_forecast(ui, content, cache, form);
+                        draw_forecast(ui, content, &data.theme, cache, form);
                         confirm_job(ui, key, cache, form, queue);
                     });
                 }
@@ -443,9 +445,12 @@ fn draw_context_jobs(
                         // An obstacle is stated where the choice is made,
                         // not discovered after pressing Confirm.
                         if let Some(obstacle) = &action.obstacle {
-                            ui.colored_label(egui::Color32::from_rgb(225, 175, 80), obstacle);
+                            ui.colored_label(
+                                data.theme.semantics.target(TargetState::IneligibleFixable),
+                                obstacle,
+                            );
                         }
-                        draw_forecast(ui, content, cache, form);
+                        draw_forecast(ui, content, &data.theme, cache, form);
                         confirm_job(ui, key, cache, form, queue);
                     });
                 }
@@ -454,7 +459,10 @@ fn draw_context_jobs(
     }
 
     if let Some(notice) = &form.notice {
-        ui.colored_label(egui::Color32::from_rgb(220, 60, 60), notice);
+        ui.colored_label(
+            data.theme.semantics.target(TargetState::IneligibleFixable),
+            notice,
+        );
     }
 }
 
@@ -463,15 +471,13 @@ fn permille_text(value: Permille) -> String {
     format!("{}.{}%", value / 10, value % 10)
 }
 
-/// Colour and label for a graded outcome.
-fn result_style(kind: JobResultKind) -> (&'static str, egui::Color32) {
+/// The name of a graded outcome; its colour comes from the theme.
+fn result_label(kind: JobResultKind) -> &'static str {
     match kind {
-        JobResultKind::CriticalSuccess => {
-            ("Critical success", egui::Color32::from_rgb(120, 220, 130))
-        }
-        JobResultKind::Success => ("Success", egui::Color32::from_rgb(150, 200, 140)),
-        JobResultKind::Failure => ("Failure", egui::Color32::from_rgb(220, 170, 90)),
-        JobResultKind::Disaster => ("Disaster", egui::Color32::from_rgb(220, 90, 90)),
+        JobResultKind::CriticalSuccess => "Critical success",
+        JobResultKind::Success => "Success",
+        JobResultKind::Failure => "Failure",
+        JobResultKind::Disaster => "Disaster",
     }
 }
 
@@ -513,6 +519,7 @@ fn confirm_job(
 fn draw_forecast(
     ui: &mut egui::Ui,
     content: &ContentSet,
+    theme: &UiTheme,
     cache: &ForecastCache,
     form: &mut JobForm,
 ) {
@@ -579,7 +586,8 @@ fn draw_forecast(
              today. It moves with the leader you choose and their skill.",
         );
         for result in &view.results {
-            let (label, colour) = result_style(result.kind);
+            let label = result_label(result.kind);
+            let colour = theme.semantics.outcome(result.kind);
             ui.horizontal(|ui| {
                 ui.colored_label(colour, permille_text(result.chance));
                 let mut text = label.to_owned();
@@ -601,7 +609,7 @@ fn draw_forecast(
         // Personal risks: conditional on a bad outcome, not on the order.
         for risk in &view.risks {
             ui.colored_label(
-                egui::Color32::from_rgb(220, 140, 90),
+                theme.semantics.target(TargetState::NotInteractable),
                 format!(
                     "{:?} risk — {} on a failure, {} on a disaster",
                     risk.tag,
@@ -619,7 +627,7 @@ fn draw_forecast(
         // A military operation is settled after the roll, not by it.
         if let Some(op) = view.military_op {
             ui.colored_label(
-                egui::Color32::from_rgb(150, 180, 230),
+                theme.semantics.target(TargetState::AlreadyDoing),
                 format!("Then contested in the field ({op:?})"),
             )
             .on_hover_text(
@@ -632,7 +640,7 @@ fn draw_forecast(
 
         if let Some(reason) = &view.blocked {
             ui.colored_label(
-                egui::Color32::from_rgb(220, 60, 60),
+                theme.semantics.target(TargetState::IneligibleFixable),
                 format!("Cannot start: {reason}"),
             );
         }
@@ -663,6 +671,12 @@ fn draw_forecast(
                     ),
                     None => "Chance of a success or better.".to_owned(),
                 };
+                let state = if chosen {
+                    TargetState::AlreadyDoing
+                } else {
+                    TargetState::Valid
+                };
+                let label = egui::RichText::new(label).color(theme.semantics.target(state));
                 if ui
                     .selectable_label(chosen, label)
                     .on_hover_text(hint)
@@ -686,9 +700,21 @@ fn draw_forecast(
                             .map(|def| def.title.clone())
                             .unwrap_or_else(|| key.to_string())
                     });
+                    // A refusal the player can lift reads differently from
+                    // one they cannot.
+                    let state = match option.availability {
+                        aeon_sim::LeaderAvailability::Ineligible(_) => {
+                            TargetState::StructurallyIneligible
+                        }
+                        _ => TargetState::IneligibleFixable,
+                    };
                     ui.add_enabled(
                         false,
-                        egui::Button::new(format!("{} — {reason}", option.name)).frame(false),
+                        egui::Button::new(
+                            egui::RichText::new(format!("{} — {reason}", option.name))
+                                .color(theme.semantics.target(state)),
+                        )
+                        .frame(false),
                     )
                     .on_disabled_hover_text(format!(
                         "{} cannot lead this: {}.",
@@ -970,6 +996,7 @@ pub fn draw_panels(
         return;
     };
     let date = clock.date;
+    let theme = &data.theme;
     let player_org = player.as_ref().and_then(|p| p.0);
 
     let chars: BTreeMap<CharacterId, CharacterParts> = data
@@ -1090,7 +1117,7 @@ pub fn draw_panels(
             if let Some(over) = &over {
                 ui.separator();
                 ui.colored_label(
-                    egui::Color32::from_rgb(220, 60, 60),
+                    egui::Color32::from(theme.semantics.urgent),
                     format!("CAMPAIGN OVER — {}", over.reason),
                 );
             }
@@ -1185,9 +1212,9 @@ pub fn draw_panels(
                             .on_hover_text("Threats to your holdings. Click one to go to it.");
                         for item in &data.readout.situation {
                             let colour = if item.urgent {
-                                egui::Color32::from_rgb(235, 110, 100)
+                                egui::Color32::from(theme.semantics.urgent)
                             } else {
-                                egui::Color32::from_rgb(228, 190, 110)
+                                egui::Color32::from(theme.semantics.notable)
                             };
                             if ui
                                 .add(egui::Button::new(
@@ -1383,11 +1410,11 @@ pub fn draw_panels(
                                     ui.horizontal(|ui| {
                                         ui.label("Order");
                                         let colour = if state.in_unrest() {
-                                            egui::Color32::from_rgb(230, 90, 90)
+                                            egui::Color32::from(theme.semantics.urgent)
                                         } else if percent < 50 {
-                                            egui::Color32::from_rgb(225, 175, 80)
+                                            egui::Color32::from(theme.semantics.notable)
                                         } else {
-                                            egui::Color32::from_rgb(140, 200, 140)
+                                            egui::Color32::from(theme.semantics.calm)
                                         };
                                         ui.colored_label(colour, format!("{percent}%"))
                                             .on_hover_text(
@@ -1396,7 +1423,7 @@ pub fn draw_panels(
                                     });
                                     if let Some(days) = state.days_to_revolt() {
                                         ui.colored_label(
-                                            egui::Color32::from_rgb(230, 90, 90),
+                                            egui::Color32::from(theme.semantics.urgent),
                                             format!("In unrest — revolts in {days} days"),
                                         )
                                         .on_hover_text(
@@ -1505,7 +1532,7 @@ pub fn draw_panels(
                                 }
                                 if record.defunct {
                                     ui.colored_label(
-                                        egui::Color32::from_rgb(220, 60, 60),
+                                        egui::Color32::from(theme.semantics.urgent),
                                         "DEFUNCT",
                                     );
                                 }
@@ -1559,11 +1586,15 @@ pub fn draw_panels(
                                             };
                                             let owes_out = entry.debtor == id;
                                             let colour = match (entry.kind, owes_out) {
-                                                (aeon_sim::ObligationKind::Grievance, _) => {
-                                                    egui::Color32::from_rgb(224, 130, 120)
+                                                (aeon_sim::ObligationKind::Grievance, _) => theme
+                                                    .semantics
+                                                    .target(TargetState::IneligibleFixable),
+                                                (_, true) => {
+                                                    egui::Color32::from(theme.semantics.notable)
                                                 }
-                                                (_, true) => egui::Color32::from_rgb(224, 190, 120),
-                                                (_, false) => egui::Color32::from_rgb(150, 200, 150),
+                                                (_, false) => {
+                                                    egui::Color32::from(theme.semantics.valid)
+                                                }
                                             };
                                             let mut detail = format!(
                                                 "{}

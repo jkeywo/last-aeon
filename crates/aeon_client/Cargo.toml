@@ -17,6 +17,8 @@ aeon_data = { workspace = true }
 aeon_sim = { workspace = true }
 bevy = { workspace = true, default-features = true }
 bevy_egui = { workspace = true }
+ron = { workspace = true }
+serde = { workspace = true }
 
 # Transitive dependencies use getrandom for non-gameplay randomness; on the
 # web target its JavaScript backend must be enabled explicitly (paired with

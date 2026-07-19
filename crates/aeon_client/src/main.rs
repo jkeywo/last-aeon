@@ -16,6 +16,7 @@ mod panels;
 mod scene;
 mod selection;
 mod sim_driver;
+mod ui;
 mod view;
 
 use aeon_sim::AeonSimPlugin;
@@ -49,6 +50,7 @@ fn main() {
         .init_resource::<forecast_view::AvailabilityView>()
         .init_resource::<jobs_ui::LogFilter>()
         .init_resource::<map_modes::MapReadout>()
+        .init_resource::<ui::theme::UiTheme>()
         .add_systems(
             Startup,
             (
@@ -82,6 +84,7 @@ fn main() {
         .add_systems(
             EguiPrimaryContextPass,
             (
+                ui::theme::apply_theme,
                 map_overlay::draw_map_overlay,
                 panels::draw_panels,
                 jobs_ui::draw_popups,

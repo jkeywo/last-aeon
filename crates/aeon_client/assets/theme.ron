@@ -1,0 +1,85 @@
+// The interface's design tokens.
+//
+// This file is the whole appearance of the game: no colour, size or
+// spacing should be written as a literal anywhere in the client. It is
+// meant to be replaced wholesale by a designed token set, so keep it a
+// flat list of values with no logic in it.
+//
+// Authored for a dark interface sitting over a near-black 3D viewport
+// (#04050a), with panels that must not fight a coloured political map
+// showing through behind them.
+(
+    palette: (
+        window:        (r:  4, g:  5, b: 10),
+        panel:         (r: 18, g: 20, b: 27, a: 242),
+        panel_alt:     (r: 24, g: 27, b: 35),
+        popup:         (r: 26, g: 29, b: 38, a: 250),
+        inactive:      (r: 34, g: 38, b: 48),
+        hovered:       (r: 46, g: 52, b: 65),
+        active:        (r: 62, g: 70, b: 86),
+        open:          (r: 52, g: 59, b: 74),
+        disabled:      (r: 26, g: 29, b: 36),
+        text:          (r: 222, g: 224, b: 232),
+        text_weak:     (r: 142, g: 148, b: 162),
+        heading:       (r: 236, g: 226, b: 196),
+        link:          (r: 138, g: 176, b: 226),
+        border:        (r: 44, g: 49, b: 61),
+        border_strong: (r: 82, g: 90, b: 108),
+        selection:     (r: 58, g: 78, b: 112),
+    ),
+    typography: (
+        heading: 17,
+        body: 13,
+        small: 11,
+        monospace: 12,
+    ),
+    spacing: (
+        item_gap_x: 8,
+        item_gap_y: 4,
+        panel_margin: 10,
+        indent: 16,
+        button_padding: 8,
+        row_height: 20,
+    ),
+    shape: (
+        radius_small: 3,
+        radius_large: 5,
+        stroke_hairline: 1,
+        stroke_normal: 1,
+    ),
+    semantics: (
+        // The five things a target can be. These must stay visually
+        // distinct from one another at body-text size against `panel`.
+        valid:                  (r: 120, g: 190, b: 130),
+        already_doing:          (r: 122, g: 166, b: 224),
+        ineligible_fixable:     (r: 224, g: 130, b: 120),
+        ineligible_structural:  (r: 148, g: 152, b: 162),
+        not_interactable:       (r: 206, g: 150, b: 92),
+
+        // A job's graded outcomes, warm to cold.
+        critical_success: (r: 130, g: 214, b: 142),
+        success:          (r: 150, g: 200, b: 140),
+        failure:          (r: 220, g: 170, b: 90),
+        disaster:         (r: 220, g: 92, b: 92),
+
+        // How loudly something is asking to be dealt with.
+        urgent:  (r: 235, g: 110, b: 100),
+        notable: (r: 228, g: 190, b: 110),
+        calm:    (r: 140, g: 200, b: 140),
+
+        // The four stores, so a figure is recognisable anywhere.
+        wealth:    (r: 226, g: 196, b: 110),
+        manpower:  (r: 170, g: 190, b: 220),
+        supplies:  (r: 176, g: 196, b: 150),
+        influence: (r: 200, g: 160, b: 220),
+
+        // The map. `map_border` is baked into the province texture, so it
+        // is a flat colour rather than a blend.
+        map_neutral:        (r: 90, g: 90, b: 96),
+        map_border:         (r: 12, g: 12, b: 14),
+        map_label:          (r: 238, g: 238, b: 244),
+        map_label_shadow:   (r: 0, g: 0, b: 0, a: 200),
+        map_label_selected: (r: 255, g: 236, b: 150),
+        map_label_alert:    (r: 255, g: 180, b: 170),
+    ),
+)
