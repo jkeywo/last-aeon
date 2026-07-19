@@ -5,56 +5,25 @@
 //! handed, so an arm can be read — and changed — without reference to its
 //! neighbours.
 
-use aeon_core::calendar::GameDate;
-use aeon_data::ContentSet;
 use aeon_data::model::{HouseTier, OrgKind};
 use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
 use aeon_sim::obligations::ObligationRecord;
 use aeon_sim::order::ORDER_MAX;
 use aeon_sim::politics::{CharacterView, opinion_of};
 use aeon_sim::presence::Location;
-use aeon_sim::{CharacterId, OrgId, PlayerCommand, PoliticsIndex, TitleHolder};
+use aeon_sim::{PlayerCommand, TitleHolder};
 use bevy_egui::egui;
 
-use crate::jobs_ui::{JobForm, UiCommandQueue};
 use crate::ui::actions::{JobScope, draw_context_jobs};
-use crate::ui::data::{CharacterParts, PanelData};
-use crate::ui::lookup::Lookup;
-use crate::ui::picker::PickerState;
+use crate::ui::data::CharacterParts;
+use crate::ui::panel::{PanelCtx, PanelOut};
 use crate::ui::theme::TargetState;
 use crate::ui::widgets::{kind_label, linked, resource_readout};
-use crate::view::{MapMode, MapView, Selection, ViewState};
-
-/// Everything the inspector reads, gathered once by the caller.
-pub struct Inspector<'a, 'w, 's> {
-    /// Names, labels and hover summaries.
-    pub lookup: &'a Lookup<'a>,
-    /// The frame's world queries.
-    pub data: &'a PanelData<'w, 's>,
-    /// The authored content.
-    pub content: &'a ContentSet,
-    /// The political index, for resolving ids to entities.
-    pub politics: &'a PoliticsIndex,
-    /// Today.
-    pub date: GameDate,
-    /// The active map mode, so a province can explain its own colour.
-    pub mode: MapMode,
-    /// The player's house, if they have one.
-    pub player_org: Option<OrgId>,
-    /// Its current head.
-    pub player_head: Option<CharacterId>,
-}
+use crate::view::{MapView, Selection};
 
 /// Draws the inspector for whatever is currently selected.
-pub fn draw_inspector(
-    ui: &mut egui::Ui,
-    ctx: &Inspector,
-    view: &mut ViewState,
-    form: &mut JobForm,
-    queue: &mut UiCommandQueue,
-    picker: &mut PickerState,
-) {
-    match view.selected {
+pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
+    match out.view.selected {
         None => {
             ui.label("Select a body, province, house, or character.");
         }
@@ -82,8 +51,8 @@ pub fn draw_inspector(
                     );
                     ui.end_row();
                 });
-                if ui.button("Open strategic view").clicked() {
-                    view.view = MapView::Body(id);
+                if ui.button("Open strategic out.view").clicked() {
+                    out.view.view = MapView::Body(id);
                 }
             }
         }
@@ -117,7 +86,7 @@ pub fn draw_inspector(
                     match holder {
                         Some(TitleHolder::Org(org)) => {
                             if linked(ui, &ctx.lookup.org_name(org), &ctx.lookup.org_hover(org)) {
-                                view.selected = Some(Selection::Org(org));
+                                out.view.selected = Some(Selection::Org(org));
                             }
                         }
                         Some(TitleHolder::Character(character)) => {
@@ -128,7 +97,7 @@ pub fn draw_inspector(
                                 .map(|(r, ..)| r.name.clone())
                                 .unwrap_or_default();
                             if linked(ui, &name, &ctx.lookup.char_hover(character)) {
-                                view.selected = Some(Selection::Character(character));
+                                out.view.selected = Some(Selection::Character(character));
                             }
                         }
                         _ => {
@@ -215,7 +184,7 @@ pub fn draw_inspector(
                             if let Some((general, ..)) = ctx.lookup.chars.get(&army.general) {
                                 ui.label("·");
                                 if linked(ui, &general.name, &ctx.lookup.char_hover(army.general)) {
-                                    view.selected = Some(Selection::Character(army.general));
+                                    out.view.selected = Some(Selection::Character(army.general));
                                 }
                             }
                         });
@@ -228,7 +197,7 @@ pub fn draw_inspector(
                             {
                                 ui.label("·");
                                 if linked(ui, &c.name, &ctx.lookup.char_hover(captain)) {
-                                    view.selected = Some(Selection::Character(captain));
+                                    out.view.selected = Some(Selection::Character(captain));
                                 }
                             }
                         });
@@ -244,11 +213,11 @@ pub fn draw_inspector(
                         org,
                         ctx.player_head,
                         ctx.date,
-                        &ctx.data,
+                        ctx.data,
                         &ctx.data.cache,
-                        form,
-                        queue,
-                        picker,
+                        out.form,
+                        out.queue,
+                        out.picker,
                     );
                 }
             }
@@ -274,7 +243,7 @@ pub fn draw_inspector(
                                         &ctx.lookup.org_name(liege),
                                         &ctx.lookup.org_hover(liege),
                                     ) {
-                                        view.selected = Some(Selection::Org(liege));
+                                        out.view.selected = Some(Selection::Org(liege));
                                     }
                                 }
                                 None => {
@@ -308,7 +277,7 @@ pub fn draw_inspector(
                                 &head_record.name,
                                 &ctx.lookup.char_hover(head_record.id),
                             ) {
-                                view.selected = Some(Selection::Character(head_record.id));
+                                out.view.selected = Some(Selection::Character(head_record.id));
                             }
                         }
                         None => {
@@ -388,7 +357,7 @@ Weight {}",
                                     &ctx.lookup.org_name(other),
                                     &ctx.lookup.org_hover(other),
                                 ) {
-                                    view.selected = Some(Selection::Org(other));
+                                    out.view.selected = Some(Selection::Org(other));
                                 }
                             });
                         }
@@ -402,7 +371,7 @@ Weight {}",
                         continue;
                     }
                     if linked(ui, &record.name, &ctx.lookup.char_hover(*char_id)) {
-                        view.selected = Some(Selection::Character(*char_id));
+                        out.view.selected = Some(Selection::Character(*char_id));
                     }
                 }
             }
@@ -423,7 +392,7 @@ Weight {}",
                 if let Some(org) = record.organisation {
                     ui.horizontal(|ui| {
                         if linked(ui, &ctx.lookup.org_name(org), &ctx.lookup.org_hover(org)) {
-                            view.selected = Some(Selection::Org(org));
+                            out.view.selected = Some(Selection::Org(org));
                         }
                     });
                 }
@@ -449,7 +418,7 @@ Weight {}",
                                     continue;
                                 }
                                 if ui.selectable_label(false, *name).clicked() {
-                                    queue.0.push(PlayerCommand::Travel {
+                                    out.queue.0.push(PlayerCommand::Travel {
                                         character: id,
                                         destination: *province,
                                     });
@@ -491,7 +460,7 @@ Weight {}",
                     ui.horizontal(|ui| {
                         ui.label("Spouse:");
                         if linked(ui, &spouse_record.name, &ctx.lookup.char_hover(spouse)) {
-                            view.selected = Some(Selection::Character(spouse));
+                            out.view.selected = Some(Selection::Character(spouse));
                         }
                     });
                 }
@@ -500,7 +469,7 @@ Weight {}",
                         ui.horizontal(|ui| {
                             ui.label("Parent:");
                             if linked(ui, &parent_record.name, &ctx.lookup.char_hover(*parent)) {
-                                view.selected = Some(Selection::Character(*parent));
+                                out.view.selected = Some(Selection::Character(*parent));
                             }
                         });
                     }
@@ -546,11 +515,11 @@ Weight {}",
                         org,
                         ctx.player_head,
                         ctx.date,
-                        &ctx.data,
+                        ctx.data,
                         &ctx.data.cache,
-                        form,
-                        queue,
-                        picker,
+                        out.form,
+                        out.queue,
+                        out.picker,
                     );
                 }
             }

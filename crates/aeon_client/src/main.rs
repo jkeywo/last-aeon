@@ -44,7 +44,6 @@ fn main() {
         .init_resource::<jobs_ui::JobForm>()
         .init_resource::<view::SearchState>()
         .init_resource::<view::MapMode>()
-        .init_resource::<view::MapLedger>()
         .init_resource::<scene::GlobeBake>()
         .init_resource::<forecast_view::ForecastCache>()
         .init_resource::<forecast_view::AvailabilityView>()
@@ -52,6 +51,7 @@ fn main() {
         .init_resource::<map_modes::MapReadout>()
         .init_resource::<ui::theme::UiTheme>()
         .init_resource::<ui::picker::PickerState>()
+        .init_resource::<ui::dock::DockState>()
         .add_systems(
             Startup,
             (

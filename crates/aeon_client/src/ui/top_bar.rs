@@ -11,11 +11,12 @@ use aeon_sim::{CampaignOver, CharacterId, OrgId};
 use bevy_egui::egui;
 
 use crate::sim_driver::{SPEED_STEPS, TimeControl};
-use crate::ui::icons::draw_mode_bar;
+use crate::ui::dock::{DockSide, DockState, PanelKind};
+use crate::ui::icons::{draw_mode_bar, draw_panel_icon};
 use crate::ui::lookup::Lookup;
 use crate::ui::theme::UiTheme;
 use crate::ui::widgets::{draw_identity, resource_readout};
-use crate::view::{MapLedger, MapMode, MapView, SearchState, ViewState};
+use crate::view::{MapMode, MapView, SearchState, ViewState};
 
 /// Draws the top bar into the shell's viewport.
 #[allow(clippy::too_many_arguments)]
@@ -32,13 +33,13 @@ pub fn draw_top_bar(
     control: &mut TimeControl,
     view: &mut ViewState,
     mode: &mut MapMode,
-    ledger: &mut MapLedger,
+    dock: &mut DockState,
     search: &mut SearchState,
 ) {
     egui::Panel::top("top-bar").show(viewport, |ui| {
         ui.horizontal(|ui| {
             // Who you are, first and always.
-            if let Some(hit) = draw_identity(ui, &lookup, player_org, player_head) {
+            if let Some(hit) = draw_identity(ui, lookup, player_org, player_head) {
                 view.selected = Some(hit);
             }
             ui.separator();
@@ -80,8 +81,6 @@ pub fn draw_top_bar(
                     if let Some(picked) = draw_mode_bar(ui, theme, *mode) {
                         *mode = picked;
                     }
-                    ui.toggle_value(&mut ledger.open, "?")
-                        .on_hover_text("Show what the map's colours mean.");
                 }
             }
 
@@ -101,7 +100,43 @@ pub fn draw_top_bar(
                         .desired_width(150.0),
                 );
                 ui.label("\u{1f50d}");
+                ui.separator();
+                draw_panel_toggles(ui, dock);
             });
         });
     });
+}
+
+/// The panel toggles, at the right end of the top bar.
+///
+/// Left-click docks a panel to the left, right-click to the right, and
+/// clicking the side it is already on puts it away. The right-click
+/// affordance is spelled out in the tooltip, because a control whose
+/// second function is invisible has, for most players, only one.
+fn draw_panel_toggles(ui: &mut egui::Ui, dock: &mut DockState) {
+    for kind in PanelKind::ALL {
+        let side = dock.side_of(*kind);
+        let (rect, response) = ui.allocate_exact_size(egui::vec2(24.0, 24.0), egui::Sense::click());
+        let visuals = ui.style().interact_selectable(&response, side.is_some());
+        if side.is_some() || response.hovered() {
+            ui.painter().rect_filled(rect, 3.0, visuals.bg_fill);
+        }
+        draw_panel_icon(ui.painter(), rect, *kind, visuals.fg_stroke.color);
+
+        let where_now = match side {
+            Some(side) => format!("Showing on the {}.", side.label()),
+            None => "Not showing.".to_owned(),
+        };
+        let response = response.on_hover_text(format!(
+            "{}\n{}\n\n{}\nClick to dock left, right-click to dock right.",
+            kind.title(),
+            kind.description(),
+            where_now,
+        ));
+        if response.clicked() {
+            dock.toggle(*kind, DockSide::Left);
+        } else if response.secondary_clicked() {
+            dock.toggle(*kind, DockSide::Right);
+        }
+    }
 }

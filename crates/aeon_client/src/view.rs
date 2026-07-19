@@ -53,18 +53,6 @@ pub struct SearchState {
     pub query: String,
 }
 
-/// Whether the map's colour ledger is summoned.
-///
-/// Closed by default. A legend that is always on screen spends permanent
-/// space explaining a mode the player has usually already learned to read —
-/// so it is available on demand, next to the control that changes what it
-/// would explain.
-#[derive(Resource, Copy, Clone, Debug, Default)]
-pub struct MapLedger {
-    /// Whether the ledger is showing.
-    pub open: bool,
-}
-
 /// How the political globe colours provinces.
 ///
 /// Each mode answers one strategic question. The political modes paint

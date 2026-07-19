@@ -29,9 +29,10 @@ use aeon_sim::{ActiveJob, CharacterId, CharacterRecord, OrgId, OrgRecord, TitleR
 use crate::forecast_view::{AvailabilityView, ForecastCache};
 use crate::jobs_ui::JobForm;
 use crate::map_modes::MapReadout;
+use crate::ui::dock::DockState;
 use crate::ui::picker::PickerState;
 use crate::ui::theme::UiTheme;
-use crate::view::{MapLedger, MapMode};
+use crate::view::MapMode;
 
 /// The two resources an in-progress action writes to.
 ///
@@ -43,11 +44,12 @@ pub struct JobUi<'w> {
     pub picker: ResMut<'w, PickerState>,
 }
 
-/// The map-view resources.
+/// How the player is looking at things: what the map shows, and where
+/// the panels are.
 #[derive(SystemParam)]
 pub struct MapUi<'w> {
     pub mode: ResMut<'w, MapMode>,
-    pub ledger: ResMut<'w, MapLedger>,
+    pub dock: ResMut<'w, DockState>,
 }
 
 /// Character lookup shared across the panel helpers.
@@ -98,7 +100,6 @@ pub struct PanelData<'w, 's> {
     pub order: Query<'w, 's, (&'static ProvinceRecord, &'static ProvincialOrder)>,
     pub obligations: Option<Res<'w, Obligations>>,
     pub availability: Res<'w, AvailabilityView>,
-    pub character_records: Query<'w, 's, &'static CharacterRecord>,
     pub province_records: Query<'w, 's, &'static ProvinceRecord>,
     pub cache: Res<'w, ForecastCache>,
     pub readout: Res<'w, MapReadout>,

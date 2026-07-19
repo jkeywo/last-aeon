@@ -16,6 +16,7 @@
 
 use bevy_egui::egui;
 
+use crate::ui::dock::PanelKind;
 use crate::ui::theme::UiTheme;
 use crate::view::MapMode;
 
@@ -133,6 +134,60 @@ pub fn draw_mode_icon(
                 colour,
                 egui::Stroke::NONE,
             ));
+        }
+    }
+}
+
+/// Draws `kind`'s icon inside `rect`, in `colour`.
+///
+/// As with the map modes, these differ by silhouette: a magnifier, a
+/// stack of rows, lines of text, a clock, and a column of swatches.
+pub fn draw_panel_icon(
+    painter: &egui::Painter,
+    rect: egui::Rect,
+    kind: PanelKind,
+    colour: egui::Color32,
+) {
+    let r = rect.shrink(rect.width() * 0.2);
+    let at = |x: f32, y: f32| egui::pos2(r.left() + r.width() * x, r.top() + r.height() * y);
+    let width = (r.width() * 0.11).max(1.0);
+    let stroke = egui::Stroke::new(width, colour);
+    let line = |a: egui::Pos2, b: egui::Pos2| painter.line_segment([a, b], stroke);
+
+    match kind {
+        // A magnifier: looking closely at one thing.
+        PanelKind::Inspector => {
+            painter.circle_stroke(at(0.42, 0.42), r.width() * 0.3, stroke);
+            line(at(0.64, 0.64), at(0.9, 0.9));
+        }
+        // Stacked rows: many things, listed.
+        PanelKind::Listing => {
+            for y in [0.2, 0.5, 0.8] {
+                line(at(0.1, y), at(0.9, y));
+            }
+        }
+        // Lines of text, ragged like a log.
+        PanelKind::Log => {
+            line(at(0.1, 0.22), at(0.9, 0.22));
+            line(at(0.1, 0.5), at(0.7, 0.5));
+            line(at(0.1, 0.78), at(0.82, 0.78));
+        }
+        // A clock: work with time left to run.
+        PanelKind::Jobs => {
+            painter.circle_stroke(r.center(), r.width() * 0.4, stroke);
+            line(r.center(), at(0.5, 0.2));
+            line(r.center(), at(0.75, 0.6));
+        }
+        // A column of swatches: the colour key.
+        PanelKind::Ledger => {
+            for y in [0.15, 0.45, 0.75] {
+                painter.rect_filled(
+                    egui::Rect::from_min_max(at(0.12, y), at(0.36, y + 0.16)),
+                    1.0,
+                    colour,
+                );
+                line(at(0.48, y + 0.08), at(0.88, y + 0.08));
+            }
         }
     }
 }

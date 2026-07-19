@@ -1,22 +1,23 @@
-//! Things drawn over the map rather than beside it: the situation strip
-//! that says what needs attention, and the summonable colour ledger.
+//! The situation strip: what needs attention, and a way straight to it.
 //!
-//! Neither takes layout space. The strip is a standing offer of somewhere
-//! to go; the ledger appears only when asked for.
+//! Drawn over the map rather than beside it, and takes no layout space —
+//! it is a standing offer of somewhere to go, not a panel.
+//!
+//! The colour ledger used to live here too. It is now a dockable panel,
+//! because unlike this strip it is something a player may want to keep
+//! beside the map while reading it.
 
 use bevy_egui::egui;
 
 use crate::map_modes::MapReadout;
 use crate::ui::theme::UiTheme;
-use crate::view::{MapLedger, MapMode, MapView, Selection, ViewState};
+use crate::view::{MapView, Selection, ViewState};
 
-/// Draws the situation strip and, if it is summoned, the colour ledger.
+/// Draws the situation strip over the map.
 pub fn draw_overlays(
     ctx: &egui::Context,
     theme: &UiTheme,
     readout: &MapReadout,
-    mode: MapMode,
-    ledger: &MapLedger,
     view: &mut ViewState,
 ) {
     // ------------------------------------------------------------------
@@ -48,35 +49,6 @@ pub fn draw_overlays(
                             }
                         }
                     });
-                });
-            });
-    }
-
-    // ------------------------------------------------------------------
-    // Legend for the active map mode.
-    // ------------------------------------------------------------------
-    if ledger.open && matches!(view.view, MapView::Body(_)) && !readout.legend.is_empty() {
-        let bottom = ctx.viewport_rect().height() - 180.0;
-        egui::Area::new("map-legend".into())
-            .fixed_pos(egui::pos2(276.0, bottom))
-            .show(ctx, |ui| {
-                egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.strong(mode.label()).on_hover_text(mode.description());
-                    for (label, colour) in &readout.legend {
-                        ui.horizontal(|ui| {
-                            let (rect, _) = ui
-                                .allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
-                            ui.painter().rect_filled(
-                                rect,
-                                2.0,
-                                egui::Color32::from_rgb(colour[0], colour[1], colour[2]),
-                            );
-                            ui.label(label);
-                        });
-                    }
-                    if !mode.is_political() {
-                        ui.weak("Values are printed on the map.");
-                    }
                 });
             });
     }
