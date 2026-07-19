@@ -16,11 +16,11 @@ use bevy::app::App;
 use bevy::prelude::{Component, IntoScheduleConfigs, World};
 use serde::{Deserialize, Serialize};
 
-use crate::clock::{CampaignClock, DailyTick, TickSet};
+use crate::clock::{DailyTick, TickSet};
 use crate::economy::OrgResources;
 use crate::forces::{ArmyRecord, ForcesIndex, ShipRecord};
 use crate::ids::{OrgId, ProvinceId};
-use crate::jobs::{LogChannel, LogEntry, LogSubject, MessageLog};
+use crate::jobs::{LogChannel, LogEntry, LogSubject};
 use crate::map::MapIndex;
 use crate::politics::{CharacterRecord, PoliticsIndex, TitleHolder, TitleRecord};
 use crate::presence::{CharacterLocation, Location};
@@ -94,9 +94,7 @@ pub fn defence_factor_permille(order: i32) -> i64 {
 
 /// Reads a province's order, defaulting for provinces without the component.
 pub fn province_order(world: &World, province: ProvinceId) -> ProvincialOrder {
-    world
-        .get_resource::<MapIndex>()
-        .and_then(|index| index.provinces.get(&province).copied())
+    crate::access::province_entity(world, province)
         .and_then(|entity| world.get::<ProvincialOrder>(entity))
         .copied()
         .unwrap_or_default()
@@ -104,10 +102,7 @@ pub fn province_order(world: &World, province: ProvinceId) -> ProvincialOrder {
 
 /// Applies a change to a province's order, returning the new value.
 pub fn adjust_order(world: &mut World, province: ProvinceId, delta: i32) -> i32 {
-    let Some(entity) = world
-        .get_resource::<MapIndex>()
-        .and_then(|index| index.provinces.get(&province).copied())
-    else {
+    let Some(entity) = crate::access::province_entity(world, province) else {
         return 0;
     };
     match world.get_mut::<ProvincialOrder>(entity) {
@@ -128,10 +123,7 @@ pub fn adjust_order(world: &mut World, province: ProvinceId, delta: i32) -> i32 
 /// Sets a province's order outright and clears its unrest clock, as when
 /// it changes hands.
 pub fn reset_order(world: &mut World, province: ProvinceId, order: i32) {
-    let Some(entity) = world
-        .get_resource::<MapIndex>()
-        .and_then(|index| index.provinces.get(&province).copied())
-    else {
+    let Some(entity) = crate::access::province_entity(world, province) else {
         return;
     };
     let state = ProvincialOrder {
@@ -261,10 +253,8 @@ pub fn pressures(world: &World, province: ProvinceId) -> OrderPressures {
                     .is_some_and(|location| location.0 == Location::Province(province));
                 member && here
             });
-            pressures.shortage = index
-                .orgs
-                .get(&holder)
-                .and_then(|entity| world.get::<OrgResources>(*entity))
+            pressures.shortage = crate::access::org_entity(world, holder)
+                .and_then(|entity| world.get::<OrgResources>(entity))
                 .is_some_and(|resources| resources.supplies <= 0);
         }
     }
@@ -281,15 +271,7 @@ pub fn daily_order(world: &mut World) {
     if world.get_resource::<MapIndex>().is_none() {
         return;
     }
-    let date = world.resource::<CampaignClock>().date;
-    let provinces: Vec<ProvinceId> = world
-        .resource::<MapIndex>()
-        .provinces
-        .keys()
-        .copied()
-        .collect();
-
-    for province in provinces {
+    for province in crate::access::province_ids(world) {
         let pressures = pressures(world, province);
         let before = province_order(world, province);
         let delta = pressures.daily_delta(before.order);
@@ -318,11 +300,11 @@ pub fn daily_order(world: &mut World) {
         // Telegraph the danger on the first day of the clock, however the
         // province came to be in unrest.
         if state.unrest_days == 1 {
-            let name = province_name(world, province);
+            let name = crate::access::province_name(world, province);
             let holder = crate::warfare::province_holder(world, province);
-            world.resource_mut::<MessageLog>().entries.push(
-                LogEntry::new(
-                    date,
+            crate::access::log(
+                world,
+                LogEntry::line(
                     format!(
                         "{name} has fallen into open unrest. Without a garrison or \
                          the ruler's presence it will throw off its allegiance in \
@@ -344,8 +326,7 @@ pub fn daily_order(world: &mut World) {
 /// A province throws off its ruler: the title falls vacant and can be
 /// taken by whoever can hold it.
 fn revolt(world: &mut World, province: ProvinceId) {
-    let date = world.resource::<CampaignClock>().date;
-    let name = province_name(world, province);
+    let name = crate::access::province_name(world, province);
     let holder = crate::warfare::province_holder(world, province);
 
     let title = {
@@ -363,29 +344,15 @@ fn revolt(world: &mut World, province: ProvinceId) {
     }
     reset_order(world, province, ORDER_AFTER_REVOLT);
 
-    world.resource_mut::<MessageLog>().entries.push(
-        LogEntry::new(
-            date,
+    crate::access::log(
+        world,
+        LogEntry::line(
             format!("{name} has revolted and thrown off its ruler. The province stands unclaimed."),
             LogChannel::Politics,
         )
         .by(holder)
         .about(LogSubject::Province(province)),
     );
-}
-
-/// A province's display name, for log lines and agency reasons.
-pub fn province_display_name(world: &World, province: ProvinceId) -> String {
-    province_name(world, province)
-}
-
-fn province_name(world: &World, province: ProvinceId) -> String {
-    world
-        .get_resource::<MapIndex>()
-        .and_then(|index| index.provinces.get(&province).copied())
-        .and_then(|entity| world.get::<crate::map::DisplayName>(entity))
-        .map(|name| name.0.clone())
-        .unwrap_or_else(|| province.to_string())
 }
 
 /// Every province held by an organisation, in stable ID order.

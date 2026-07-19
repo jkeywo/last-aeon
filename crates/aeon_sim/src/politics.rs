@@ -20,7 +20,7 @@ use serde::{Deserialize, Serialize};
 use crate::clock::{CampaignClock, DailyTick, TickSet, YearlyPulse};
 use crate::ids::{BodyId, CharacterId, OfficeId, OrgId, ProvinceId, TitleId};
 use crate::map::MapIndex;
-use crate::state::{CampaignIds, CampaignSeed, ContentDb};
+use crate::state::{CampaignIds, ContentDb};
 
 /// Age of legal adulthood, in years.
 pub const ADULT_AGE: i64 = 18;
@@ -946,23 +946,8 @@ fn mortality_permille(age_years: i64) -> u32 {
     }
 }
 
-/// All living character IDs, in stable-ID order.
-fn living_characters(world: &World) -> Vec<CharacterId> {
-    let index = world.resource::<PoliticsIndex>();
-    index
-        .characters
-        .iter()
-        .filter(|(_, entity)| {
-            world
-                .get::<CharacterRecord>(**entity)
-                .is_some_and(|r| r.alive())
-        })
-        .map(|(id, _)| *id)
-        .collect()
-}
-
 fn character_entity(world: &World, id: CharacterId) -> Entity {
-    world.resource::<PoliticsIndex>().characters[&id]
+    crate::access::character_entity(world, id).expect("indexed")
 }
 
 /// Yearly mortality and everything a death sets in motion.
@@ -970,17 +955,14 @@ pub fn yearly_mortality(world: &mut World) {
     if world.get_resource::<PoliticsIndex>().is_none() {
         return;
     }
-    let seed = world.resource::<CampaignSeed>().0;
     let date = world.resource::<CampaignClock>().date;
     let year = date.calendar().year;
 
-    for id in living_characters(world) {
-        let entity = character_entity(world, id);
-        let age = world
-            .get::<CharacterRecord>(entity)
+    for id in crate::access::living_character_ids(world) {
+        let age = crate::access::character(world, id)
             .expect("indexed")
             .age_years(date);
-        let mut rng = DeterministicRng::derive(seed, "mortality", &[id.raw(), year as u64]);
+        let mut rng = crate::access::derived_rng(world, "mortality", &[id.raw(), year as u64]);
         if rng.check_permille(mortality_permille(age)) {
             process_death(world, id, date);
         }
@@ -1026,24 +1008,19 @@ pub fn process_death(world: &mut World, id: CharacterId, date: GameDate) {
         })
         .unwrap_or_default();
     for (ship, name, owner) in vacated {
-        if let Some(entity) = world
-            .get_resource::<crate::forces::ForcesIndex>()
-            .and_then(|forces| forces.ships.get(&ship).copied())
+        if let Some(entity) = crate::access::ship_entity(world, ship)
             && let Some(mut record) = world.get_mut::<crate::forces::ShipRecord>(entity)
         {
             record.captain = None;
         }
-        world
-            .resource_mut::<crate::jobs::MessageLog>()
-            .entries
-            .push(
-                crate::jobs::LogEntry::new(
-                    date,
-                    format!("{name} is without a captain."),
-                    crate::jobs::LogChannel::Military,
-                )
-                .by(Some(owner)),
-            );
+        crate::access::log(
+            world,
+            crate::jobs::LogEntry::line(
+                format!("{name} is without a captain."),
+                crate::jobs::LogChannel::Military,
+            )
+            .by(Some(owner)),
+        );
     }
 
     // Succession for any organisation the character led.
@@ -1142,7 +1119,7 @@ pub fn house_heir(world: &World, org: OrgId, dead: CharacterId) -> Option<Charac
 /// Resolves the change of head after a death, per the organisation's
 /// succession rules.
 fn resolve_succession(world: &mut World, org_id: OrgId, dead: CharacterId, date: GameDate) {
-    let org_entity = world.resource::<PoliticsIndex>().orgs[&org_id];
+    let org_entity = crate::access::org_entity(world, org_id).expect("indexed");
     let kind = world.get::<OrgRecord>(org_entity).expect("indexed").kind;
 
     match kind {
@@ -1183,7 +1160,7 @@ fn resolve_succession(world: &mut World, org_id: OrgId, dead: CharacterId, date:
 
 /// Vacates a personally held title; a Consul vacancy opens the contest.
 fn vacate_personal_title(world: &mut World, title_id: TitleId, date: GameDate) {
-    let title_entity = world.resource::<PoliticsIndex>().titles[&title_id];
+    let title_entity = crate::access::title_entity(world, title_id).expect("indexed");
     let kind = {
         let mut title = world.get_mut::<TitleRecord>(title_entity).expect("indexed");
         title.holder = TitleHolder::Vacant;
@@ -1204,10 +1181,7 @@ fn vacate_personal_title(world: &mut World, title_id: TitleId, date: GameDate) {
 fn consul_candidates(world: &World) -> Vec<CharacterId> {
     let index = world.resource::<PoliticsIndex>();
     let date = world.resource::<CampaignClock>().date;
-    let sanctora: Option<OrgId> = index.orgs.iter().find_map(|(org_id, entity)| {
-        let record = world.get::<OrgRecord>(*entity).expect("indexed");
-        (record.kind == OrgKind::SanctoraImperim).then_some(*org_id)
-    });
+    let sanctora = crate::access::sanctora_org(world);
     let heads: Vec<CharacterId> = index
         .orgs
         .values()
@@ -1232,25 +1206,18 @@ fn consul_candidates(world: &World) -> Vec<CharacterId> {
 /// A candidate's standing in the Consular contest. Opinion terms let
 /// political jobs move the outcome.
 fn consul_score(world: &World, candidate: CharacterId, jitter: i64) -> i64 {
-    let index = world.resource::<PoliticsIndex>();
-    let entity = index.characters[&candidate];
-    let skills = world.get::<CharacterSkills>(entity).expect("indexed").0;
+    let skills = crate::access::on_character::<CharacterSkills>(world, candidate)
+        .expect("indexed")
+        .0;
 
-    let sanctora_members: Vec<CharacterId> = index
-        .characters
-        .iter()
-        .filter(|(id, e)| {
-            **id != candidate
-                && world.get::<CharacterRecord>(**e).is_some_and(|r| {
-                    r.alive()
-                        && r.organisation.is_some_and(|org| {
-                            world
-                                .get::<OrgRecord>(index.orgs[&org])
-                                .is_some_and(|o| o.kind == OrgKind::SanctoraImperim)
-                        })
-                })
+    let sanctora = crate::access::sanctora_org(world);
+    let sanctora_members: Vec<CharacterId> = crate::access::living_character_ids(world)
+        .into_iter()
+        .filter(|id| {
+            *id != candidate
+                && sanctora.is_some()
+                && crate::access::organisation_of(world, *id) == sanctora
         })
-        .map(|(id, _)| *id)
         .collect();
 
     let opinion_sum: i64 = sanctora_members
@@ -1268,7 +1235,6 @@ pub fn daily_appointments(world: &mut World) {
         return;
     }
     let date = world.resource::<CampaignClock>().date;
-    let seed = world.resource::<CampaignSeed>().0;
 
     // Consular contest.
     if let Some(contest) = world.get_resource::<ConsulContest>().cloned()
@@ -1276,15 +1242,12 @@ pub fn daily_appointments(world: &mut World) {
     {
         let mut best: Option<(i64, CharacterId)> = None;
         for candidate in &contest.candidates {
-            let entity = character_entity(world, *candidate);
-            let alive = world
-                .get::<CharacterRecord>(entity)
-                .is_some_and(|r| r.alive());
+            let alive = crate::access::character(world, *candidate).is_some_and(|r| r.alive());
             if !alive {
                 continue;
             }
-            let mut rng = DeterministicRng::derive(
-                seed,
+            let mut rng = crate::access::derived_rng(
+                world,
                 "consul-appointment",
                 &[contest.title.raw(), candidate.raw()],
             );
@@ -1299,24 +1262,14 @@ pub fn daily_appointments(world: &mut World) {
         }
 
         if let Some((_, winner)) = best {
-            let title_entity = world.resource::<PoliticsIndex>().titles[&contest.title];
+            let title_entity = crate::access::title_entity(world, contest.title).expect("indexed");
             world
                 .get_mut::<TitleRecord>(title_entity)
                 .expect("indexed")
                 .holder = TitleHolder::Character(winner);
             // The new Consul heads the Sanctora Imperim.
-            let sanctora: Option<Entity> = {
-                let index = world.resource::<PoliticsIndex>();
-                index
-                    .orgs
-                    .values()
-                    .find(|entity| {
-                        world
-                            .get::<OrgRecord>(**entity)
-                            .is_some_and(|o| o.kind == OrgKind::SanctoraImperim)
-                    })
-                    .copied()
-            };
+            let sanctora = crate::access::sanctora_org(world)
+                .and_then(|org| crate::access::org_entity(world, org));
             if let Some(sanctora_entity) = sanctora {
                 world
                     .get_mut::<OrgRecord>(sanctora_entity)
@@ -1330,16 +1283,7 @@ pub fn daily_appointments(world: &mut World) {
     }
 
     // Office appointments: the Consul fills vacant Sanctora offices.
-    let consul: Option<CharacterId> = {
-        let index = world.resource::<PoliticsIndex>();
-        index.titles.values().find_map(|entity| {
-            let title = world.get::<TitleRecord>(*entity).expect("indexed");
-            match (title.kind, title.holder) {
-                (TitleKind::Consul, TitleHolder::Character(holder)) => Some(holder),
-                _ => None,
-            }
-        })
-    };
+    let consul = crate::access::consul(world);
     let vacant_offices: Vec<OfficeId> = {
         let index = world.resource::<PoliticsIndex>();
         index
@@ -1358,14 +1302,9 @@ pub fn daily_appointments(world: &mut World) {
     };
     if consul.is_some() {
         for office_id in vacant_offices {
-            let org = {
-                let index = world.resource::<PoliticsIndex>();
-                let entity = index.offices[&office_id];
-                world
-                    .get::<OfficeRecord>(entity)
-                    .expect("indexed")
-                    .organisation
-            };
+            let org = crate::access::office(world, office_id)
+                .expect("indexed")
+                .organisation;
             // Best living member of the office's organisation by
             // command + stewardship; ties to the lower ID.
             let candidates: Vec<(i64, CharacterId)> = {
@@ -1389,7 +1328,7 @@ pub fn daily_appointments(world: &mut World) {
             };
             let appointee = candidates.iter().min().map(|(_, id)| *id);
             if let Some(appointee) = appointee {
-                let entity = world.resource::<PoliticsIndex>().offices[&office_id];
+                let entity = crate::access::office_entity(world, office_id).expect("indexed");
                 let mut office = world.get_mut::<OfficeRecord>(entity).expect("indexed");
                 office.holder = Some(appointee);
                 office.vacant_since = None;
@@ -1403,14 +1342,12 @@ pub fn yearly_marriages(world: &mut World) {
     if world.get_resource::<PoliticsIndex>().is_none() {
         return;
     }
-    let seed = world.resource::<CampaignSeed>().0;
     let date = world.resource::<CampaignClock>().date;
     let year = date.calendar().year;
 
-    for id in living_characters(world) {
-        let entity = character_entity(world, id);
-        let record = world.get::<CharacterRecord>(entity).expect("indexed");
-        let lineage = world.get::<Lineage>(entity).expect("indexed");
+    for id in crate::access::living_character_ids(world) {
+        let record = crate::access::character(world, id).expect("indexed");
+        let lineage = crate::access::on_character::<Lineage>(world, id).expect("indexed");
         if lineage.spouse.is_some()
             || record.organisation.is_none()
             || record.age_years(date) < ADULT_AGE
@@ -1421,20 +1358,20 @@ pub fn yearly_marriages(world: &mut World) {
         let my_parents = lineage.parents.clone();
 
         // A marriage prospect this year at all?
-        let mut rng = DeterministicRng::derive(seed, "marriage", &[id.raw(), year as u64]);
+        let mut rng = crate::access::derived_rng(world, "marriage", &[id.raw(), year as u64]);
         if !rng.check_permille(300) {
             continue;
         }
 
         // Best mutual match among unmarried adults of the other gender.
         let mut best: Option<(i64, CharacterId)> = None;
-        for other in living_characters(world) {
+        for other in crate::access::living_character_ids(world) {
             if other <= id {
                 continue; // each pair considered once, initiator = lower ID
             }
-            let other_entity = character_entity(world, other);
-            let other_record = world.get::<CharacterRecord>(other_entity).expect("indexed");
-            let other_lineage = world.get::<Lineage>(other_entity).expect("indexed");
+            let other_record = crate::access::character(world, other).expect("indexed");
+            let other_lineage =
+                crate::access::on_character::<Lineage>(world, other).expect("indexed");
             if other_record.gender == gender
                 || other_lineage.spouse.is_some()
                 || other_record.organisation.is_none()
@@ -1463,6 +1400,7 @@ pub fn yearly_marriages(world: &mut World) {
         }
 
         if let Some((_, partner)) = best {
+            let entity = character_entity(world, id);
             let partner_entity = character_entity(world, partner);
             world.get_mut::<Lineage>(entity).expect("indexed").spouse = Some(partner);
             world
@@ -1478,13 +1416,11 @@ pub fn yearly_births(world: &mut World) {
     if world.get_resource::<PoliticsIndex>().is_none() {
         return;
     }
-    let seed = world.resource::<CampaignSeed>().0;
     let date = world.resource::<CampaignClock>().date;
     let year = date.calendar().year;
 
-    for id in living_characters(world) {
-        let entity = character_entity(world, id);
-        let record = world.get::<CharacterRecord>(entity).expect("indexed");
+    for id in crate::access::living_character_ids(world) {
+        let record = crate::access::character(world, id).expect("indexed");
         // Iterate mothers only so each couple rolls once.
         if record.gender != Gender::Female {
             continue;
@@ -1493,12 +1429,13 @@ pub fn yearly_births(world: &mut World) {
         if !(ADULT_AGE..=45).contains(&age) {
             continue;
         }
-        let Some(father) = world.get::<Lineage>(entity).expect("indexed").spouse else {
+        let Some(father) = crate::access::on_character::<Lineage>(world, id)
+            .expect("indexed")
+            .spouse
+        else {
             continue;
         };
-        let father_entity = character_entity(world, father);
-        if !world
-            .get::<CharacterRecord>(father_entity)
+        if !crate::access::character(world, father)
             .expect("indexed")
             .alive()
         {
@@ -1520,7 +1457,7 @@ pub fn yearly_births(world: &mut World) {
         };
 
         let chance = (250 - children * 40).max(50) as u32;
-        let mut rng = DeterministicRng::derive(seed, "birth", &[id.raw(), year as u64]);
+        let mut rng = crate::access::derived_rng(world, "birth", &[id.raw(), year as u64]);
         if !rng.check_permille(chance) {
             continue;
         }
@@ -1544,26 +1481,11 @@ fn spawn_child(
     };
 
     // House: the head's line wins, then the lower-ID parent's house.
-    let (mother_org, father_org) = {
-        let index = world.resource::<PoliticsIndex>();
-        let m = world
-            .get::<CharacterRecord>(index.characters[&mother])
-            .expect("indexed")
-            .organisation;
-        let f = world
-            .get::<CharacterRecord>(index.characters[&father])
-            .expect("indexed")
-            .organisation;
-        (m, f)
-    };
+    let mother_org = crate::access::organisation_of(world, mother);
+    let father_org = crate::access::organisation_of(world, father);
     let org = {
-        let index = world.resource::<PoliticsIndex>();
         let is_head = |c: CharacterId, o: Option<OrgId>| {
-            o.is_some_and(|org_id| {
-                world
-                    .get::<OrgRecord>(index.orgs[&org_id])
-                    .is_some_and(|r| r.head == Some(c))
-            })
+            o.is_some_and(|org_id| crate::access::org_head(world, org_id) == Some(c))
         };
         if is_head(mother, mother_org) {
             mother_org
@@ -1588,11 +1510,7 @@ fn spawn_child(
         Gender::Female => pool.female[rng.roll(pool.female.len() as u64) as usize].clone(),
     };
     let surname = org.and_then(|org_id| {
-        let index = world.resource::<PoliticsIndex>();
-        let key = &world
-            .get::<OrgRecord>(index.orgs[&org_id])
-            .expect("indexed")
-            .key;
+        let key = &crate::access::org(world, org_id).expect("indexed").key;
         content
             .organisations
             .get(key)
@@ -1625,14 +1543,9 @@ fn spawn_child(
             crate::jobs::CharacterCondition::default(),
         ))
         .id();
-    let mother_home = {
-        let index = world.resource::<PoliticsIndex>();
-        index
-            .characters
-            .get(&mother)
-            .and_then(|e| world.get::<crate::presence::CharacterLocation>(*e))
-            .map(|l| l.0)
-    };
+    let mother_home =
+        crate::access::on_character::<crate::presence::CharacterLocation>(world, mother)
+            .map(|l| l.0);
     if let Some(crate::presence::Location::Province(province)) = mother_home {
         world
             .entity_mut(entity)

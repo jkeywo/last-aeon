@@ -156,17 +156,7 @@ pub fn form_army(
         *counter += 1;
         *counter
     };
-    let owner_name = {
-        let politics = world.resource::<PoliticsIndex>();
-        let content = world.resource::<crate::state::ContentDb>();
-        politics
-            .orgs
-            .get(&owner)
-            .and_then(|e| world.get::<crate::politics::OrgRecord>(*e))
-            .and_then(|r| content.0.organisations.get(&r.key))
-            .map(|d| d.name.clone())
-            .unwrap_or_else(|| owner.to_string())
-    };
+    let owner_name = crate::access::org_name(world, owner);
     let id: ArmyId = world.resource_mut::<CampaignIds>().0.allocate();
     let entity = world
         .spawn(ArmyRecord {
@@ -194,7 +184,7 @@ pub fn disband_army(world: &mut World, army: ArmyId) {
     };
     let record = world.get::<ArmyRecord>(entity).cloned();
     if let Some(record) = record {
-        let org_entity = world.resource::<PoliticsIndex>().orgs[&record.owner];
+        let org_entity = crate::access::org_entity(world, record.owner).expect("indexed");
         if let Some(mut resources) = world.get_mut::<crate::economy::OrgResources>(org_entity) {
             resources.manpower += record.manpower;
         }
@@ -215,7 +205,7 @@ pub fn monthly_upkeep(world: &mut World) {
         let Some(owner) = world.get::<ShipRecord>(*entity).map(|s| s.owner) else {
             continue;
         };
-        let org_entity = world.resource::<PoliticsIndex>().orgs[&owner];
+        let org_entity = crate::access::org_entity(world, owner).expect("indexed");
         if let Some(mut resources) = world.get_mut::<crate::economy::OrgResources>(org_entity) {
             resources.supplies = (resources.supplies - 1).max(0);
         }

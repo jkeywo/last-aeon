@@ -53,10 +53,8 @@ impl OrgResources {
 /// Effective legitimacy: authored standing plus title bonuses.
 pub fn effective_legitimacy(world: &World, org: OrgId) -> i32 {
     let index = world.resource::<PoliticsIndex>();
-    let base = index
-        .orgs
-        .get(&org)
-        .and_then(|e| world.get::<OrgResources>(*e))
+    let base = crate::access::org_entity(world, org)
+        .and_then(|e| world.get::<OrgResources>(e))
         .map(|r| r.legitimacy)
         .unwrap_or(0);
     let holds_paramountcy = index.titles.values().any(|entity| {
@@ -127,15 +125,9 @@ pub fn monthly_economy(world: &mut World) {
         }
     }
 
-    let orgs: Vec<OrgId> = world
-        .resource::<PoliticsIndex>()
-        .orgs
-        .keys()
-        .copied()
-        .collect();
-    for org in orgs {
+    for org in crate::access::org_ids(world) {
         let cap = i64::from(effective_legitimacy(world, org));
-        let entity = world.resource::<PoliticsIndex>().orgs[&org];
+        let entity = crate::access::org_entity(world, org).expect("indexed");
         let Some(mut resources) = world.get_mut::<OrgResources>(entity) else {
             continue;
         };

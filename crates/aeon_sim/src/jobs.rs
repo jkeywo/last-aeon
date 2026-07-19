@@ -10,7 +10,6 @@
 use std::collections::BTreeMap;
 
 use aeon_core::calendar::GameDate;
-use aeon_core::rng::DeterministicRng;
 use aeon_data::model::{JobCategory, JobDef, JobResultKind, JobTargetKind, RiskTag};
 use aeon_data::{ContentKey, ScriptEffect, ScriptHost};
 use bevy::app::App;
@@ -19,11 +18,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::clock::{CampaignClock, DailyTick, MonthlyPulse, TickSet};
 use crate::ids::{ArmyId, CharacterId, JobId, OrgId, ProvinceId, ShipId};
-use crate::politics::{
-    CampaignOver, CharacterRecord, OpinionEntry, OpinionLedger, OrgRecord, PlayerHouse,
-    PoliticsIndex, process_death,
-};
-use crate::state::{CampaignIds, CampaignSeed, ContentDb};
+use crate::politics::{CampaignOver, OpinionEntry, OpinionLedger, PlayerHouse, process_death};
+use crate::state::{CampaignIds, ContentDb};
 
 /// What a job acts on.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -167,6 +163,12 @@ impl LogEntry {
             subject: None,
             channel,
         }
+    }
+
+    /// A new entry without a date, for [`crate::access::log`] to stamp
+    /// with the campaign date when it is appended.
+    pub fn line(text: impl Into<String>, channel: LogChannel) -> Self {
+        Self::new(GameDate::from_days(0), text, channel)
     }
 
     /// Attributes the entry to an organisation.
@@ -436,13 +438,7 @@ pub fn leader_availability(
     leader: CharacterId,
     date: GameDate,
 ) -> LeaderAvailability {
-    let Some(index) = world.get_resource::<PoliticsIndex>() else {
-        return LeaderAvailability::Ineligible(JobRejection::IneligibleLeader);
-    };
-    let Some(entity) = index.characters.get(&leader) else {
-        return LeaderAvailability::Ineligible(JobRejection::IneligibleLeader);
-    };
-    let Some(record) = world.get::<CharacterRecord>(*entity) else {
+    let Some(record) = crate::access::character(world, leader) else {
         return LeaderAvailability::Ineligible(JobRejection::IneligibleLeader);
     };
     if !record.alive()
@@ -452,8 +448,7 @@ pub fn leader_availability(
         return LeaderAvailability::Ineligible(JobRejection::IneligibleLeader);
     }
 
-    let condition = world
-        .get::<CharacterCondition>(*entity)
+    let condition = crate::access::on_character::<CharacterCondition>(world, leader)
         .copied()
         .unwrap_or_default();
     if !condition.can_lead(date) {
@@ -525,30 +520,18 @@ fn leader_eligible(
 }
 
 fn owned_army(world: &World, owner: OrgId, army: ArmyId) -> bool {
-    world
-        .get_resource::<crate::forces::ForcesIndex>()
-        .and_then(|forces| forces.armies.get(&army).copied())
-        .and_then(|entity| world.get::<crate::forces::ArmyRecord>(entity))
-        .is_some_and(|record| record.owner == owner)
+    crate::access::army(world, army).is_some_and(|record| record.owner == owner)
 }
 
 fn target_valid(world: &World, def: &JobDef, owner: OrgId, target: JobTarget) -> bool {
-    let index = world.resource::<PoliticsIndex>();
-    let province_known = |id: ProvinceId| {
-        world
-            .resource::<crate::map::MapIndex>()
-            .provinces
-            .contains_key(&id)
-    };
+    let province_known = |id: ProvinceId| crate::access::province_entity(world, id).is_some();
     match (def.target, target) {
         (JobTargetKind::None, JobTarget::None) => true,
-        (JobTargetKind::Character, JobTarget::Character(id)) => index
-            .characters
-            .get(&id)
-            .and_then(|e| world.get::<CharacterRecord>(*e))
-            .is_some_and(|r| r.alive()),
+        (JobTargetKind::Character, JobTarget::Character(id)) => {
+            crate::access::character(world, id).is_some_and(|r| r.alive())
+        }
         (JobTargetKind::Organisation, JobTarget::Org(id)) => {
-            id != owner && index.orgs.contains_key(&id)
+            id != owner && crate::access::org_entity(world, id).is_some()
         }
         (JobTargetKind::Province, JobTarget::Province(id)) => province_known(id),
         (JobTargetKind::OwnArmy, JobTarget::OwnArmy(army)) => owned_army(world, owner, army),
@@ -557,11 +540,7 @@ fn target_valid(world: &World, def: &JobDef, owner: OrgId, target: JobTarget) ->
         }
         (JobTargetKind::OwnShipAndProvince, JobTarget::ShipToProvince(ship, province)) => {
             province_known(province)
-                && world
-                    .get_resource::<crate::forces::ForcesIndex>()
-                    .and_then(|forces| forces.ships.get(&ship).copied())
-                    .and_then(|entity| world.get::<crate::forces::ShipRecord>(entity))
-                    .is_some_and(|record| record.owner == owner)
+                && crate::access::ship(world, ship).is_some_and(|record| record.owner == owner)
         }
         _ => false,
     }
@@ -590,41 +569,28 @@ pub fn validate_start(
     // A ship is ordered by its captain, nobody else — the same rule
     // armies have always had for their general.
     if let JobTarget::ShipToProvince(ship, _) = target {
-        let captain = world
-            .get_resource::<crate::forces::ForcesIndex>()
-            .and_then(|forces| forces.ships.get(&ship).copied())
-            .and_then(|entity| world.get::<crate::forces::ShipRecord>(entity))
-            .and_then(|record| record.captain);
+        let captain = crate::access::ship(world, ship).and_then(|record| record.captain);
         if captain != Some(leader) {
             return Err(JobRejection::IneligibleLeader);
         }
     }
     // Army operations are led by the army's general, nobody else.
     if let JobTarget::OwnArmy(army) | JobTarget::ArmyToProvince(army, _) = target {
-        let general = world
-            .get_resource::<crate::forces::ForcesIndex>()
-            .and_then(|forces| forces.armies.get(&army).copied())
-            .and_then(|entity| world.get::<crate::forces::ArmyRecord>(entity))
-            .map(|record| record.general);
+        let general = crate::access::army(world, army).map(|record| record.general);
         if general != Some(leader) {
             return Err(JobRejection::IneligibleLeader);
         }
     }
-    let affordable = {
-        let index = world.resource::<PoliticsIndex>();
-        index
-            .orgs
-            .get(&org)
-            .and_then(|e| world.get::<crate::economy::OrgResources>(*e))
-            .is_some_and(|r| {
-                r.can_afford(
-                    def.wealth_cost,
-                    def.manpower_cost,
-                    def.supplies_cost,
-                    def.influence_cost,
-                )
-            })
-    };
+    let affordable = crate::access::org_entity(world, org)
+        .and_then(|e| world.get::<crate::economy::OrgResources>(e))
+        .is_some_and(|r| {
+            r.can_afford(
+                def.wealth_cost,
+                def.manpower_cost,
+                def.supplies_cost,
+                def.influence_cost,
+            )
+        });
     if !affordable {
         return Err(JobRejection::CannotAfford);
     }
@@ -654,7 +620,7 @@ pub fn start_job(
         )
     };
     {
-        let org_entity = world.resource::<PoliticsIndex>().orgs[&org];
+        let org_entity = crate::access::org_entity(world, org).expect("indexed");
         if let Some(mut resources) = world.get_mut::<crate::economy::OrgResources>(org_entity) {
             resources.spend(costs.0, costs.1, costs.2, costs.3);
         }
@@ -686,50 +652,25 @@ use crate::forecast::{result_weights, risk_permille};
 
 /// The character standing behind each effect role for a job.
 fn resolve_roles(world: &World, job: &ActiveJob) -> JobRoles {
-    let index = world.resource::<PoliticsIndex>();
-    let org_head = |org: OrgId| -> Option<CharacterId> {
-        index
-            .orgs
-            .get(&org)
-            .and_then(|e| world.get::<OrgRecord>(*e))
-            .and_then(|r| r.head)
-    };
-    let owner_record = index
-        .orgs
-        .get(&job.owner)
-        .and_then(|e| world.get::<OrgRecord>(*e));
+    let owner_record = crate::access::org(world, job.owner);
 
     let (target, target_head) = match job.target {
         JobTarget::Character(id) => (Some(id), None),
-        JobTarget::Org(org) => (org_head(org), org_head(org)),
+        JobTarget::Org(org) => {
+            let head = crate::access::org_head(world, org);
+            (head, head)
+        }
         _ => (None, None),
     };
 
-    let consul = index.titles.values().find_map(|entity| {
-        let title = world.get::<crate::politics::TitleRecord>(*entity)?;
-        match (title.kind, title.holder) {
-            (
-                crate::politics::TitleKind::Consul,
-                crate::politics::TitleHolder::Character(holder),
-            ) => Some(holder),
-            _ => None,
-        }
-    });
-
-    let sanctora_org = index.orgs.iter().find_map(|(org_id, entity)| {
-        let record = world.get::<OrgRecord>(*entity)?;
-        (record.kind == aeon_data::model::OrgKind::SanctoraImperim).then_some(*org_id)
-    });
-    let sanctora = index
-        .characters
-        .iter()
-        .filter(|(_, e)| {
-            world.get::<CharacterRecord>(**e).is_some_and(|r| {
-                r.alive() && sanctora_org.is_some() && r.organisation == sanctora_org
-            })
-        })
-        .map(|(id, _)| *id)
-        .collect();
+    let sanctora_org = crate::access::sanctora_org(world);
+    let sanctora = match sanctora_org {
+        Some(sanctora_org) => crate::access::living_character_ids(world)
+            .into_iter()
+            .filter(|id| crate::access::organisation_of(world, *id) == Some(sanctora_org))
+            .collect(),
+        None => Vec::new(),
+    };
 
     // Where the job acted: an explicit province target, the province an
     // ordered force stands in, or failing both the leader's own location.
@@ -737,11 +678,7 @@ fn resolve_roles(world: &World, job: &ActiveJob) -> JobRoles {
         JobTarget::Province(province)
         | JobTarget::ArmyToProvince(_, province)
         | JobTarget::ShipToProvince(_, province) => Some(province),
-        JobTarget::OwnArmy(army) => world
-            .get_resource::<crate::forces::ForcesIndex>()
-            .and_then(|forces| forces.armies.get(&army).copied())
-            .and_then(|entity| world.get::<crate::forces::ArmyRecord>(entity))
-            .map(|record| record.location),
+        JobTarget::OwnArmy(army) => crate::access::army(world, army).map(|record| record.location),
         _ => match crate::presence::character_location(world, job.leader) {
             Some(crate::presence::Location::Province(province)) => Some(province),
             _ => None,
@@ -753,59 +690,26 @@ fn resolve_roles(world: &World, job: &ActiveJob) -> JobRoles {
         target,
         target_head,
         owner_head: owner_record.and_then(|r| r.head),
-        liege_head: owner_record.and_then(|r| r.liege).and_then(org_head),
-        consul,
+        liege_head: owner_record
+            .and_then(|r| r.liege)
+            .and_then(|liege| crate::access::org_head(world, liege)),
+        consul: crate::access::consul(world),
         sanctora,
         province,
     }
 }
 
-fn display_name(world: &World, id: CharacterId) -> String {
-    let index = world.resource::<PoliticsIndex>();
-    index
-        .characters
-        .get(&id)
-        .and_then(|e| world.get::<CharacterRecord>(*e))
-        .map(|r| r.name.clone())
-        .unwrap_or_else(|| id.to_string())
-}
-
 fn target_name(world: &World, target: JobTarget) -> String {
     match target {
         JobTarget::None => String::new(),
-        JobTarget::Character(id) => display_name(world, id),
-        JobTarget::Org(org) => {
-            let index = world.resource::<PoliticsIndex>();
-            index
-                .orgs
-                .get(&org)
-                .and_then(|e| world.get::<OrgRecord>(*e))
-                .and_then(|r| {
-                    world
-                        .resource::<ContentDb>()
-                        .0
-                        .organisations
-                        .get(&r.key)
-                        .map(|d| d.name.clone())
-                })
-                .unwrap_or_else(|| org.to_string())
-        }
-        JobTarget::Province(id) => {
-            let map = world.resource::<crate::map::MapIndex>();
-            map.provinces
-                .get(&id)
-                .and_then(|e| world.get::<crate::map::DisplayName>(*e))
-                .map(|n| n.0.clone())
-                .unwrap_or_else(|| id.to_string())
-        }
-        JobTarget::OwnArmy(army) => world
-            .get_resource::<crate::forces::ForcesIndex>()
-            .and_then(|forces| forces.armies.get(&army).copied())
-            .and_then(|entity| world.get::<crate::forces::ArmyRecord>(entity))
+        JobTarget::Character(id) => crate::access::character_name(world, id),
+        JobTarget::Org(org) => crate::access::org_name(world, org),
+        JobTarget::Province(id) => crate::access::province_name(world, id),
+        JobTarget::OwnArmy(army) => crate::access::army(world, army)
             .map(|record| record.name.clone())
             .unwrap_or_default(),
         JobTarget::ArmyToProvince(_, province) | JobTarget::ShipToProvince(_, province) => {
-            target_name(world, JobTarget::Province(province))
+            crate::access::province_name(world, province)
         }
     }
 }
@@ -828,10 +732,10 @@ pub fn apply_effects(
     for effect in effects {
         match effect {
             ScriptEffect::Log { message } => {
-                world
-                    .resource_mut::<MessageLog>()
-                    .entries
-                    .push(LogEntry::new(date, message.clone(), LogChannel::Jobs).by(owner));
+                crate::access::log(
+                    world,
+                    LogEntry::line(message.clone(), LogChannel::Jobs).by(owner),
+                );
             }
             ScriptEffect::FormArmy { manpower, supplies } => {
                 let Some(owner) = owner else {
@@ -843,7 +747,7 @@ pub fn apply_effects(
                 // Validate against and deduct from the owner's pool;
                 // clamp to what actually exists.
                 let (manpower, supplies) = {
-                    let org_entity = world.resource::<PoliticsIndex>().orgs[&owner];
+                    let org_entity = crate::access::org_entity(world, owner).expect("indexed");
                     let Some(mut resources) =
                         world.get_mut::<crate::economy::OrgResources>(org_entity)
                     else {
@@ -862,12 +766,12 @@ pub fn apply_effects(
                 // transit musters at the organisation's first holding.
                 let location = match crate::presence::character_location(world, general) {
                     Some(crate::presence::Location::Province(province)) => Some(province),
-                    _ => {
-                        let index = world.resource::<PoliticsIndex>();
-                        let map = world.resource::<crate::map::MapIndex>();
-                        let _ = &index;
-                        map.province_ids.keys().next().copied()
-                    }
+                    _ => world
+                        .resource::<crate::map::MapIndex>()
+                        .province_ids
+                        .keys()
+                        .next()
+                        .copied(),
                 };
                 if let Some(location) = location {
                     crate::forces::form_army(world, owner, general, manpower, supplies, location);
@@ -888,7 +792,7 @@ pub fn apply_effects(
                     if from_id == toward_id {
                         continue;
                     }
-                    let entity = world.resource::<PoliticsIndex>().characters[&from_id];
+                    let entity = crate::access::character_entity(world, from_id).expect("indexed");
                     if let Some(mut ledger) = world.get_mut::<OpinionLedger>(entity) {
                         ledger.set(OpinionEntry {
                             target: toward_id,
@@ -921,13 +825,7 @@ pub fn apply_effects(
                 // Obligations bind houses, so each role resolves to the
                 // organisation behind the character standing in it.
                 let house_of = |role: &str| -> Option<OrgId> {
-                    let character = roles.resolve_toward(role)?;
-                    let index = world.resource::<PoliticsIndex>();
-                    index
-                        .characters
-                        .get(&character)
-                        .and_then(|entity| world.get::<CharacterRecord>(*entity))
-                        .and_then(|record| record.organisation)
+                    crate::access::organisation_of(world, roles.resolve_toward(role)?)
                 };
                 let obligation_kind = match kind.as_str() {
                     "favour" => crate::obligations::ObligationKind::Favour,
@@ -989,7 +887,7 @@ pub fn apply_effects(
 /// Applies one personal-risk consequence to a character. Public so event
 /// systems (and tests) can reuse the exact job-risk semantics.
 pub fn apply_risk(world: &mut World, leader: CharacterId, tag: RiskTag, date: GameDate) {
-    let entity = world.resource::<PoliticsIndex>().characters[&leader];
+    let entity = crate::access::character_entity(world, leader).expect("indexed");
     match tag {
         RiskTag::Injury => {
             let mut condition = world
@@ -1011,17 +909,13 @@ pub fn apply_risk(world: &mut World, leader: CharacterId, tag: RiskTag, date: Ga
         }
         RiskTag::Scandal => {
             // Every living organisation head thinks less of the leader.
-            let heads: Vec<CharacterId> = {
-                let index = world.resource::<PoliticsIndex>();
-                index
-                    .orgs
-                    .values()
-                    .filter_map(|e| world.get::<OrgRecord>(*e).and_then(|r| r.head))
-                    .filter(|h| *h != leader)
-                    .collect()
-            };
+            let heads: Vec<CharacterId> = crate::access::org_ids(world)
+                .into_iter()
+                .filter_map(|org| crate::access::org_head(world, org))
+                .filter(|h| *h != leader)
+                .collect();
             for head in heads {
-                let head_entity = world.resource::<PoliticsIndex>().characters[&head];
+                let head_entity = crate::access::character_entity(world, head).expect("indexed");
                 if let Some(mut ledger) = world.get_mut::<OpinionLedger>(head_entity) {
                     ledger.set(OpinionEntry {
                         target: leader,
@@ -1044,7 +938,6 @@ pub fn resolve_due_jobs(world: &mut World) {
         return;
     }
     let date = world.resource::<CampaignClock>().date;
-    let seed = world.resource::<CampaignSeed>().0;
     let player = world.get_resource::<PlayerHouse>().and_then(|p| p.0);
 
     let due: Vec<(JobId, Entity)> = world
@@ -1065,18 +958,11 @@ pub fn resolve_due_jobs(world: &mut World) {
         let def = content.jobs[&job.def].clone();
 
         // A dead or removed leader abandons the job.
-        let leader_alive = {
-            let index = world.resource::<PoliticsIndex>();
-            index
-                .characters
-                .get(&job.leader)
-                .and_then(|e| world.get::<CharacterRecord>(*e))
-                .is_some_and(|r| r.alive())
-        };
+        let leader_alive = crate::access::character(world, job.leader).is_some_and(|r| r.alive());
         if !leader_alive {
-            world.resource_mut::<MessageLog>().entries.push(
-                LogEntry::new(
-                    date,
+            crate::access::log(
+                world,
+                LogEntry::line(
                     format!("'{}' was abandoned; its leader is gone.", def.title),
                     LogChannel::Jobs,
                 )
@@ -1090,8 +976,8 @@ pub fn resolve_due_jobs(world: &mut World) {
 
         // Outcome, rolled against exactly the table the forecast reports.
         let effectiveness = crate::forecast::effectiveness(world, job.leader, &def);
-        let mut rng = DeterministicRng::derive(
-            seed,
+        let mut rng = crate::access::derived_rng(
+            world,
             "job-resolution",
             &[job_id.raw(), date.days_since_epoch() as u64],
         );
@@ -1128,8 +1014,8 @@ pub fn resolve_due_jobs(world: &mut World) {
         if matches!(outcome, JobResultKind::Failure | JobResultKind::Disaster) {
             let disaster = outcome == JobResultKind::Disaster;
             for (index, tag) in def.risks.iter().enumerate() {
-                let mut risk_rng = DeterministicRng::derive(
-                    seed,
+                let mut risk_rng = crate::access::derived_rng(
+                    world,
                     "job-risk",
                     &[job_id.raw(), date.days_since_epoch() as u64, index as u64],
                 );
@@ -1140,7 +1026,7 @@ pub fn resolve_due_jobs(world: &mut World) {
         }
 
         let roles = resolve_roles(world, &job);
-        let leader_name = display_name(world, job.leader);
+        let leader_name = crate::access::character_name(world, job.leader);
         let target_label = target_name(world, job.target);
 
         // Authored result effects.
@@ -1157,9 +1043,9 @@ pub fn resolve_due_jobs(world: &mut World) {
             match effects {
                 Ok(effects) => apply_effects(world, &effects, &roles, Some(job.owner)),
                 Err(err) => {
-                    world.resource_mut::<MessageLog>().entries.push(
-                        LogEntry::new(
-                            date,
+                    crate::access::log(
+                        world,
+                        LogEntry::line(
                             format!("script error resolving '{}': {err}", def.title),
                             LogChannel::Jobs,
                         )
@@ -1178,8 +1064,9 @@ pub fn resolve_due_jobs(world: &mut World) {
                 .unwrap_or_else(|| {
                     format!("{leader_name} finished '{}' ({outcome:?}).", def.title)
                 });
-            world.resource_mut::<MessageLog>().entries.push(
-                LogEntry::new(date, text, LogChannel::Jobs)
+            crate::access::log(
+                world,
+                LogEntry::line(text, LogChannel::Jobs)
                     .by(Some(job.owner))
                     .about(LogSubject::Character(job.leader)),
             );

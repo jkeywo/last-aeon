@@ -1013,6 +1013,27 @@ entities:
         - strategic-map-intelligence-modes
         - egui-with-owned-design-tokens
 
+  - decision: world-read-access-module
+    core:
+      status: accepted
+      confidence: confirmed
+      title: One Module Answers World-Read Questions
+      summary: >-
+        The simulation crate has a single access module that answers
+        "give me this entity's record": records and entities by stable
+        ID, display names, the Consul and the Sanctora, stable-ID-ordered
+        ID collections, message-log date stamping, and campaign-seed
+        stream derivation. Systems no longer open-code the index-entity-
+        component walk, private display-name resolvers, or their own
+        seed fetching.
+      rationale:
+        - Every open-coded copy of these walks was a place the stable-ID-iteration and derived-stream rules could be silently broken; concentrating them makes the determinism discipline reviewable in one file.
+        - The migration was verified behaviour-identical by bit-equal acceptance hashes before and after, so the refactor carries no replay risk.
+      references:
+        - stable-id-ordered-iteration
+        - hand-rolled-deterministic-rng
+        - deterministic-campaign-simulation
+
   - decision: non-modal-character-picker
     core:
       status: accepted

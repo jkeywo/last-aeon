@@ -17,21 +17,20 @@
 //! player learns why — without exposing the roll that chose between
 //! near-equal options as though it were a certainty.
 
-use aeon_core::rng::DeterministicRng;
 use aeon_data::ContentKey;
 use aeon_data::model::{AiIntent, JobTargetKind};
 use bevy::prelude::World;
 
 use crate::clock::CampaignClock;
 use crate::economy::OrgResources;
-use crate::ids::{CharacterId, OrgId, ProvinceId};
+use crate::ids::{OrgId, ProvinceId};
 use crate::jobs::{
-    JobTarget, JobsIndex, LogChannel, LogEntry, LogSubject, MessageLog, start_job, validate_start,
+    JobTarget, JobsIndex, LogChannel, LogEntry, LogSubject, start_job, validate_start,
 };
 use crate::obligations::{ObligationKind, Obligations};
 use crate::order::{ORDER_START, held_provinces, province_order};
-use crate::politics::{CampaignOver, OrgRecord, PlayerHouse, PoliticsIndex};
-use crate::state::{CampaignSeed, ContentDb};
+use crate::politics::{CampaignOver, PlayerHouse};
+use crate::state::ContentDb;
 
 /// How many of the best-scoring intents a house will consider.
 const SHORTLIST: usize = 3;
@@ -81,20 +80,9 @@ fn job_for(world: &World, intent: AiIntent, expected: JobTargetKind) -> Option<C
 
 /// A house's resource position.
 fn resources(world: &World, org: OrgId) -> Option<OrgResources> {
-    world
-        .get_resource::<PoliticsIndex>()
-        .and_then(|index| index.orgs.get(&org).copied())
+    crate::access::org_entity(world, org)
         .and_then(|entity| world.get::<OrgResources>(entity))
         .copied()
-}
-
-/// The head of an organisation, if it has a living one.
-fn head_of(world: &World, org: OrgId) -> Option<CharacterId> {
-    world
-        .get_resource::<PoliticsIndex>()
-        .and_then(|index| index.orgs.get(&org).copied())
-        .and_then(|entity| world.get::<OrgRecord>(entity))
-        .and_then(|record| record.head)
 }
 
 /// Scores every pressure a house is under, best first.
@@ -124,7 +112,7 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
         }
     }
     if let Some((province, score, occupied)) = worst {
-        let name = crate::order::province_display_name(world, province);
+        let name = crate::access::province_name(world, province);
         // Troops answer an occupation; administration answers disorder.
         if occupied && let Some(job) = job_for(world, AiIntent::Muster, JobTargetKind::None) {
             intents.push(ScoredIntent {
@@ -178,7 +166,7 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
                 score: i64::from(weight) + 20,
                 reason: format!(
                     "{} owes us a favour",
-                    crate::crisis::org_display_name(world, debtor)
+                    crate::access::org_name(world, debtor)
                 ),
                 subject: Some(LogSubject::Org(debtor)),
                 explains: true,
@@ -196,7 +184,7 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
                 score: i64::from(weight),
                 reason: format!(
                     "{} holds a grievance against us",
-                    crate::crisis::org_display_name(world, aggrieved)
+                    crate::access::org_name(world, aggrieved)
                 ),
                 subject: Some(LogSubject::Org(aggrieved)),
                 explains: true,
@@ -277,28 +265,21 @@ pub fn ai_start_jobs(world: &mut World) {
         return;
     }
     let date = world.resource::<CampaignClock>().date;
-    let seed = world.resource::<CampaignSeed>().0;
     let player = world.get_resource::<PlayerHouse>().and_then(|p| p.0);
 
-    let orgs: Vec<OrgId> = {
-        let index = world.resource::<PoliticsIndex>();
-        index
-            .orgs
-            .iter()
-            .filter(|(org, entity)| {
-                Some(**org) != player
-                    && world.get::<OrgRecord>(**entity).is_some_and(|r| !r.defunct)
-            })
-            .map(|(org, _)| *org)
-            .collect()
-    };
+    let orgs: Vec<OrgId> = crate::access::org_ids(world)
+        .into_iter()
+        .filter(|org| {
+            Some(*org) != player && crate::access::org(world, *org).is_some_and(|r| !r.defunct)
+        })
+        .collect();
 
     for org in orgs {
-        let Some(head) = head_of(world, org) else {
+        let Some(head) = crate::access::org_head(world, org) else {
             continue;
         };
         let month = date.days_since_epoch() as u64 / 30;
-        let mut rng = DeterministicRng::derive(seed, "agency-choice", &[org.raw(), month]);
+        let mut rng = crate::access::derived_rng(world, "agency-choice", &[org.raw(), month]);
         // A house does not start something new every month.
         if !rng.check_permille(500) {
             continue;
@@ -346,16 +327,14 @@ fn announce(world: &mut World, org: OrgId, intent: &ScoredIntent) {
     if !intent.explains {
         return;
     }
-    let date = world.resource::<CampaignClock>().date;
     let content = world.resource::<ContentDb>().0.clone();
     let title = content
         .jobs
         .get(&intent.job)
         .map(|def| def.title.clone())
         .unwrap_or_default();
-    let name = crate::crisis::org_display_name(world, org);
-    let mut entry = LogEntry::new(
-        date,
+    let name = crate::access::org_name(world, org);
+    let mut entry = LogEntry::line(
         format!("{name} began '{title}': {}.", intent.reason),
         LogChannel::Politics,
     )
@@ -363,5 +342,5 @@ fn announce(world: &mut World, org: OrgId, intent: &ScoredIntent) {
     if let Some(subject) = intent.subject {
         entry = entry.about(subject);
     }
-    world.resource_mut::<MessageLog>().entries.push(entry);
+    crate::access::log(world, entry);
 }

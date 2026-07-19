@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use crate::clock::{CampaignClock, DailyTick, TickSet};
 use crate::ids::{ArmyId, CharacterId, JobId, ProvinceId, ShipId};
 use crate::jobs::{self, JobRejection, JobTarget};
-use crate::politics::{CharacterRecord, PlayerHouse, PoliticsIndex};
+use crate::politics::PlayerHouse;
 use crate::presence::{self, Location};
 use crate::state::CampaignMeta;
 
@@ -189,11 +189,7 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
                 .get_resource::<PlayerHouse>()
                 .and_then(|p| p.0)
                 .ok_or(JobRejection::NoPlayerOrg)?;
-            let owned = world
-                .get_resource::<crate::jobs::JobsIndex>()
-                .and_then(|index| index.jobs.get(job).copied())
-                .and_then(|entity| world.get::<crate::jobs::ActiveJob>(entity))
-                .is_some_and(|active| active.owner == org);
+            let owned = crate::access::job(world, *job).is_some_and(|active| active.owner == org);
             if owned {
                 Ok(())
             } else {
@@ -223,21 +219,14 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
                 .get_resource::<PlayerHouse>()
                 .and_then(|p| p.0)
                 .ok_or(JobRejection::NoPlayerOrg)?;
-            let index = world.resource::<PoliticsIndex>();
-            let member = index
-                .characters
-                .get(character)
-                .and_then(|e| world.get::<CharacterRecord>(*e))
+            let member = crate::access::character(world, *character)
                 .is_some_and(|r| r.alive() && r.organisation == Some(org));
             if !member {
                 return Err(JobRejection::IneligibleLeader.into());
             }
             match presence::character_location(world, *character) {
                 Some(Location::Province(at)) if at != *destination => {
-                    let known = world
-                        .resource::<crate::map::MapIndex>()
-                        .provinces
-                        .contains_key(destination);
+                    let known = crate::access::province_entity(world, *destination).is_some();
                     if known {
                         Ok(())
                     } else {
@@ -252,24 +241,13 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
                 .get_resource::<PlayerHouse>()
                 .and_then(|p| p.0)
                 .ok_or(JobRejection::NoPlayerOrg)?;
-            let forces = world
-                .get_resource::<crate::forces::ForcesIndex>()
-                .ok_or(JobRejection::BadTarget)?;
-            let ok = forces
-                .ships
-                .get(ship)
-                .and_then(|e| world.get::<crate::forces::ShipRecord>(*e))
-                .is_some_and(|s| {
-                    s.owner == org
-                        && matches!(
-                            s.location,
-                            crate::forces::ShipLocation::Docked(at) if at != *destination
-                        )
-                })
-                && world
-                    .resource::<crate::map::MapIndex>()
-                    .provinces
-                    .contains_key(destination);
+            let ok = crate::access::ship(world, *ship).is_some_and(|s| {
+                s.owner == org
+                    && matches!(
+                        s.location,
+                        crate::forces::ShipLocation::Docked(at) if at != *destination
+                    )
+            }) && crate::access::province_entity(world, *destination).is_some();
             if ok {
                 Ok(())
             } else {
@@ -281,11 +259,7 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
                 .get_resource::<PlayerHouse>()
                 .and_then(|p| p.0)
                 .ok_or(JobRejection::NoPlayerOrg)?;
-            let owned = world
-                .get_resource::<crate::forces::ForcesIndex>()
-                .and_then(|forces| forces.armies.get(army).copied())
-                .and_then(|entity| world.get::<crate::forces::ArmyRecord>(entity))
-                .is_some_and(|a| a.owner == org);
+            let owned = crate::access::army(world, *army).is_some_and(|a| a.owner == org);
             if owned {
                 Ok(())
             } else {
@@ -297,11 +271,7 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
                 .get_resource::<PlayerHouse>()
                 .and_then(|p| p.0)
                 .ok_or(JobRejection::NoPlayerOrg)?;
-            let owned = world
-                .get_resource::<crate::forces::ForcesIndex>()
-                .and_then(|forces| forces.ships.get(ship).copied())
-                .and_then(|entity| world.get::<crate::forces::ShipRecord>(entity))
-                .is_some_and(|s| s.owner == org);
+            let owned = crate::access::ship(world, *ship).is_some_and(|s| s.owner == org);
             if !owned {
                 return Err(JobRejection::BadTarget.into());
             }
@@ -332,11 +302,7 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
                 .get_resource::<PlayerHouse>()
                 .and_then(|p| p.0)
                 .ok_or(JobRejection::NoPlayerOrg)?;
-            let owned = world
-                .get_resource::<crate::forces::ForcesIndex>()
-                .and_then(|forces| forces.armies.get(army).copied())
-                .and_then(|entity| world.get::<crate::forces::ArmyRecord>(entity))
-                .is_some_and(|a| a.owner == org);
+            let owned = crate::access::army(world, *army).is_some_and(|a| a.owner == org);
             if owned {
                 Ok(())
             } else {
@@ -368,9 +334,7 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
             }
         }
         PlayerCommand::CancelJob { job } => {
-            let entity = world
-                .get_resource::<crate::jobs::JobsIndex>()
-                .and_then(|index| index.jobs.get(job).copied());
+            let entity = crate::access::job_entity(world, *job);
             if let Some(entity) = entity {
                 world.despawn(entity);
                 world
@@ -390,9 +354,7 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
         }
         PlayerCommand::MoveShip { ship, destination } => {
             let date = world.resource::<CampaignClock>().date;
-            let entity = world
-                .get_resource::<crate::forces::ForcesIndex>()
-                .and_then(|forces| forces.ships.get(ship).copied());
+            let entity = crate::access::ship_entity(world, *ship);
             if let Some(entity) = entity {
                 let from = match world
                     .get::<crate::forces::ShipRecord>(entity)
@@ -419,20 +381,14 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
             crate::forces::disband_army(world, *army);
         }
         PlayerCommand::SetShipCaptain { ship, captain } => {
-            let entity = world
-                .get_resource::<crate::forces::ForcesIndex>()
-                .and_then(|forces| forces.ships.get(ship).copied());
-            if let Some(entity) = entity
+            if let Some(entity) = crate::access::ship_entity(world, *ship)
                 && let Some(mut record) = world.get_mut::<crate::forces::ShipRecord>(entity)
             {
                 record.captain = *captain;
             }
         }
         PlayerCommand::SetStandingOrder { army, order } => {
-            let entity = world
-                .get_resource::<crate::forces::ForcesIndex>()
-                .and_then(|forces| forces.armies.get(army).copied());
-            if let Some(entity) = entity
+            if let Some(entity) = crate::access::army_entity(world, *army)
                 && let Some(mut record) = world.get_mut::<crate::forces::ArmyRecord>(entity)
             {
                 record.standing_order = *order;

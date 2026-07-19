@@ -18,7 +18,7 @@ use aeon_core::calendar::GameDate;
 
 use crate::clock::{CampaignClock, DailyTick, TickSet};
 use crate::ids::OrgId;
-use crate::jobs::{LogChannel, LogEntry, LogSubject, MessageLog};
+use crate::jobs::{LogChannel, LogEntry, LogSubject};
 
 /// What kind of political fact an entry records.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
@@ -257,10 +257,10 @@ pub fn expire_due(world: &mut World) {
         // A promise that runs out is a political event in its own right;
         // a grievance simply fades.
         if kind == ObligationKind::Promise {
-            let name = crate::crisis::org_display_name(world, debtor);
-            world.resource_mut::<MessageLog>().entries.push(
-                LogEntry::new(
-                    date,
+            let name = crate::access::org_name(world, debtor);
+            crate::access::log(
+                world,
+                LogEntry::line(
                     format!("{name} let a promise lapse: {origin}."),
                     LogChannel::Politics,
                 )

@@ -26,13 +26,12 @@ use serde::{Deserialize, Serialize};
 use crate::clock::{CampaignClock, DailyTick, TickSet};
 use crate::ids::{CharacterId, JobId, OrgId, ProvinceId};
 use crate::jobs::{
-    JobRoles, LogChannel, LogEntry, LogSubject, MessageLog, PendingPopup, PendingPopups,
-    ScriptRuntime,
+    JobRoles, LogChannel, LogEntry, LogSubject, PendingPopup, PendingPopups, ScriptRuntime,
 };
 use crate::obligations::Obligations;
 use crate::order::province_order;
-use crate::politics::{CharacterRecord, PlayerHouse, PoliticsIndex};
-use crate::state::{CampaignSeed, ContentDb};
+use crate::politics::{PlayerHouse, PoliticsIndex};
+use crate::state::ContentDb;
 
 /// Chance per day that a weighty event fires anywhere, in permille.
 ///
@@ -114,16 +113,8 @@ fn eligible(world: &World, def: &EventDef, subject: EventSubject) -> bool {
     let owner = match subject {
         EventSubject::Province(province) => crate::warfare::province_holder(world, province),
         EventSubject::Org(org) => Some(org),
-        EventSubject::Character(character) => world
-            .get_resource::<PoliticsIndex>()
-            .and_then(|index| index.characters.get(&character).copied())
-            .and_then(|entity| world.get::<CharacterRecord>(entity))
-            .and_then(|record| record.organisation),
-        EventSubject::Job(job) => world
-            .get_resource::<crate::jobs::JobsIndex>()
-            .and_then(|index| index.jobs.get(&job).copied())
-            .and_then(|entity| world.get::<crate::jobs::ActiveJob>(entity))
-            .map(|record| record.owner),
+        EventSubject::Character(character) => crate::access::organisation_of(world, character),
+        EventSubject::Job(job) => crate::access::job(world, job).map(|record| record.owner),
     };
 
     if requires.player_only && owner != player {
@@ -262,13 +253,7 @@ fn pick(
 
 /// The characters standing behind an event's roles.
 fn roles_for(world: &World, subject: EventSubject) -> JobRoles {
-    let head_of = |org: OrgId| -> Option<CharacterId> {
-        world
-            .get_resource::<PoliticsIndex>()
-            .and_then(|index| index.orgs.get(&org).copied())
-            .and_then(|entity| world.get::<crate::politics::OrgRecord>(entity))
-            .and_then(|record| record.head)
-    };
+    let head_of = |org: OrgId| crate::access::org_head(world, org);
     let (owner, leader, province) = match subject {
         EventSubject::Province(province) => (
             crate::warfare::province_holder(world, province),
@@ -276,24 +261,15 @@ fn roles_for(world: &World, subject: EventSubject) -> JobRoles {
             Some(province),
         ),
         EventSubject::Org(org) => (Some(org), None, None),
-        EventSubject::Character(character) => {
-            let org = world
-                .get_resource::<PoliticsIndex>()
-                .and_then(|index| index.characters.get(&character).copied())
-                .and_then(|entity| world.get::<CharacterRecord>(entity))
-                .and_then(|record| record.organisation);
-            (org, Some(character), None)
-        }
-        EventSubject::Job(job) => {
-            let record = world
-                .get_resource::<crate::jobs::JobsIndex>()
-                .and_then(|index| index.jobs.get(&job).copied())
-                .and_then(|entity| world.get::<crate::jobs::ActiveJob>(entity).cloned());
-            match record {
-                Some(record) => (Some(record.owner), Some(record.leader), None),
-                None => (None, None, None),
-            }
-        }
+        EventSubject::Character(character) => (
+            crate::access::organisation_of(world, character),
+            Some(character),
+            None,
+        ),
+        EventSubject::Job(job) => match crate::access::job(world, job) {
+            Some(record) => (Some(record.owner), Some(record.leader), None),
+            None => (None, None, None),
+        },
     };
     JobRoles {
         leader: leader.or_else(|| owner.and_then(head_of)),
@@ -310,17 +286,12 @@ fn roles_for(world: &World, subject: EventSubject) -> JobRoles {
 /// A short label naming what an event happened to.
 fn subject_name(world: &World, subject: EventSubject) -> String {
     match subject {
-        EventSubject::Province(province) => world
-            .get_resource::<crate::map::MapIndex>()
-            .and_then(|index| index.provinces.get(&province).copied())
+        EventSubject::Province(province) => crate::access::province_entity(world, province)
             .and_then(|entity| world.get::<crate::map::DisplayName>(entity))
             .map(|name| name.0.clone())
             .unwrap_or_default(),
-        EventSubject::Org(org) => crate::crisis::org_display_name(world, org),
-        EventSubject::Character(character) => world
-            .get_resource::<PoliticsIndex>()
-            .and_then(|index| index.characters.get(&character).copied())
-            .and_then(|entity| world.get::<CharacterRecord>(entity))
+        EventSubject::Org(org) => crate::access::org_name(world, org),
+        EventSubject::Character(character) => crate::access::character(world, character)
             .map(|record| record.name.clone())
             .unwrap_or_default(),
         EventSubject::Job(_) => String::new(),
@@ -342,13 +313,7 @@ fn fire(world: &mut World, key: &ContentKey, subject: EventSubject) {
         EventSubject::Org(org) => Some(org),
         _ => roles
             .owner_head
-            .and_then(|head| {
-                world
-                    .get_resource::<PoliticsIndex>()
-                    .and_then(|index| index.characters.get(&head).copied())
-            })
-            .and_then(|entity| world.get::<CharacterRecord>(entity))
-            .and_then(|record| record.organisation),
+            .and_then(|head| crate::access::organisation_of(world, head)),
     };
 
     // Record the firing before anything else, so cooldowns and history
@@ -393,12 +358,11 @@ fn fire(world: &mut World, key: &ContentKey, subject: EventSubject) {
 
     // Every event writes a line, weighty or not.
     let line = def.log_text.clone().unwrap_or(text);
-    let mut entry =
-        LogEntry::new(date, line.replace("{subject}", &name), LogChannel::Events).by(owner);
+    let mut entry = LogEntry::line(line.replace("{subject}", &name), LogChannel::Events).by(owner);
     if let Some(log_subject) = log_subject {
         entry = entry.about(log_subject);
     }
-    world.resource_mut::<MessageLog>().entries.push(entry);
+    crate::access::log(world, entry);
 
     // A minor event applies its own effect immediately; a weighty one
     // waits for the player's answer.
@@ -430,7 +394,6 @@ pub fn tick_events(world: &mut World) {
         return;
     }
     let date = world.resource::<CampaignClock>().date;
-    let seed = world.resource::<CampaignSeed>().0;
     let day = date.days_since_epoch() as u64;
 
     // Two independent draws, so a rare weighty event never crowds out the
@@ -439,7 +402,7 @@ pub fn tick_events(world: &mut World) {
         (true, WEIGHTY_CHANCE_PERMILLE, "event-weighty"),
         (false, MINOR_CHANCE_PERMILLE, "event-minor"),
     ] {
-        let mut gate = DeterministicRng::derive(seed, purpose, &[day]);
+        let mut gate = crate::access::derived_rng(world, purpose, &[day]);
         if !gate.check_permille(chance) {
             continue;
         }
@@ -447,7 +410,7 @@ pub fn tick_events(world: &mut World) {
         if found.is_empty() {
             continue;
         }
-        let mut rng = DeterministicRng::derive(seed, "event-pick", &[day, u64::from(weighty)]);
+        let mut rng = crate::access::derived_rng(world, "event-pick", &[day, u64::from(weighty)]);
         if let Some((key, subject)) = pick(&mut rng, &found) {
             fire(world, &key, subject);
         }
@@ -485,13 +448,7 @@ pub fn answer_event(
 
     let owner = roles
         .owner_head
-        .and_then(|head| {
-            world
-                .get_resource::<PoliticsIndex>()
-                .and_then(|index| index.characters.get(&head).copied())
-        })
-        .and_then(|entity| world.get::<CharacterRecord>(entity))
-        .and_then(|record| record.organisation);
+        .and_then(|head| crate::access::organisation_of(world, head));
 
     if let Some(effect_fn) = &chosen.effect_fn {
         let effects = {

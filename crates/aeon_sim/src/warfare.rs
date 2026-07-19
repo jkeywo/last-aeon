@@ -20,9 +20,9 @@ use serde::{Deserialize, Serialize};
 use crate::clock::{CampaignClock, DailyTick, TickSet};
 use crate::forces::{ArmyRecord, ForcesIndex, ShipRecord};
 use crate::ids::{ArmyId, OrgId, ProvinceId};
-use crate::jobs::{ActiveJob, JobTarget, JobsIndex, LogChannel, LogEntry, MessageLog};
+use crate::jobs::{ActiveJob, JobTarget, JobsIndex, LogChannel, LogEntry};
 use crate::politics::{PoliticsIndex, TitleHolder, TitleKind, TitleRecord};
-use crate::state::{CampaignSeed, ContentDb};
+use crate::state::ContentDb;
 
 /// A standing order an army follows while idle.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -48,15 +48,10 @@ pub const REACTIVE_DEFENCE_JOB: &str = "answer-the-alarm";
 /// state (starving armies fight at 60%), and fortification when defending
 /// home ground (+20%).
 pub fn army_strength(world: &World, army: &ArmyRecord, defending_home: bool) -> i64 {
-    let command = {
-        let index = world.resource::<PoliticsIndex>();
-        index
-            .characters
-            .get(&army.general)
-            .and_then(|e| world.get::<crate::politics::CharacterSkills>(*e))
+    let command =
+        crate::access::on_character::<crate::politics::CharacterSkills>(world, army.general)
             .map(|s| i64::from(s.0.command))
-            .unwrap_or(0)
-    };
+            .unwrap_or(0);
     let mut strength = army.manpower * (100 + command * 5) / 100;
     if army.supplies == 0 {
         strength = strength * 60 / 100;
@@ -119,19 +114,15 @@ pub fn resolve_engagement(
     defender: ArmyId,
     date: GameDate,
 ) -> Engagement {
-    let seed = world.resource::<CampaignSeed>().0;
-    let forces = world.resource::<ForcesIndex>().clone();
-    let attacker_record = world
-        .get::<ArmyRecord>(forces.armies[&attacker])
+    let attacker_record = crate::access::army(world, attacker)
         .expect("indexed")
         .clone();
-    let defender_record = world
-        .get::<ArmyRecord>(forces.armies[&defender])
+    let defender_record = crate::access::army(world, defender)
         .expect("indexed")
         .clone();
 
-    let mut rng = DeterministicRng::derive(
-        seed,
+    let mut rng = crate::access::derived_rng(
+        world,
         "engagement",
         &[
             attacker.raw(),
@@ -164,7 +155,7 @@ pub fn resolve_engagement(
     let defender_losses = loss(&mut rng, defender_record.manpower, !attacker_won);
 
     for (army_id, losses) in [(attacker, attacker_losses), (defender, defender_losses)] {
-        let entity = forces.armies[&army_id];
+        let entity = crate::access::army_entity(world, army_id).expect("indexed");
         if let Some(mut army) = world.get_mut::<ArmyRecord>(entity) {
             army.manpower = (army.manpower - losses).max(0);
         }
@@ -173,10 +164,7 @@ pub fn resolve_engagement(
     // The loser retreats to the nearest owned province; a broken army
     // with no men or nowhere to go disbands.
     let loser = if attacker_won { defender } else { attacker };
-    let loser_record = world
-        .get::<ArmyRecord>(forces.armies[&loser])
-        .expect("indexed")
-        .clone();
+    let loser_record = crate::access::army(world, loser).expect("indexed").clone();
     if loser_record.manpower == 0 {
         crate::forces::disband_army(world, loser);
     } else if attacker_won {
@@ -200,7 +188,7 @@ pub fn resolve_engagement(
         };
         match retreat {
             Some(province) => {
-                let entity = forces.armies[&loser];
+                let entity = crate::access::army_entity(world, loser).expect("indexed");
                 if let Some(mut army) = world.get_mut::<ArmyRecord>(entity) {
                     army.location = province;
                 }
@@ -217,11 +205,10 @@ pub fn resolve_engagement(
 }
 
 fn log(world: &mut World, org: OrgId, text: String) {
-    let date = world.resource::<CampaignClock>().date;
-    world
-        .resource_mut::<MessageLog>()
-        .entries
-        .push(LogEntry::new(date, text, LogChannel::Military).by(Some(org)));
+    crate::access::log(
+        world,
+        LogEntry::line(text, LogChannel::Military).by(Some(org)),
+    );
 }
 
 /// Applies a military operation when its job succeeds. Returns `false`
@@ -230,8 +217,7 @@ pub fn apply_military_op(world: &mut World, op: MilitaryOp, job: &ActiveJob) -> 
     let date = world.resource::<CampaignClock>().date;
     match (op, job.target) {
         (MilitaryOp::Move, JobTarget::ArmyToProvince(army, destination)) => {
-            let entity = world.resource::<ForcesIndex>().armies.get(&army).copied();
-            if let Some(entity) = entity
+            if let Some(entity) = crate::access::army_entity(world, army)
                 && let Some(mut record) = world.get_mut::<ArmyRecord>(entity)
             {
                 record.location = destination;
@@ -239,13 +225,12 @@ pub fn apply_military_op(world: &mut World, op: MilitaryOp, job: &ActiveJob) -> 
             true
         }
         (MilitaryOp::Resupply, JobTarget::OwnArmy(army)) => {
-            let entity = world.resource::<ForcesIndex>().armies.get(&army).copied();
-            if let Some(entity) = entity {
+            if let Some(entity) = crate::access::army_entity(world, army) {
                 let need = {
                     let record = world.get::<ArmyRecord>(entity);
                     record.map(|a| (1 + a.manpower / 1000) * 6).unwrap_or(0)
                 };
-                let org_entity = world.resource::<PoliticsIndex>().orgs[&job.owner];
+                let org_entity = crate::access::org_entity(world, job.owner).expect("indexed");
                 let drawn = world
                     .get_mut::<crate::economy::OrgResources>(org_entity)
                     .map(|mut r| {
@@ -263,13 +248,10 @@ pub fn apply_military_op(world: &mut World, op: MilitaryOp, job: &ActiveJob) -> 
         (MilitaryOp::Patrol, JobTarget::OwnArmy(_)) => true,
         (MilitaryOp::Besiege, JobTarget::ArmyToProvince(army, target)) => {
             // March to the walls; a defending garrison must be beaten first.
+            if let Some(entity) = crate::access::army_entity(world, army)
+                && let Some(mut record) = world.get_mut::<ArmyRecord>(entity)
             {
-                let entity = world.resource::<ForcesIndex>().armies.get(&army).copied();
-                if let Some(entity) = entity
-                    && let Some(mut record) = world.get_mut::<ArmyRecord>(entity)
-                {
-                    record.location = target;
-                }
+                record.location = target;
             }
             if let Some(defender) = defending_army(world, target, job.owner) {
                 let engagement = resolve_engagement(world, army, defender, date);
@@ -309,18 +291,17 @@ pub fn apply_military_op(world: &mut World, op: MilitaryOp, job: &ActiveJob) -> 
             if let Some(holder) = province_holder(world, target)
                 && holder != job.owner
             {
-                let politics = world.resource::<PoliticsIndex>().clone();
+                let holder_entity = crate::access::org_entity(world, holder).expect("indexed");
                 let looted = world
-                    .get_mut::<crate::economy::OrgResources>(politics.orgs[&holder])
+                    .get_mut::<crate::economy::OrgResources>(holder_entity)
                     .map(|mut r| {
                         let looted = (r.wealth / 10).clamp(0, 100);
                         r.wealth -= looted;
                         looted
                     })
                     .unwrap_or(0);
-                if let Some(mut r) =
-                    world.get_mut::<crate::economy::OrgResources>(politics.orgs[&job.owner])
-                {
+                let owner_entity = crate::access::org_entity(world, job.owner).expect("indexed");
+                if let Some(mut r) = world.get_mut::<crate::economy::OrgResources>(owner_entity) {
                     r.wealth += looted;
                 }
             }
@@ -329,8 +310,7 @@ pub fn apply_military_op(world: &mut World, op: MilitaryOp, job: &ActiveJob) -> 
             true
         }
         (MilitaryOp::Blockade, JobTarget::ShipToProvince(ship, target)) => {
-            let entity = world.resource::<ForcesIndex>().ships.get(&ship).copied();
-            let Some(entity) = entity else {
+            let Some(entity) = crate::access::ship_entity(world, ship) else {
                 return false;
             };
             // A ship without an officer aboard cannot hold a station.
@@ -437,13 +417,7 @@ pub fn standing_orders(world: &mut World) {
         let Some(target) = target else {
             continue;
         };
-        let general = {
-            let forces = world.resource::<ForcesIndex>();
-            world
-                .get::<ArmyRecord>(forces.armies[&army])
-                .map(|a| a.general)
-        };
-        let Some(general) = general else {
+        let Some(general) = crate::access::army(world, army).map(|a| a.general) else {
             continue;
         };
         if crate::jobs::validate_start(
@@ -462,13 +436,9 @@ pub fn standing_orders(world: &mut World) {
                 general,
                 JobTarget::ArmyToProvince(army, target),
             );
-            let name = {
-                let forces = world.resource::<ForcesIndex>();
-                world
-                    .get::<ArmyRecord>(forces.armies[&army])
-                    .map(|a| a.name.clone())
-                    .unwrap_or_default()
-            };
+            let name = crate::access::army(world, army)
+                .map(|a| a.name.clone())
+                .unwrap_or_default();
             log(world, owner, format!("{name} marches to answer the alarm."));
         }
     }

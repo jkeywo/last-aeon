@@ -6,6 +6,8 @@
 //!
 //! # Structure
 //!
+//! - [`access`] — world-read helpers: records by stable ID, display
+//!   names, log stamping, and derived random streams.
 //! - [`config`] — what defines a new campaign (seed, start date, name).
 //! - [`clock`] — the campaign calendar clock, tick schedules, and the
 //!   [`clock::advance_one_day`] entry point that drives all simulation time.
@@ -17,6 +19,7 @@
 //! - [`host`] — [`host::SimHost`], the embedding API used by the tools CLI,
 //!   tests, and anything else that drives the simulation without a client.
 
+pub mod access;
 pub mod agency;
 pub mod clock;
 pub mod command;

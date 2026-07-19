@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use crate::clock::{CampaignClock, DailyTick, TickSet};
 use crate::ids::{BodyId, CharacterId, ProvinceId};
 use crate::map::{BodyRecord, MapIndex, ProvinceRecord};
-use crate::politics::{OrgRecord, PlayerHouse, PoliticsIndex};
+use crate::politics::{PlayerHouse, PoliticsIndex};
 
 /// Where a character is.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -65,12 +65,7 @@ pub fn travel_days(world: &World, from: ProvinceId, to: ProvinceId) -> i64 {
 
 /// A character's current location, if tracked.
 pub fn character_location(world: &World, character: CharacterId) -> Option<Location> {
-    let index = world.resource::<PoliticsIndex>();
-    index
-        .characters
-        .get(&character)
-        .and_then(|e| world.get::<CharacterLocation>(*e))
-        .map(|l| l.0)
+    crate::access::on_character::<CharacterLocation>(world, character).map(|l| l.0)
 }
 
 /// Extra days of order delay for the player's commands: distance between
@@ -79,13 +74,7 @@ pub fn order_delay(world: &World, actor: Option<CharacterId>) -> i64 {
     let Some(player_org) = world.get_resource::<PlayerHouse>().and_then(|p| p.0) else {
         return 0;
     };
-    let index = world.resource::<PoliticsIndex>();
-    let Some(head) = index
-        .orgs
-        .get(&player_org)
-        .and_then(|e| world.get::<OrgRecord>(*e))
-        .and_then(|r| r.head)
-    else {
+    let Some(head) = crate::access::org_head(world, player_org) else {
         return 0;
     };
     let date = world.resource::<CampaignClock>().date;
@@ -120,7 +109,7 @@ pub fn begin_travel(world: &mut World, character: CharacterId, destination: Prov
         _ => return,
     };
     let days = travel_days(world, from, destination);
-    let entity = world.resource::<PoliticsIndex>().characters[&character];
+    let entity = crate::access::character_entity(world, character).expect("indexed");
     if let Some(mut location) = world.get_mut::<CharacterLocation>(entity) {
         location.0 = Location::Transit {
             to: destination,
@@ -149,7 +138,7 @@ pub fn land_arrivals(world: &mut World) {
             .collect()
     };
     for (character, destination) in travellers {
-        let entity = world.resource::<PoliticsIndex>().characters[&character];
+        let entity = crate::access::character_entity(world, character).expect("indexed");
         if let Some(mut location) = world.get_mut::<CharacterLocation>(entity) {
             location.0 = Location::Province(destination);
         }
