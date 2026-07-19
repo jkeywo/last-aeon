@@ -582,3 +582,164 @@ fn a_forecast_explains_why_a_job_cannot_be_started() {
     assert_eq!(forecast.duration_days, 5);
     assert_eq!(forecast.success_chance(), 400);
 }
+
+// ---------------------------------------------------------------------------
+// Leader availability
+// ---------------------------------------------------------------------------
+
+#[test]
+fn availability_names_the_specific_reason_a_character_cannot_lead() {
+    use aeon_sim::{Assignment, LeaderAvailability, leader_availability};
+
+    let mut h = host(21);
+    let aron = char_id(&mut h, "aron-ash");
+    let cera = char_id(&mut h, "cera-ash");
+    let bela = char_id(&mut h, "bela-birch");
+    let ash = org_id(&mut h, "ash");
+    let birch = org_id(&mut h, "birch");
+    let date = h.world_mut().resource::<aeon_sim::CampaignClock>().date;
+
+    // Free.
+    assert_eq!(
+        leader_availability(h.world_mut(), ash, aron, date),
+        LeaderAvailability::Available
+    );
+
+    // A member of another house is not ours to command.
+    assert!(matches!(
+        leader_availability(h.world_mut(), ash, bela, date),
+        LeaderAvailability::Ineligible(_)
+    ));
+    assert!(matches!(
+        leader_availability(h.world_mut(), birch, aron, date),
+        LeaderAvailability::Ineligible(_)
+    ));
+
+    // Busy names the job and when it ends, not merely "unavailable".
+    h.submit(PlayerCommand::StartJob {
+        job: key("sure-court"),
+        leader: aron,
+        target: JobTarget::Org(birch),
+    })
+    .unwrap();
+    h.advance_days(1);
+    match leader_availability(h.world_mut(), ash, aron, date) {
+        LeaderAvailability::Busy { def, .. } => assert_eq!(def, key("sure-court")),
+        other => panic!("expected Busy, got {other:?}"),
+    }
+
+    // A standing command is reported as such, and names the force.
+    let alpha = {
+        let key = ContentKey::new("alpha").unwrap();
+        h.world_mut().resource::<aeon_sim::MapIndex>().province_keys[&key]
+    };
+    let army = aeon_sim::forces::form_army(h.world_mut(), ash, cera, 500, 100, alpha);
+    match leader_availability(h.world_mut(), ash, cera, date) {
+        LeaderAvailability::Assigned(Assignment::General { army: id, .. }) => {
+            assert_eq!(id, army)
+        }
+        other => panic!("expected Assigned, got {other:?}"),
+    }
+}
+
+#[test]
+fn indisposition_reports_when_it_clears() {
+    use aeon_sim::{LeaderAvailability, leader_availability};
+
+    let mut h = host(22);
+    let cera = char_id(&mut h, "cera-ash");
+    let ash = org_id(&mut h, "ash");
+    let date = h.world_mut().resource::<aeon_sim::CampaignClock>().date;
+
+    apply_risk(h.world_mut(), cera, RiskTag::Injury, date);
+    match leader_availability(h.world_mut(), ash, cera, date) {
+        LeaderAvailability::Indisposed { until: Some(until) } => {
+            assert!(until > date, "recovery must lie in the future");
+        }
+        other => panic!("expected Indisposed with a date, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_standing_command_bars_a_second_one_but_not_ordinary_work() {
+    use aeon_sim::{Assignment, JobRejection, LeaderAvailability};
+
+    let commanding = LeaderAvailability::Assigned(Assignment::General {
+        army: aeon_sim::ArmyId::from_raw(7).unwrap(),
+        name: "First Levy".to_owned(),
+    });
+    let other_army = aeon_sim::ArmyId::from_raw(9).unwrap();
+    let own_army = aeon_sim::ArmyId::from_raw(7).unwrap();
+
+    // A general may still court, scheme, and administer.
+    assert_eq!(commanding.blocks_job(JobTarget::None), None);
+    assert_eq!(
+        commanding.blocks_job(JobTarget::Org(aeon_sim::OrgId::from_raw(3).unwrap())),
+        None
+    );
+
+    // And may order the force they actually command.
+    assert_eq!(commanding.blocks_job(JobTarget::OwnArmy(own_army)), None);
+
+    // But not somebody else's.
+    assert_eq!(
+        commanding.blocks_job(JobTarget::OwnArmy(other_army)),
+        Some(JobRejection::AlreadyAssigned)
+    );
+}
+
+#[test]
+fn the_simulation_and_its_availability_report_never_disagree() {
+    // The bug this guards against: three separate eligibility checks that
+    // drifted apart, so the interface offered leaders the simulation then
+    // refused. Every character, every target kind, one answer.
+    use aeon_sim::{PoliticsIndex, leader_availability};
+
+    let mut h = host(23);
+    let ash = org_id(&mut h, "ash");
+    let birch = org_id(&mut h, "birch");
+    let aron = char_id(&mut h, "aron-ash");
+
+    // Put one character to work so the busy path is covered too.
+    h.submit(PlayerCommand::StartJob {
+        job: key("sure-court"),
+        leader: aron,
+        target: JobTarget::Org(birch),
+    })
+    .unwrap();
+    h.advance_days(1);
+
+    let date = h.world_mut().resource::<aeon_sim::CampaignClock>().date;
+    let everyone: Vec<_> = h
+        .world_mut()
+        .resource::<PoliticsIndex>()
+        .characters
+        .keys()
+        .copied()
+        .collect();
+
+    for character in everyone {
+        for target in [JobTarget::None, JobTarget::Org(birch)] {
+            let reported = leader_availability(h.world_mut(), ash, character, date)
+                .blocks_job(target)
+                .is_none();
+            let accepted = aeon_sim::command::validate_command(
+                h.world_mut(),
+                &PlayerCommand::StartJob {
+                    job: key("sure-court"),
+                    leader: character,
+                    target,
+                },
+            );
+            // The command pipeline may refuse for reasons beyond the
+            // leader (a bad target for the definition); it must never
+            // accept a leader the report calls unavailable.
+            if !reported {
+                assert!(
+                    accepted.is_err(),
+                    "availability says no but the simulation accepted {character:?}"
+                );
+            }
+        }
+    }
+}

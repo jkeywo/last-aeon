@@ -46,6 +46,7 @@ fn main() {
         .init_resource::<view::MapMode>()
         .init_resource::<scene::GlobeBake>()
         .init_resource::<forecast_view::ForecastCache>()
+        .init_resource::<forecast_view::AvailabilityView>()
         .init_resource::<jobs_ui::LogFilter>()
         .init_resource::<map_modes::MapReadout>()
         .add_systems(
@@ -72,6 +73,7 @@ fn main() {
                 camera::drive_camera,
                 jobs_ui::auto_pause_on_popups,
                 jobs_ui::flush_ui_commands,
+                forecast_view::refresh_availability,
                 forecast_view::refresh_forecast,
                 // The bake must observe the readout computed this frame.
                 (map_modes::refresh_map_readout, scene::refresh_globe_texture).chain(),

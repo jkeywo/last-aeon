@@ -7,12 +7,15 @@
 //! simulation reported, so what the player is shown cannot drift from what
 //! the simulation will do.
 
+use std::collections::BTreeMap;
+
 use aeon_core::calendar::GameDate;
 use aeon_data::ContentKey;
 use aeon_sim::forecast::{JobForecast, Permille, forecast};
 use aeon_sim::politics::ADULT_AGE;
 use aeon_sim::{
-    CampaignClock, CharacterId, CharacterRecord, JobTarget, PlayerHouse, PoliticsIndex,
+    CampaignClock, CharacterId, CharacterRecord, JobTarget, LeaderAvailability, PlayerHouse,
+    PoliticsIndex, leader_availability,
 };
 use bevy::prelude::*;
 
@@ -31,6 +34,12 @@ pub struct LeaderOption {
     pub success: Permille,
     /// Why they cannot take it on now, if they cannot.
     pub blocked: Option<String>,
+    /// What they are committed to, in the simulation's own words. Every
+    /// candidate carries this, available or not, so the interface can say
+    /// where someone is rather than silently omitting them.
+    pub availability: LeaderAvailability,
+    /// A standing command they hold, if any, for showing beside the name.
+    pub assignment: Option<String>,
 }
 
 /// What the inspector currently has expanded, and what the simulation says
@@ -42,6 +51,67 @@ pub struct ForecastCache {
     pub forecast: Option<JobForecast>,
     /// Every house member who could lead this job, best chance first.
     pub leaders: Vec<LeaderOption>,
+}
+
+/// What every member of the player's house is committed to today.
+///
+/// Kept as its own resource because the question — "where is this person,
+/// and can they act" — is asked in several places that have no job
+/// expanded: the inspector's action list, and the character picker. One
+/// exclusive system answers it once a day from the simulation, so no part
+/// of the interface has to work it out for itself.
+#[derive(Resource, Default)]
+pub struct AvailabilityView {
+    day: Option<GameDate>,
+    entries: BTreeMap<CharacterId, LeaderAvailability>,
+}
+
+impl AvailabilityView {
+    /// What this character is committed to, if they are one of ours.
+    pub fn of(&self, character: CharacterId) -> Option<&LeaderAvailability> {
+        self.entries.get(&character)
+    }
+}
+
+/// Refreshes the availability of every house member once a day.
+pub fn refresh_availability(world: &mut World) {
+    let (Some(date), Some(org)) = (
+        world.get_resource::<CampaignClock>().map(|c| c.date),
+        world.get_resource::<PlayerHouse>().and_then(|p| p.0),
+    ) else {
+        return;
+    };
+    if world
+        .get_resource::<AvailabilityView>()
+        .is_some_and(|view| view.day == Some(date))
+    {
+        return;
+    }
+
+    let members: Vec<CharacterId> = world
+        .get_resource::<PoliticsIndex>()
+        .map(|index| {
+            index
+                .characters
+                .iter()
+                .filter(|(_, entity)| {
+                    world
+                        .get::<CharacterRecord>(**entity)
+                        .is_some_and(|record| record.alive() && record.organisation == Some(org))
+                })
+                .map(|(id, _)| *id)
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let entries: BTreeMap<CharacterId, LeaderAvailability> = members
+        .into_iter()
+        .map(|id| (id, leader_availability(world, org, id, date)))
+        .collect();
+
+    let mut view = world.resource_mut::<AvailabilityView>();
+    view.day = Some(date);
+    view.entries = entries;
 }
 
 /// Recomputes the cached forecast when the expanded job, its chosen leader
@@ -98,17 +168,19 @@ pub fn refresh_forecast(world: &mut World) {
             .collect()
     };
 
-    let army_led = matches!(
-        target,
-        Some(JobTarget::OwnArmy(_)) | Some(JobTarget::ArmyToProvince(_, _))
-    );
+    // Every adult of the house is a candidate, including those who cannot
+    // act: the interface shows them with the reason rather than leaving
+    // the player wondering where half their household went.
     let mut leaders: Vec<LeaderOption> = Vec::new();
-    if let Some(job_target) = target
-        && !army_led
-    {
+    if let Some(job_target) = target {
         for candidate in candidates {
             let Some(view) = forecast(world, org, &job, candidate, job_target) else {
                 continue;
+            };
+            let availability = leader_availability(world, org, candidate, date);
+            let assignment = match &availability {
+                LeaderAvailability::Assigned(assignment) => Some(assignment.describe()),
+                _ => None,
             };
             let name = name_of(world, candidate);
             leaders.push(LeaderOption {
@@ -117,9 +189,12 @@ pub fn refresh_forecast(world: &mut World) {
                 skill_value: view.skill_value,
                 success: view.success_chance(),
                 blocked: view.blocked.as_ref().map(|r| r.to_string()),
+                availability,
+                assignment,
             });
         }
-        // Best prospects first; ties broken by name for a stable order.
+        // Available first, then best prospects; ties broken by name so the
+        // order never wobbles between frames.
         leaders.sort_by(|a, b| {
             a.blocked
                 .is_some()

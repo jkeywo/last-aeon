@@ -34,7 +34,7 @@ use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
-use crate::forecast_view::ForecastCache;
+use crate::forecast_view::{AvailabilityView, ForecastCache};
 use crate::jobs_ui::{JobForm, UiCommandQueue};
 use crate::map_modes::MapReadout;
 use crate::sim_driver::{SPEED_STEPS, TimeControl};
@@ -201,6 +201,7 @@ pub struct PanelData<'w, 's> {
     active_jobs: Query<'w, 's, &'static ActiveJob>,
     order: Query<'w, 's, (&'static ProvinceRecord, &'static ProvincialOrder)>,
     obligations: Option<Res<'w, Obligations>>,
+    availability: Res<'w, AvailabilityView>,
 }
 
 /// What the inspector's context-job section is anchored to.
@@ -313,7 +314,21 @@ fn draw_context_jobs(
     match scope {
         JobScope::OwnCharacter(leader) => {
             if !leader_ok(leader) {
-                ui.weak("Away, indisposed, or already leading a job.");
+                // Say which of the several possible reasons applies.
+                ui.weak(
+                    data.availability
+                        .of(leader)
+                        .map(|state| {
+                            state.describe(|key| {
+                                content
+                                    .jobs
+                                    .get(key)
+                                    .map(|def| def.title.clone())
+                                    .unwrap_or_else(|| key.to_string())
+                            })
+                        })
+                        .unwrap_or_else(|| "unavailable".to_owned()),
+                );
             } else {
                 let jobs = jobs_of(&[
                     JobTargetKind::None,
@@ -342,8 +357,8 @@ fn draw_context_jobs(
                                     ui, def.target, content, politics, player_org, data, form,
                                 );
                             }
-                            draw_forecast(ui, cache, form);
-                            confirm_job(ui, key, form, queue);
+                            draw_forecast(ui, content, cache, form);
+                            confirm_job(ui, key, cache, form, queue);
                         });
                     }
                 }
@@ -386,8 +401,8 @@ fn draw_context_jobs(
                 if expanded {
                     ui.indent(key.to_string(), |ui| {
                         pick_leader(ui, &eligible_leaders(), form);
-                        draw_forecast(ui, cache, form);
-                        confirm_job(ui, key, form, queue);
+                        draw_forecast(ui, content, cache, form);
+                        confirm_job(ui, key, cache, form, queue);
                     });
                 }
             }
@@ -418,12 +433,16 @@ fn draw_context_jobs(
                         }
                         // Publish the resolved target and leader so the
                         // forecast is for exactly what would be ordered.
-                        let (target, leader) =
-                            province_action(def.target, province, data, form, player_head);
-                        form.target = target;
-                        form.leader = leader;
-                        draw_forecast(ui, cache, form);
-                        confirm_job(ui, key, form, queue);
+                        let action = province_action(def.target, province, data, form);
+                        form.target = action.target;
+                        form.leader = action.leader;
+                        // An obstacle is stated where the choice is made,
+                        // not discovered after pressing Confirm.
+                        if let Some(obstacle) = &action.obstacle {
+                            ui.colored_label(egui::Color32::from_rgb(225, 175, 80), obstacle);
+                        }
+                        draw_forecast(ui, content, cache, form);
+                        confirm_job(ui, key, cache, form, queue);
                     });
                 }
             }
@@ -456,10 +475,18 @@ fn result_style(kind: JobResultKind) -> (&'static str, egui::Color32) {
 fn confirm_job(
     ui: &mut egui::Ui,
     key: &aeon_data::ContentKey,
+    cache: &ForecastCache,
     form: &mut JobForm,
     queue: &mut UiCommandQueue,
 ) {
-    let ready = form.leader.is_some() && form.target.is_some();
+    // The forecast already knows whether this can be ordered; Confirm must
+    // agree with it rather than letting the player press it and be refused.
+    let forecast_allows = cache
+        .forecast
+        .as_ref()
+        .map(|view| view.startable())
+        .unwrap_or(false);
+    let ready = form.leader.is_some() && form.target.is_some() && forecast_allows;
     if ui
         .add_enabled(ready, egui::Button::new("Confirm"))
         .clicked()
@@ -479,7 +506,12 @@ fn confirm_job(
 /// costs, how long it takes, the exact odds it would roll now, what each
 /// outcome does, and what the leader personally risks. Every figure comes
 /// from the simulation; nothing here is recomputed in the client.
-fn draw_forecast(ui: &mut egui::Ui, cache: &ForecastCache, form: &mut JobForm) {
+fn draw_forecast(
+    ui: &mut egui::Ui,
+    content: &ContentSet,
+    cache: &ForecastCache,
+    form: &mut JobForm,
+) {
     let Some(view) = &cache.forecast else {
         ui.weak("Choose the remaining details to see the forecast.");
         return;
@@ -602,64 +634,120 @@ fn draw_forecast(ui: &mut egui::Ui, cache: &ForecastCache, form: &mut JobForm) {
         }
     });
 
-    // Compare the alternatives, and switch to one.
+    // Compare the alternatives, and switch to one. Those who cannot take
+    // it on are shown below a divider rather than mixed in among those who
+    // can, and are genuinely disabled rather than merely inert on click.
     if cache.leaders.len() > 1 {
         ui.collapsing("Compare leaders", |ui| {
-            for option in &cache.leaders {
+            let (free, committed): (Vec<_>, Vec<_>) =
+                cache.leaders.iter().partition(|o| o.blocked.is_none());
+
+            for option in &free {
                 let chosen = form.leader == Some(option.id);
-                let label = format!(
+                let mut label = format!(
                     "{} — skill {} — {}",
                     option.name,
                     option.skill_value,
                     permille_text(option.success)
                 );
-                let response = ui.selectable_label(chosen, label);
-                let response = match &option.blocked {
-                    Some(reason) => response.on_hover_text(format!("Unavailable: {reason}")),
-                    None => response.on_hover_text("Chance of a success or better."),
+                if let Some(assignment) = &option.assignment {
+                    label.push_str(&format!(" — {assignment}"));
+                }
+                let hint = match &option.assignment {
+                    Some(assignment) => format!(
+                        "Chance of a success or better.\n{assignment} — free to take this on."
+                    ),
+                    None => "Chance of a success or better.".to_owned(),
                 };
-                if response.clicked() && option.blocked.is_none() {
+                if ui
+                    .selectable_label(chosen, label)
+                    .on_hover_text(hint)
+                    .clicked()
+                {
                     form.leader = Some(option.id);
+                }
+            }
+
+            if !committed.is_empty() {
+                ui.separator();
+                ui.weak("Committed elsewhere");
+                for option in &committed {
+                    // The simulation's own account of where they are, which
+                    // names the job and when it ends rather than saying only
+                    // that they are unavailable.
+                    let reason = option.availability.describe(|key| {
+                        content
+                            .jobs
+                            .get(key)
+                            .map(|def| def.title.clone())
+                            .unwrap_or_else(|| key.to_string())
+                    });
+                    ui.add_enabled(
+                        false,
+                        egui::Button::new(format!("{} — {reason}", option.name)).frame(false),
+                    )
+                    .on_disabled_hover_text(format!(
+                        "{} cannot lead this: {}.",
+                        option.name,
+                        option.blocked.as_deref().unwrap_or("unavailable")
+                    ));
                 }
             }
         });
     }
 }
 
-/// Builds the target and derived leader for a province-scoped military job.
+/// What a province-scoped military order would be, and who would carry it.
+///
+/// A force is led by the character who commands it and nobody else, so a
+/// ship with no captain has no order to give — reported here rather than
+/// silently substituting the head of the house and failing later.
+struct ProvinceAction {
+    target: Option<JobTarget>,
+    leader: Option<CharacterId>,
+    /// Why this cannot be ordered yet, in words, for showing at the slot.
+    obstacle: Option<String>,
+}
+
 fn province_action(
     kind: JobTargetKind,
     province: ProvinceId,
     data: &PanelData,
     form: &JobForm,
-    player_head: Option<CharacterId>,
-) -> (Option<JobTarget>, Option<CharacterId>) {
+) -> ProvinceAction {
+    let army = form
+        .army
+        .and_then(|id| data.armies.iter().find(|a| a.id == id));
+    let ship = form
+        .ship
+        .and_then(|id| data.ships.iter().find(|s| s.id == id));
+
     match kind {
-        JobTargetKind::OwnArmy => {
-            let target = form.army.map(JobTarget::OwnArmy);
-            let leader = form
-                .army
-                .and_then(|id| data.armies.iter().find(|a| a.id == id))
-                .map(|a| a.general);
-            (target, leader)
-        }
-        JobTargetKind::OwnArmyAndProvince => {
-            let target = form.army.map(|a| JobTarget::ArmyToProvince(a, province));
-            let leader = form
-                .army
-                .and_then(|id| data.armies.iter().find(|a| a.id == id))
-                .map(|a| a.general);
-            (target, leader)
-        }
-        JobTargetKind::OwnShipAndProvince => {
-            let ship = form
-                .ship
-                .and_then(|id| data.ships.iter().find(|s| s.id == id));
-            let target = form.ship.map(|s| JobTarget::ShipToProvince(s, province));
-            let leader = ship.and_then(|s| s.captain).or(player_head);
-            (target, leader)
-        }
-        _ => (None, None),
+        JobTargetKind::OwnArmy | JobTargetKind::OwnArmyAndProvince => ProvinceAction {
+            target: form.army.map(|id| match kind {
+                JobTargetKind::OwnArmy => JobTarget::OwnArmy(id),
+                _ => JobTarget::ArmyToProvince(id, province),
+            }),
+            leader: army.map(|a| a.general),
+            obstacle: None,
+        },
+        JobTargetKind::OwnShipAndProvince => ProvinceAction {
+            target: form.ship.map(|id| JobTarget::ShipToProvince(id, province)),
+            leader: ship.and_then(|s| s.captain),
+            obstacle: match ship {
+                Some(ship) if ship.captain.is_none() => Some(format!(
+                    "{} has no captain. A ship is ordered by the officer who \
+                     commands it — assign one first.",
+                    ship.name
+                )),
+                _ => None,
+            },
+        },
+        _ => ProvinceAction {
+            target: None,
+            leader: None,
+            obstacle: None,
+        },
     }
 }
 

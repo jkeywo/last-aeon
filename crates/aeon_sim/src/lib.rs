@@ -51,8 +51,8 @@ pub use forecast::{ForecastResult, ForecastRisk, JobForecast, Permille};
 pub use host::SimHost;
 pub use ids::{ArmyId, BodyId, CharacterId, JobId, OfficeId, OrgId, ProvinceId, ShipId, TitleId};
 pub use jobs::{
-    ActiveJob, JobRejection, JobTarget, JobsIndex, LogChannel, LogEntry, LogSubject, MessageLog,
-    PendingPopups,
+    ActiveJob, Assignment, JobRejection, JobTarget, JobsIndex, LeaderAvailability, LogChannel,
+    LogEntry, LogSubject, MessageLog, PendingPopups, leader_availability,
 };
 pub use map::{BodyRecord, DisplayName, GeoPosition, MapIndex, ProvinceRecord};
 pub use obligations::{ObligationKind, ObligationRecord, ObligationStatus, Obligations};

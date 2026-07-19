@@ -281,6 +281,9 @@ pub enum JobRejection {
     /// The leader is already leading a job.
     #[error("that character is already leading a job")]
     LeaderBusy,
+    /// The leader already holds a standing command over another force.
+    #[error("that character already commands another force")]
+    AlreadyAssigned,
     /// The leader is injured, captured, or incapacitated.
     #[error("that character is in no state to lead")]
     LeaderIndisposed,
@@ -302,43 +305,223 @@ pub enum JobRejection {
 // Eligibility and start
 // ---------------------------------------------------------------------------
 
-fn leader_eligible(
+/// A standing command a character already holds.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Assignment {
+    /// They command an army.
+    General {
+        /// The army.
+        army: ArmyId,
+        /// Its name, for saying so.
+        name: String,
+    },
+    /// They captain a ship.
+    Captain {
+        /// The ship.
+        ship: ShipId,
+        /// Its name, for saying so.
+        name: String,
+    },
+}
+
+impl Assignment {
+    /// A short phrase naming the command, for the interface.
+    pub fn describe(&self) -> String {
+        match self {
+            Assignment::General { name, .. } => format!("General, {name}"),
+            Assignment::Captain { name, .. } => format!("Captain, {name}"),
+        }
+    }
+}
+
+/// What a character is doing, and whether it leaves them free to lead.
+///
+/// This is the single answer to "can they take this on", shared by the
+/// simulation's own validation and by every part of the interface that
+/// offers a choice of leader. Keeping one implementation is the point:
+/// three separate ones drifted apart and offered the player characters
+/// who could not act.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum LeaderAvailability {
+    /// Free to take on new work.
+    Available,
+    /// Already leading a job.
+    Busy {
+        /// The job they are leading.
+        job: JobId,
+        /// Its definition, for naming it.
+        def: ContentKey,
+        /// When they will be free.
+        completes: GameDate,
+    },
+    /// Injured, captured, or incapacitated.
+    Indisposed {
+        /// When they recover, if that is known.
+        until: Option<GameDate>,
+    },
+    /// Holding a standing command. Not a blocker in itself — a general may
+    /// still lead a diplomatic job — but it bars a *second* command.
+    Assigned(Assignment),
+    /// Cannot lead for this organisation at all: dead, not a member, or
+    /// not yet of age.
+    Ineligible(JobRejection),
+}
+
+impl LeaderAvailability {
+    /// Whether the character is free of any commitment.
+    pub fn is_available(&self) -> bool {
+        matches!(self, LeaderAvailability::Available)
+    }
+
+    /// Why this character cannot lead *this* job, if they cannot.
+    ///
+    /// A standing command only bars taking on another one; it does not
+    /// stop its holder doing something else entirely.
+    pub fn blocks_job(&self, target: JobTarget) -> Option<JobRejection> {
+        match self {
+            LeaderAvailability::Available => None,
+            LeaderAvailability::Busy { .. } => Some(JobRejection::LeaderBusy),
+            LeaderAvailability::Indisposed { .. } => Some(JobRejection::LeaderIndisposed),
+            LeaderAvailability::Ineligible(rejection) => Some(rejection.clone()),
+            LeaderAvailability::Assigned(assignment) => match (assignment, target) {
+                // Ordering the force they already command is the point.
+                (Assignment::General { army, .. }, JobTarget::OwnArmy(ordered))
+                | (Assignment::General { army, .. }, JobTarget::ArmyToProvince(ordered, _))
+                    if *army == ordered =>
+                {
+                    None
+                }
+                (Assignment::Captain { ship, .. }, JobTarget::ShipToProvince(ordered, _))
+                    if *ship == ordered =>
+                {
+                    None
+                }
+                // Commanding one force does not let you command another.
+                (_, JobTarget::OwnArmy(_))
+                | (_, JobTarget::ArmyToProvince(_, _))
+                | (_, JobTarget::ShipToProvince(_, _)) => Some(JobRejection::AlreadyAssigned),
+                // Anything else is ordinary work they are free to do.
+                _ => None,
+            },
+        }
+    }
+
+    /// A short player-facing phrase, for showing beside a name.
+    pub fn describe(&self, job_title: impl Fn(&ContentKey) -> String) -> String {
+        match self {
+            LeaderAvailability::Available => "available".to_owned(),
+            LeaderAvailability::Busy { def, completes, .. } => {
+                format!("leading {} until {completes}", job_title(def))
+            }
+            LeaderAvailability::Indisposed { until: Some(until) } => {
+                format!("indisposed until {until}")
+            }
+            LeaderAvailability::Indisposed { until: None } => "indisposed".to_owned(),
+            LeaderAvailability::Assigned(assignment) => assignment.describe(),
+            LeaderAvailability::Ineligible(JobRejection::IneligibleLeader) => {
+                "not able to lead for this house".to_owned()
+            }
+            LeaderAvailability::Ineligible(rejection) => rejection.to_string(),
+        }
+    }
+}
+
+/// What a character is currently committed to, for `org`'s purposes.
+///
+/// Reports the most limiting commitment: ineligibility first, then
+/// indisposition, then an active job, then a standing command.
+pub fn leader_availability(
     world: &World,
     org: OrgId,
     leader: CharacterId,
     date: GameDate,
-) -> Result<(), JobRejection> {
-    let index = world.resource::<PoliticsIndex>();
-    let Some(entity) = index.characters.get(&leader) else {
-        return Err(JobRejection::IneligibleLeader);
+) -> LeaderAvailability {
+    let Some(index) = world.get_resource::<PoliticsIndex>() else {
+        return LeaderAvailability::Ineligible(JobRejection::IneligibleLeader);
     };
-    let record = world.get::<CharacterRecord>(*entity).expect("indexed");
+    let Some(entity) = index.characters.get(&leader) else {
+        return LeaderAvailability::Ineligible(JobRejection::IneligibleLeader);
+    };
+    let Some(record) = world.get::<CharacterRecord>(*entity) else {
+        return LeaderAvailability::Ineligible(JobRejection::IneligibleLeader);
+    };
     if !record.alive()
         || record.organisation != Some(org)
         || record.age_years(date) < crate::politics::ADULT_AGE
     {
-        return Err(JobRejection::IneligibleLeader);
+        return LeaderAvailability::Ineligible(JobRejection::IneligibleLeader);
     }
+
     let condition = world
         .get::<CharacterCondition>(*entity)
         .copied()
         .unwrap_or_default();
     if !condition.can_lead(date) {
-        return Err(JobRejection::LeaderIndisposed);
+        // Report the soonest day they are free of every condition.
+        let until = [
+            condition.injured_until,
+            condition.captured_until,
+            condition.incapacitated_until,
+        ]
+        .into_iter()
+        .flatten()
+        .filter(|day| *day > date)
+        .max();
+        return LeaderAvailability::Indisposed { until };
     }
-    let busy = world
-        .resource::<JobsIndex>()
-        .jobs
-        .values()
-        .any(|job_entity| {
-            world
-                .get::<ActiveJob>(*job_entity)
-                .is_some_and(|job| job.leader == leader)
-        });
-    if busy {
-        return Err(JobRejection::LeaderBusy);
+
+    if let Some(jobs) = world.get_resource::<JobsIndex>() {
+        // Stable-ID order, so the reported job never depends on iteration.
+        for entity in jobs.jobs.values() {
+            if let Some(job) = world.get::<ActiveJob>(*entity)
+                && job.leader == leader
+            {
+                return LeaderAvailability::Busy {
+                    job: job.id,
+                    def: job.def.clone(),
+                    completes: job.completes,
+                };
+            }
+        }
     }
-    Ok(())
+
+    if let Some(forces) = world.get_resource::<crate::forces::ForcesIndex>() {
+        for entity in forces.armies.values() {
+            if let Some(army) = world.get::<crate::forces::ArmyRecord>(*entity)
+                && army.general == leader
+            {
+                return LeaderAvailability::Assigned(Assignment::General {
+                    army: army.id,
+                    name: army.name.clone(),
+                });
+            }
+        }
+        for entity in forces.ships.values() {
+            if let Some(ship) = world.get::<crate::forces::ShipRecord>(*entity)
+                && ship.captain == Some(leader)
+            {
+                return LeaderAvailability::Assigned(Assignment::Captain {
+                    ship: ship.id,
+                    name: ship.name.clone(),
+                });
+            }
+        }
+    }
+
+    LeaderAvailability::Available
+}
+
+fn leader_eligible(
+    world: &World,
+    org: OrgId,
+    leader: CharacterId,
+    date: GameDate,
+    target: JobTarget,
+) -> Result<(), JobRejection> {
+    match leader_availability(world, org, leader, date).blocks_job(target) {
+        Some(rejection) => Err(rejection),
+        None => Ok(()),
+    }
 }
 
 fn owned_army(world: &World, owner: OrgId, army: ArmyId) -> bool {
@@ -400,7 +583,7 @@ pub fn validate_start(
         return Err(JobRejection::UnknownJob(def_key.clone()));
     };
     let date = world.resource::<CampaignClock>().date;
-    leader_eligible(world, org, leader, date)?;
+    leader_eligible(world, org, leader, date, target)?;
     if !target_valid(world, def, org, target) {
         return Err(JobRejection::BadTarget);
     }
