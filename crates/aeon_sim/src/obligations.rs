@@ -20,33 +20,9 @@ use crate::clock::{CampaignClock, DailyTick, TickSet};
 use crate::ids::OrgId;
 use crate::jobs::{LogChannel, LogEntry, LogSubject};
 
-/// What kind of political fact an entry records.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum ObligationKind {
-    /// The debtor owes the creditor a good turn.
-    Favour,
-    /// The debtor has undertaken something for the creditor, by a date.
-    Promise,
-    /// The creditor holds a grudge against the debtor.
-    Grievance,
-}
-
-impl ObligationKind {
-    /// A short player-facing name.
-    pub fn label(self) -> &'static str {
-        match self {
-            ObligationKind::Favour => "Favour",
-            ObligationKind::Promise => "Promise",
-            ObligationKind::Grievance => "Grievance",
-        }
-    }
-
-    /// Whether this kind counts in the debtor's favour or against it.
-    pub fn is_positive(self) -> bool {
-        matches!(self, ObligationKind::Favour | ObligationKind::Promise)
-    }
-}
+/// The obligation vocabulary is owned by the content model and parsed
+/// exactly once, at the boundary; the ledger reuses it unchanged.
+pub use aeon_data::model::ObligationKind;
 
 /// How an entry ended, if it has.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -281,15 +257,10 @@ pub fn seed_from_content(world: &mut World, content: &aeon_data::ContentSet) {
         .obligations
         .values()
         .filter_map(|def| {
-            let kind = match def.kind.as_str() {
-                "favour" => ObligationKind::Favour,
-                "promise" => ObligationKind::Promise,
-                _ => ObligationKind::Grievance,
-            };
             let debtor = *politics.org_keys.get(&def.debtor)?;
             let creditor = *politics.org_keys.get(&def.creditor)?;
             Some((
-                kind,
+                def.kind,
                 debtor,
                 creditor,
                 def.origin.clone(),

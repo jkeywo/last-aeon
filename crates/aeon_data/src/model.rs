@@ -647,13 +647,55 @@ pub struct EventDef {
     pub effect_fn: Option<ScriptFnRef>,
 }
 
+/// What kind of political fact an obligation records.
+///
+/// This is the one vocabulary shared by authored starting obligations,
+/// script effects, and the simulation's ledger: it is parsed exactly once,
+/// at the content boundary, and typed everywhere after that.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ObligationKind {
+    /// The debtor owes the creditor a good turn.
+    Favour,
+    /// The debtor has undertaken something for the creditor, by a date.
+    Promise,
+    /// The creditor holds a grudge against the debtor.
+    Grievance,
+}
+
+impl ObligationKind {
+    /// Parses the authored spelling; anything else is a content error.
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "favour" => Some(ObligationKind::Favour),
+            "promise" => Some(ObligationKind::Promise),
+            "grievance" => Some(ObligationKind::Grievance),
+            _ => None,
+        }
+    }
+
+    /// A short player-facing name.
+    pub fn label(self) -> &'static str {
+        match self {
+            ObligationKind::Favour => "Favour",
+            ObligationKind::Promise => "Promise",
+            ObligationKind::Grievance => "Grievance",
+        }
+    }
+
+    /// Whether this kind counts in the debtor's favour or against it.
+    pub fn is_positive(self) -> bool {
+        matches!(self, ObligationKind::Favour | ObligationKind::Promise)
+    }
+}
+
 /// An authored political obligation standing at campaign start.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ObligationDef {
     /// The obligation's stable content key.
     pub key: ContentKey,
     /// Favour, promise, or grievance.
-    pub kind: String,
+    pub kind: ObligationKind,
     /// The organisation that owes, or is resented.
     pub debtor: ContentKey,
     /// The organisation that is owed, or resents.

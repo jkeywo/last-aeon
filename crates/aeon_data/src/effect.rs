@@ -58,7 +58,7 @@ pub enum ScriptEffect {
         /// What to do to the ledger.
         action: ObligationAction,
         /// Which kind of obligation: favour, promise, or grievance.
-        kind: String,
+        kind: crate::model::ObligationKind,
         /// Role whose house owes, or is resented.
         debtor: String,
         /// Role whose house is owed, or resents.
@@ -260,15 +260,13 @@ pub fn parse_effects(value: Dynamic) -> Result<Vec<ScriptEffect>, EffectParseErr
                         });
                     }
                 };
-                let obligation_kind = get_str("obligation")?;
-                if !["favour", "promise", "grievance"].contains(&obligation_kind.as_str()) {
-                    return Err(EffectParseError::BadField {
+                let obligation_kind = crate::model::ObligationKind::parse(&get_str("obligation")?)
+                    .ok_or_else(|| EffectParseError::BadField {
                         index,
                         kind: kind.clone(),
                         field: "obligation".to_owned(),
                         expected: "\"favour\", \"promise\" or \"grievance\"".to_owned(),
-                    });
-                }
+                    })?;
                 effects.push(ScriptEffect::Obligation {
                     action,
                     kind: obligation_kind,

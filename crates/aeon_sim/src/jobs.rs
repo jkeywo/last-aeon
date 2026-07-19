@@ -827,17 +827,12 @@ pub fn apply_effects(
                 let house_of = |role: &str| -> Option<OrgId> {
                     crate::access::organisation_of(world, roles.resolve_toward(role)?)
                 };
-                let obligation_kind = match kind.as_str() {
-                    "favour" => crate::obligations::ObligationKind::Favour,
-                    "promise" => crate::obligations::ObligationKind::Promise,
-                    _ => crate::obligations::ObligationKind::Grievance,
-                };
                 if let (Some(debtor), Some(creditor)) = (house_of(debtor), house_of(creditor)) {
                     match action {
                         aeon_data::effect::ObligationAction::Create => {
                             crate::obligations::create(
                                 world,
-                                obligation_kind,
+                                *kind,
                                 debtor,
                                 creditor,
                                 origin.clone(),
@@ -848,7 +843,7 @@ pub fn apply_effects(
                         aeon_data::effect::ObligationAction::Fulfil => {
                             crate::obligations::settle(
                                 world,
-                                obligation_kind,
+                                *kind,
                                 debtor,
                                 creditor,
                                 crate::obligations::ObligationStatus::Fulfilled,
@@ -857,7 +852,7 @@ pub fn apply_effects(
                         aeon_data::effect::ObligationAction::Break => {
                             crate::obligations::settle(
                                 world,
-                                obligation_kind,
+                                *kind,
                                 debtor,
                                 creditor,
                                 crate::obligations::ObligationStatus::Broken,

@@ -1607,13 +1607,13 @@ fn define_obligation(state: &mut BuilderState, map: Map) {
     let Some(kind) = req_str(state, &map, "kind") else {
         return;
     };
-    if !["favour", "promise", "grievance"].contains(&kind.as_str()) {
+    let Some(kind) = crate::model::ObligationKind::parse(&kind) else {
         state.error(
             Some(key.as_str()),
             "kind must be favour, promise, or grievance",
         );
         return;
-    }
+    };
     let Some(debtor) = req_key_field(state, &map, "debtor") else {
         return;
     };
