@@ -876,6 +876,37 @@ pub fn opinion_of(
 }
 
 /// Derived opinion of `from` about `to`, looked up from the world.
+/// How far `start` sits below `liege` in the chain of vassalage, if it sits
+/// below it at all.
+///
+/// `Some(0)` means they are the same house — ground held directly.
+/// `Some(1)` is a direct vassal, `Some(2)` a vassal's vassal, and so on;
+/// `None` means `start` does not answer to `liege` by any path.
+///
+/// This answers "is this mine, and how directly" for a house anywhere in
+/// the hierarchy, which walking to the top of the chain cannot: a vassal
+/// house is not the great house above it, and its own holdings are still
+/// its own.
+pub fn answers_to(world: &World, start: OrgId, liege: OrgId) -> Option<u32> {
+    let index = world.get_resource::<PoliticsIndex>()?;
+    let mut current = start;
+    // Bounded so a cycle in authored content cannot hang the campaign.
+    for hops in 0..16 {
+        if current == liege {
+            return Some(hops);
+        }
+        let record = index
+            .orgs
+            .get(&current)
+            .and_then(|entity| world.get::<OrgRecord>(*entity))?;
+        match (record.tier, record.liege) {
+            (Some(HouseTier::Vassal), Some(above)) => current = above,
+            _ => return None,
+        }
+    }
+    None
+}
+
 pub fn opinion_between(world: &World, from: CharacterId, to: CharacterId) -> i32 {
     if from == to {
         return 100;

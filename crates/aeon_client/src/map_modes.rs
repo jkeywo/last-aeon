@@ -19,7 +19,7 @@ use aeon_sim::order::{ORDER_MAX, ProvincialOrder, pressures, province_order};
 use aeon_sim::state::ContentDb;
 use aeon_sim::{
     BodyId, CampaignClock, OrgId, OrgRecord, PlayerHouse, PoliticsIndex, ProvinceId, TitleHolder,
-    TitleRecord, opinion_between,
+    TitleRecord, answers_to, opinion_between,
 };
 use bevy::prelude::*;
 
@@ -93,6 +93,11 @@ fn mix(low: [u8; 3], high: [u8; 3], t: i32) -> [u8; 3] {
         channel(low[1], high[1]),
         channel(low[2], high[2]),
     ]
+}
+
+/// Washes a house colour toward neutral, `fade` in 0..=1000.
+fn mine_faded(colour: [u8; 3], fade: i32) -> [u8; 3] {
+    mix(colour, NEUTRAL, fade)
 }
 
 /// A red-amber-green ramp, `t` in 0..=1000.
@@ -268,6 +273,51 @@ fn readout_for(
                     None => "Unclaimed — in revolt or never held".to_owned(),
                 },
                 alert: holder.is_none(),
+            }
+        }
+        MapMode::MyControl => {
+            // Hop distance up the chain of vassalage, not the great house at
+            // the top of it: a vassal player's own ground is its own, and
+            // its liege's ground is not the player's at all.
+            let hops = match (holder, player) {
+                (Some(holder), Some(player)) => answers_to(world, holder, player),
+                _ => None,
+            };
+            let mine = player.map(|org| org_colour(world, org)).unwrap_or(NEUTRAL);
+            match (hops, holder) {
+                (Some(0), _) => ProvinceReadout {
+                    colour: mine,
+                    value: Some("direct".to_owned()),
+                    hint: "Held directly by your house".to_owned(),
+                    alert: false,
+                },
+                (Some(hops), Some(holder)) => {
+                    // Each step away washes the colour further toward neutral.
+                    let fade = (hops.min(3) * 300).min(750) as i32;
+                    ProvinceReadout {
+                        colour: mine_faded(mine, fade),
+                        value: Some(format!("via {}", org_name(world, holder))),
+                        hint: format!(
+                            "Held by {}, {} step{} down your chain of vassalage",
+                            org_name(world, holder),
+                            hops,
+                            if hops == 1 { "" } else { "s" }
+                        ),
+                        alert: false,
+                    }
+                }
+                (_, Some(holder)) => ProvinceReadout {
+                    colour: NEUTRAL,
+                    value: None,
+                    hint: format!("{} — outside your realm", org_name(world, holder)),
+                    alert: false,
+                },
+                (_, None) => ProvinceReadout {
+                    colour: NEUTRAL,
+                    value: None,
+                    hint: "Unclaimed — answers to nobody".to_owned(),
+                    alert: false,
+                },
             }
         }
         MapMode::Order => {
@@ -451,6 +501,19 @@ fn legend_for(
                 .collect();
             legend.sort_by(|a, b| a.0.cmp(&b.0));
             legend
+        }
+        MapMode::MyControl => {
+            let mine = world
+                .get_resource::<PlayerHouse>()
+                .and_then(|p| p.0)
+                .map(|org| org_colour(world, org))
+                .unwrap_or(NEUTRAL);
+            vec![
+                ("Held directly".to_owned(), mine),
+                ("Through a vassal".to_owned(), mine_faded(mine, 300)),
+                ("Further down".to_owned(), mine_faded(mine, 600)),
+                ("Not your realm".to_owned(), NEUTRAL),
+            ]
         }
         MapMode::Order => vec![
             ("In unrest".to_owned(), [150, 40, 40]),

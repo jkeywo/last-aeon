@@ -12,7 +12,7 @@ use aeon_sim::politics::{
 };
 use aeon_sim::{
     CampaignConfig, CharacterId, CharacterRecord, OfficeRecord, OrgRecord, PoliticsIndex, SimHost,
-    TitleHolder, TitleRecord, opinion_between,
+    TitleHolder, TitleRecord, answers_to, opinion_between,
 };
 
 const FIXTURE: &str = r#"
@@ -403,4 +403,127 @@ fn repository_content_runs_a_political_decade() {
     // 3 great + 8 vassal + 2 independent houses + the Sanctora Imperim.
     assert_eq!(index.orgs.len(), 14);
     assert_eq!(index.titles.len(), 43); // 41 provinces + paramountcy + consulate
+}
+
+/// A minimal realm with one great house, its vassal, a rival great house
+/// and the rival's vassal — kept separate from the shared fixture so that
+/// testing vassalage does not perturb unrelated counts.
+const VASSAL_FIXTURE: &str = r#"
+define_scenario(#{
+    id: "vassals", name: "Vassals", start_year: 411, start_month: 1, start_day: 1,
+    player_house: "cedar",
+});
+define_name_pool(#{ id: "names", male: ["Bram"], female: ["Yeva"] });
+define_body(#{ id: "world", name: "World", kind: "planet", radius_km: 6000 });
+define_province(#{ id: "alpha", name: "Alpha", body: "world",
+                   latitude_mdeg: 0, longitude_mdeg: 0 });
+define_province(#{ id: "beta", name: "Beta", body: "world",
+                   latitude_mdeg: 20000, longitude_mdeg: 20000 });
+
+define_house(#{
+    id: "ash", name: "House Ash", surname: "Ash", tier: "great",
+    head: "aron-ash", color: [200, 60, 60], provinces: ["alpha"],
+});
+define_house(#{
+    id: "birch", name: "House Birch", surname: "Birch", tier: "great",
+    head: "bela-birch", color: [60, 60, 200], provinces: ["beta"],
+});
+define_house(#{
+    id: "cedar", name: "House Cedar", surname: "Cedar", tier: "vassal",
+    liege: "ash", head: "cera-cedar", color: [90, 140, 90],
+});
+define_house(#{
+    id: "dogwood", name: "House Dogwood", surname: "Dogwood", tier: "vassal",
+    liege: "birch", head: "dorn-dogwood", color: [140, 120, 90],
+});
+
+define_character(#{ id: "aron-ash", name: "Aron Ash", gender: "male",
+    birth_year: 370, organisation: "ash" });
+define_character(#{ id: "bela-birch", name: "Bela Birch", gender: "female",
+    birth_year: 372, organisation: "birch" });
+define_character(#{ id: "cera-cedar", name: "Cera Cedar", gender: "female",
+    birth_year: 378, organisation: "cedar" });
+define_character(#{ id: "dorn-dogwood", name: "Dorn Dogwood", gender: "male",
+    birth_year: 381, organisation: "dogwood" });
+"#;
+
+fn vassal_host(seed: u64) -> SimHost {
+    let (set, report) = load_content(&[ContentSource {
+        path: "vassals.rhai".to_owned(),
+        source: VASSAL_FIXTURE.to_owned(),
+    }]);
+    assert!(!report.has_errors(), "findings: {:?}", report.findings);
+    SimHost::new_with_content(
+        CampaignConfig {
+            name: "Vassal Trial".to_owned(),
+            seed,
+            start_date: start_date(),
+        },
+        Arc::new(set.unwrap()),
+    )
+}
+
+fn org_id(h: &mut SimHost, name: &str) -> aeon_sim::OrgId {
+    let key = aeon_data::ContentKey::new(name).unwrap();
+    h.world_mut().resource::<PoliticsIndex>().org_keys[&key]
+}
+
+#[test]
+fn vassalage_is_measured_in_hops_not_by_the_top_of_the_chain() {
+    // Content rules cap the chain at one level — a liege must be a great
+    // house — so one hop is the deepest valid arrangement, though
+    // `answers_to` counts further should that rule ever relax.
+    let mut h = vassal_host(21);
+    let ash = org_id(&mut h, "ash");
+    let cedar = org_id(&mut h, "cedar");
+    let dogwood = org_id(&mut h, "dogwood");
+    let birch = org_id(&mut h, "birch");
+    let world = h.world_mut();
+
+    // A house holds its own ground directly.
+    assert_eq!(answers_to(world, ash, ash), Some(0));
+    assert_eq!(answers_to(world, cedar, cedar), Some(0));
+
+    // Distance is counted in steps up the chain.
+    assert_eq!(answers_to(world, cedar, ash), Some(1));
+    assert_eq!(answers_to(world, dogwood, birch), Some(1));
+
+    // Vassalage runs one way only, and does not reach across the map.
+    assert_eq!(
+        answers_to(world, ash, cedar),
+        None,
+        "a liege does not answer to its own vassal"
+    );
+    assert_eq!(
+        answers_to(world, cedar, birch),
+        None,
+        "nor to a rival great house"
+    );
+    assert_eq!(
+        answers_to(world, cedar, dogwood),
+        None,
+        "nor to another liege's vassal"
+    );
+}
+
+#[test]
+fn a_vassals_own_ground_is_its_own_not_its_lieges() {
+    // The distinction the "my realm" map mode rests on: walking to the top
+    // of the chain would tell Cedar that Ash's holdings are Cedar's, and
+    // that Cedar's own holdings belong to Ash.
+    let mut h = vassal_host(22);
+    let ash = org_id(&mut h, "ash");
+    let cedar = org_id(&mut h, "cedar");
+    let world = h.world_mut();
+
+    assert_eq!(
+        answers_to(world, cedar, cedar),
+        Some(0),
+        "Cedar holds its own ground directly, whoever its liege is"
+    );
+    assert_eq!(
+        answers_to(world, ash, cedar),
+        None,
+        "and Ash's ground is not Cedar's at any distance"
+    );
 }

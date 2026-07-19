@@ -59,7 +59,7 @@ pub use obligations::{ObligationKind, ObligationRecord, ObligationStatus, Obliga
 pub use order::ProvincialOrder;
 pub use politics::{
     CampaignOver, CharacterRecord, OfficeRecord, OrgRecord, PlayerHouse, PoliticsIndex,
-    TitleHolder, TitleKind, TitleRecord, opinion_between,
+    TitleHolder, TitleKind, TitleRecord, answers_to, opinion_between,
 };
 pub use presence::{CharacterLocation, Location};
 pub use snapshot::{CampaignSnapshot, CampaignState, SNAPSHOT_FORMAT_VERSION, SnapshotError};

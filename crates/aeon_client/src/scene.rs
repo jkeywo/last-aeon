@@ -271,11 +271,14 @@ pub fn spawn_scene(
                 texture: texture.clone(),
             },
             Mesh3d(globe_mesh.clone()),
+            // Lit evenly: this is a political map, not a lit body. Shading
+            // it would darken the limb exactly where province colours and
+            // their labels still need to be read. The system view keeps its
+            // directional light — those materials are separate.
             MeshMaterial3d(materials.add(StandardMaterial {
                 base_color: Color::WHITE,
                 base_color_texture: Some(texture),
-                perceptual_roughness: 1.0,
-                metallic: 0.0,
+                unlit: true,
                 ..Default::default()
             })),
             Transform::default(),

@@ -66,6 +66,9 @@ pub enum MapMode {
     /// Colour each province by the great house at the top of its holder's
     /// liege chain.
     GreatHouse,
+    /// Shade by how much of the map answers to the player, directly or
+    /// through vassals.
+    MyControl,
     /// Shade by provincial order, marking unrest.
     Order,
     /// Shade by what the province is worth.
@@ -80,9 +83,13 @@ pub enum MapMode {
 
 impl MapMode {
     /// Every mode, in display order.
-    pub const ALL: [MapMode; 7] = [
+    ///
+    /// A slice rather than a fixed-size array so adding a mode never means
+    /// editing a length.
+    pub const ALL: &'static [MapMode] = &[
         MapMode::Holder,
         MapMode::GreatHouse,
+        MapMode::MyControl,
         MapMode::Order,
         MapMode::Wealth,
         MapMode::Military,
@@ -101,6 +108,7 @@ impl MapMode {
         match self {
             MapMode::Holder => "Holder",
             MapMode::GreatHouse => "Great House",
+            MapMode::MyControl => "My Realm",
             MapMode::Order => "Order",
             MapMode::Wealth => "Wealth",
             MapMode::Military => "Military",
@@ -116,6 +124,10 @@ impl MapMode {
             MapMode::GreatHouse => {
                 "Which great house each province ultimately answers to, \
                  following its holder's liege chain."
+            }
+            MapMode::MyControl => {
+                "What answers to you: ground you hold yourself, ground held \
+                 through your vassals, and ground that is not yours at all."
             }
             MapMode::Order => {
                 "How governable each province is. Provinces in unrest are \
