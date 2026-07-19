@@ -52,7 +52,7 @@ define_job(#{
 });
 
 fn courting_disaster(ctx) {
-    [#{ kind: "log", message: "The envoy insulted their host at " + ctx.location + "." }]
+    [#{ kind: "log", message: "The envoy insulted " + ctx.target + " (" + ctx.result + ")." }]
 }
 "#;
 
@@ -134,13 +134,18 @@ fn effect_functions_run_against_read_context() {
         .clone()
         .unwrap();
 
+    // The fields of the documented context schema: source, result,
+    // leader, target. The authored function reads two of them.
     let mut context = rhai::Map::new();
-    context.insert("location".into(), "High Keep".into());
+    context.insert("source".into(), "court-a-rival".into());
+    context.insert("result".into(), "Disaster".into());
+    context.insert("leader".into(), "Aron Veyrin".into());
+    context.insert("target".into(), "Lady Calder".into());
     let effects = host.call_effect_fn(&set, &disaster, context).unwrap();
     assert_eq!(
         effects,
         vec![ScriptEffect::Log {
-            message: "The envoy insulted their host at High Keep.".to_owned()
+            message: "The envoy insulted Lady Calder (Disaster).".to_owned()
         }]
     );
 }

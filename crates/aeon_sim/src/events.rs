@@ -252,8 +252,11 @@ fn pick(
 }
 
 /// The characters standing behind an event's roles.
+///
+/// Events resolve through the same [`JobRoles::resolve`] the job system
+/// uses, so an event effect addressing `consul` or `liege-head` means
+/// exactly what it means on a job.
 fn roles_for(world: &World, subject: EventSubject) -> JobRoles {
-    let head_of = |org: OrgId| crate::access::org_head(world, org);
     let (owner, leader, province) = match subject {
         EventSubject::Province(province) => (
             crate::warfare::province_holder(world, province),
@@ -271,16 +274,16 @@ fn roles_for(world: &World, subject: EventSubject) -> JobRoles {
             None => (None, None, None),
         },
     };
-    JobRoles {
-        leader: leader.or_else(|| owner.and_then(head_of)),
-        target: None,
-        target_head: None,
-        owner_head: owner.and_then(head_of),
-        liege_head: None,
-        consul: None,
-        sanctora: Vec::new(),
-        province,
-    }
+    JobRoles::resolve(
+        world,
+        crate::jobs::RoleSeed {
+            owner,
+            leader,
+            target: None,
+            target_head: None,
+            province,
+        },
+    )
 }
 
 /// A short label naming what an event happened to.
@@ -369,11 +372,10 @@ fn fire(world: &mut World, key: &ContentKey, subject: EventSubject) {
     if !def.weighty
         && let Some(effect_fn) = &def.effect_fn
     {
+        let ctx = crate::jobs::effect_context(world, key, "", roles.leader, &name);
         let effects = {
             let runtime = world.resource::<ScriptRuntime>();
-            runtime
-                .0
-                .call_effect_fn(&content, effect_fn, rhai::Map::new())
+            runtime.0.call_effect_fn(&content, effect_fn, ctx)
         };
         if let Ok(effects) = effects {
             crate::jobs::apply_effects(world, &effects, &roles, owner);
@@ -451,11 +453,15 @@ pub fn answer_event(
         .and_then(|head| crate::access::organisation_of(world, head));
 
     if let Some(effect_fn) = &chosen.effect_fn {
+        let target_label = roles
+            .target
+            .map(|id| crate::access::character_name(world, id))
+            .unwrap_or_default();
+        let ctx =
+            crate::jobs::effect_context(world, event, choice.as_str(), roles.leader, &target_label);
         let effects = {
             let runtime = world.resource::<ScriptRuntime>();
-            runtime
-                .0
-                .call_effect_fn(&content, effect_fn, rhai::Map::new())
+            runtime.0.call_effect_fn(&content, effect_fn, ctx)
         };
         if let Ok(effects) = effects {
             crate::jobs::apply_effects(world, &effects, roles, owner);

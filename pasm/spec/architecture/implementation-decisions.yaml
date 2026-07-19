@@ -1034,6 +1034,31 @@ entities:
         - hand-rolled-deterministic-rng
         - deterministic-campaign-simulation
 
+  - decision: boundary-vocabularies-parsed-once
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Script Boundary Vocabularies Are Typed, and Parsed Exactly Once
+      summary: >-
+        The vocabularies authored content shares with the simulation — the
+        seven effect roles (leader, target, target-head, owner-head,
+        liege-head, consul, sanctora) and the obligation kinds (favour,
+        promise, grievance) — are enums in the content crate, parsed once
+        where the content enters (define_* conversion and effect parsing)
+        and typed everywhere after. A mistyped role or kind is a loud
+        parse error, never a silent no-op or a defensive fallback. One
+        resolver (JobRoles::resolve) answers who stands behind each role
+        for jobs, popup choices, and events alike, and every effect
+        function receives one documented context schema (source, result,
+        leader, target) regardless of what invoked it.
+      rationale:
+        - The role vocabulary had one producer, three consumers, and no type; events had already drifted to filling only half the roles, and a typo'd role addressed nobody without a word of complaint.
+        - Parsing at the boundary is the only place the whole vocabulary is visible at once, which is what makes the error message able to spell out every valid spelling.
+      references:
+        - effects-returned-not-emitted
+        - scripts-emit-validated-effects-only
+        - job-effect-roles
+
   - decision: non-modal-character-picker
     core:
       status: accepted

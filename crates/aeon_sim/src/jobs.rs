@@ -11,7 +11,7 @@ use std::collections::BTreeMap;
 
 use aeon_core::calendar::GameDate;
 use aeon_data::model::{JobCategory, JobDef, JobResultKind, JobTargetKind, RiskTag};
-use aeon_data::{ContentKey, ScriptEffect, ScriptHost};
+use aeon_data::{ContentKey, EffectRole, ScriptEffect, ScriptHost};
 use bevy::app::App;
 use bevy::prelude::{Component, Entity, IntoScheduleConfigs, Resource, World};
 use serde::{Deserialize, Serialize};
@@ -246,21 +246,67 @@ pub struct JobRoles {
     pub province: Option<ProvinceId>,
 }
 
+/// What a role resolution starts from.
+///
+/// Whoever fires effects — job resolution, a popup answer, an event —
+/// names the acting organisation and character, an explicit character
+/// target, and where it happened. Everything else (owner-head,
+/// liege-head, consul, sanctora, the leader fallback) is resolved the
+/// same way for all of them by [`JobRoles::resolve`], so the role
+/// vocabulary cannot quietly mean different things in different systems.
+#[derive(Clone, Copy, Debug, Default)]
+pub struct RoleSeed {
+    /// The organisation the action serves.
+    pub owner: Option<OrgId>,
+    /// The character leading it; falls back to the owner's head.
+    pub leader: Option<CharacterId>,
+    /// An explicit character target.
+    pub target: Option<CharacterId>,
+    /// The head of a targeted organisation.
+    pub target_head: Option<CharacterId>,
+    /// The province the action acted on.
+    pub province: Option<ProvinceId>,
+}
+
 impl JobRoles {
-    fn resolve_from(&self, role: &str) -> Vec<CharacterId> {
-        match role {
-            "leader" => self.leader.into_iter().collect(),
-            "target" => self.target.into_iter().collect(),
-            "target-head" => self.target_head.into_iter().collect(),
-            "owner-head" => self.owner_head.into_iter().collect(),
-            "liege-head" => self.liege_head.into_iter().collect(),
-            "consul" => self.consul.into_iter().collect(),
-            "sanctora" => self.sanctora.clone(),
-            _ => Vec::new(),
+    /// The one resolver behind the effect-role vocabulary.
+    pub fn resolve(world: &World, seed: RoleSeed) -> JobRoles {
+        let owner_record = seed.owner.and_then(|org| crate::access::org(world, org));
+        let owner_head = owner_record.and_then(|record| record.head);
+        let sanctora = match crate::access::sanctora_org(world) {
+            Some(sanctora_org) => crate::access::living_character_ids(world)
+                .into_iter()
+                .filter(|id| crate::access::organisation_of(world, *id) == Some(sanctora_org))
+                .collect(),
+            None => Vec::new(),
+        };
+        JobRoles {
+            leader: seed.leader.or(owner_head),
+            target: seed.target,
+            target_head: seed.target_head,
+            owner_head,
+            liege_head: owner_record
+                .and_then(|record| record.liege)
+                .and_then(|liege| crate::access::org_head(world, liege)),
+            consul: crate::access::consul(world),
+            sanctora,
+            province: seed.province,
         }
     }
 
-    fn resolve_toward(&self, role: &str) -> Option<CharacterId> {
+    fn resolve_from(&self, role: EffectRole) -> Vec<CharacterId> {
+        match role {
+            EffectRole::Leader => self.leader.into_iter().collect(),
+            EffectRole::Target => self.target.into_iter().collect(),
+            EffectRole::TargetHead => self.target_head.into_iter().collect(),
+            EffectRole::OwnerHead => self.owner_head.into_iter().collect(),
+            EffectRole::LiegeHead => self.liege_head.into_iter().collect(),
+            EffectRole::Consul => self.consul.into_iter().collect(),
+            EffectRole::Sanctora => self.sanctora.clone(),
+        }
+    }
+
+    fn resolve_toward(&self, role: EffectRole) -> Option<CharacterId> {
         self.resolve_from(role).first().copied()
     }
 }
@@ -652,8 +698,6 @@ use crate::forecast::{result_weights, risk_permille};
 
 /// The character standing behind each effect role for a job.
 fn resolve_roles(world: &World, job: &ActiveJob) -> JobRoles {
-    let owner_record = crate::access::org(world, job.owner);
-
     let (target, target_head) = match job.target {
         JobTarget::Character(id) => (Some(id), None),
         JobTarget::Org(org) => {
@@ -661,15 +705,6 @@ fn resolve_roles(world: &World, job: &ActiveJob) -> JobRoles {
             (head, head)
         }
         _ => (None, None),
-    };
-
-    let sanctora_org = crate::access::sanctora_org(world);
-    let sanctora = match sanctora_org {
-        Some(sanctora_org) => crate::access::living_character_ids(world)
-            .into_iter()
-            .filter(|id| crate::access::organisation_of(world, *id) == Some(sanctora_org))
-            .collect(),
-        None => Vec::new(),
     };
 
     // Where the job acted: an explicit province target, the province an
@@ -685,18 +720,46 @@ fn resolve_roles(world: &World, job: &ActiveJob) -> JobRoles {
         },
     };
 
-    JobRoles {
-        leader: Some(job.leader),
-        target,
-        target_head,
-        owner_head: owner_record.and_then(|r| r.head),
-        liege_head: owner_record
-            .and_then(|r| r.liege)
-            .and_then(|liege| crate::access::org_head(world, liege)),
-        consul: crate::access::consul(world),
-        sanctora,
-        province,
-    }
+    JobRoles::resolve(
+        world,
+        RoleSeed {
+            owner: Some(job.owner),
+            leader: Some(job.leader),
+            target,
+            target_head,
+            province,
+        },
+    )
+}
+
+/// The read-only context map every effect function receives.
+///
+/// One schema for every invocation — job results, popup choices, event
+/// firings, and event answers — so an authored function can rely on the
+/// same fields wherever it is called from:
+/// - `source`: the job or event definition key
+/// - `result`: the result kind or the chosen option, as text
+/// - `leader`: the leading character's display name, possibly empty
+/// - `target`: what the action acted on, as a display label, possibly empty
+pub(crate) fn effect_context(
+    world: &World,
+    source: &ContentKey,
+    result: &str,
+    leader: Option<CharacterId>,
+    target_label: &str,
+) -> rhai::Map {
+    let mut ctx = rhai::Map::new();
+    ctx.insert("source".into(), source.as_str().into());
+    ctx.insert("result".into(), result.into());
+    ctx.insert(
+        "leader".into(),
+        leader
+            .map(|id| crate::access::character_name(world, id))
+            .unwrap_or_default()
+            .into(),
+    );
+    ctx.insert("target".into(), target_label.into());
+    ctx
 }
 
 fn target_name(world: &World, target: JobTarget) -> String {
@@ -784,11 +847,11 @@ pub fn apply_effects(
                 days,
                 reason,
             } => {
-                let Some(toward_id) = roles.resolve_toward(toward) else {
+                let Some(toward_id) = roles.resolve_toward(*toward) else {
                     continue;
                 };
                 let expires = days.map(|d| date.add_days(d));
-                for from_id in roles.resolve_from(from) {
+                for from_id in roles.resolve_from(*from) {
                     if from_id == toward_id {
                         continue;
                     }
@@ -824,10 +887,10 @@ pub fn apply_effects(
             } => {
                 // Obligations bind houses, so each role resolves to the
                 // organisation behind the character standing in it.
-                let house_of = |role: &str| -> Option<OrgId> {
+                let house_of = |role: EffectRole| -> Option<OrgId> {
                     crate::access::organisation_of(world, roles.resolve_toward(role)?)
                 };
-                if let (Some(debtor), Some(creditor)) = (house_of(debtor), house_of(creditor)) {
+                if let (Some(debtor), Some(creditor)) = (house_of(*debtor), house_of(*creditor)) {
                     match action {
                         aeon_data::effect::ObligationAction::Create => {
                             crate::obligations::create(
@@ -1026,11 +1089,13 @@ pub fn resolve_due_jobs(world: &mut World) {
 
         // Authored result effects.
         if let Some(fn_ref) = &result.effect_fn {
-            let mut ctx = rhai::Map::new();
-            ctx.insert("job".into(), job.def.as_str().into());
-            ctx.insert("result".into(), format!("{outcome:?}").into());
-            ctx.insert("leader".into(), leader_name.clone().into());
-            ctx.insert("target".into(), target_label.clone().into());
+            let ctx = effect_context(
+                world,
+                &job.def,
+                &format!("{outcome:?}"),
+                Some(job.leader),
+                &target_label,
+            );
             let effects = {
                 let runtime = world.resource::<ScriptRuntime>();
                 runtime.0.call_effect_fn(&content, fn_ref, ctx)
@@ -1158,9 +1223,18 @@ pub fn answer_popup(
                 .and_then(|c| c.effect_fn.clone())
         });
     if let Some(fn_ref) = effect_fn {
-        let mut ctx = rhai::Map::new();
-        ctx.insert("job".into(), popup.job.as_str().into());
-        ctx.insert("choice".into(), choice.as_str().into());
+        let target_label = popup
+            .roles
+            .target
+            .map(|id| crate::access::character_name(world, id))
+            .unwrap_or_default();
+        let ctx = effect_context(
+            world,
+            &popup.job,
+            choice.as_str(),
+            popup.roles.leader,
+            &target_label,
+        );
         let effects = {
             let runtime = world.resource::<ScriptRuntime>();
             runtime.0.call_effect_fn(&content, &fn_ref, ctx)

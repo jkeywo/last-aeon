@@ -21,15 +21,11 @@ pub enum ScriptEffect {
         message: String,
     },
     /// Add a directional opinion modifier between job-context roles.
-    ///
-    /// Roles are resolved by the simulation from the job's context:
-    /// `leader`, `target`, `target-head`, `owner-head`, `liege-head`,
-    /// `consul`, or `sanctora` (every living Sanctora member).
     Opinion {
         /// Role whose opinion changes.
-        from: String,
+        from: EffectRole,
         /// Role the opinion is about.
-        toward: String,
+        toward: EffectRole,
         /// Signed amount.
         amount: i32,
         /// Days until expiry; `None` is permanent.
@@ -60,9 +56,9 @@ pub enum ScriptEffect {
         /// Which kind of obligation: favour, promise, or grievance.
         kind: crate::model::ObligationKind,
         /// Role whose house owes, or is resented.
-        debtor: String,
+        debtor: EffectRole,
         /// Role whose house is owed, or resents.
-        creditor: String,
+        creditor: EffectRole,
         /// How much it weighs.
         weight: i32,
         /// Days until it lapses; `None` never lapses.
@@ -78,6 +74,47 @@ pub enum ScriptEffect {
         /// Signed change, in order points.
         amount: i32,
     },
+}
+
+/// A job-context role an authored effect may address.
+///
+/// These seven names are the whole vocabulary scripts have for naming
+/// characters; the simulation resolves who actually stands behind each
+/// role when the effect is applied. Parsing them here means a mistyped
+/// role is a loud parse error instead of an effect that silently
+/// addresses nobody.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum EffectRole {
+    /// The character leading the job.
+    Leader,
+    /// The character targeted, or the targeted organisation's head.
+    Target,
+    /// The head of the targeted organisation.
+    TargetHead,
+    /// The head of the organisation the job serves.
+    OwnerHead,
+    /// The head of the owner's liege organisation.
+    LiegeHead,
+    /// The character holding the Consul title.
+    Consul,
+    /// Every living member of the Sanctora Imperim.
+    Sanctora,
+}
+
+impl EffectRole {
+    /// Parses the authored spelling; anything else is a script error.
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "leader" => Some(EffectRole::Leader),
+            "target" => Some(EffectRole::Target),
+            "target-head" => Some(EffectRole::TargetHead),
+            "owner-head" => Some(EffectRole::OwnerHead),
+            "liege-head" => Some(EffectRole::LiegeHead),
+            "consul" => Some(EffectRole::Consul),
+            "sanctora" => Some(EffectRole::Sanctora),
+            _ => None,
+        }
+    }
 }
 
 /// What an [`ScriptEffect::Obligation`] does to the ledger.
@@ -178,6 +215,20 @@ pub fn parse_effects(value: Dynamic) -> Result<Vec<ScriptEffect>, EffectParseErr
                 effects.push(ScriptEffect::Log { message });
             }
             "opinion" => {
+                let get_role = |field: &str| -> Result<EffectRole, EffectParseError> {
+                    map.get(field)
+                        .and_then(|v| v.clone().into_string().ok())
+                        .as_deref()
+                        .and_then(EffectRole::parse)
+                        .ok_or_else(|| EffectParseError::BadField {
+                            index,
+                            kind: kind.clone(),
+                            field: field.to_owned(),
+                            expected: "a role: leader, target, target-head, owner-head, \
+                                       liege-head, consul, or sanctora"
+                                .to_owned(),
+                        })
+                };
                 let get_str = |field: &str| {
                     map.get(field)
                         .and_then(|v| v.clone().into_string().ok())
@@ -207,8 +258,8 @@ pub fn parse_effects(value: Dynamic) -> Result<Vec<ScriptEffect>, EffectParseErr
                     })?),
                 };
                 effects.push(ScriptEffect::Opinion {
-                    from: get_str("from")?,
-                    toward: get_str("toward")?,
+                    from: get_role("from")?,
+                    toward: get_role("toward")?,
                     amount: amount as i32,
                     days,
                     reason: get_str("reason")?,
@@ -247,6 +298,16 @@ pub fn parse_effects(value: Dynamic) -> Result<Vec<ScriptEffect>, EffectParseErr
                             expected: "string".to_owned(),
                         })
                 };
+                let get_role = |field: &str| -> Result<EffectRole, EffectParseError> {
+                    EffectRole::parse(&get_str(field)?).ok_or_else(|| EffectParseError::BadField {
+                        index,
+                        kind: kind.clone(),
+                        field: field.to_owned(),
+                        expected: "a role: leader, target, target-head, owner-head, \
+                                       liege-head, consul, or sanctora"
+                            .to_owned(),
+                    })
+                };
                 let action = match get_str("action")?.as_str() {
                     "create" => ObligationAction::Create,
                     "fulfil" => ObligationAction::Fulfil,
@@ -270,8 +331,8 @@ pub fn parse_effects(value: Dynamic) -> Result<Vec<ScriptEffect>, EffectParseErr
                 effects.push(ScriptEffect::Obligation {
                     action,
                     kind: obligation_kind,
-                    debtor: get_str("debtor")?,
-                    creditor: get_str("creditor")?,
+                    debtor: get_role("debtor")?,
+                    creditor: get_role("creditor")?,
                     weight: map
                         .get("weight")
                         .and_then(|v| v.as_int().ok())
@@ -344,6 +405,20 @@ mod tests {
     fn unit_return_means_no_effects() {
         let value = dynamic_from("()");
         assert_eq!(parse_effects(value).unwrap(), Vec::new());
+    }
+
+    #[test]
+    fn mistyped_roles_are_loud_errors() {
+        // A typo'd role used to resolve to nobody and silently no-op;
+        // now it fails the parse with the vocabulary spelled out.
+        let value = dynamic_from(
+            r#"[#{ kind: "opinion", from: "targt-head", toward: "leader",
+                   amount: 5, reason: "slight" }]"#,
+        );
+        assert!(matches!(
+            parse_effects(value),
+            Err(EffectParseError::BadField { field, .. }) if field == "from"
+        ));
     }
 
     #[test]

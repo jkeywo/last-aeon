@@ -2400,6 +2400,13 @@ impl ScriptHost {
 
     /// Calls a named effect function with a read-only context, returning
     /// its validated effects.
+    ///
+    /// The simulation supplies one context schema for every invocation —
+    /// job results, popup choices, event firings, and event answers:
+    /// `source` (the job or event key), `result` (the result kind or
+    /// chosen option, as text), `leader` (the leading character's display
+    /// name, possibly empty), and `target` (a display label for what the
+    /// action acted on, possibly empty).
     pub fn call_effect_fn(
         &self,
         set: &ContentSet,

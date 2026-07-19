@@ -14,7 +14,7 @@ pub mod key;
 pub mod model;
 pub mod report;
 
-pub use effect::ScriptEffect;
+pub use effect::{EffectRole, ScriptEffect};
 pub use host::{ContentSource, ScriptError, ScriptHost, load_content};
 pub use key::ContentKey;
 pub use model::ContentSet;
