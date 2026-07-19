@@ -141,7 +141,7 @@ entities:
         - crates/aeon_sim/src/obligations.rs
         - crates/aeon_data/src/model.rs
         - crates/aeon_data/src/effect.rs
-        - crates/aeon_data/src/host.rs
+        - crates/aeon_data/src/host
         - crates/aeon_sim/src/snapshot.rs
         - assets/content/core/events.rhai
         - assets/content/scenario/ashkarr-succession.rhai

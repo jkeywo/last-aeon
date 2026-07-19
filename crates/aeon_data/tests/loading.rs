@@ -286,3 +286,117 @@ fn repository_content_loads() {
     }
     assert!(set.is_some(), "repository content must load without errors");
 }
+
+// ---------------------------------------------------------------------------
+// Individual validation branches, exercised through small fixtures
+// ---------------------------------------------------------------------------
+
+/// The smallest political world that passes validation: one great house,
+/// one vassal bound to it, a head each, a name pool, and ground to stand
+/// on. Tests perturb one fact and assert on the one finding it causes.
+fn political_fixture(vassal_liege: &str, spouse_line: &str, ship_captain: &str) -> String {
+    format!(
+        r#"
+define_body(#{{ id: "world", name: "World", kind: "planet", radius_km: 6000 }});
+define_province(#{{ id: "home", name: "Home", body: "world", latitude_mdeg: 0, longitude_mdeg: 0 }});
+define_province(#{{ id: "march", name: "March", body: "world", latitude_mdeg: 1000, longitude_mdeg: 1000 }});
+define_name_pool(#{{ id: "names", male: ["Aron"], female: ["Bela"] }});
+define_character(#{{ id: "gale", name: "Gale", gender: "male", birth_year: 370, organisation: "greatwood" }});
+define_character(#{{ id: "vale", name: "Vale", gender: "female", birth_year: 372, organisation: "varga"{spouse_line} }});
+define_house(#{{ id: "greatwood", name: "House Greatwood", tier: "great", head: "gale", provinces: ["home"], color: [200, 40, 40] }});
+define_house(#{{ id: "varga", name: "House Varga", tier: "vassal", liege: "{vassal_liege}", head: "vale", provinces: ["march"], color: [40, 40, 200] }});
+define_ship(#{{ id: "lantern", name: "The Lantern", class: "capital", owner: "greatwood", captain: "{ship_captain}", location: "home" }});
+"#
+    )
+}
+
+#[test]
+fn the_political_fixture_is_itself_valid() {
+    let (set, report) = load_content(&[source(
+        "fixture.rhai",
+        &political_fixture("greatwood", "", "gale"),
+    )]);
+    assert!(!report.has_errors(), "findings: {:?}", report.findings);
+    assert!(set.is_some());
+}
+
+#[test]
+fn a_vassals_liege_must_be_a_great_house() {
+    // Varga swears to itself: a vassal, not a great house.
+    let (set, report) = load_content(&[source(
+        "fixture.rhai",
+        &political_fixture("varga", "", "gale"),
+    )]);
+    assert!(set.is_none());
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|f| f.message.contains("must be a great house")),
+        "findings: {:?}",
+        report.findings
+    );
+}
+
+#[test]
+fn conflicting_spouse_declarations_are_errors() {
+    // Vale declares Gale; Gale declares nobody -- fine (mirrored). But a
+    // spouse who names a *different* spouse is an authoring conflict.
+    let mirrored = political_fixture("greatwood", r#", spouse: "gale""#, "gale");
+    let (set, _) = load_content(&[source("fixture.rhai", &mirrored)]);
+    assert!(set.is_some(), "one-sided declarations are mirrored");
+
+    let conflicted = format!(
+        "{}\ndefine_character(#{{ id: \"rook\", name: \"Rook\", gender: \"male\", birth_year: 371, organisation: \"greatwood\", spouse: \"vale\" }});",
+        political_fixture("greatwood", r#", spouse: "gale""#, "gale")
+    );
+    let (set, report) = load_content(&[source("fixture.rhai", &conflicted)]);
+    assert!(set.is_none());
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|f| f.message.contains("declares a different spouse")),
+        "findings: {:?}",
+        report.findings
+    );
+}
+
+#[test]
+fn a_ships_captain_must_belong_to_its_owner() {
+    // Vale belongs to Varga; the Lantern belongs to Greatwood.
+    let (set, report) = load_content(&[source(
+        "fixture.rhai",
+        &political_fixture("greatwood", "", "vale"),
+    )]);
+    assert!(set.is_none());
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|f| f.message.contains("does not belong to the owning house")),
+        "findings: {:?}",
+        report.findings
+    );
+}
+
+#[test]
+fn mistyped_vocabulary_fields_spell_out_the_options() {
+    let script = r#"
+define_job(#{
+    id: "odd-job", title: "Odd", summary: "s", category: "sometimes",
+    duration_days: 10, skill: "stewardship", difficulty: 5,
+    results: #{ success: #{ weight: 800 }, failure: #{ weight: 200 } },
+});
+"#;
+    let (set, report) = load_content(&[source("bad.rhai", script)]);
+    assert!(set.is_none());
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|f| f.message.contains("expected routine, consequential")),
+        "findings: {:?}",
+        report.findings
+    );
+}

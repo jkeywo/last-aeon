@@ -345,7 +345,7 @@ entities:
       authority: non-authoritative
     implementation:
       paths:
-        - crates/aeon_data/src/host.rs
+        - crates/aeon_data/src/host
       tests:
         - crates/aeon_data/tests/loading.rs
       status: declared
@@ -374,7 +374,7 @@ entities:
     implementation:
       paths:
         - crates/aeon_data/src/effect.rs
-        - crates/aeon_data/src/host.rs
+        - crates/aeon_data/src/host
       tests:
         - crates/aeon_data/tests/loading.rs
       status: declared

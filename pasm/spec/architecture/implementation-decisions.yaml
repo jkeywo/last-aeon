@@ -1034,6 +1034,30 @@ entities:
         - hand-rolled-deterministic-rng
         - deterministic-campaign-simulation
 
+  - decision: builder-schema-is-the-reads
+    core:
+      status: accepted
+      confidence: confirmed
+      title: A Definition's Schema Is Stated Once, as Its Reads
+      summary: >-
+        The content host is three modules — the sandbox and orchestration,
+        the define_* builders, and the cross-reference validation pass —
+        instead of one 2,400-line file. Each builder reads its fields
+        through a tracked reader: the reads themselves are the schema, the
+        unknown-field warning is computed from what was actually read (so
+        the old hand-maintained allow-lists are gone and cannot drift),
+        and vocabulary fields are read against a spelling table whose
+        error message lists every valid option. Individual validation
+        branches are unit-tested through a minimal political fixture
+        rather than only through whole-scenario loads.
+      rationale:
+        - Every definition's field names were typed twice within twenty lines (the allow-list and the reads) and nothing but review kept them equal; deriving the warning from the reads removes the second statement entirely.
+        - Wrong-typed optional fields (an integer weighty, a map family) used to be silently coerced to their defaults; a schema stated as reads makes them loud, which is the same honesty the effect boundary already has.
+      references:
+        - content-defined-by-builder-calls
+        - validated-declarative-game-data
+        - boundary-vocabularies-parsed-once
+
   - decision: restore-mirrors-capture
     core:
       status: accepted

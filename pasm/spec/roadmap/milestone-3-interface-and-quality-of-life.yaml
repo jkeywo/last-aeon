@@ -66,7 +66,7 @@ entities:
         - crates/aeon_sim/src/warfare.rs
         - crates/aeon_sim/src/politics.rs
         - crates/aeon_sim/src/snapshot.rs
-        - crates/aeon_data/src/host.rs
+        - crates/aeon_data/src/host
         - crates/aeon_client/src/scene.rs
         - crates/aeon_client/src/map_modes.rs
         - crates/aeon_client/src/view.rs
