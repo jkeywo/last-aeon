@@ -51,6 +51,7 @@ fn main() {
         .init_resource::<jobs_ui::LogFilter>()
         .init_resource::<map_modes::MapReadout>()
         .init_resource::<ui::theme::UiTheme>()
+        .init_resource::<ui::picker::PickerState>()
         .add_systems(
             Startup,
             (
@@ -87,6 +88,9 @@ fn main() {
                 ui::theme::apply_theme,
                 map_overlay::draw_map_overlay,
                 panels::draw_panels,
+                // The picker floats above the panels that open it, so it is
+                // drawn after them and needs no place in the layout.
+                ui::picker::draw_picker,
                 jobs_ui::draw_popups,
             )
                 .chain(),

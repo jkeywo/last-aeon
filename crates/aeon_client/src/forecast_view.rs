@@ -28,18 +28,36 @@ pub struct LeaderOption {
     pub id: CharacterId,
     /// Their name.
     pub name: String,
-    /// Their value in the job's governing skill.
-    pub skill_value: i32,
-    /// Their combined chance of success or better, in permille.
-    pub success: Permille,
-    /// Why they cannot take it on now, if they cannot.
-    pub blocked: Option<String>,
+    /// What the simulation says this job would do in their hands.
+    ///
+    /// The whole forecast is kept, not a summary of it, so the breakdown
+    /// shown when comparing candidates is the very object that would
+    /// resolve the job — there is no second, simpler calculation that
+    /// could drift away from the real one.
+    pub forecast: JobForecast,
     /// What they are committed to, in the simulation's own words. Every
     /// candidate carries this, available or not, so the interface can say
     /// where someone is rather than silently omitting them.
     pub availability: LeaderAvailability,
     /// A standing command they hold, if any, for showing beside the name.
     pub assignment: Option<String>,
+}
+
+impl LeaderOption {
+    /// Their value in the job's governing skill.
+    pub fn skill_value(&self) -> i32 {
+        self.forecast.skill_value
+    }
+
+    /// Their combined chance of success or better, in permille.
+    pub fn success(&self) -> Permille {
+        self.forecast.success_chance()
+    }
+
+    /// Why they cannot take this job on now, if they cannot.
+    pub fn blocked(&self) -> Option<String> {
+        self.forecast.blocked.as_ref().map(|r| r.to_string())
+    }
 }
 
 /// What the inspector currently has expanded, and what the simulation says
@@ -186,9 +204,7 @@ pub fn refresh_forecast(world: &mut World) {
             leaders.push(LeaderOption {
                 id: candidate,
                 name,
-                skill_value: view.skill_value,
-                success: view.success_chance(),
-                blocked: view.blocked.as_ref().map(|r| r.to_string()),
+                forecast: view,
                 availability,
                 assignment,
             });
@@ -196,10 +212,10 @@ pub fn refresh_forecast(world: &mut World) {
         // Available first, then best prospects; ties broken by name so the
         // order never wobbles between frames.
         leaders.sort_by(|a, b| {
-            a.blocked
+            a.blocked()
                 .is_some()
-                .cmp(&b.blocked.is_some())
-                .then_with(|| b.success.cmp(&a.success))
+                .cmp(&b.blocked().is_some())
+                .then_with(|| b.success().cmp(&a.success()))
                 .then_with(|| a.name.cmp(&b.name))
         });
     }
