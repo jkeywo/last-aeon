@@ -12,7 +12,6 @@ mod forecast_view;
 mod jobs_ui;
 mod map_modes;
 mod map_overlay;
-mod panels;
 mod scene;
 mod selection;
 mod sim_driver;
@@ -88,7 +87,7 @@ fn main() {
             (
                 ui::theme::apply_theme,
                 map_overlay::draw_map_overlay,
-                panels::draw_panels,
+                ui::shell::draw_panels,
                 // The picker floats above the panels that open it, so it is
                 // drawn after them and needs no place in the layout.
                 ui::picker::draw_picker,

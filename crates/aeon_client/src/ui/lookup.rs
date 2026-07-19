@@ -16,7 +16,7 @@ use aeon_core::calendar::GameDate;
 use aeon_data::ContentSet;
 use aeon_data::model::{HouseTier, OrgKind};
 use aeon_sim::presence::{CharacterLocation, Location};
-use aeon_sim::{CharacterId, OrgId, ProvinceId, TitleHolder};
+use aeon_sim::{BodyId, CharacterId, OrgId, ProvinceId, TitleHolder};
 
 use crate::ui::data::{CharMap, OrgMap, PanelData};
 
@@ -30,6 +30,8 @@ pub struct Lookup<'a> {
     pub chars: CharMap<'a>,
     /// Every organisation and its stores, by id.
     pub orgs: OrgMap<'a>,
+    /// Body display names, by id.
+    pub body_names: BTreeMap<BodyId, &'a str>,
     /// Province display names, by id.
     pub province_names: BTreeMap<ProvinceId, &'a str>,
     /// How many titles each organisation holds.
@@ -61,6 +63,11 @@ impl<'a> Lookup<'a> {
                 .iter()
                 .map(|(record, resources)| (record.id, (record, resources)))
                 .collect(),
+            body_names: data
+                .bodies
+                .iter()
+                .map(|(record, name)| (record.id, name.0.as_str()))
+                .collect(),
             province_names: data
                 .provinces
                 .iter()
@@ -85,6 +92,11 @@ impl<'a> Lookup<'a> {
             .get(&id)
             .map(|(record, ..)| record.name.clone())
             .unwrap_or_default()
+    }
+
+    /// A body's name, or "Unknown" if it is not one we know.
+    pub fn body_name(&self, id: BodyId) -> &str {
+        self.body_names.get(&id).copied().unwrap_or("Unknown")
     }
 
     /// A province's name, or empty if it is unknown.
