@@ -6,224 +6,33 @@
 //! (bodies, houses, and the player's forces). Mutations travel through
 //! the UI command queue into the authoritative command pipeline.
 
-use std::collections::BTreeMap;
-
 use aeon_core::calendar::GameDate;
 use aeon_data::ContentSet;
-use aeon_data::model::{BodyKind, HouseTier, JobDef, JobTargetKind, OrgKind, ShipClass};
-use aeon_sim::economy::OrgResources;
+use aeon_data::model::{HouseTier, JobDef, JobTargetKind, OrgKind, ShipClass};
 use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
-use aeon_sim::jobs::CharacterCondition;
-use aeon_sim::map::{BodyRecord, DisplayName, GeoPosition, ProvinceRecord};
-use aeon_sim::obligations::{ObligationRecord, Obligations};
-use aeon_sim::order::{ORDER_MAX, ProvincialOrder};
-use aeon_sim::politics::{
-    ADULT_AGE, CharacterSkills, CharacterTraits, CharacterView, Lineage, OpinionLedger, opinion_of,
-};
-use aeon_sim::presence::{CharacterLocation, Location};
+use aeon_sim::obligations::ObligationRecord;
+use aeon_sim::order::ORDER_MAX;
+use aeon_sim::politics::{ADULT_AGE, CharacterView, opinion_of};
+use aeon_sim::presence::Location;
 use aeon_sim::state::{CampaignMeta, ContentDb};
 use aeon_sim::{
-    ActiveJob, CampaignClock, CampaignOver, CharacterId, CharacterRecord, JobTarget, OrgId,
-    OrgRecord, PlayerCommand, PlayerHouse, PoliticsIndex, ProvinceId, TitleHolder, TitleKind,
-    TitleRecord,
+    CampaignClock, CampaignOver, CharacterId, JobTarget, OrgId, PlayerCommand, PlayerHouse,
+    PoliticsIndex, ProvinceId, TitleHolder, TitleKind,
 };
-use bevy::ecs::system::SystemParam;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
-use crate::forecast_view::{AvailabilityView, ForecastCache};
+use crate::forecast_view::ForecastCache;
 use crate::jobs_ui::{JobForm, UiCommandQueue};
-use crate::map_modes::MapReadout;
 use crate::sim_driver::{SPEED_STEPS, TimeControl};
+use crate::ui::data::{CharacterParts, JobUi, MapUi, PanelData};
 use crate::ui::forecast::{draw_forecast_body, permille_text};
 use crate::ui::icons::draw_mode_bar;
+use crate::ui::lookup::Lookup;
 use crate::ui::picker::PickerState;
 use crate::ui::theme::{TargetState, UiTheme};
-use crate::view::{MapLedger, MapMode, MapView, SearchState, Selection, ViewState};
-
-/// The two resources an in-progress action writes to, bundled so
-/// `draw_panels` stays inside Bevy's system parameter limit.
-///
-/// They belong together in any case: the form holds the choice being made,
-/// and the picker is how one of its slots gets filled in.
-#[derive(SystemParam)]
-pub struct JobUi<'w> {
-    form: ResMut<'w, JobForm>,
-    picker: ResMut<'w, PickerState>,
-}
-
-/// The map-view resources, bundled for the same reason as [`JobUi`].
-#[derive(SystemParam)]
-pub struct MapUi<'w> {
-    mode: ResMut<'w, MapMode>,
-    ledger: ResMut<'w, MapLedger>,
-}
-
-/// Character lookup shared across the panel helpers.
-type CharMap<'a> = BTreeMap<CharacterId, CharacterParts<'a>>;
-/// Organisation lookup shared across the panel helpers.
-type OrgMap<'a> = BTreeMap<OrgId, (&'a OrgRecord, Option<&'a OrgResources>)>;
-
-fn kind_label(kind: BodyKind) -> &'static str {
-    match kind {
-        BodyKind::Planet => "Planet",
-        BodyKind::Moon => "Moon",
-        BodyKind::Starbase => "Starbase",
-    }
-}
-
-/// The player-facing name of an organisation.
-fn org_name(content: &ContentSet, org_records: &OrgMap, id: OrgId) -> String {
-    org_records
-        .get(&id)
-        .and_then(|(record, _)| content.organisations.get(&record.key))
-        .map(|def| def.name.clone())
-        .unwrap_or_else(|| id.to_string())
-}
-
-/// A one-line hover summary for a character link.
-fn character_summary(
-    content: &ContentSet,
-    org_records: &OrgMap,
-    chars: &CharMap,
-    id: CharacterId,
-    date: GameDate,
-) -> String {
-    let Some((record, skills, traits, ..)) = chars.get(&id).copied() else {
-        return String::new();
-    };
-    let house = record
-        .organisation
-        .map(|o| org_name(content, org_records, o))
-        .unwrap_or_else(|| "no house".to_owned());
-    let age = match record.death {
-        None => format!("age {}", record.age_years(date)),
-        Some(death) => format!("died {death}"),
-    };
-    let trait_names: Vec<&str> = traits
-        .0
-        .iter()
-        .filter_map(|k| content.traits.get(k).map(|d| d.name.as_str()))
-        .collect();
-    let mut summary = format!(
-        "{} — {house}, {age}\nCmd {} · Dip {} · Int {} · Ste {}",
-        record.name, skills.0.command, skills.0.diplomacy, skills.0.intrigue, skills.0.stewardship,
-    );
-    if !trait_names.is_empty() {
-        summary.push_str(&format!("\n{}", trait_names.join(", ")));
-    }
-    summary
-}
-
-/// A one-line hover summary for an organisation link.
-fn org_summary(
-    content: &ContentSet,
-    org_records: &OrgMap,
-    chars: &CharMap,
-    titles_held: usize,
-    id: OrgId,
-) -> String {
-    let Some((record, resources)) = org_records.get(&id).copied() else {
-        return String::new();
-    };
-    let name = org_name(content, org_records, id);
-    let standing = match (record.kind, record.tier) {
-        (OrgKind::SanctoraImperim, _) => "Imperial government".to_owned(),
-        (_, Some(HouseTier::Great)) => "great house".to_owned(),
-        (_, Some(HouseTier::Vassal)) => match record.liege {
-            Some(liege) => format!("vassal of {}", org_name(content, org_records, liege)),
-            None => "vassal house".to_owned(),
-        },
-        (_, Some(HouseTier::Independent)) => "independent house".to_owned(),
-        _ => String::new(),
-    };
-    let head = record
-        .head
-        .and_then(|h| chars.get(&h))
-        .map(|(r, ..)| r.name.as_str())
-        .unwrap_or("none");
-    let mut summary = format!("{name} — {standing}\nHead: {head} · {titles_held} titles held");
-    if let Some(r) = resources {
-        summary.push_str(&format!(
-            "\nW {} · M {} · S {} · I {}/{}",
-            r.wealth, r.manpower, r.supplies, r.influence, r.legitimacy
-        ));
-    }
-    summary
-}
-
-/// Renders a link with a hover summary, returning whether it was clicked.
-fn linked(ui: &mut egui::Ui, label: &str, summary: &str) -> bool {
-    ui.link(label).on_hover_text(summary).clicked()
-}
-
-/// Renders the W/M/S/I resource readout, each value with its own tooltip.
-fn resource_readout(ui: &mut egui::Ui, r: &OrgResources) {
-    ui.label(format!("W {}", r.wealth))
-        .on_hover_text("Wealth — funds jobs, personnel, and construction");
-    ui.label(format!("M {}", r.manpower))
-        .on_hover_text("Manpower — people to staff jobs, garrisons, and armies");
-    ui.label(format!("S {}", r.supplies))
-        .on_hover_text("Supplies — sustains armies, fleets, and expeditions");
-    ui.label(format!("I {}/{}", r.influence, r.legitimacy))
-        .on_hover_text(
-            "Influence / Legitimacy — spendable political capital, capped and \
-             recharged by your standing",
-        );
-}
-
-/// Draws who the player is, and returns whatever they clicked on.
-///
-/// Kept at the head of the top bar so it is on screen in every view and
-/// every selection: the one thing that should never need looking up is
-/// whose house this is and who currently leads it. Both are links, so the
-/// block doubles as the way back to yourself after wandering the map.
-///
-/// The liege line is not printed — it is already in the house's hover
-/// summary, and a bar that is always visible should spend its width on
-/// what changes rather than on what does not.
-#[allow(clippy::too_many_arguments)]
-fn draw_identity(
-    ui: &mut egui::Ui,
-    content: &ContentSet,
-    org_records: &OrgMap,
-    chars: &CharMap,
-    org: Option<OrgId>,
-    head: Option<CharacterId>,
-    org_hover: &impl Fn(OrgId) -> String,
-    char_hover: &impl Fn(CharacterId) -> String,
-) -> Option<Selection> {
-    let Some(org) = org else {
-        ui.weak("No house");
-        return None;
-    };
-    let mut hit = None;
-
-    // The house's own colour, the same one it is painted in on the map.
-    let colour = org_records
-        .get(&org)
-        .and_then(|(record, _)| content.organisations.get(&record.key))
-        .map(|def| egui::Color32::from_rgb(def.color.0, def.color.1, def.color.2))
-        .unwrap_or(egui::Color32::GRAY);
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
-    ui.painter().rect_filled(rect, 2.0, colour);
-
-    if linked(ui, &org_name(content, org_records, org), &org_hover(org)) {
-        hit = Some(Selection::Org(org));
-    }
-    match head.and_then(|id| chars.get(&id).map(|(record, ..)| (id, record.name.clone()))) {
-        Some((id, name)) => {
-            if linked(ui, &name, &char_hover(id)) {
-                hit = Some(Selection::Character(id));
-            }
-        }
-        // A house between heads still says so, rather than showing a gap.
-        None => {
-            ui.weak("leaderless");
-        }
-    }
-    hit
-}
+use crate::ui::widgets::{draw_identity, kind_label, linked, resource_readout};
+use crate::view::{MapView, SearchState, Selection, ViewState};
 
 /// One global-search result.
 enum SearchHit {
@@ -231,54 +40,6 @@ enum SearchHit {
     Org(OrgId),
     /// A province and the body it sits on (so the view can focus it).
     Province(ProvinceId, aeon_sim::BodyId),
-}
-
-type CharacterQuery = (
-    &'static CharacterRecord,
-    &'static CharacterSkills,
-    &'static CharacterTraits,
-    &'static Lineage,
-    &'static OpinionLedger,
-);
-
-type CharacterParts<'a> = (
-    &'a CharacterRecord,
-    &'a CharacterSkills,
-    &'a CharacterTraits,
-    &'a Lineage,
-    &'a OpinionLedger,
-);
-
-/// Every world query the panels read, bundled to stay within system
-/// parameter limits.
-#[derive(SystemParam)]
-pub struct PanelData<'w, 's> {
-    bodies: Query<'w, 's, (&'static BodyRecord, &'static DisplayName)>,
-    provinces: Query<
-        'w,
-        's,
-        (
-            &'static ProvinceRecord,
-            &'static DisplayName,
-            &'static GeoPosition,
-        ),
-    >,
-    orgs: Query<'w, 's, (&'static OrgRecord, Option<&'static OrgResources>)>,
-    characters: Query<'w, 's, CharacterQuery>,
-    locations: Query<'w, 's, &'static CharacterLocation>,
-    titles: Query<'w, 's, &'static TitleRecord>,
-    ships: Query<'w, 's, &'static ShipRecord>,
-    armies: Query<'w, 's, &'static ArmyRecord>,
-    conditions: Query<'w, 's, &'static CharacterCondition>,
-    active_jobs: Query<'w, 's, &'static ActiveJob>,
-    order: Query<'w, 's, (&'static ProvinceRecord, &'static ProvincialOrder)>,
-    obligations: Option<Res<'w, Obligations>>,
-    availability: Res<'w, AvailabilityView>,
-    character_records: Query<'w, 's, &'static CharacterRecord>,
-    province_records: Query<'w, 's, &'static ProvinceRecord>,
-    cache: Res<'w, ForecastCache>,
-    readout: Res<'w, MapReadout>,
-    theme: Res<'w, UiTheme>,
 }
 
 /// What the inspector's context-job section is anchored to.
@@ -916,56 +677,10 @@ pub fn draw_panels(
     let theme = &data.theme;
     let player_org = player.as_ref().and_then(|p| p.0);
 
-    let chars: BTreeMap<CharacterId, CharacterParts> = data
-        .characters
-        .iter()
-        .map(|parts| (parts.0.id, parts))
-        .collect();
-    let org_records: BTreeMap<OrgId, (&OrgRecord, Option<&OrgResources>)> = data
-        .orgs
-        .iter()
-        .map(|(record, resources)| (record.id, (record, resources)))
-        .collect();
-    let province_names: BTreeMap<ProvinceId, &str> = data
-        .provinces
-        .iter()
-        .map(|(record, name, _)| (record.id, name.0.as_str()))
-        .collect();
-    let org_label = |id: OrgId| -> String {
-        org_records
-            .get(&id)
-            .and_then(|(record, _)| content.0.organisations.get(&record.key))
-            .map(|def| def.name.clone())
-            .unwrap_or_else(|| id.to_string())
-    };
-    let location_label = |location: Option<&CharacterLocation>| -> String {
-        match location.map(|l| l.0) {
-            Some(Location::Province(province)) => province_names
-                .get(&province)
-                .map(|n| (*n).to_owned())
-                .unwrap_or_default(),
-            Some(Location::Transit { to, arrives }) => {
-                let dest = province_names.get(&to).copied().unwrap_or("...");
-                format!("In transit to {dest} (arrives {arrives})")
-            }
-            None => "Unknown".to_owned(),
-        }
-    };
+    // Every name, label and hover summary the panels need, built once.
+    let lookup = Lookup::build(&data, &content.0, date);
     let player_head: Option<CharacterId> =
-        player_org.and_then(|org| org_records.get(&org).and_then(|(r, _)| r.head));
-
-    // Hover-summary builders, reused at every link site.
-    let titles = &data.titles;
-    let org_hover = |id: OrgId| -> String {
-        let held = titles
-            .iter()
-            .filter(|t| t.holder == TitleHolder::Org(id))
-            .count();
-        org_summary(&content.0, &org_records, &chars, held, id)
-    };
-    let char_hover = |id: CharacterId| -> String {
-        character_summary(&content.0, &org_records, &chars, id, date)
-    };
+        player_org.and_then(|org| lookup.orgs.get(&org).and_then(|(r, _)| r.head));
 
     let mut viewport = egui::Ui::new(
         ctx.clone(),
@@ -978,16 +693,7 @@ pub fn draw_panels(
     egui::Panel::top("top-bar").show(&mut viewport, |ui| {
         ui.horizontal(|ui| {
             // Who you are, first and always.
-            if let Some(hit) = draw_identity(
-                ui,
-                &content.0,
-                &org_records,
-                &chars,
-                player_org,
-                player_head,
-                &org_hover,
-                &char_hover,
-            ) {
+            if let Some(hit) = draw_identity(ui, &lookup, player_org, player_head) {
                 view.selected = Some(hit);
             }
             ui.separator();
@@ -996,7 +702,7 @@ pub fn draw_panels(
             ui.monospace(date.to_string());
             ui.separator();
 
-            if let Some((_, Some(resources))) = player_org.and_then(|org| org_records.get(&org)) {
+            if let Some((_, Some(resources))) = player_org.and_then(|org| lookup.orgs.get(&org)) {
                 resource_readout(ui, resources);
                 ui.separator();
             }
@@ -1064,13 +770,13 @@ pub fn draw_panels(
     let query = search.query.trim().to_lowercase();
     if !query.is_empty() {
         let mut hits: Vec<(String, SearchHit)> = Vec::new();
-        for (id, (record, ..)) in &chars {
+        for (id, (record, ..)) in &lookup.chars {
             if record.name.to_lowercase().contains(&query) {
                 hits.push((record.name.clone(), SearchHit::Character(*id)));
             }
         }
-        for (id, (record, _)) in &org_records {
-            let name = org_name(&content.0, &org_records, *id);
+        for (id, (record, _)) in &lookup.orgs {
+            let name = lookup.org_name(*id);
             if name.to_lowercase().contains(&query) {
                 let _ = record;
                 hits.push((name, SearchHit::Org(*id)));
@@ -1273,16 +979,16 @@ pub fn draw_panels(
                                     ui.label("Held by");
                                     match holder {
                                         Some(TitleHolder::Org(org)) => {
-                                            if linked(ui, &org_label(org), &org_hover(org)) {
+                                            if linked(ui, &lookup.org_name(org), &lookup.org_hover(org)) {
                                                 view.selected = Some(Selection::Org(org));
                                             }
                                         }
                                         Some(TitleHolder::Character(character)) => {
-                                            let name = chars
+                                            let name = lookup.chars
                                                 .get(&character)
                                                 .map(|(r, ..)| r.name.clone())
                                                 .unwrap_or_default();
-                                            if linked(ui, &name, &char_hover(character)) {
+                                            if linked(ui, &name, &lookup.char_hover(character)) {
                                                 view.selected =
                                                     Some(Selection::Character(character));
                                             }
@@ -1375,12 +1081,12 @@ pub fn draw_panels(
                                                 "\u{2694} {} ({} men)",
                                                 army.name, army.manpower
                                             ));
-                                            if let Some((general, ..)) = chars.get(&army.general) {
+                                            if let Some((general, ..)) = lookup.chars.get(&army.general) {
                                                 ui.label("·");
                                                 if linked(
                                                     ui,
                                                     &general.name,
-                                                    &char_hover(army.general),
+                                                    &lookup.char_hover(army.general),
                                                 ) {
                                                     view.selected =
                                                         Some(Selection::Character(army.general));
@@ -1392,10 +1098,10 @@ pub fn draw_panels(
                                         ui.horizontal(|ui| {
                                             ui.label(format!("\u{2693} {}", ship.name));
                                             if let Some(captain) = ship.captain
-                                                && let Some((c, ..)) = chars.get(&captain)
+                                                && let Some((c, ..)) = lookup.chars.get(&captain)
                                             {
                                                 ui.label("·");
-                                                if linked(ui, &c.name, &char_hover(captain)) {
+                                                if linked(ui, &c.name, &lookup.char_hover(captain)) {
                                                     view.selected =
                                                         Some(Selection::Character(captain));
                                                 }
@@ -1423,7 +1129,7 @@ pub fn draw_panels(
                             }
                         }
                         Some(Selection::Org(id)) => {
-                            if let Some((record, resources)) = org_records.get(&id).copied() {
+                            if let Some((record, resources)) = lookup.orgs.get(&id).copied() {
                                 let def = content.0.organisations.get(&record.key);
                                 ui.strong(def.map(|d| d.name.as_str()).unwrap_or("Unknown"));
                                 match (record.kind, record.tier) {
@@ -1440,8 +1146,8 @@ pub fn draw_panels(
                                                 Some(liege) => {
                                                     if linked(
                                                         ui,
-                                                        &org_label(liege),
-                                                        &org_hover(liege),
+                                                        &lookup.org_name(liege),
+                                                        &lookup.org_hover(liege),
                                                     ) {
                                                         view.selected = Some(Selection::Org(liege));
                                                     }
@@ -1470,12 +1176,12 @@ pub fn draw_panels(
 
                                 ui.horizontal(|ui| {
                                     ui.label("Head:");
-                                    match record.head.and_then(|h| chars.get(&h)) {
+                                    match record.head.and_then(|h| lookup.chars.get(&h)) {
                                         Some((head_record, ..)) => {
                                             if linked(
                                                 ui,
                                                 &head_record.name,
-                                                &char_hover(head_record.id),
+                                                &lookup.char_hover(head_record.id),
                                             ) {
                                                 view.selected =
                                                     Some(Selection::Character(head_record.id));
@@ -1526,11 +1232,7 @@ pub fn draw_panels(
                                             let mut detail = format!(
                                                 "{}
 Origin: {}",
-                                                entry.summary(|org| org_name(
-                                                    &content.0,
-                                                    &org_records,
-                                                    org
-                                                )),
+                                                entry.summary(|org| lookup.org_name(org)),
                                                 entry.origin
                                             );
                                             match entry.expires {
@@ -1556,7 +1258,7 @@ Weight {}", entry.weight));
                                                     ),
                                                 )
                                                 .on_hover_text(&detail);
-                                                if linked(ui, &org_label(other), &org_hover(other)) {
+                                                if linked(ui, &lookup.org_name(other), &lookup.org_hover(other)) {
                                                     view.selected = Some(Selection::Org(other));
                                                 }
                                             });
@@ -1566,11 +1268,11 @@ Weight {}", entry.weight));
 
                                 ui.separator();
                                 ui.label("Members:");
-                                for (char_id, (record, ..)) in &chars {
+                                for (char_id, (record, ..)) in &lookup.chars {
                                     if record.organisation != Some(id) || !record.alive() {
                                         continue;
                                     }
-                                    if linked(ui, &record.name, &char_hover(*char_id)) {
+                                    if linked(ui, &record.name, &lookup.char_hover(*char_id)) {
                                         view.selected = Some(Selection::Character(*char_id));
                                     }
                                 }
@@ -1578,7 +1280,7 @@ Weight {}", entry.weight));
                         }
                         Some(Selection::Character(id)) => {
                             if let Some((record, skills, char_traits, lineage, _)) =
-                                chars.get(&id).copied()
+                                lookup.chars.get(&id).copied()
                             {
                                 ui.strong(&record.name);
                                 match record.death {
@@ -1591,7 +1293,7 @@ Weight {}", entry.weight));
                                 }
                                 if let Some(org) = record.organisation {
                                     ui.horizontal(|ui| {
-                                        if linked(ui, &org_label(org), &org_hover(org)) {
+                                        if linked(ui, &lookup.org_name(org), &lookup.org_hover(org)) {
                                             view.selected = Some(Selection::Org(org));
                                         }
                                     });
@@ -1602,7 +1304,7 @@ Weight {}", entry.weight));
                                     .characters
                                     .get(&id)
                                     .and_then(|e| data.locations.get(*e).ok());
-                                ui.label(format!("At: {}", location_label(location)));
+                                ui.label(format!("At: {}", lookup.location_label(location)));
                                 if record.alive()
                                     && record.organisation == player_org
                                     && let Some(Location::Province(at)) = location.map(|l| l.0)
@@ -1611,7 +1313,7 @@ Weight {}", entry.weight));
                                         .selected_text("Travel to...")
                                         .show_ui(ui, |ui| {
                                             let mut sorted: Vec<_> =
-                                                province_names.iter().collect();
+                                                lookup.province_names.iter().collect();
                                             sorted.sort_by_key(|(id, _)| **id);
                                             for (province, name) in sorted {
                                                 if *province == at {
@@ -1655,20 +1357,20 @@ Weight {}", entry.weight));
 
                                 ui.separator();
                                 if let Some(spouse) = lineage.spouse
-                                    && let Some((spouse_record, ..)) = chars.get(&spouse)
+                                    && let Some((spouse_record, ..)) = lookup.chars.get(&spouse)
                                 {
                                     ui.horizontal(|ui| {
                                         ui.label("Spouse:");
-                                        if linked(ui, &spouse_record.name, &char_hover(spouse)) {
+                                        if linked(ui, &spouse_record.name, &lookup.char_hover(spouse)) {
                                             view.selected = Some(Selection::Character(spouse));
                                         }
                                     });
                                 }
                                 for parent in &lineage.parents {
-                                    if let Some((parent_record, ..)) = chars.get(parent) {
+                                    if let Some((parent_record, ..)) = lookup.chars.get(parent) {
                                         ui.horizontal(|ui| {
                                             ui.label("Parent:");
-                                            if linked(ui, &parent_record.name, &char_hover(*parent))
+                                            if linked(ui, &parent_record.name, &lookup.char_hover(*parent))
                                             {
                                                 view.selected = Some(Selection::Character(*parent));
                                             }
@@ -1679,7 +1381,7 @@ Weight {}", entry.weight));
                                 if let Some(head_id) = player_head
                                     && head_id != id
                                     && let (Some(head), Some(them)) =
-                                        (chars.get(&head_id), chars.get(&id))
+                                        (lookup.chars.get(&head_id), lookup.chars.get(&id))
                                 {
                                     fn as_view<'a>(p: &CharacterParts<'a>) -> CharacterView<'a> {
                                         CharacterView {
@@ -1747,7 +1449,7 @@ Weight {}", entry.weight));
                 ui.add_space(8.0);
                 ui.heading("Houses");
                 ui.separator();
-                for (org_id, (record, _)) in &org_records {
+                for (org_id, (record, _)) in &lookup.orgs {
                     let def = content.0.organisations.get(&record.key);
                     let label = def.map(|d| d.name.clone()).unwrap_or_default();
                     let selected = view.selected == Some(Selection::Org(*org_id));
@@ -1771,13 +1473,14 @@ Weight {}", entry.weight));
                                 ShipClass::Patrol => "Patrol",
                             };
                             let place = match ship.location {
-                                ShipLocation::Docked(province) => province_names
+                                ShipLocation::Docked(province) => lookup
+                                    .province_names
                                     .get(&province)
                                     .map(|n| (*n).to_owned())
                                     .unwrap_or_default(),
                                 ShipLocation::Transit { to, .. } => format!(
                                     "-> {}",
-                                    province_names.get(&to).copied().unwrap_or("...")
+                                    lookup.province_names.get(&to).copied().unwrap_or("...")
                                 ),
                             };
                             ui.horizontal(|ui| {
@@ -1789,7 +1492,8 @@ Weight {}", entry.weight));
                                 egui::ComboBox::from_id_salt(("move-ship", ship.id))
                                     .selected_text("Move to...")
                                     .show_ui(ui, |ui| {
-                                        let mut sorted: Vec<_> = province_names.iter().collect();
+                                        let mut sorted: Vec<_> =
+                                            lookup.province_names.iter().collect();
                                         sorted.sort_by_key(|(id, _)| **id);
                                         for (province, name) in sorted {
                                             if ui.selectable_label(false, *name).clicked() {
@@ -1806,8 +1510,11 @@ Weight {}", entry.weight));
                         let mut armies: Vec<&ArmyRecord> = data.armies.iter().collect();
                         armies.sort_by_key(|a| a.id);
                         for army in armies {
-                            let place =
-                                province_names.get(&army.location).copied().unwrap_or("...");
+                            let place = lookup
+                                .province_names
+                                .get(&army.location)
+                                .copied()
+                                .unwrap_or("...");
                             ui.horizontal(|ui| {
                                 ui.label(format!(
                                     "{} — {} men, {} supplies — {place}",
