@@ -887,6 +887,27 @@ pub fn opinion_of(
 /// the hierarchy, which walking to the top of the chain cannot: a vassal
 /// house is not the great house above it, and its own holdings are still
 /// its own.
+/// The great house at the top of an organisation's chain of vassalage.
+///
+/// This answers the Great House map's question — whose banner this ground
+/// ultimately marches under — not whether ground is *yours*: that is
+/// [`answers_to`]'s hop-distance question, which a top-of-chain walk gets
+/// wrong for any house that is itself a vassal.
+pub fn great_house_of(world: &World, start: OrgId) -> OrgId {
+    let mut current = start;
+    // Bounded so a cycle in authored content cannot hang the campaign.
+    for _ in 0..16 {
+        let Some(record) = crate::access::org(world, current) else {
+            break;
+        };
+        match (record.tier, record.liege) {
+            (Some(HouseTier::Vassal), Some(liege)) => current = liege,
+            _ => break,
+        }
+    }
+    current
+}
+
 pub fn answers_to(world: &World, start: OrgId, liege: OrgId) -> Option<u32> {
     let index = world.get_resource::<PoliticsIndex>()?;
     let mut current = start;

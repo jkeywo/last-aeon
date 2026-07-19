@@ -18,7 +18,6 @@ use std::collections::BTreeMap;
 
 use aeon_sim::economy::OrgResources;
 use aeon_sim::forces::{ArmyRecord, ShipRecord};
-use aeon_sim::jobs::CharacterCondition;
 use aeon_sim::map::{BodyRecord, DisplayName, GeoPosition, ProvinceRecord};
 use aeon_sim::obligations::Obligations;
 use aeon_sim::order::ProvincialOrder;
@@ -95,7 +94,6 @@ pub struct PanelData<'w, 's> {
     pub titles: Query<'w, 's, &'static TitleRecord>,
     pub ships: Query<'w, 's, &'static ShipRecord>,
     pub armies: Query<'w, 's, &'static ArmyRecord>,
-    pub conditions: Query<'w, 's, &'static CharacterCondition>,
     pub active_jobs: Query<'w, 's, &'static ActiveJob>,
     pub order: Query<'w, 's, (&'static ProvinceRecord, &'static ProvincialOrder)>,
     pub obligations: Option<Res<'w, Obligations>>,

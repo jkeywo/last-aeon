@@ -1034,6 +1034,30 @@ entities:
         - hand-rolled-deterministic-rng
         - deterministic-campaign-simulation
 
+  - decision: map-facts-are-simulation-answers
+    core:
+      status: accepted
+      confidence: confirmed
+      title: The Map's Political Facts Are Simulation Answers
+      summary: >-
+        Every political fact a map mode colours by is a simulation
+        function, tested against the real scenario: province holders come
+        from province_holder, great-house realms from great_house_of,
+        garrison strength from garrison_in (counted in stable-ID order),
+        and claim standing from the same province_counts_on and
+        dominant_claimant the claim job itself uses — so a tied field
+        shows nobody leading, exactly as the claim would resolve. The
+        interface's leader gating goes back through leader_availability,
+        which the client had drifted into re-deriving.
+      rationale:
+        - The client's claim-pressure heuristic showed a house "currently leading the claim" in the opening three-way tie that the simulation would refuse; asking the simulation makes the map agree with the rules it depicts.
+        - The re-derived leader gate was the exact bug class the single-source-leader-availability decision was written against; it had grown back within two milestones, which is why the predicate now lives nowhere but the simulation.
+      references:
+        - single-source-leader-availability
+        - hop-distance-answers-realm-questions
+        - strategic-map-intelligence-modes
+        - world-read-access-module
+
   - decision: builder-schema-is-the-reads
     core:
       status: accepted

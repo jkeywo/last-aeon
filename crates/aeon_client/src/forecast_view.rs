@@ -12,7 +12,6 @@ use std::collections::BTreeMap;
 use aeon_core::calendar::GameDate;
 use aeon_data::ContentKey;
 use aeon_sim::forecast::{JobForecast, Permille, forecast};
-use aeon_sim::politics::ADULT_AGE;
 use aeon_sim::{
     CampaignClock, CharacterId, CharacterRecord, JobTarget, LeaderAvailability, PlayerHouse,
     PoliticsIndex, leader_availability,
@@ -163,26 +162,24 @@ pub fn refresh_forecast(world: &mut World) {
         return;
     }
 
-    // Candidate leaders: living adult members of the player's house. The
-    // target a candidate would act on is the one already chosen, except
-    // for army operations, which are always led by the army's general.
+    // Candidate leaders: everyone the simulation does not rule out
+    // entirely — its leader_availability is the single source of
+    // eligibility, so the interface never re-derives who is of age or of
+    // the house. The target a candidate would act on is the one already
+    // chosen, except for army operations, which are always led by the
+    // army's general.
     let candidates: Vec<CharacterId> = {
         let Some(index) = world.get_resource::<PoliticsIndex>() else {
             return;
         };
-        index
-            .characters
-            .iter()
-            .filter(|(_, entity)| {
-                world
-                    .get::<CharacterRecord>(**entity)
-                    .is_some_and(|record| {
-                        record.alive()
-                            && record.organisation == Some(org)
-                            && record.age_years(date) >= ADULT_AGE
-                    })
+        let ids: Vec<CharacterId> = index.characters.keys().copied().collect();
+        ids.into_iter()
+            .filter(|id| {
+                !matches!(
+                    leader_availability(world, org, *id, date),
+                    LeaderAvailability::Ineligible(_)
+                )
             })
-            .map(|(id, _)| *id)
             .collect()
     };
 

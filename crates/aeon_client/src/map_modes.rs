@@ -12,14 +12,16 @@
 use std::collections::BTreeMap;
 
 use aeon_core::calendar::GameDate;
-use aeon_data::model::HouseTier;
-use aeon_sim::forces::ArmyRecord;
+use aeon_sim::crisis::{dominant_claimant, province_counts_on};
+use aeon_sim::forces::garrison_in;
 use aeon_sim::map::ProvinceRecord;
 use aeon_sim::order::{ORDER_MAX, ProvincialOrder, pressures, province_order};
+use aeon_sim::politics::great_house_of;
 use aeon_sim::state::ContentDb;
+use aeon_sim::warfare::province_holder;
 use aeon_sim::{
-    BodyId, CampaignClock, OrgId, OrgRecord, PlayerHouse, PoliticsIndex, ProvinceId, TitleHolder,
-    TitleRecord, answers_to, opinion_between,
+    BodyId, CampaignClock, OrgId, OrgRecord, PlayerHouse, PoliticsIndex, ProvinceId, answers_to,
+    opinion_between,
 };
 use bevy::prelude::*;
 
@@ -161,39 +163,6 @@ pub fn refresh_map_readout(world: &mut World) {
     readout.situation = situation;
 }
 
-/// The organisation holding a province, if any.
-fn holder_of(world: &World, province: ProvinceId) -> Option<OrgId> {
-    let index = world.get_resource::<PoliticsIndex>()?;
-    let title = index.province_titles.get(&province)?;
-    let entity = index.titles.get(title)?;
-    match world.get::<TitleRecord>(*entity)?.holder {
-        TitleHolder::Org(org) => Some(org),
-        _ => None,
-    }
-}
-
-/// The great house at the top of an organisation's liege chain.
-fn great_house_of(world: &World, start: OrgId) -> OrgId {
-    let Some(index) = world.get_resource::<PoliticsIndex>() else {
-        return start;
-    };
-    let mut current = start;
-    for _ in 0..16 {
-        let Some(record) = index
-            .orgs
-            .get(&current)
-            .and_then(|entity| world.get::<OrgRecord>(*entity))
-        else {
-            break;
-        };
-        match (record.tier, record.liege) {
-            (Some(HouseTier::Vassal), Some(liege)) => current = liege,
-            _ => break,
-        }
-    }
-    current
-}
-
 /// An organisation's authored colour.
 fn org_colour(world: &World, org: OrgId) -> [u8; 3] {
     let Some(content) = world.get_resource::<ContentDb>() else {
@@ -222,34 +191,6 @@ fn org_name(world: &World, org: OrgId) -> String {
         .unwrap_or_default()
 }
 
-/// The head of an organisation.
-fn head_of(world: &World, org: OrgId) -> Option<aeon_sim::CharacterId> {
-    world
-        .get_resource::<PoliticsIndex>()
-        .and_then(|index| index.orgs.get(&org).copied())
-        .and_then(|entity| world.get::<OrgRecord>(entity))
-        .and_then(|record| record.head)
-}
-
-/// Total manpower standing in a province, and whose it mostly is.
-fn garrison_in(world: &World, province: ProvinceId) -> (i64, Option<OrgId>) {
-    let mut total = 0;
-    let mut strongest: Option<(i64, OrgId)> = None;
-    for entity in world.iter_entities() {
-        let Some(army) = entity.get::<ArmyRecord>() else {
-            continue;
-        };
-        if army.location != province {
-            continue;
-        }
-        total += army.manpower;
-        if strongest.is_none_or(|(men, _)| army.manpower > men) {
-            strongest = Some((army.manpower, army.owner));
-        }
-    }
-    (total, strongest.map(|(_, org)| org))
-}
-
 fn readout_for(
     world: &World,
     mode: MapMode,
@@ -258,7 +199,7 @@ fn readout_for(
     player: Option<OrgId>,
     all: &[(ProvinceId, ProvinceRecord)],
 ) -> ProvinceReadout {
-    let holder = holder_of(world, province);
+    let holder = province_holder(world, province);
     match mode {
         MapMode::Holder | MapMode::GreatHouse => {
             let painted = holder.map(|org| {
@@ -395,7 +336,7 @@ fn readout_for(
             }
         }
         MapMode::PlayerRelations => {
-            let player_head = player.and_then(|org| head_of(world, org));
+            let player_head = player.and_then(|org| aeon_sim::access::org_head(world, org));
             match (holder, player) {
                 (Some(holder), Some(player)) if holder == player => ProvinceReadout {
                     colour: [80, 130, 200],
@@ -404,7 +345,7 @@ fn readout_for(
                     alert: false,
                 },
                 (Some(holder), _) => {
-                    let opinion = match (head_of(world, holder), player_head) {
+                    let opinion = match (aeon_sim::access::org_head(world, holder), player_head) {
                         (Some(them), Some(you)) => opinion_between(world, them, you),
                         _ => 0,
                     };
@@ -427,17 +368,11 @@ fn readout_for(
         }
         MapMode::ClaimPressure => {
             // A province's weight in the paramountcy race is its holder's
-            // share of the body: whoever holds the most leads it.
-            let mut counts: BTreeMap<OrgId, usize> = BTreeMap::new();
-            for (id, _) in all {
-                if let Some(org) = holder_of(world, *id) {
-                    *counts.entry(org).or_default() += 1;
-                }
-            }
-            let leader = counts
-                .iter()
-                .max_by_key(|(_, count)| **count)
-                .map(|(org, _)| *org);
+            // share of the body. The simulation's own dominance test says
+            // who is leading; with the counts tied nobody is — exactly as
+            // the claim job would refuse a tied claimant.
+            let counts = province_counts_on(world, record.body);
+            let leader = dominant_claimant(world, record.body);
             let best = counts.values().copied().max().unwrap_or(0);
             match holder {
                 Some(org) => {
@@ -488,7 +423,7 @@ fn legend_for(
             // Political modes legend themselves: list the houses on show.
             let mut seen: BTreeMap<OrgId, [u8; 3]> = BTreeMap::new();
             for (id, _) in provinces {
-                if let Some(org) = holder_of(world, *id) {
+                if let Some(org) = province_holder(world, *id) {
                     let painted = if mode == MapMode::GreatHouse {
                         great_house_of(world, org)
                     } else {
@@ -581,13 +516,8 @@ fn situation_for(world: &World, player: Option<OrgId>, body: BodyId) -> Vec<Situ
 
     for record in &provinces {
         let province = record.id;
-        let holder = holder_of(world, province);
-        let name = world
-            .get_resource::<aeon_sim::MapIndex>()
-            .and_then(|index| index.provinces.get(&province).copied())
-            .and_then(|entity| world.get::<aeon_sim::DisplayName>(entity))
-            .map(|display| display.0.clone())
-            .unwrap_or_default();
+        let holder = province_holder(world, province);
+        let name = aeon_sim::access::province_name(world, province);
 
         // Our own ground slipping out of our hands.
         if holder == Some(player) {

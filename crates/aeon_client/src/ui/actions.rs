@@ -6,13 +6,12 @@
 //! as a queued `PlayerCommand::StartJob`, and nothing here decides whether
 //! a job is allowed — it renders what the simulation's forecast reports.
 
-use aeon_core::calendar::GameDate;
 use aeon_data::ContentSet;
 use aeon_data::model::{JobDef, JobTargetKind};
 use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
-use aeon_sim::politics::ADULT_AGE;
 use aeon_sim::{
-    CharacterId, JobTarget, OrgId, PlayerCommand, PoliticsIndex, ProvinceId, TitleHolder, TitleKind,
+    CharacterId, JobTarget, LeaderAvailability, OrgId, PlayerCommand, PoliticsIndex, ProvinceId,
+    TitleHolder, TitleKind,
 };
 use bevy_egui::egui;
 
@@ -71,31 +70,22 @@ pub fn draw_context_jobs(
     politics: &PoliticsIndex,
     player_org: OrgId,
     player_head: Option<CharacterId>,
-    date: GameDate,
     data: &PanelData,
     cache: &ForecastCache,
     form: &mut JobForm,
     queue: &mut UiCommandQueue,
     picker: &mut PickerState,
 ) {
-    let busy: Vec<CharacterId> = data.active_jobs.iter().map(|j| j.leader).collect();
+    // The simulation's leader_availability is the single source for
+    // whether someone can take on new work; the interface only asks. A
+    // standing command (a general, a captain) is not a blocker in itself.
     let leader_ok = |id: CharacterId| -> bool {
-        let Some(entity) = politics.characters.get(&id) else {
-            return false;
-        };
-        let Ok((record, ..)) = data.characters.get(*entity) else {
-            return false;
-        };
-        let can_lead = data
-            .conditions
-            .get(*entity)
-            .map(|c| c.can_lead(date))
-            .unwrap_or(true);
-        record.alive()
-            && record.organisation == Some(player_org)
-            && record.age_years(date) >= ADULT_AGE
-            && !busy.contains(&id)
-            && can_lead
+        data.availability.of(id).is_some_and(|state| {
+            matches!(
+                state,
+                LeaderAvailability::Available | LeaderAvailability::Assigned(_)
+            )
+        })
     };
     let jobs_of = |kinds: &[JobTargetKind]| -> Vec<(aeon_data::ContentKey, JobDef)> {
         let mut jobs: Vec<(aeon_data::ContentKey, JobDef)> = content

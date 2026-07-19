@@ -140,6 +140,33 @@ pub fn spawn_from_content(world: &mut World, content: &ContentSet) {
     world.insert_resource(index);
 }
 
+/// Total manpower standing in a province, and the owner of its strongest
+/// army there.
+///
+/// Armies are visited in stable-ID order, so a tie between equal armies
+/// always answers with the earliest-raised one rather than whatever
+/// iteration order the ECS happened to have.
+pub fn garrison_in(world: &World, province: ProvinceId) -> (i64, Option<OrgId>) {
+    let Some(index) = world.get_resource::<ForcesIndex>() else {
+        return (0, None);
+    };
+    let mut total = 0;
+    let mut strongest: Option<(i64, OrgId)> = None;
+    for entity in index.armies.values() {
+        let Some(army) = world.get::<ArmyRecord>(*entity) else {
+            continue;
+        };
+        if army.location != province {
+            continue;
+        }
+        total += army.manpower;
+        if strongest.is_none_or(|(men, _)| army.manpower > men) {
+            strongest = Some((army.manpower, army.owner));
+        }
+    }
+    (total, strongest.map(|(_, org)| org))
+}
+
 /// Creates a persistent army. Callers must already have deducted the
 /// manpower and supplies from the owner.
 pub fn form_army(

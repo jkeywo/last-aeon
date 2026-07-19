@@ -294,3 +294,51 @@ fn the_scenario_survives_a_snapshot_mid_campaign() {
     restored.advance_days(360 * 4);
     assert_eq!(restored.state_hash(), original.state_hash());
 }
+
+#[test]
+fn realm_questions_are_answered_by_the_simulation() {
+    let mut h = scenario_host(21);
+    let harrow = org(&mut h, "harrow");
+    let veyrin = org(&mut h, "veyrin");
+    let sanctora = org(&mut h, "sanctora-imperim");
+    let world = h.world_mut();
+
+    // The Great House map paints a vassal's ground under its great house;
+    // a great house and the Sanctora stand under their own banner.
+    assert_eq!(aeon_sim::politics::great_house_of(world, harrow), veyrin);
+    assert_eq!(aeon_sim::politics::great_house_of(world, veyrin), veyrin);
+    assert_eq!(
+        aeon_sim::politics::great_house_of(world, sanctora),
+        sanctora
+    );
+}
+
+#[test]
+fn garrisons_are_counted_in_stable_order() {
+    let mut h = scenario_host(22);
+    let world = h.world_mut();
+
+    // Every authored army stands somewhere; the garrison count at its
+    // province must include it and name an owner.
+    let forces = world.resource::<aeon_sim::ForcesIndex>().clone();
+    for entity in forces.armies.values() {
+        let army = world
+            .get::<aeon_sim::ArmyRecord>(*entity)
+            .expect("indexed")
+            .clone();
+        let (men, owner) = aeon_sim::forces::garrison_in(world, army.location);
+        assert!(men >= army.manpower, "garrison misses an army's men");
+        assert!(owner.is_some(), "a garrisoned province names an owner");
+    }
+    // An empty province reports an empty garrison.
+    let garrisoned: std::collections::BTreeSet<_> = forces
+        .armies
+        .values()
+        .filter_map(|e| world.get::<aeon_sim::ArmyRecord>(*e))
+        .map(|a| a.location)
+        .collect();
+    let map = world.resource::<aeon_sim::MapIndex>().clone();
+    if let Some(empty) = map.provinces.keys().find(|p| !garrisoned.contains(p)) {
+        assert_eq!(aeon_sim::forces::garrison_in(world, *empty), (0, None));
+    }
+}
