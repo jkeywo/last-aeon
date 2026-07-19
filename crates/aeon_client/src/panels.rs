@@ -172,6 +172,58 @@ fn resource_readout(ui: &mut egui::Ui, r: &OrgResources) {
         );
 }
 
+/// Draws who the player is, and returns whatever they clicked on.
+///
+/// Kept at the head of the top bar so it is on screen in every view and
+/// every selection: the one thing that should never need looking up is
+/// whose house this is and who currently leads it. Both are links, so the
+/// block doubles as the way back to yourself after wandering the map.
+///
+/// The liege line is not printed — it is already in the house's hover
+/// summary, and a bar that is always visible should spend its width on
+/// what changes rather than on what does not.
+fn draw_identity(
+    ui: &mut egui::Ui,
+    content: &ContentSet,
+    org_records: &OrgMap,
+    chars: &CharMap,
+    org: Option<OrgId>,
+    head: Option<CharacterId>,
+    org_hover: &impl Fn(OrgId) -> String,
+    char_hover: &impl Fn(CharacterId) -> String,
+) -> Option<Selection> {
+    let Some(org) = org else {
+        ui.weak("No house");
+        return None;
+    };
+    let mut hit = None;
+
+    // The house's own colour, the same one it is painted in on the map.
+    let colour = org_records
+        .get(&org)
+        .and_then(|(record, _)| content.organisations.get(&record.key))
+        .map(|def| egui::Color32::from_rgb(def.color.0, def.color.1, def.color.2))
+        .unwrap_or(egui::Color32::GRAY);
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
+    ui.painter().rect_filled(rect, 2.0, colour);
+
+    if linked(ui, &org_name(content, org_records, org), &org_hover(org)) {
+        hit = Some(Selection::Org(org));
+    }
+    match head.and_then(|id| chars.get(&id).map(|(record, ..)| (id, record.name.clone()))) {
+        Some((id, name)) => {
+            if linked(ui, &name, &char_hover(id)) {
+                hit = Some(Selection::Character(id));
+            }
+        }
+        // A house between heads still says so, rather than showing a gap.
+        None => {
+            ui.weak("leaderless");
+        }
+    }
+    hit
+}
+
 /// One global-search result.
 enum SearchHit {
     Character(CharacterId),
@@ -924,6 +976,20 @@ pub fn draw_panels(
 
     egui::Panel::top("top-bar").show(&mut viewport, |ui| {
         ui.horizontal(|ui| {
+            // Who you are, first and always.
+            if let Some(hit) = draw_identity(
+                ui,
+                &content.0,
+                &org_records,
+                &chars,
+                player_org,
+                player_head,
+                &org_hover,
+                &char_hover,
+            ) {
+                view.selected = Some(hit);
+            }
+            ui.separator();
             ui.strong(&meta.name);
             ui.separator();
             ui.monospace(date.to_string());
