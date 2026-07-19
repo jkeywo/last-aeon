@@ -6,14 +6,17 @@
 //! hash covers, so two worlds are gameplay-identical exactly when their
 //! state hashes agree.
 
+use std::sync::Arc;
+
 use aeon_core::hash::{StateHash, hash_bytes};
 use aeon_core::{calendar::GameDate, id::IdAllocator};
+use aeon_data::ContentSet;
 use bevy::prelude::World;
 use serde::{Deserialize, Serialize};
 
 use crate::clock::CampaignClock;
 use crate::command::{CommandEnvelope, CommandLog, PendingCommands};
-use crate::state::{CampaignIds, CampaignMeta, CampaignSeed};
+use crate::state::{CampaignIds, CampaignMeta, CampaignSeed, ContentDb};
 
 /// Current snapshot format version.
 ///
@@ -124,6 +127,10 @@ pub fn hash_state(state: &CampaignState) -> StateHash {
 
 /// Captures the current authoritative state of a campaign world.
 ///
+/// Every section is captured here, in one place; restoring is the same
+/// list split into its two halves, [`restore_state`] (content-free) and
+/// [`restore_content_state`] (content-bound).
+///
 /// # Panics
 /// Panics if no campaign has been started in this world.
 pub fn capture_state(world: &World) -> CampaignState {
@@ -180,6 +187,14 @@ pub fn verify_snapshot(snapshot: CampaignSnapshot) -> Result<CampaignState, Snap
 
 /// Installs a verified state into a world as the active campaign.
 ///
+/// This is the content-free half of a restore, mirroring the top half of
+/// [`capture_state`]: campaign identity, clock, allocator, the command
+/// pipeline, and the sections that never materialise entities from
+/// authored definitions (obligations, events). A snapshot taken against
+/// authored content is only fully restored once
+/// [`restore_content_state`] has respawned the content-bound half; a
+/// content-free campaign needs nothing more.
+///
 /// The plugin must already be installed. Replaces any existing campaign.
 pub fn restore_state(world: &mut World, state: CampaignState) {
     use crate::command::PendingCommands;
@@ -198,4 +213,22 @@ pub fn restore_state(world: &mut World, state: CampaignState) {
     });
     crate::obligations::restore(world, &state.obligations);
     crate::events::restore(world, &state.events);
+}
+
+/// Respawns the content-bound half of a restore against hash-verified
+/// content: the map, the political world, forces, and the job world,
+/// then the script runtime and the content database — the same sections
+/// [`crate::state::start_campaign_with_content`] creates on a fresh
+/// campaign, in the same order.
+///
+/// Callers have already verified that `content`'s hash matches the
+/// snapshot's recorded hash; pair with [`restore_state`], which installs
+/// the content-free half.
+pub fn restore_content_state(world: &mut World, state: &CampaignState, content: Arc<ContentSet>) {
+    crate::map::restore_map(world, &state.map, &content);
+    crate::politics::restore_politics(world, &state.politics, &content);
+    crate::forces::restore_forces(world, &state.forces, &content);
+    crate::jobs::restore_jobs(world, &state.jobs);
+    world.insert_resource(crate::jobs::ScriptRuntime(aeon_data::ScriptHost::new()));
+    world.insert_resource(ContentDb(content));
 }

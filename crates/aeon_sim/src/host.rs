@@ -21,10 +21,10 @@ use crate::command::{
 };
 use crate::config::CampaignConfig;
 use crate::snapshot::{
-    CampaignSnapshot, SnapshotError, capture_snapshot, capture_state, hash_state, restore_state,
-    verify_snapshot,
+    CampaignSnapshot, SnapshotError, capture_snapshot, capture_state, hash_state,
+    restore_content_state, restore_state, verify_snapshot,
 };
-use crate::state::{CampaignMeta, ContentDb, start_campaign};
+use crate::state::{CampaignMeta, start_campaign};
 
 /// Why a recorded envelope could not be re-submitted during replay.
 #[derive(Debug, thiserror::Error)]
@@ -108,18 +108,8 @@ impl SimHost {
         }
         let mut app = App::new();
         app.add_plugins(AeonSimPlugin);
-        let map_state = state.map.clone();
-        let politics_state = state.politics.clone();
-        let jobs_state = state.jobs.clone();
-        let forces_state = state.forces.clone();
+        restore_content_state(app.world_mut(), &state, content);
         restore_state(app.world_mut(), state);
-        crate::map::restore_map(app.world_mut(), &map_state, &content);
-        crate::politics::restore_politics(app.world_mut(), &politics_state, &content);
-        crate::forces::restore_forces(app.world_mut(), &forces_state, &content);
-        crate::jobs::restore_jobs(app.world_mut(), &jobs_state);
-        app.world_mut()
-            .insert_resource(crate::jobs::ScriptRuntime(aeon_data::ScriptHost::new()));
-        app.world_mut().insert_resource(ContentDb(content));
         Ok(Self { app })
     }
 

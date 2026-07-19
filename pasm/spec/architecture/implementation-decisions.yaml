@@ -1034,6 +1034,28 @@ entities:
         - hand-rolled-deterministic-rng
         - deterministic-campaign-simulation
 
+  - decision: restore-mirrors-capture
+    core:
+      status: accepted
+      confidence: confirmed
+      title: A Full Restore Reads at One Seam, Mirroring Capture
+      summary: >-
+        capture_state has always listed every persisted section in one
+        place; restore now does too. restore_state installs the
+        content-free half (identity, clock, allocator, command pipeline,
+        obligations, events) and restore_content_state respawns the
+        content-bound half (map, politics, forces, jobs, script runtime,
+        content database) in the same order start_campaign_with_content
+        creates it. The host composes the pair instead of finishing the
+        restore itself with knowledge the snapshot module did not state.
+      rationale:
+        - Which sections restore where used to be split across two files and asymmetric with capture; a new persisted section could be captured but silently never restored, caught only by the acceptance replay.
+        - Naming the two halves makes the content-free/content-bound boundary — which already governed obligations and events — an explicit rule rather than an accident of where code accumulated.
+      references:
+        - versioned-snapshots-plus-command-log
+        - content-hash-binds-saves-to-content
+        - campaign-persistence
+
   - decision: decisions-are-pure-application-is-separate
     core:
       status: accepted
