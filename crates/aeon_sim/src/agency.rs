@@ -17,6 +17,7 @@
 //! player learns why — without exposing the roll that chose between
 //! near-equal options as though it were a certainty.
 
+use aeon_core::rng::DeterministicRng;
 use aeon_data::ContentKey;
 use aeon_data::model::{AiIntent, JobTargetKind};
 use bevy::prelude::World;
@@ -258,6 +259,33 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
     intents
 }
 
+/// Picks one intent from the shortlist, weighted by how much each
+/// pressure is felt, so the most urgent usually wins without the house
+/// becoming wholly predictable.
+///
+/// Pure but for the stream: consumes exactly one roll when the shortlist
+/// is non-empty, which is what keeps the choice testable and the replay
+/// stable.
+pub fn pick_intent<'a>(
+    shortlist: &[&'a ScoredIntent],
+    rng: &mut DeterministicRng,
+) -> Option<&'a ScoredIntent> {
+    let first = shortlist.first()?;
+    let total: u64 = shortlist
+        .iter()
+        .map(|intent| intent.score.max(1) as u64)
+        .sum();
+    let mut roll = rng.roll(total.max(1));
+    for intent in shortlist {
+        let weight = intent.score.max(1) as u64;
+        if roll < weight {
+            return Some(intent);
+        }
+        roll -= weight;
+    }
+    Some(first)
+}
+
 /// Autonomous houses act on their most pressing business.
 pub fn ai_start_jobs(world: &mut World) {
     if world.get_resource::<JobsIndex>().is_none() || world.get_resource::<CampaignOver>().is_some()
@@ -291,26 +319,9 @@ pub fn ai_start_jobs(world: &mut World) {
             .filter(|intent| intent.score >= THRESHOLD)
             .take(SHORTLIST)
             .collect();
-        if shortlist.is_empty() {
+        let Some(chosen) = pick_intent(&shortlist, &mut rng).cloned() else {
             continue;
-        }
-
-        // Weighted by how much each pressure is felt, so the most urgent
-        // usually wins without the house becoming wholly predictable.
-        let total: u64 = shortlist
-            .iter()
-            .map(|intent| intent.score.max(1) as u64)
-            .sum();
-        let mut roll = rng.roll(total.max(1));
-        let mut chosen = shortlist[0].clone();
-        for intent in &shortlist {
-            let weight = intent.score.max(1) as u64;
-            if roll < weight {
-                chosen = (*intent).clone();
-                break;
-            }
-            roll -= weight;
-        }
+        };
 
         if validate_start(world, org, &chosen.job, head, chosen.target).is_ok() {
             start_job(world, org, &chosen.job, head, chosen.target);
@@ -343,4 +354,60 @@ fn announce(world: &mut World, org: OrgId, intent: &ScoredIntent) {
         entry = entry.about(subject);
     }
     crate::access::log(world, entry);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn intent(job: &str, score: i64) -> ScoredIntent {
+        ScoredIntent {
+            job: ContentKey::new(job).expect("kebab-case"),
+            target: JobTarget::None,
+            score,
+            reason: String::new(),
+            subject: None,
+            explains: false,
+        }
+    }
+
+    #[test]
+    fn an_empty_shortlist_picks_nothing_and_rolls_nothing() {
+        let mut rng = DeterministicRng::from_seed(1);
+        let before = rng.clone();
+        assert!(pick_intent(&[], &mut rng).is_none());
+        assert_eq!(rng, before, "an empty shortlist must not consume a roll");
+    }
+
+    #[test]
+    fn every_pick_comes_from_the_shortlist() {
+        let a = intent("hold-court", 80);
+        let b = intent("mend-fences", 40);
+        let shortlist = [&a, &b];
+        for seed in 0..200 {
+            let mut rng = DeterministicRng::from_seed(seed);
+            let picked = pick_intent(&shortlist, &mut rng).expect("non-empty");
+            assert!(shortlist.iter().any(|i| i.job == picked.job));
+        }
+    }
+
+    #[test]
+    fn heavier_pressures_win_more_often() {
+        let heavy = intent("answer-the-crisis", 90);
+        let light = intent("ordinary-business", 30);
+        let shortlist = [&heavy, &light];
+        let mut heavy_picks = 0;
+        for seed in 0..1000 {
+            let mut rng = DeterministicRng::from_seed(seed);
+            if pick_intent(&shortlist, &mut rng).expect("non-empty").job == heavy.job {
+                heavy_picks += 1;
+            }
+        }
+        // 90:30 weighting: expect roughly three quarters, and certainly
+        // a clear majority.
+        assert!(
+            (650..=850).contains(&heavy_picks),
+            "heavy pressure picked {heavy_picks} of 1000"
+        );
+    }
 }

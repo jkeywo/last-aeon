@@ -691,10 +691,10 @@ pub fn start_job(
 // Resolution
 // ---------------------------------------------------------------------------
 
-// Outcome weighting, duration, and risk chances live in `forecast`, so the
-// numbers quoted to the player before a job are the numbers used to resolve
-// it. Re-exported here for the resolution code below.
-use crate::forecast::{result_weights, risk_permille};
+// Outcome weighting, sampling, duration, and risk chances live in
+// `forecast`, so the numbers quoted to the player before a job are the
+// numbers used to resolve it.
+use crate::forecast::risk_permille;
 
 /// The character standing behind each effect role for a job.
 fn resolve_roles(world: &World, job: &ActiveJob) -> JobRoles {
@@ -1032,27 +1032,14 @@ pub fn resolve_due_jobs(world: &mut World) {
             continue;
         }
 
-        // Outcome, rolled against exactly the table the forecast reports.
+        // Outcome, drawn by the same sampler the forecast describes.
         let effectiveness = crate::forecast::effectiveness(world, job.leader, &def);
         let mut rng = crate::access::derived_rng(
             world,
             "job-resolution",
             &[job_id.raw(), date.days_since_epoch() as u64],
         );
-        let weights: Vec<(JobResultKind, u64)> = result_weights(&def, effectiveness);
-        let total: u64 = weights.iter().map(|(_, w)| w).sum();
-        let mut roll = rng.roll(total.max(1));
-        let mut outcome = weights
-            .last()
-            .map(|(k, _)| *k)
-            .unwrap_or(JobResultKind::Failure);
-        for (kind, weight) in &weights {
-            if roll < *weight {
-                outcome = *kind;
-                break;
-            }
-            roll -= *weight;
-        }
+        let mut outcome = crate::forecast::resolve_outcome(&def, effectiveness, &mut rng);
         if matches!(
             outcome,
             JobResultKind::Success | JobResultKind::CriticalSuccess

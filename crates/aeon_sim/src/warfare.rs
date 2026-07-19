@@ -103,11 +103,58 @@ pub struct Engagement {
     pub defender_losses: i64,
 }
 
-/// Resolves a field engagement from strategic state.
+/// The strategic inputs to a field engagement, gathered before any dice.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct EngagementInputs {
+    /// Attacker strength from [`army_strength`].
+    pub attack_strength: i64,
+    /// Defender strength from [`army_strength`], before the order factor.
+    pub defence_strength: i64,
+    /// Defence reliability of the ground, in permille.
+    pub order_factor: i64,
+    /// Attacker manpower, for losses.
+    pub attacker_manpower: i64,
+    /// Defender manpower, for losses.
+    pub defender_manpower: i64,
+}
+
+/// Decides a field engagement from its strategic inputs.
 ///
-/// Strengths carry a bounded swing from a derived stream keyed by both
-/// armies and the day; the winner loses 5-15% of their men, the loser
-/// 20-35%.
+/// Pure but for the stream: each strength carries a bounded ±15% swing,
+/// the winner loses 5-15% of their men, the loser 20-35%. Deciding apart
+/// from the world lets the formula be tested without mustering a
+/// campaign.
+pub fn decide_engagement(inputs: EngagementInputs, rng: &mut DeterministicRng) -> Engagement {
+    let swing = |rng: &mut DeterministicRng, strength: i64| -> i64 {
+        strength * (100 + rng.roll_range(-15, 15)) / 100
+    };
+    let attack = swing(rng, inputs.attack_strength);
+    // Defenders are only as reliable as the ground they stand on: a
+    // garrison among a hostile population gives way sooner.
+    let defence = swing(rng, inputs.defence_strength) * inputs.order_factor / 1000;
+    let attacker_won = attack > defence;
+
+    let loss = |rng: &mut DeterministicRng, manpower: i64, winner: bool| -> i64 {
+        let permille = if winner {
+            rng.roll_range(50, 150)
+        } else {
+            rng.roll_range(200, 350)
+        };
+        (manpower * permille / 1000).max(1)
+    };
+    let attacker_losses = loss(rng, inputs.attacker_manpower, attacker_won);
+    let defender_losses = loss(rng, inputs.defender_manpower, !attacker_won);
+
+    Engagement {
+        attacker_won,
+        attacker_losses,
+        defender_losses,
+    }
+}
+
+/// Resolves a field engagement: gathers the strategic inputs, lets
+/// [`decide_engagement`] settle the field, and applies the losses and
+/// the loser's retreat or destruction.
 pub fn resolve_engagement(
     world: &mut World,
     attacker: ArmyId,
@@ -130,29 +177,20 @@ pub fn resolve_engagement(
             date.days_since_epoch() as u64,
         ],
     );
-    let swing = |rng: &mut DeterministicRng, strength: i64| -> i64 {
-        strength * (100 + rng.roll_range(-15, 15)) / 100
+    let inputs = EngagementInputs {
+        attack_strength: army_strength(world, &attacker_record, false),
+        defence_strength: army_strength(world, &defender_record, true),
+        order_factor: crate::order::defence_factor_permille(
+            crate::order::province_order(world, defender_record.location).order,
+        ),
+        attacker_manpower: attacker_record.manpower,
+        defender_manpower: defender_record.manpower,
     };
-    let attack = swing(&mut rng, army_strength(world, &attacker_record, false));
-    // Defenders are only as reliable as the ground they stand on: a
-    // garrison among a hostile population gives way sooner.
-    let order_factor = crate::order::defence_factor_permille(
-        crate::order::province_order(world, defender_record.location).order,
-    );
-    let defence =
-        swing(&mut rng, army_strength(world, &defender_record, true)) * order_factor / 1000;
-    let attacker_won = attack > defence;
-
-    let loss = |rng: &mut DeterministicRng, manpower: i64, winner: bool| -> i64 {
-        let permille = if winner {
-            rng.roll_range(50, 150)
-        } else {
-            rng.roll_range(200, 350)
-        };
-        (manpower * permille / 1000).max(1)
-    };
-    let attacker_losses = loss(&mut rng, attacker_record.manpower, attacker_won);
-    let defender_losses = loss(&mut rng, defender_record.manpower, !attacker_won);
+    let Engagement {
+        attacker_won,
+        attacker_losses,
+        defender_losses,
+    } = decide_engagement(inputs, &mut rng);
 
     for (army_id, losses) in [(attacker, attacker_losses), (defender, defender_losses)] {
         let entity = crate::access::army_entity(world, army_id).expect("indexed");
@@ -451,4 +489,68 @@ pub(crate) fn install(app: &mut App) {
             .in_set(TickSet::Simulation)
             .after(crate::jobs::resolve_due_jobs),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn inputs(attack: i64, defence: i64) -> EngagementInputs {
+        EngagementInputs {
+            attack_strength: attack,
+            defence_strength: defence,
+            order_factor: 1000,
+            attacker_manpower: attack,
+            defender_manpower: defence,
+        }
+    }
+
+    fn rng(seed: u64) -> DeterministicRng {
+        DeterministicRng::derive(seed, "engagement-test", &[seed])
+    }
+
+    #[test]
+    fn losses_stay_inside_their_stated_bands() {
+        for seed in 0..500 {
+            let result = decide_engagement(inputs(10_000, 10_000), &mut rng(seed));
+            let (winner, loser) = if result.attacker_won {
+                (result.attacker_losses, result.defender_losses)
+            } else {
+                (result.defender_losses, result.attacker_losses)
+            };
+            assert!((500..=1500).contains(&winner), "winner lost {winner}");
+            assert!((2000..=3500).contains(&loser), "loser lost {loser}");
+        }
+    }
+
+    #[test]
+    fn overwhelming_strength_always_carries_the_field() {
+        // The swing is bounded at ±15%, so twice the strength cannot lose.
+        for seed in 0..500 {
+            let result = decide_engagement(inputs(20_000, 10_000), &mut rng(seed));
+            assert!(result.attacker_won, "seed {seed} lost a 2:1 field");
+        }
+    }
+
+    #[test]
+    fn hostile_ground_costs_the_defender_the_bounded_swing_cannot_save() {
+        // At the minimum defence factor the ground gives way: an equal
+        // defender on fully disordered ground loses even their best roll
+        // against the attacker's worst.
+        let collapsed = EngagementInputs {
+            order_factor: crate::order::defence_factor_permille(0),
+            ..inputs(10_000, 10_000)
+        };
+        for seed in 0..500 {
+            let result = decide_engagement(collapsed, &mut rng(seed));
+            assert!(result.attacker_won, "seed {seed} held untenable ground");
+        }
+    }
+
+    #[test]
+    fn the_same_stream_decides_the_same_field() {
+        let a = decide_engagement(inputs(12_000, 9_000), &mut rng(42));
+        let b = decide_engagement(inputs(12_000, 9_000), &mut rng(42));
+        assert_eq!(a, b);
+    }
 }

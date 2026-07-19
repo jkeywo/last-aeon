@@ -137,6 +137,34 @@ pub fn result_weights(def: &JobDef, effectiveness: i32) -> Vec<(JobResultKind, u
         .collect()
 }
 
+/// Draws one outcome from the same weighted table the forecast reports.
+///
+/// This is the only sampler job resolution has: it consumes exactly one
+/// roll against [`result_weights`], so the odds shown to the player are
+/// the odds the roll obeys — by construction, not by two call sites
+/// agreeing to stay in step.
+pub fn resolve_outcome(
+    def: &JobDef,
+    effectiveness: i32,
+    rng: &mut aeon_core::rng::DeterministicRng,
+) -> JobResultKind {
+    let weights = result_weights(def, effectiveness);
+    let total: u64 = weights.iter().map(|(_, w)| w).sum();
+    let mut roll = rng.roll(total.max(1));
+    let mut outcome = weights
+        .last()
+        .map(|(k, _)| *k)
+        .unwrap_or(JobResultKind::Failure);
+    for (kind, weight) in &weights {
+        if roll < *weight {
+            outcome = *kind;
+            break;
+        }
+        roll -= *weight;
+    }
+    outcome
+}
+
 /// Converts the weight table to permille chances that sum to exactly 1000.
 ///
 /// Uses largest-remainder apportionment so the reported chances are exact
@@ -379,6 +407,41 @@ mod tests {
         for effectiveness in [-100, 100] {
             for (_, chance) in result_odds(&def, effectiveness) {
                 assert!(chance > 0, "a tail vanished at {effectiveness}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_sampler_obeys_the_odds_the_forecast_reports() {
+        // The invariant the whole forecast system promises: the roll uses
+        // exactly the distribution the player was shown. Sample the real
+        // sampler across many derived streams and compare the empirical
+        // frequencies against result_odds.
+        let def = def_with(&[
+            (JobResultKind::CriticalSuccess, 1),
+            (JobResultKind::Success, 7),
+            (JobResultKind::Failure, 3),
+            (JobResultKind::Disaster, 2),
+        ]);
+        for effectiveness in [-6, 0, 6] {
+            let odds = result_odds(&def, effectiveness);
+            let mut counts: BTreeMap<JobResultKind, u64> = BTreeMap::new();
+            const SAMPLES: u64 = 100_000;
+            for seed in 0..SAMPLES {
+                let mut rng =
+                    aeon_core::rng::DeterministicRng::derive(seed, "sampler-test", &[seed]);
+                *counts
+                    .entry(resolve_outcome(&def, effectiveness, &mut rng))
+                    .or_default() += 1;
+            }
+            for (kind, permille) in odds {
+                let observed = counts.get(&kind).copied().unwrap_or(0) * 1000 / SAMPLES;
+                let drift = observed.abs_diff(u64::from(permille));
+                assert!(
+                    drift <= 10,
+                    "at effectiveness {effectiveness}, {kind:?} was forecast \
+                     {permille}permille but sampled {observed}permille"
+                );
             }
         }
     }

@@ -1034,6 +1034,32 @@ entities:
         - hand-rolled-deterministic-rng
         - deterministic-campaign-simulation
 
+  - decision: decisions-are-pure-application-is-separate
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Random Decisions Are Pure Functions; Application Is Separate
+      summary: >-
+        Wherever a derived stream settles an outcome, the decision is a
+        pure function of explicit inputs and the stream, separate from the
+        world mutation that applies it. Job outcomes are drawn by
+        forecast::resolve_outcome — the same module that reports the odds,
+        so the roll obeys the forecast by construction rather than by two
+        hand-written samplers agreeing. Field engagements are decided by
+        decide_engagement over gathered EngagementInputs, and autonomous
+        houses pick from their shortlist through pick_intent. Each
+        consumes a fixed number of rolls, and each is unit-tested —
+        including a statistical test that the sampler's empirical
+        frequencies match result_odds.
+      rationale:
+        - The forecast promised the roll would use exactly the table shown to the player, but the sampler was a second hand-rolled implementation buried in a &mut World monolith with no test able to hold the two together.
+        - A decision that is pure in its inputs and stream can be tested across thousands of seeds without running campaign ticks, which is where formula bugs actually get caught.
+      references:
+        - forecasts-derive-from-shared-resolution-code
+        - job-forecasts-share-authoritative-calculations
+        - strategic-engagement-formula
+        - agency-intents-are-authored-on-jobs
+
   - decision: boundary-vocabularies-parsed-once
     core:
       status: accepted
