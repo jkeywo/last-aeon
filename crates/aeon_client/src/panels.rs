@@ -36,9 +36,10 @@ use crate::jobs_ui::{JobForm, UiCommandQueue};
 use crate::map_modes::MapReadout;
 use crate::sim_driver::{SPEED_STEPS, TimeControl};
 use crate::ui::forecast::{draw_forecast_body, permille_text};
+use crate::ui::icons::draw_mode_bar;
 use crate::ui::picker::PickerState;
 use crate::ui::theme::{TargetState, UiTheme};
-use crate::view::{MapMode, MapView, SearchState, Selection, ViewState};
+use crate::view::{MapLedger, MapMode, MapView, SearchState, Selection, ViewState};
 
 /// The two resources an in-progress action writes to, bundled so
 /// `draw_panels` stays inside Bevy's system parameter limit.
@@ -49,6 +50,13 @@ use crate::view::{MapMode, MapView, SearchState, Selection, ViewState};
 pub struct JobUi<'w> {
     form: ResMut<'w, JobForm>,
     picker: ResMut<'w, PickerState>,
+}
+
+/// The map-view resources, bundled for the same reason as [`JobUi`].
+#[derive(SystemParam)]
+pub struct MapUi<'w> {
+    mode: ResMut<'w, MapMode>,
+    ledger: ResMut<'w, MapLedger>,
 }
 
 /// Character lookup shared across the panel helpers.
@@ -830,7 +838,7 @@ pub fn draw_panels(
     mut view: ResMut<ViewState>,
     mut queue: ResMut<UiCommandQueue>,
     mut search: ResMut<SearchState>,
-    mut mode: ResMut<MapMode>,
+    map_ui: MapUi,
     job_ui: JobUi,
     log: Option<Res<aeon_sim::MessageLog>>,
     mut filter: ResMut<crate::jobs_ui::LogFilter>,
@@ -840,6 +848,10 @@ pub fn draw_panels(
         mut form,
         mut picker,
     } = job_ui;
+    let MapUi {
+        mut mode,
+        mut ledger,
+    } = map_ui;
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
     };
@@ -953,16 +965,11 @@ pub fn draw_panels(
                         .unwrap_or("Unknown");
                     ui.label(name);
                     ui.separator();
-                    if ui
-                        .button(mode.label())
-                        .on_hover_text(
-                            "Toggle province colouring between the direct holder \
-                             and its top great house.",
-                        )
-                        .clicked()
-                    {
-                        *mode = mode.toggled();
+                    if let Some(picked) = draw_mode_bar(ui, &data.theme, *mode) {
+                        *mode = picked;
                     }
+                    ui.toggle_value(&mut ledger.open, "?")
+                        .on_hover_text("Show what the map's colours mean.");
                 }
             }
 
@@ -1087,7 +1094,7 @@ pub fn draw_panels(
     // ------------------------------------------------------------------
     // Legend for the active map mode.
     // ------------------------------------------------------------------
-    if matches!(view.view, MapView::Body(_)) && !data.readout.legend.is_empty() {
+    if ledger.open && matches!(view.view, MapView::Body(_)) && !data.readout.legend.is_empty() {
         let bottom = ctx.viewport_rect().height() - 180.0;
         egui::Area::new("map-legend".into())
             .fixed_pos(egui::pos2(276.0, bottom))

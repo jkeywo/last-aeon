@@ -45,6 +45,7 @@ fn main() {
         .init_resource::<jobs_ui::JobForm>()
         .init_resource::<view::SearchState>()
         .init_resource::<view::MapMode>()
+        .init_resource::<view::MapLedger>()
         .init_resource::<scene::GlobeBake>()
         .init_resource::<forecast_view::ForecastCache>()
         .init_resource::<forecast_view::AvailabilityView>()

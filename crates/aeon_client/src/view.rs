@@ -53,6 +53,18 @@ pub struct SearchState {
     pub query: String,
 }
 
+/// Whether the map's colour ledger is summoned.
+///
+/// Closed by default. A legend that is always on screen spends permanent
+/// space explaining a mode the player has usually already learned to read —
+/// so it is available on demand, next to the control that changes what it
+/// would explain.
+#[derive(Resource, Copy, Clone, Debug, Default)]
+pub struct MapLedger {
+    /// Whether the ledger is showing.
+    pub open: bool,
+}
+
 /// How the political globe colours provinces.
 ///
 /// Each mode answers one strategic question. The political modes paint
@@ -96,12 +108,6 @@ impl MapMode {
         MapMode::PlayerRelations,
         MapMode::ClaimPressure,
     ];
-
-    /// The next mode in the cycle.
-    pub fn toggled(self) -> Self {
-        let index = MapMode::ALL.iter().position(|m| *m == self).unwrap_or(0);
-        MapMode::ALL[(index + 1) % MapMode::ALL.len()]
-    }
 
     /// A short label for the mode selector.
     pub fn label(self) -> &'static str {
@@ -160,6 +166,23 @@ pub fn geo_to_unit(latitude_mdeg: i32, longitude_mdeg: i32) -> bevy::math::Vec3 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_mode_reaches_the_bar_exactly_once() {
+        // The icon bar draws `ALL` and nothing else, so a mode missing from
+        // it is a mode the player cannot select, and a duplicated one is a
+        // button that does nothing new. Neither shows up as a compile error.
+        let mut seen: Vec<MapMode> = Vec::new();
+        for mode in MapMode::ALL {
+            assert!(!seen.contains(mode), "{mode:?} is listed twice");
+            seen.push(*mode);
+            assert!(!mode.label().is_empty(), "{mode:?} has no label");
+            assert!(
+                !mode.description().is_empty(),
+                "{mode:?} has no description, so its button would hover blank"
+            );
+        }
+    }
 
     #[test]
     fn geo_conversion_hits_the_cardinal_points() {
