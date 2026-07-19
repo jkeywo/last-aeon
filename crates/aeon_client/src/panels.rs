@@ -182,6 +182,7 @@ fn resource_readout(ui: &mut egui::Ui, r: &OrgResources) {
 /// The liege line is not printed — it is already in the house's hover
 /// summary, and a bar that is always visible should spend its width on
 /// what changes rather than on what does not.
+#[allow(clippy::too_many_arguments)]
 fn draw_identity(
     ui: &mut egui::Ui,
     content: &ContentSet,

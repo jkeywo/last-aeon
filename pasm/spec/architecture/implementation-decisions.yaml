@@ -911,3 +911,126 @@ entities:
         - intent-driven-organisation-agency
         - ai-agency-through-the-job-catalogue
         - job-system
+
+  - decision: egui-with-owned-design-tokens
+    core:
+      status: accepted
+      confidence: confirmed
+      title: egui Plus an Owned Design-Token Layer, Not an HTML Interface
+      summary: >-
+        The interface stays on egui, and its whole appearance moves into a
+        serde token file the client embeds at build time. A designed token
+        set replaces the authored one wholesale without touching rendering
+        code. The alternative of defining the interface in HTML was
+        investigated and rejected: wry is a native webview binding and
+        cannot compile to wasm32, which is the target the game is actually
+        played on; bevy_wry has been unmaintained since 2024 and
+        bevy_webview_wry is pinned to an older Bevy. bevy_hui does support
+        the current Bevy but ships no widgets at all, against an open engine
+        limitation preventing a child node escaping its parent's clipping —
+        which is exactly what tooltips and dropdowns need, and this
+        interface is made of pervasive hover explanations, pickers, scroll
+        areas and modal windows.
+      rationale:
+        - The web build is the primary playable surface, so an approach that cannot compile to wasm32 could never serve it whatever its merits natively.
+        - Owning roughly 250 lines of token struct carries no migration risk and no dependency that can go stale, where the published egui theme crates are either abandoned or unverified against the egui version in use.
+        - Tokens translate mechanically into egui's state-keyed style, so design work can be requested as a token file plus static mockups rather than as shipping code.
+      references:
+        - job-forecast-and-explanation-ui
+        - context-sensitive-job-ui
+
+  - decision: single-source-leader-availability
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Exactly One Function Answers Whether a Character May Lead
+      summary: >-
+        leader_availability in the simulation is the only answer to whether
+        a character can lead a job, and it returns the specific cause rather
+        than a boolean. Being assigned a standing command is not a blocker
+        in itself — a general may still lead a diplomatic job — so whether a
+        commitment bars a particular job is asked per target. The client
+        renders the returned cause and never re-derives eligibility.
+      rationale:
+        - Three partial implementations had drifted apart, which is what made busy characters appear selectable and then silently no-op on click.
+        - A cause rather than a boolean is what lets the interface say why someone is unavailable and when they will be free, instead of omitting them and leaving the player to wonder where their household went.
+      references:
+        - context-sensitive-job-ui
+        - job-system
+
+  - decision: ship-captains-are-assigned-and-consequential
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Ships Are Commanded by Assigned Captains
+      summary: >-
+        A ship's captain is assigned by player command, persists like an
+        army's general, is required before the ship can be ordered, and
+        scales what the ship achieves. Content validation checks that a
+        captain belongs to the ship's owner. On a captain's death the post
+        falls vacant and says so.
+      rationale:
+        - The field existed but was inert, so the interface papered over a missing captain by falling back to the house head, which meant ordering a ship nobody was commanding.
+        - Giving the post mechanical weight makes assigning it a decision rather than a formality, and matches how armies already work.
+      references:
+        - job-system
+        - job-based-operational-warfare
+
+  - decision: hop-distance-answers-realm-questions
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Realm Questions Are Answered by Hop Distance, Not Top of Chain
+      summary: >-
+        Whether a province answers to a house is asked as a hop count
+        through the liege chain, in the simulation rather than the client.
+        Walking to the top of the chain answers a different question and is
+        wrong for any house that is itself a vassal.
+      rationale:
+        - The player's own house is a vassal, so a top-of-chain walk attributed its holdings to its liege and showed the player none of their own realm.
+        - Living in the simulation makes it testable against the real scenario rather than only against whatever the client happens to render.
+      references:
+        - strategic-map-intelligence-modes
+        - title-based-territorial-politics
+
+  - decision: painter-drawn-ui-icons
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Interface Icons Are Drawn From Primitives
+      summary: >-
+        Icons are drawn as painter shapes inside a unit square, scaled to
+        whatever rect they are given. The client ships no image assets and
+        the egui integration requires textures to be registered before use,
+        so an icon set made of files would add a loading path, a
+        registration step and a wasm packaging concern. Font glyphs were
+        rejected because coverage varies by platform and a missing glyph is
+        a silent box rather than a build error.
+      rationale:
+        - Primitive shapes are resolution-independent, tinted by the theme like every other element, and identical on both targets.
+        - Shapes are chosen to differ in silhouette rather than in detail, because at toolbar size the outline is what is actually read.
+      references:
+        - strategic-map-intelligence-modes
+        - egui-with-owned-design-tokens
+
+  - decision: non-modal-character-picker
+    core:
+      status: accepted
+      confidence: confirmed
+      title: The Character Picker Is a Workspace, Not a Modal
+      summary: >-
+        Choosing who leads an action happens in one non-modal window that
+        stays open when a candidate is selected. Candidates carry their
+        whole forecast rather than a summary of it, so the breakdown shown
+        while comparing is the object that will resolve the job. Those who
+        cannot take the job on are listed below a divider with the
+        simulation's own account of where they are; when nobody is free the
+        empty state names the soonest date one comes free.
+      rationale:
+        - Choosing a leader is comparison work, and a window that closes on selection forces the comparison to be restarted for every candidate considered.
+        - Carrying the forecast rather than a summary means the figure compared on cannot drift from the figure committed to, which is the same guarantee the forecast system already makes for the expanded action.
+        - An empty list that explains itself and names a date turns waiting into a decision rather than a guess.
+      references:
+        - forecasts-derive-from-shared-resolution-code
+        - single-source-leader-availability
+        - context-sensitive-job-ui

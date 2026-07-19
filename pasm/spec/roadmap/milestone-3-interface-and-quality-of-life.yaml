@@ -1,0 +1,173 @@
+# Post-MVP implementation plan — Milestone 3
+#
+# Milestone 2 made the simulation substantially richer than the interface
+# presenting it. This milestone adds no simulation systems: it fixes the
+# defects playtesting found, gives the interface a design-token layer so it
+# can be designed rather than accreted, and applies the specific lessons of
+# Paradox's own interface post-mortems to the places players were getting
+# stuck.
+
+entities:
+  - system: milestone-3-implementation-plan
+    core:
+      status: accepted
+      confidence: confirmed
+      title: "Milestone 3: Interface and Quality of Life"
+      summary: >-
+        A presentation-layer programme that repairs reported defects in
+        leader eligibility, ship command, map readings and panel layout,
+        then rebuilds the controls the player uses most: a single character
+        picker for choosing who leads an action, a map-mode icon bar with a
+        summonable colour ledger, and a permanent statement of who the
+        player is. The appearance of the whole interface becomes a
+        serialisable token file rather than literals spread through the
+        panel code.
+      references:
+        - mvp-vision
+        - full-game-vision
+        - job-forecast-and-explanation-ui
+        - strategic-map-intelligence-modes
+        - context-sensitive-job-ui
+        - egui-with-owned-design-tokens
+        - single-source-leader-availability
+        - ship-captains-are-assigned-and-consequential
+        - hop-distance-answers-realm-questions
+        - painter-drawn-ui-icons
+        - non-modal-character-picker
+
+  - milestone: m3-simulation-and-scene-correctness
+    core:
+      status: accepted
+      confidence: confirmed
+      title: "M3.1: Simulation and Scene Correctness"
+      summary: >-
+        Repair the defects playtesting reported, at their root rather than
+        at the surface that showed them. Leader eligibility gets one
+        authoritative answer, ship captains become assignable and
+        mechanically consequential, the realm becomes readable as a map
+        mode, the globe lights evenly, the household is large enough to
+        make choosing between its members a real decision, and the bottom
+        bar stops collapsing.
+      references:
+        - single-source-leader-availability
+        - ship-captains-are-assigned-and-consequential
+        - hop-distance-answers-realm-questions
+        - strategic-map-intelligence-modes
+      goals:
+        - Exactly one function answers whether a character may lead a job, and it names the specific cause when the answer is no.
+        - A ship is commanded by an assigned captain who persists, is required before the ship can be ordered, and whose skill changes what the ship achieves.
+        - A map mode shades what answers to the player by hop distance through the liege chain, so a mid-chain house reads its own realm correctly.
+        - Every adult of the player's house is offered for a job, with those who cannot take it on shown alongside the reason rather than omitted.
+        - The bottom bar holds its height, and the active jobs listing inside it is visible.
+    implementation:
+      paths:
+        - crates/aeon_sim/src/jobs.rs
+        - crates/aeon_sim/src/command.rs
+        - crates/aeon_sim/src/warfare.rs
+        - crates/aeon_sim/src/politics.rs
+        - crates/aeon_sim/src/snapshot.rs
+        - crates/aeon_data/src/host.rs
+        - crates/aeon_client/src/scene.rs
+        - crates/aeon_client/src/map_modes.rs
+        - crates/aeon_client/src/view.rs
+        - crates/aeon_client/src/forecast_view.rs
+        - crates/aeon_client/src/jobs_ui.rs
+        - assets/content/scenario/ashkarr-succession.rhai
+      tests:
+        - crates/aeon_sim/tests/jobs.rs
+        - crates/aeon_sim/tests/politics.rs
+        - crates/aeon_sim/tests/forces.rs
+      status: declared
+
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/jobs.rs
+        summary: Each cause of unavailability reports its own variant rather than a single message, and leader_eligible never disagrees with leader_availability across the whole scenario cast, which is what stops the three implementations drifting apart again.
+      - kind: test
+        reference: crates/aeon_sim/tests/forces.rs
+        summary: A captain assignment round-trips through a snapshot, a blockade by a ship with no captain is refused, and the order loss a blockade inflicts scales with the captain's command.
+      - kind: test
+        reference: crates/aeon_sim/tests/politics.rs
+        summary: Hop distance through the liege chain is counted against the real scenario, including the case of a vassal house whose liege is itself a vassal of the player.
+      - kind: manual-review
+        reference: crates/aeon_client/src/jobs_ui.rs
+        summary: Verified in the native client that the bottom bar holds its declared height with the message log and active jobs side by side inside it, and that the globe reads evenly at grazing angles with province borders still separating regions.
+
+  - milestone: m3-design-token-layer
+    core:
+      status: accepted
+      confidence: confirmed
+      title: "M3.2: The Interface's Appearance Becomes Data"
+      summary: >-
+        Lift every colour, size and spacing decision out of the panel code
+        into one serialisable token file, and make the interaction
+        vocabulary a type rather than a convention, so that a designed token
+        set can replace the authored one wholesale without touching
+        rendering code.
+      references:
+        - egui-with-owned-design-tokens
+      goals:
+        - No colour, size or spacing is written as a literal in the panel code.
+        - The five states a target can be in are a type the compiler checks, not a set of loose colours chosen per call site.
+        - The token file is embedded at build time, so it works identically on the native and web targets.
+        - The token set can be replaced wholesale by a designed one without changing any rendering code.
+    implementation:
+      paths:
+        - crates/aeon_client/src/ui/theme.rs
+        - crates/aeon_client/src/ui/mod.rs
+        - crates/aeon_client/assets/theme.ron
+        - crates/aeon_client/src/panels.rs
+        - crates/aeon_client/src/map_overlay.rs
+      tests:
+        - crates/aeon_client/src/ui/theme.rs
+      status: declared
+
+    evidence:
+      - kind: test
+        reference: crates/aeon_client/src/ui/theme.rs
+        summary: The embedded token file parses, round-trips through serde, and yields five visually distinct target states; the theme writes every egui widget state rather than leaving some at library defaults.
+      - kind: manual-review
+        reference: crates/aeon_client/assets/theme.ron
+        summary: Verified in the native client that the authored dark token set renders coherently over the near-black viewport and does not fight the coloured political map behind it.
+
+  - milestone: m3-interface-features
+    core:
+      status: accepted
+      confidence: confirmed
+      title: "M3.3: The Controls the Player Uses Most"
+      summary: >-
+        Rebuild the three controls playtesting caught the player fighting:
+        choosing who leads an action, changing what the map shows, and
+        finding their way back to their own house.
+      references:
+        - non-modal-character-picker
+        - painter-drawn-ui-icons
+        - forecasts-derive-from-shared-resolution-code
+      goals:
+        - Choosing a leader is answered in exactly one place, which stays open while the player compares candidates and acts.
+        - A candidate's suitability figure is produced by the same code that will resolve the job, so the two cannot drift apart.
+        - Household members who cannot take a job on are listed below a divider with the reason and, where it applies, the date it clears.
+        - Every map mode is one click from every other, says what question it answers, and shows which is active without reading a label.
+        - The player's house and its current head are on screen in every view and under every selection, and both are links back to themselves.
+    implementation:
+      paths:
+        - crates/aeon_client/src/ui/picker.rs
+        - crates/aeon_client/src/ui/forecast.rs
+        - crates/aeon_client/src/ui/icons.rs
+        - crates/aeon_client/src/forecast_view.rs
+        - crates/aeon_client/src/panels.rs
+        - crates/aeon_client/src/view.rs
+      tests:
+        - crates/aeon_client/src/view.rs
+      status: declared
+
+    evidence:
+      - kind: test
+        reference: crates/aeon_client/src/view.rs
+        summary: Every map mode reaches the icon bar exactly once and carries the label and description its button needs, since a mode missing from the list is one the player cannot select and that is not otherwise a compile error.
+      - kind: manual-review
+        reference: crates/aeon_client/src/ui/picker.rs
+        summary: Verified in the native client that the picker lists the household split into those who can take the job on and those who cannot, shows the full forecast breakdown on hover, and stays open when a candidate is selected so the next can be weighed against them.
+      - kind: manual-review
+        reference: crates/aeon_client/src/ui/icons.rs
+        summary: Verified in the native client that the eight painter-drawn map-mode icons are distinguishable at their drawn size, that the active one is lit, and that the colour ledger appears and disappears with the button beside them.
