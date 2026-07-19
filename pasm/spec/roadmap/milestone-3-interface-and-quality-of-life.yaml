@@ -116,7 +116,7 @@ entities:
         - crates/aeon_client/src/ui/theme.rs
         - crates/aeon_client/src/ui/mod.rs
         - crates/aeon_client/assets/theme.ron
-        - crates/aeon_client/src/panels.rs
+        - crates/aeon_client/src/ui/shell.rs
         - crates/aeon_client/src/map_overlay.rs
       tests:
         - crates/aeon_client/src/ui/theme.rs
@@ -155,7 +155,7 @@ entities:
         - crates/aeon_client/src/ui/forecast.rs
         - crates/aeon_client/src/ui/icons.rs
         - crates/aeon_client/src/forecast_view.rs
-        - crates/aeon_client/src/panels.rs
+        - crates/aeon_client/src/ui/actions.rs
         - crates/aeon_client/src/view.rs
       tests:
         - crates/aeon_client/src/view.rs

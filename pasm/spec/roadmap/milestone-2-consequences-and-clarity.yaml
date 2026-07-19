@@ -58,7 +58,7 @@ entities:
         - crates/aeon_sim/src/jobs.rs
         - crates/aeon_client/src/forecast_view.rs
         - crates/aeon_client/src/jobs_ui.rs
-        - crates/aeon_client/src/panels.rs
+        - crates/aeon_client/src/ui/actions.rs
       tests:
         - crates/aeon_sim/tests/jobs.rs
       status: declared
@@ -99,7 +99,7 @@ entities:
         - crates/aeon_sim/src/snapshot.rs
         - crates/aeon_client/src/map_modes.rs
         - crates/aeon_client/src/view.rs
-        - crates/aeon_client/src/panels.rs
+        - crates/aeon_client/src/ui/inspector.rs
       tests:
         - crates/aeon_sim/tests/order.rs
         - crates/aeon_sim/tests/logistics.rs

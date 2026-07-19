@@ -404,7 +404,7 @@ entities:
       paths:
         - crates/aeon_client/src/scene.rs
         - crates/aeon_client/src/camera.rs
-        - crates/aeon_client/src/panels.rs
+        - crates/aeon_client/src/ui
         - crates/aeon_client/src/selection.rs
       status: declared
 
