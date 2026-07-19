@@ -587,6 +587,18 @@ pub fn validate_start(
     if !target_valid(world, def, org, target) {
         return Err(JobRejection::BadTarget);
     }
+    // A ship is ordered by its captain, nobody else — the same rule
+    // armies have always had for their general.
+    if let JobTarget::ShipToProvince(ship, _) = target {
+        let captain = world
+            .get_resource::<crate::forces::ForcesIndex>()
+            .and_then(|forces| forces.ships.get(&ship).copied())
+            .and_then(|entity| world.get::<crate::forces::ShipRecord>(entity))
+            .and_then(|record| record.captain);
+        if captain != Some(leader) {
+            return Err(JobRejection::IneligibleLeader);
+        }
+    }
     // Army operations are led by the army's general, nobody else.
     if let JobTarget::OwnArmy(army) | JobTarget::ArmyToProvince(army, _) = target {
         let general = world

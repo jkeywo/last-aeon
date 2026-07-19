@@ -80,6 +80,14 @@ pub enum PlayerCommand {
         /// The order to follow while idle.
         order: crate::warfare::StandingOrder,
     },
+    /// Puts one of the player's ships under a named officer, or leaves it
+    /// without one.
+    SetShipCaptain {
+        /// The ship.
+        ship: ShipId,
+        /// The officer taking command; `None` relinquishes it.
+        captain: Option<CharacterId>,
+    },
 }
 
 /// A command bound to its execution day and order.
@@ -284,6 +292,41 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
                 Err(JobRejection::BadJob.into())
             }
         }
+        PlayerCommand::SetShipCaptain { ship, captain } => {
+            let org = world
+                .get_resource::<PlayerHouse>()
+                .and_then(|p| p.0)
+                .ok_or(JobRejection::NoPlayerOrg)?;
+            let owned = world
+                .get_resource::<crate::forces::ForcesIndex>()
+                .and_then(|forces| forces.ships.get(ship).copied())
+                .and_then(|entity| world.get::<crate::forces::ShipRecord>(entity))
+                .is_some_and(|s| s.owner == org);
+            if !owned {
+                return Err(JobRejection::BadTarget.into());
+            }
+            // Relinquishing command is always allowed. Taking it requires
+            // an officer free to hold it: a standing command elsewhere, an
+            // active job, or indisposition all bar it.
+            let Some(captain) = captain else {
+                return Ok(());
+            };
+            let date = world.resource::<CampaignClock>().date;
+            match jobs::leader_availability(world, org, *captain, date) {
+                jobs::LeaderAvailability::Available => Ok(()),
+                // Already this ship's captain: a harmless no-op.
+                jobs::LeaderAvailability::Assigned(jobs::Assignment::Captain {
+                    ship: held,
+                    ..
+                }) if held == *ship => Ok(()),
+                jobs::LeaderAvailability::Assigned(_) => Err(JobRejection::AlreadyAssigned.into()),
+                jobs::LeaderAvailability::Busy { .. } => Err(JobRejection::LeaderBusy.into()),
+                jobs::LeaderAvailability::Indisposed { .. } => {
+                    Err(JobRejection::LeaderIndisposed.into())
+                }
+                jobs::LeaderAvailability::Ineligible(rejection) => Err(rejection.into()),
+            }
+        }
         PlayerCommand::SetStandingOrder { army, .. } => {
             let org = world
                 .get_resource::<PlayerHouse>()
@@ -374,6 +417,16 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
         }
         PlayerCommand::DisbandArmy { army } => {
             crate::forces::disband_army(world, *army);
+        }
+        PlayerCommand::SetShipCaptain { ship, captain } => {
+            let entity = world
+                .get_resource::<crate::forces::ForcesIndex>()
+                .and_then(|forces| forces.ships.get(ship).copied());
+            if let Some(entity) = entity
+                && let Some(mut record) = world.get_mut::<crate::forces::ShipRecord>(entity)
+            {
+                record.captain = *captain;
+            }
         }
         PlayerCommand::SetStandingOrder { army, order } => {
             let entity = world

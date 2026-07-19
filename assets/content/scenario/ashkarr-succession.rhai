@@ -221,6 +221,7 @@ define_character(#{
 define_character(#{
     id: "edrun-harrow", name: "Edrun Harrow", gender: "male",
     birth_year: 375, organisation: "harrow",
+    parents: ["torvald-harrow"],
     spouse: "kessarin-harrow", traits: ["forthright", "magnanimous"],
     skills: #{ command: 7, diplomacy: 9, intrigue: 5, stewardship: 10 },
 });
@@ -241,6 +242,37 @@ define_character(#{
     birth_year: 402, organisation: "harrow",
     parents: ["edrun-harrow", "kessarin-harrow"], traits: ["forthright"],
     skills: #{ command: 3, diplomacy: 3, intrigue: 2, stewardship: 5 },
+});
+define_character(#{
+    id: "aleyn-harrow", name: "Aleyn Harrow", gender: "female",
+    birth_year: 378, organisation: "harrow",
+    parents: ["torvald-harrow"], spouse: "reyn-harrow",
+    traits: ["forthright", "bold"],
+    skills: #{ command: 9, diplomacy: 6, intrigue: 4, stewardship: 6 },
+});
+define_character(#{
+    id: "reyn-harrow", name: "Reyn Harrow", gender: "male",
+    birth_year: 376, organisation: "harrow",
+    spouse: "aleyn-harrow", traits: ["wary"],
+    skills: #{ command: 5, diplomacy: 10, intrigue: 6, stewardship: 7 },
+});
+define_character(#{
+    id: "mikael-harrow", name: "Mikael Harrow", gender: "male",
+    birth_year: 386, organisation: "harrow",
+    traits: ["scheming"],
+    skills: #{ command: 4, diplomacy: 7, intrigue: 12, stewardship: 5 },
+});
+define_character(#{
+    id: "torvald-harrow", name: "Torvald Harrow", gender: "male",
+    birth_year: 348, organisation: "harrow",
+    traits: ["devout", "magnanimous"],
+    skills: #{ command: 4, diplomacy: 9, intrigue: 5, stewardship: 13 },
+});
+define_character(#{
+    id: "captain-lira", name: "Lira Harrow", gender: "female",
+    birth_year: 383, organisation: "harrow",
+    traits: ["bold"],
+    skills: #{ command: 11, diplomacy: 4, intrigue: 5, stewardship: 4 },
 });
 define_character(#{
     id: "perrin-vantar", name: "Perrin Vantar", gender: "male",
@@ -388,6 +420,55 @@ define_character(#{
 });
 
 // --- Ships (capital ships carry simulated captains) ---
+
+// One more adult in each peer house, so every player of this map has a
+// comparable bench and autonomous houses have someone to send.
+define_character(#{
+    id: "iven-vantar", name: "Iven Vantar", gender: "male",
+    birth_year: 384, organisation: "vantar", traits: ["wary"],
+    skills: #{ command: 7, diplomacy: 5, intrigue: 6, stewardship: 6 },
+});
+define_character(#{
+    id: "sella-calder", name: "Sella Calder", gender: "female",
+    birth_year: 382, organisation: "calder", traits: ["bold"],
+    skills: #{ command: 8, diplomacy: 6, intrigue: 4, stewardship: 5 },
+});
+define_character(#{
+    id: "juri-koszev", name: "Juri Koszev", gender: "male",
+    birth_year: 380, organisation: "koszev", traits: ["grasping"],
+    skills: #{ command: 6, diplomacy: 7, intrigue: 8, stewardship: 6 },
+});
+define_character(#{
+    id: "nadia-okonn", name: "Nadia Okonn", gender: "female",
+    birth_year: 381, organisation: "okonn", traits: ["scheming"],
+    skills: #{ command: 5, diplomacy: 8, intrigue: 9, stewardship: 6 },
+});
+define_character(#{
+    id: "captain-okonn-marek", name: "Marek Okonn", gender: "male",
+    birth_year: 379, organisation: "okonn", traits: ["forthright"],
+    skills: #{ command: 10, diplomacy: 4, intrigue: 5, stewardship: 5 },
+});
+define_character(#{
+    id: "halden-rusk", name: "Halden Rusk", gender: "male",
+    birth_year: 383, organisation: "rusk", traits: ["forthright"],
+    skills: #{ command: 7, diplomacy: 6, intrigue: 5, stewardship: 7 },
+});
+define_character(#{
+    id: "orsa-emberlyn", name: "Orsa Emberlyn", gender: "female",
+    birth_year: 385, organisation: "emberlyn", traits: ["devout"],
+    skills: #{ command: 5, diplomacy: 9, intrigue: 5, stewardship: 8 },
+});
+define_character(#{
+    id: "brik-skarn", name: "Brik Skarn", gender: "male",
+    birth_year: 379, organisation: "skarn", traits: ["wary", "grasping"],
+    skills: #{ command: 8, diplomacy: 5, intrigue: 7, stewardship: 5 },
+});
+define_character(#{
+    id: "captain-sanctora-imre", name: "Imre Vaunt", gender: "female",
+    birth_year: 380, organisation: "sanctora-imperim", traits: ["devout"],
+    skills: #{ command: 9, diplomacy: 6, intrigue: 4, stewardship: 6 },
+});
+
 define_ship(#{
     id: "ember-crown", name: "The Ember Crown", class: "capital",
     owner: "veyrin", captain: "captain-vashk", location: "karvessa",
@@ -402,15 +483,15 @@ define_ship(#{
 });
 define_ship(#{
     id: "redwater-runner", name: "Redwater Runner", class: "transport",
-    owner: "harrow", location: "hyperions-rest",
+    owner: "harrow", captain: "captain-lira", location: "hyperions-rest",
 });
 define_ship(#{
     id: "pale-lantern", name: "Pale Lantern", class: "patrol",
-    owner: "okonn", location: "port-vesk",
+    owner: "okonn", captain: "captain-okonn-marek", location: "port-vesk",
 });
 define_ship(#{
     id: "spire-picket", name: "Spire Picket", class: "patrol",
-    owner: "sanctora-imperim", location: "spire-decks",
+    owner: "sanctora-imperim", captain: "captain-sanctora-imre", location: "spire-decks",
 });
 
 // --- Starting armies (every faction fields a standing force) ---

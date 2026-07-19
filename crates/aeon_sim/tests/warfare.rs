@@ -286,6 +286,14 @@ fn blockades_halve_wealth_output() {
         world.resource::<ForcesIndex>().ship_keys[&key("ash-sloop")]
     };
 
+    // A ship is ordered by the officer who commands it, so one must be
+    // aboard before it can be sent anywhere.
+    h.submit(PlayerCommand::SetShipCaptain {
+        ship: sloop,
+        captain: Some(aron),
+    })
+    .unwrap();
+    h.advance_days(2);
     h.submit(PlayerCommand::StartJob {
         job: key("blockade-the-port"),
         leader: aron,
@@ -460,4 +468,132 @@ fn warfare_is_deterministic_and_survives_snapshots() {
     a.advance_days(60);
     restored.advance_days(60);
     assert_eq!(restored.state_hash(), a.state_hash());
+}
+
+// ---------------------------------------------------------------------------
+// Ship captains
+// ---------------------------------------------------------------------------
+
+#[test]
+fn a_ship_is_ordered_by_its_captain_and_nobody_else() {
+    let mut h = host(31);
+    let aron = char_id(&mut h, "aron-ash");
+    let beta = province(&mut h, "beta");
+    let ship = {
+        let key = key("ash-sloop");
+        h.world_mut().resource::<ForcesIndex>().ship_keys[&key]
+    };
+
+    // The fixture's sloop has no captain, so nobody can order it.
+    let refused = h.submit(PlayerCommand::StartJob {
+        job: key("blockade-the-port"),
+        leader: aron,
+        target: JobTarget::ShipToProvince(ship, beta),
+    });
+    assert!(
+        refused.is_err(),
+        "a ship without a captain has no order to give"
+    );
+
+    // Put Aron aboard, and the same order stands.
+    h.submit(PlayerCommand::SetShipCaptain {
+        ship,
+        captain: Some(aron),
+    })
+    .unwrap();
+    h.advance_days(2);
+    {
+        let world = h.world_mut();
+        let forces = world.resource::<ForcesIndex>().clone();
+        let record = world.get::<ShipRecord>(forces.ships[&ship]).unwrap();
+        assert_eq!(record.captain, Some(aron), "the command was taken up");
+    }
+    h.submit(PlayerCommand::StartJob {
+        job: key("blockade-the-port"),
+        leader: aron,
+        target: JobTarget::ShipToProvince(ship, beta),
+    })
+    .expect("the captain may order their own ship");
+}
+
+#[test]
+fn an_officer_cannot_hold_two_commands_at_once() {
+    let mut h = host(32);
+    let aron = char_id(&mut h, "aron-ash");
+    let ship = {
+        let key = key("ash-sloop");
+        h.world_mut().resource::<ForcesIndex>().ship_keys[&key]
+    };
+    // Aron already commands an army.
+    let _army = muster(&mut h, "ash", "aron-ash", 800, "alpha");
+
+    let refused = h.submit(PlayerCommand::SetShipCaptain {
+        ship,
+        captain: Some(aron),
+    });
+    assert!(
+        refused.is_err(),
+        "a general cannot also take a ship's command"
+    );
+}
+
+#[test]
+fn a_captains_death_leaves_the_ship_without_one() {
+    let mut h = host(33);
+    let aron = char_id(&mut h, "aron-ash");
+    let ship = {
+        let key = key("ash-sloop");
+        h.world_mut().resource::<ForcesIndex>().ship_keys[&key]
+    };
+    h.submit(PlayerCommand::SetShipCaptain {
+        ship,
+        captain: Some(aron),
+    })
+    .unwrap();
+    h.advance_days(2);
+
+    let date = h.world_mut().resource::<aeon_sim::CampaignClock>().date;
+    aeon_sim::politics::process_death(h.world_mut(), aron, date);
+
+    let world = h.world_mut();
+    let forces = world.resource::<ForcesIndex>().clone();
+    let record = world.get::<ShipRecord>(forces.ships[&ship]).unwrap();
+    assert_eq!(record.captain, None, "the command falls vacant");
+    assert!(
+        world
+            .resource::<MessageLog>()
+            .entries
+            .iter()
+            .any(|e| e.text.contains("without a captain")),
+        "and the fleet is told"
+    );
+}
+
+#[test]
+fn captain_assignment_survives_a_snapshot() {
+    let mut h = host(34);
+    let aron = char_id(&mut h, "aron-ash");
+    let ship = {
+        let key = key("ash-sloop");
+        h.world_mut().resource::<ForcesIndex>().ship_keys[&key]
+    };
+    h.submit(PlayerCommand::SetShipCaptain {
+        ship,
+        captain: Some(aron),
+    })
+    .unwrap();
+    h.advance_days(3);
+
+    let snapshot = h.snapshot();
+    let mut restored = SimHost::restore_with_content(snapshot, content()).unwrap();
+    assert_eq!(
+        restored.state_hash(),
+        h.state_hash(),
+        "a ship's command round-trips through a snapshot"
+    );
+
+    let world = restored.world_mut();
+    let forces = world.resource::<ForcesIndex>().clone();
+    let record = world.get::<ShipRecord>(forces.ships[&ship]).unwrap();
+    assert_eq!(record.captain, Some(aron));
 }

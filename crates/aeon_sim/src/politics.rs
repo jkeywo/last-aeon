@@ -1010,6 +1010,42 @@ pub fn process_death(world: &mut World, id: CharacterId, date: GameDate) {
         world.get_mut::<Lineage>(entity).expect("indexed").spouse = None;
     }
 
+    // A ship whose captain dies is left without one, and says so. It
+    // cannot be ordered again until somebody takes command.
+    let vacated: Vec<(crate::ids::ShipId, String, OrgId)> = world
+        .get_resource::<crate::forces::ForcesIndex>()
+        .map(|forces| {
+            forces
+                .ships
+                .values()
+                .filter_map(|entity| {
+                    let ship = world.get::<crate::forces::ShipRecord>(*entity)?;
+                    (ship.captain == Some(id)).then(|| (ship.id, ship.name.clone(), ship.owner))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    for (ship, name, owner) in vacated {
+        if let Some(entity) = world
+            .get_resource::<crate::forces::ForcesIndex>()
+            .and_then(|forces| forces.ships.get(&ship).copied())
+            && let Some(mut record) = world.get_mut::<crate::forces::ShipRecord>(entity)
+        {
+            record.captain = None;
+        }
+        world
+            .resource_mut::<crate::jobs::MessageLog>()
+            .entries
+            .push(
+                crate::jobs::LogEntry::new(
+                    date,
+                    format!("{name} is without a captain."),
+                    crate::jobs::LogChannel::Military,
+                )
+                .by(Some(owner)),
+            );
+    }
+
     // Succession for any organisation the character led.
     let led: Vec<OrgId> = {
         let index = world.resource::<PoliticsIndex>();

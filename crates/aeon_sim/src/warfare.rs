@@ -35,6 +35,10 @@ pub enum StandingOrder {
     DefendHoldings,
 }
 
+/// Order a province loses when a blockade closes on it, before the
+/// captain's own competence is counted.
+pub const BLOCKADE_ORDER_LOSS: i32 = 20;
+
 /// The content key of the reactive-defence job standing orders start.
 pub const REACTIVE_DEFENCE_JOB: &str = "answer-the-alarm";
 
@@ -326,12 +330,27 @@ pub fn apply_military_op(world: &mut World, op: MilitaryOp, job: &ActiveJob) -> 
         }
         (MilitaryOp::Blockade, JobTarget::ShipToProvince(ship, target)) => {
             let entity = world.resource::<ForcesIndex>().ships.get(&ship).copied();
-            if let Some(entity) = entity
-                && let Some(mut record) = world.get_mut::<ShipRecord>(entity)
-            {
+            let Some(entity) = entity else {
+                return false;
+            };
+            // A ship without an officer aboard cannot hold a station.
+            let captain = world.get::<ShipRecord>(entity).and_then(|s| s.captain);
+            let Some(captain) = captain else {
+                return false;
+            };
+            if let Some(mut record) = world.get_mut::<ShipRecord>(entity) {
                 record.location = crate::forces::ShipLocation::Docked(target);
                 record.blockading = Some(target);
             }
+            // A blockade is only as tight as the officer keeping it. The
+            // captain's command decides how hard the province feels it.
+            let command = crate::forecast::governing_skill(
+                world,
+                captain,
+                aeon_data::model::GoverningSkill::Command,
+            );
+            let bite = BLOCKADE_ORDER_LOSS + command.clamp(0, 20);
+            crate::order::adjust_order(world, target, -bite);
             true
         }
         _ => true,

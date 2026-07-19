@@ -2263,6 +2263,19 @@ fn validate_political_references(
             (_, Some(captain)) if !builder.characters.contains_key(captain) => {
                 err(key, format!("captain '{captain}' is not defined"));
             }
+            // A ship is commanded by one of its owner's own officers, the
+            // same rule an army's general has always had.
+            (_, Some(captain))
+                if builder
+                    .characters
+                    .get(captain)
+                    .is_some_and(|c| c.organisation.as_ref() != Some(&ship.owner)) =>
+            {
+                err(
+                    key,
+                    format!("captain '{captain}' does not belong to the owning house"),
+                );
+            }
             _ => {}
         }
     }
