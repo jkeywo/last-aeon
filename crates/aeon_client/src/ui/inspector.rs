@@ -274,6 +274,7 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                 }
             });
             if Some(army.owner) == ctx.player_org {
+                draw_standing_orders(ui, ctx, out, &army.name, id, &army.standing_order);
                 draw_context_assignments(
                     ui,
                     AssignmentScope::Army(id),
@@ -645,5 +646,67 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                 }
             }
         }
+    }
+}
+
+/// The list of assignments an army may start on its own.
+///
+/// Every assignment an army can be given is offered here, and the client
+/// names none of them: it asks the content what an army does, and the
+/// simulation whether the requirements hold. That is the whole reason the
+/// old two-variant standing order had a content key compiled into the
+/// engine, and why this one does not.
+fn draw_standing_orders(
+    ui: &mut egui::Ui,
+    ctx: &PanelCtx,
+    out: &mut PanelOut,
+    army_name: &str,
+    army: aeon_sim::ArmyId,
+    current: &aeon_sim::warfare::StandingOrders,
+) {
+    let strings = ctx.strings;
+    ui.separator();
+    ui.strong(strings.text("ui.inspector.army.standing-orders"))
+        .on_hover_text(strings.text("ui.inspector.army.standing-orders.hover"));
+    let _ = army_name;
+
+    let mut wanted = current.0.clone();
+    let mut changed = false;
+    let mut offered: Vec<_> = ctx
+        .content
+        .assignments
+        .iter()
+        .filter(|(_, def)| {
+            matches!(
+                def.target,
+                aeon_data::model::AssignmentTargetKind::OwnArmy
+                    | aeon_data::model::AssignmentTargetKind::OwnArmyAndProvince
+            )
+        })
+        .collect();
+    offered.sort_by(|a, b| a.1.title.cmp(&b.1.title));
+
+    for (key, def) in offered {
+        let mut on = wanted.contains(key);
+        if ui.checkbox(&mut on, &def.title).changed() {
+            if on {
+                wanted.push(key.clone());
+            } else {
+                wanted.retain(|k| k != key);
+            }
+            changed = true;
+        }
+    }
+
+    if current.0.is_empty() {
+        ui.weak(strings.text("ui.inspector.army.no-standing-orders"));
+    }
+    if changed {
+        out.queue
+            .0
+            .push(aeon_sim::PlayerCommand::SetStandingOrders {
+                army,
+                orders: aeon_sim::warfare::StandingOrders(wanted),
+            });
     }
 }

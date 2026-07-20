@@ -118,42 +118,20 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                             ) {
                                 out.view.selected = Some(Selection::Army(army.id));
                             }
-                            if Some(army.owner) == ctx.player_org {
-                                let defending = army.standing_order
-                                    == aeon_sim::warfare::StandingOrder::DefendHoldings;
-                                let label = strings.text(if defending {
-                                    "ui.listing.defending"
-                                } else {
-                                    "ui.listing.hold-fast"
-                                });
-                                if ui
-                                    .small_button(label)
-                                    .on_hover_text(
-                                        "Toggle the standing order: defending armies \
-                                         march to answer threats against your holdings",
-                                    )
-                                    .clicked()
-                                {
-                                    let order = if defending {
-                                        aeon_sim::warfare::StandingOrder::HoldFast
-                                    } else {
-                                        aeon_sim::warfare::StandingOrder::DefendHoldings
-                                    };
-                                    out.queue.0.push(PlayerCommand::SetStandingOrder {
-                                        army: army.id,
-                                        order,
-                                    });
-                                }
-                                if ui
-                                    .small_button(strings.text("ui.listing.disband"))
-                                    .clicked()
-                                {
-                                    out.queue
-                                        .0
-                                        .push(PlayerCommand::DisbandArmy { army: army.id });
-                                }
+                            if Some(army.owner) == ctx.player_org && !army.standing_order.is_empty()
+                            {
+                                ui.weak(strings.text("ui.listing.has-standing-orders"));
                             }
                         });
+                        if Some(army.owner) == ctx.player_org
+                            && ui
+                                .small_button(strings.text("ui.listing.disband"))
+                                .clicked()
+                        {
+                            out.queue
+                                .0
+                                .push(PlayerCommand::DisbandArmy { army: army.id });
+                        }
                     }
                 });
         }

@@ -27,23 +27,30 @@ use crate::politics::{PoliticsIndex, TitleHolder, TitleKind, TitleRecord};
 use crate::state::ContentDb;
 use crate::text::TextDb;
 
-/// A standing order an army follows while idle.
-#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub enum StandingOrder {
-    /// Hold position and await orders.
-    #[default]
-    HoldFast,
-    /// React to hostile operations against the owner's provinces on the
-    /// army's body by marching to meet them.
-    DefendHoldings,
+/// What a force does when nobody has told it anything.
+///
+/// An ordered list of assignments it may start on its own. Each day the
+/// first one whose authored requirements are satisfied is started, so the
+/// same `requires` block that decides whether a button is offered decides
+/// whether a standing order fires — a force can never do unbidden what its
+/// owner could not have ordered.
+///
+/// This was two hardcoded variants and a content key spelled out in the
+/// engine. Being a list means new behaviour is authored rather than
+/// compiled, and reordering is a decision the player can make.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StandingOrders(pub Vec<ContentKey>);
+
+impl StandingOrders {
+    /// Whether anything at all is standing.
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
 }
 
 /// Order a province loses when a blockade closes on it, before the
 /// captain's own competence is counted.
 pub const BLOCKADE_ORDER_LOSS: i32 = 20;
-
-/// The content key of the reactive-defence assignment standing orders start.
-pub const REACTIVE_DEFENCE_JOB: &str = "respond";
 
 /// An army's fighting strength from strategic state.
 ///
@@ -383,8 +390,66 @@ pub fn apply_military_op(world: &mut World, op: MilitaryOp, assignment: &ActiveA
     }
 }
 
-/// Daily: standing orders create reactive defence assignments for idle armies
-/// when hostile operations threaten the owner's provinces on their body.
+/// The provinces of `owner` that something is currently being done to.
+///
+/// One definition of "under threat", shared by the requirement that gates
+/// an alarm-answering assignment and by the standing order that starts
+/// one — because an alarm you can answer and an alarm worth answering
+/// must be the same alarm.
+///
+/// Both senses count: a hostile operation aimed at the holding, which is
+/// a threat before anyone has arrived, and a hostile force standing in
+/// it, which is a threat whether or not an operation is under way.
+pub fn threatened_holdings(world: &World, owner: OrgId) -> Vec<ProvinceId> {
+    let Some(content) = world.get_resource::<ContentDb>().map(|db| db.0.clone()) else {
+        return Vec::new();
+    };
+    let held = crate::order::held_provinces(world, owner);
+
+    let mut threatened: Vec<ProvinceId> = Vec::new();
+    if let Some(index) = world.get_resource::<AssignmentsIndex>() {
+        for entity in index.assignments.values() {
+            let Some(assignment) = world.get::<ActiveAssignment>(*entity) else {
+                continue;
+            };
+            if assignment.owner == owner {
+                continue;
+            }
+            let Some(def) = content.assignments.get(&assignment.def) else {
+                continue;
+            };
+            if let (
+                Some(MilitaryOp::Besiege | MilitaryOp::Raid),
+                AssignmentTarget::ArmyToProvince(_, target),
+            ) = (def.military_op, assignment.target)
+                && held.contains(&target)
+                && !threatened.contains(&target)
+            {
+                threatened.push(target);
+            }
+        }
+    }
+    for province in &held {
+        if !threatened.contains(province) && hostile_force_in(world, owner, *province) {
+            threatened.push(*province);
+        }
+    }
+    // Stable order, so which holding a standing order answers first does
+    // not depend on iteration accidents.
+    threatened.sort();
+    threatened
+}
+
+/// Daily: forces with standing orders start the first of them they can.
+///
+/// Priority is the list's own order, so what a force reaches for first is
+/// authored — or chosen by the player — rather than decided here. Every
+/// start goes through `validate_start` exactly as a player's would, which
+/// is what guarantees a standing order cannot do something its owner could
+/// not have ordered by hand.
+///
+/// Forces are visited in stable ID order and the list in its own order, so
+/// this replays identically.
 pub fn standing_orders(world: &mut World) {
     let (Some(_), Some(_)) = (
         world.get_resource::<ForcesIndex>(),
@@ -392,41 +457,11 @@ pub fn standing_orders(world: &mut World) {
     ) else {
         return;
     };
-    let content = world.resource::<ContentDb>().0.clone();
-    let Ok(reactive_key) = ContentKey::new(REACTIVE_DEFENCE_JOB) else {
-        return;
-    };
-    if !content.assignments.contains_key(&reactive_key) {
-        return;
-    }
 
-    // Hostile army operations under way, by target province.
-    let threats: Vec<(OrgId, ProvinceId)> = {
-        let assignments_index = world.resource::<AssignmentsIndex>();
-        assignments_index
-            .assignments
-            .values()
-            .filter_map(|entity| {
-                let assignment = world.get::<ActiveAssignment>(*entity)?;
-                let def = content.assignments.get(&assignment.def)?;
-                match (def.military_op, assignment.target) {
-                    (
-                        Some(MilitaryOp::Besiege | MilitaryOp::Raid),
-                        AssignmentTarget::ArmyToProvince(_, target),
-                    ) => Some((assignment.owner, target)),
-                    _ => None,
-                }
-            })
-            .collect()
-    };
-    if threats.is_empty() {
-        return;
-    }
-
-    // Idle defending armies with standing orders, in ID order.
-    let busy_armies: Vec<ArmyId> = {
-        let assignments_index = world.resource::<AssignmentsIndex>();
-        assignments_index
+    // Forces already busy are left alone.
+    let busy: Vec<ArmyId> = {
+        let index = world.resource::<AssignmentsIndex>();
+        index
             .assignments
             .values()
             .filter_map(
@@ -439,62 +474,87 @@ pub fn standing_orders(world: &mut World) {
             )
             .collect()
     };
-    let candidates: Vec<(ArmyId, OrgId, ProvinceId)> = {
+
+    let idle: Vec<(ArmyId, OrgId, StandingOrders)> = {
         let forces = world.resource::<ForcesIndex>();
         forces
             .armies
             .iter()
             .filter_map(|(id, entity)| {
                 let army = world.get::<ArmyRecord>(*entity)?;
-                (army.standing_order == StandingOrder::DefendHoldings && !busy_armies.contains(id))
-                    .then_some((*id, army.owner, army.location))
+                (!army.standing_order.is_empty() && !busy.contains(id))
+                    .then(|| (*id, army.owner, army.standing_order.clone()))
             })
             .collect()
     };
 
-    for (army, owner, at) in candidates {
-        // The nearest threatened owned province on the same body.
-        let target = threats
-            .iter()
-            .filter(|(aggressor, province)| {
-                *aggressor != owner
-                    && province_holder(world, *province) == Some(owner)
-                    && crate::presence::province_body(world, *province)
-                        == crate::presence::province_body(world, at)
-            })
-            .map(|(_, province)| *province)
-            .next();
-        let Some(target) = target else {
-            continue;
-        };
+    for (army, owner, orders) in idle {
         let Some(general) = crate::access::army(world, army).map(|a| a.general) else {
             continue;
         };
-        if crate::assignments::validate_start(
-            world,
-            owner,
-            &reactive_key,
-            general,
-            AssignmentTarget::ArmyToProvince(army, target),
-        )
-        .is_ok()
-        {
-            crate::assignments::start_assignment(
-                world,
-                owner,
-                &reactive_key,
-                general,
-                AssignmentTarget::ArmyToProvince(army, target),
-            );
-            let name = crate::access::army(world, army)
-                .map(|a| a.name.clone())
-                .unwrap_or_default();
-            let line = world
-                .resource::<TextDb>()
-                .format("sim.warfare.answering-alarm", &[("army", &name)]);
-            log(world, owner, line);
+        for assignment in &orders.0 {
+            if let Some(target) = standing_target(world, owner, army, assignment)
+                && crate::assignments::validate_start(world, owner, assignment, general, target)
+                    .is_ok()
+            {
+                crate::assignments::start_assignment(world, owner, assignment, general, target);
+                let name = crate::access::army(world, army)
+                    .map(|a| a.name.clone())
+                    .unwrap_or_default();
+                let title = world
+                    .resource::<TextDb>()
+                    .text(&format!("assignment.{assignment}.title"))
+                    .to_owned();
+                let line = world.resource::<TextDb>().format(
+                    "sim.warfare.standing-order",
+                    &[("army", &name), ("assignment", &title)],
+                );
+                log(world, owner, line);
+                break;
+            }
         }
     }
+}
+
+/// The target a standing order would act on, if it has one available.
+///
+/// An assignment that acts on the force itself needs nothing more. One
+/// that marches somewhere needs somewhere worth marching to, and the only
+/// destination a force picks unbidden is a holding of its owner's with a
+/// hostile force standing in it — which is what the old reactive defence
+/// did, now expressed as a target rather than as a hardcoded assignment.
+fn standing_target(
+    world: &World,
+    owner: OrgId,
+    army: ArmyId,
+    assignment: &ContentKey,
+) -> Option<AssignmentTarget> {
+    let content = world.get_resource::<ContentDb>()?.0.clone();
+    let def = content.assignments.get(assignment)?;
+    match def.target {
+        aeon_data::model::AssignmentTargetKind::OwnArmy => Some(AssignmentTarget::OwnArmy(army)),
+        aeon_data::model::AssignmentTargetKind::OwnArmyAndProvince => {
+            let at = crate::access::army(world, army)?.location;
+            let body = crate::presence::province_body(world, at);
+            threatened_holdings(world, owner)
+                .into_iter()
+                .find(|province| crate::presence::province_body(world, *province) == body)
+                .map(|province| AssignmentTarget::ArmyToProvince(army, province))
+        }
+        _ => None,
+    }
+}
+
+/// Whether a force belonging to anyone but `owner` stands in `province`.
+fn hostile_force_in(world: &World, owner: OrgId, province: ProvinceId) -> bool {
+    let Some(forces) = world.get_resource::<ForcesIndex>() else {
+        return false;
+    };
+    forces.armies.values().any(|entity| {
+        world
+            .get::<ArmyRecord>(*entity)
+            .is_some_and(|army| army.location == province && army.owner != owner)
+    })
 }
 
 pub(crate) fn install(app: &mut App) {

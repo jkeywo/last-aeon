@@ -74,7 +74,7 @@ pub struct ArmyRecord {
     /// The province it stands in.
     pub location: ProvinceId,
     /// The order followed while idle.
-    pub standing_order: crate::warfare::StandingOrder,
+    pub standing_order: crate::warfare::StandingOrders,
 }
 
 /// Lookup for ships and armies.
@@ -129,7 +129,7 @@ pub fn spawn_from_content(world: &mut World, content: &ContentSet) {
                 manpower: def.manpower,
                 supplies: def.supplies,
                 location: map_index.province_keys[&def.province],
-                standing_order: crate::warfare::StandingOrder::default(),
+                standing_order: crate::warfare::StandingOrders::default(),
             })
             .id();
         index.armies.insert(id, entity);
@@ -199,7 +199,7 @@ pub fn form_army(
             manpower,
             supplies,
             location,
-            standing_order: crate::warfare::StandingOrder::default(),
+            standing_order: crate::warfare::StandingOrders::default(),
         })
         .id();
     world
@@ -314,7 +314,7 @@ pub struct ArmyState {
     pub location: ProvinceId,
     /// Standing order.
     #[serde(default)]
-    pub standing_order: crate::warfare::StandingOrder,
+    pub standing_order: crate::warfare::StandingOrders,
 }
 
 /// The complete serialised forces state.
@@ -361,7 +361,7 @@ pub fn capture_forces(world: &World) -> ForcesState {
                     manpower: army.manpower,
                     supplies: army.supplies,
                     location: army.location,
-                    standing_order: army.standing_order,
+                    standing_order: army.standing_order.clone(),
                 }
             })
             .collect(),
@@ -408,7 +408,7 @@ pub fn restore_forces(world: &mut World, state: &ForcesState, content: &ContentS
                 manpower: army.manpower,
                 supplies: army.supplies,
                 location: army.location,
-                standing_order: army.standing_order,
+                standing_order: army.standing_order.clone(),
             })
             .id();
         index.armies.insert(army.id, entity);

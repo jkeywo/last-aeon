@@ -74,11 +74,11 @@ pub enum PlayerCommand {
         army: ArmyId,
     },
     /// Sets a standing order for one of the player's armies.
-    SetStandingOrder {
+    SetStandingOrders {
         /// The army.
         army: ArmyId,
-        /// The order to follow while idle.
-        order: crate::warfare::StandingOrder,
+        /// What it may start on its own, in the order it reaches for them.
+        orders: crate::warfare::StandingOrders,
     },
     /// Puts one of the player's ships under a named officer, or leaves it
     /// without one.
@@ -302,7 +302,7 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
                 assignments::LeaderAvailability::Ineligible(rejection) => Err(rejection.into()),
             }
         }
-        PlayerCommand::SetStandingOrder { army, .. } => {
+        PlayerCommand::SetStandingOrders { army, .. } => {
             let org = world
                 .get_resource::<PlayerHouse>()
                 .and_then(|p| p.0)
@@ -385,11 +385,11 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
                 record.captain = *captain;
             }
         }
-        PlayerCommand::SetStandingOrder { army, order } => {
+        PlayerCommand::SetStandingOrders { army, orders } => {
             if let Some(entity) = crate::access::army_entity(world, *army)
                 && let Some(mut record) = world.get_mut::<crate::forces::ArmyRecord>(entity)
             {
-                record.standing_order = *order;
+                record.standing_order = orders.clone();
             }
         }
     }

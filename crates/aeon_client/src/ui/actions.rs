@@ -466,7 +466,7 @@ pub fn pick_target(
 mod tests {
     use super::*;
     use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
-    use aeon_sim::warfare::StandingOrder;
+    use aeon_sim::warfare::StandingOrders;
     use aeon_sim::{ArmyId, ShipId};
 
     fn army(general: u64) -> ArmyRecord {
@@ -478,7 +478,7 @@ mod tests {
             manpower: 500,
             supplies: 100,
             location: ProvinceId::from_raw(3).unwrap(),
-            standing_order: StandingOrder::default(),
+            standing_order: StandingOrders::default(),
         }
     }
 

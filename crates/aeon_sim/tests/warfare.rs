@@ -7,7 +7,7 @@ use aeon_core::calendar::CalendarDate;
 use aeon_data::{ContentKey, ContentSource, load_content};
 use aeon_sim::economy::OrgResources;
 use aeon_sim::forces::{ArmyRecord, ForcesIndex, ShipRecord, form_army};
-use aeon_sim::warfare::{StandingOrder, province_holder};
+use aeon_sim::warfare::{StandingOrders, province_holder};
 use aeon_sim::{
     ArmyId, AssignmentTarget, CampaignConfig, CharacterId, MessageLog, PlayerCommand,
     PoliticsIndex, ProvinceId, SimHost,
@@ -385,7 +385,7 @@ fn standing_orders_answer_threats_and_yield_to_bespoke_assignments() {
         world
             .get_mut::<ArmyRecord>(forces.armies[&defender])
             .unwrap()
-            .standing_order = StandingOrder::DefendHoldings;
+            .standing_order = StandingOrders(vec![key("respond")]);
     }
 
     // A siege on Beta triggers the alarm; the defender marches.
@@ -411,7 +411,12 @@ fn standing_orders_answer_threats_and_yield_to_bespoke_assignments() {
         });
         assert!(reactive, "standing order created a reactive assignment");
         let log = world.resource::<MessageLog>();
-        assert!(log.entries.iter().any(|e| e.text.contains("alarm")));
+        assert!(
+            log.entries
+                .iter()
+                .any(|e| e.text.contains("standing orders")),
+            "and says which standing order it acted on, now that a force              may hold several"
+        );
     }
 
     // The defender arrives to hold Beta; the siege meets it in the field.
@@ -465,7 +470,7 @@ fn warfare_is_deterministic_and_survives_snapshots() {
             world
                 .get_mut::<ArmyRecord>(forces.armies[&defender])
                 .unwrap()
-                .standing_order = StandingOrder::DefendHoldings;
+                .standing_order = StandingOrders(vec![key("respond")]);
         }
         let beta = province(&mut h, "beta");
         h.submit(PlayerCommand::StartAssignment {

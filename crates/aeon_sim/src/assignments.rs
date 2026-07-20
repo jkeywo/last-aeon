@@ -905,7 +905,7 @@ fn requirements_met(
 
     // About the owner rather than the target: what stops an assignment
     // that answers an alarm being offered when none is sounding.
-    if requires.owner_threatened && !any_holding_threatened(world, owner) {
+    if requires.owner_threatened && crate::warfare::threatened_holdings(world, owner).is_empty() {
         return false;
     }
 
@@ -935,13 +935,6 @@ fn hostile_force_in(world: &World, owner: OrgId, province: ProvinceId) -> bool {
             .get::<crate::forces::ArmyRecord>(*entity)
             .is_some_and(|army| army.location == province && army.owner != owner)
     })
-}
-
-/// Whether any province this organisation holds has a hostile force in it.
-fn any_holding_threatened(world: &World, owner: OrgId) -> bool {
-    crate::order::held_provinces(world, owner)
-        .into_iter()
-        .any(|province| hostile_force_in(world, owner, province))
 }
 
 /// Whether a character holds a title of the required kind.

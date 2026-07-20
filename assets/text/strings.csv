@@ -315,7 +315,7 @@ sim.refusal.leader-busy,Why a assignment cannot be ordered: the chosen leader is
 sim.refusal.leader-indisposed,"Why a assignment cannot be ordered: the chosen leader is injured, held, or incapacitated.",[that character is in no state to lead]
 sim.refusal.no-player-org,Why nothing can be ordered: the player has no house to act through.,[no player organisation]
 sim.refusal.unknown-assignment,Why a assignment cannot be ordered: no such assignment is defined. Should never reach a player.,[unknown assignment definition]
-sim.warfare.answering-alarm,Log line when an army marches to meet a threat on its own ground. {army} is the army's name.,[{army} marches to answer the alarm.]
+sim.warfare.standing-order,"Log line when a force acts on its standing orders. {army} {assignment}","{army} began {assignment} on standing orders."
 sim.warfare.fallen-to-siege,Log line when a besieged province changes hands. {place} is the title or province taken.,[{place} has fallen to siege.]
 title.consul-of-the-sector.name,Authored title 'consul-of-the-sector': name. Moved from the content scripts.,[Consul of the Sector]
 title.paramountcy-of-ashkarr.name,Authored title 'paramountcy-of-ashkarr': name. Moved from the content scripts.,[Paramount of Ashkarr]
@@ -396,7 +396,10 @@ ui.hover.standing.vassal-of,"A house's standing, in its hover summary. {liege} i
 ui.identity.leaderless,Shown in the top-bar identity when the player's house currently has no head.,[leaderless]
 ui.identity.no-house,Shown in the top-bar identity when the player has no house at all.,[No house]
 ui.inspector.army.general,Label before an army's general.,Led by
+ui.inspector.army.no-standing-orders,Shown when an army has no standing orders set.,It waits for orders.
 ui.inspector.army.standing-at,Label before where an army is standing.,Standing at
+ui.inspector.army.standing-orders,Heading for the list of things an army may start on its own.,Standing orders
+ui.inspector.army.standing-orders.hover,"Tooltip explaining standing orders.","Each day this army starts the first of these it is able to. It can never start something you could not have ordered by hand."
 ui.inspector.army.strength,An army's manpower and supplies. {men} {supplies},{men} men · {supplies} supplies
 ui.inspector.body.open-map,Button in the inspector that opens the selected body's surface map.,[Open strategic view]
 ui.inspector.body.provinces,"Row label in the body inspector, counting the provinces on that body.",[Provinces]
@@ -479,10 +482,9 @@ ui.legend.wealth.poor,"Map legend key, wealth mode: the lowest provincial output
 ui.legend.wealth.rich,"Map legend key, wealth mode: the highest provincial output.",[Rich]
 ui.listing.army.hover,Tooltip on an army row in the listing.,Open this army
 ui.listing.bodies,Heading above the list of celestial bodies in the listing panel.,[Bodies]
-ui.listing.defending,The standing order of an army holding ground and giving battle if attacked.,[Defending]
 ui.listing.disband,Button that dissolves an army back into the population.,[Disband]
 ui.listing.forces,Heading above the player's armies and ships in the listing panel.,[Forces]
-ui.listing.hold-fast,The standing order of an army holding its position without seeking battle.,[Hold fast]
+ui.listing.has-standing-orders,Marker beside an army in the listing that has standing orders.,(standing orders)
 ui.listing.houses,Heading above the list of houses in the listing panel.,[Houses]
 ui.listing.move-to,Placeholder on the closed dropdown that sends a ship somewhere.,[Move to...]
 ui.listing.provinces,Heading above the list of provinces in the listing panel.,[Provinces]
