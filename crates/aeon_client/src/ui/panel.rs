@@ -17,6 +17,7 @@ use aeon_sim::{CharacterId, MessageLog, OrgId, PoliticsIndex, TextDb};
 use bevy_egui::egui;
 
 use crate::assignment_ui::{AssignmentForm, LogFilter, UiCommandQueue};
+use crate::ui::assignment_popup::AssignmentPopup;
 use crate::ui::assignments_panel::draw_assignments_panel;
 use crate::ui::data::PanelData;
 use crate::ui::dock::{DockSide, PanelKind};
@@ -25,7 +26,6 @@ use crate::ui::ledger_panel::draw_ledger_panel;
 use crate::ui::listing::draw_listing;
 use crate::ui::log_panel::draw_log_panel;
 use crate::ui::lookup::Lookup;
-use crate::ui::picker::PickerState;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::ui::specimen::draw_specimen_panel;
 use crate::view::{MapMode, ViewState};
@@ -64,8 +64,8 @@ pub struct PanelOut<'a> {
     pub form: &'a mut AssignmentForm,
     /// Commands bound for the simulation.
     pub queue: &'a mut UiCommandQueue,
-    /// Whether the character picker is up.
-    pub picker: &'a mut PickerState,
+    /// Whether the assignment popup is up.
+    pub popup: &'a mut AssignmentPopup,
     /// What the log is showing.
     pub filter: &'a mut LogFilter,
 }

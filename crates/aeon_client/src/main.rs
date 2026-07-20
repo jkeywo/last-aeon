@@ -59,6 +59,7 @@ fn main() {
         .init_resource::<map_modes::MapReadout>()
         .init_resource::<ui::theme::UiTheme>()
         .init_resource::<ui::picker::PickerState>()
+        .init_resource::<ui::assignment_popup::AssignmentPopup>()
         .init_resource::<ui::dock::DockState>()
         .add_systems(
             Startup,
@@ -104,6 +105,7 @@ fn main() {
                 ui::shell::draw_panels,
                 // The picker floats above the panels that open it, so it is
                 // drawn after them and needs no place in the layout.
+                ui::assignment_popup::draw_assignment_popup,
                 ui::picker::draw_picker,
                 assignment_ui::draw_popups,
             )

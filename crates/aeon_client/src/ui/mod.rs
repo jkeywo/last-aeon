@@ -2,6 +2,7 @@
 //! built from them.
 
 pub mod actions;
+pub mod assignment_popup;
 pub mod assignments_panel;
 pub mod data;
 pub mod dock;

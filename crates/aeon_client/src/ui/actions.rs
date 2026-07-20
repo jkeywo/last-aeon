@@ -8,7 +8,7 @@
 
 use aeon_data::ContentSet;
 use aeon_data::model::{AssignmentDef, AssignmentTargetKind};
-use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
+use aeon_sim::forces::{ArmyRecord, ShipRecord};
 use aeon_sim::{
     ArmyId, AssignmentTarget, CharacterId, LeaderAvailability, OrgId, PlayerCommand, PoliticsIndex,
     ProvinceId, ShipId, TextDb,
@@ -17,6 +17,7 @@ use bevy_egui::egui;
 
 use crate::assignment_ui::{AssignmentForm, UiCommandQueue};
 use crate::forecast_view::ForecastCache;
+use crate::ui::assignment_popup::AssignmentPopup;
 use crate::ui::data::PanelData;
 use crate::ui::forecast::{draw_forecast_body, permille_text};
 use crate::ui::picker::PickerState;
@@ -67,35 +68,25 @@ fn assignment_hover(strings: &TextDb, def: &AssignmentDef) -> String {
     text
 }
 
-/// Draws context-sensitive assignment buttons for the current selection, with an
-/// inline picker for any slot the context does not already supply. Issuing
-/// stays on the authoritative path: every action becomes a queued
-/// [`PlayerCommand::StartAssignment`].
+/// Draws the assignments this selection offers, as buttons.
+///
+/// A button no longer expands in place. Choosing who goes, where, and
+/// whether the odds are worth it is comparison work that wants room, and
+/// an expander inside a narrow docked panel gives it none — so the button
+/// opens the assignment popup and the choosing happens there.
+///
+/// What is offered is asked of the simulation, never decided here.
 #[allow(clippy::too_many_arguments)]
 pub fn draw_context_assignments(
     ui: &mut egui::Ui,
     scope: AssignmentScope,
     content: &ContentSet,
-    politics: &PoliticsIndex,
+    data: &PanelData,
     player_org: OrgId,
     player_head: Option<CharacterId>,
-    data: &PanelData,
-    cache: &ForecastCache,
     form: &mut AssignmentForm,
-    queue: &mut UiCommandQueue,
-    picker: &mut PickerState,
+    popup: &mut AssignmentPopup,
 ) {
-    // The simulation's leader_availability is the single source for
-    // whether someone can take on new work; the interface only asks. A
-    // standing command (a general, a captain) is not a blocker in itself.
-    let leader_ok = |id: CharacterId| -> bool {
-        data.availability.of(id).is_some_and(|state| {
-            matches!(
-                state,
-                LeaderAvailability::Available | LeaderAvailability::Posted(_)
-            )
-        })
-    };
     let assignments_of =
         |kinds: &[AssignmentTargetKind]| -> Vec<(aeon_data::ContentKey, AssignmentDef)> {
             let mut assignments: Vec<(aeon_data::ContentKey, AssignmentDef)> = content
@@ -112,255 +103,98 @@ pub fn draw_context_assignments(
     ui.separator();
     ui.strong(strings.text("ui.actions.heading"));
 
-    // Every action expands to a forecast before it can be confirmed, so
-    // nothing is ever committed to unseen.
-    match scope {
-        AssignmentScope::OwnCharacter(leader) => {
-            if !leader_ok(leader) {
-                // Say which of the several possible reasons applies.
-                ui.weak(
-                    data.availability
-                        .of(leader)
-                        .map(|state| {
-                            state.describe(strings, |key| {
-                                content
-                                    .assignments
-                                    .get(key)
-                                    .map(|def| def.title.clone())
-                                    .unwrap_or_else(|| key.to_string())
-                            })
-                        })
-                        .unwrap_or_else(|| strings.text("ui.actions.unavailable").to_owned()),
-                );
-            } else {
-                let assignments = assignments_of(&[
-                    AssignmentTargetKind::None,
-                    AssignmentTargetKind::Organisation,
-                    AssignmentTargetKind::Character,
-                    AssignmentTargetKind::Province,
-                ]);
-                for (key, def) in &assignments {
-                    if ui
-                        .button(&def.title)
-                        .on_hover_text(assignment_hover(strings, def))
-                        .clicked()
-                    {
-                        form.reset();
-                        form.assignment = Some(key.clone());
-                        form.leader = Some(leader);
-                        form.about = Some(leader);
-                        if def.target == AssignmentTargetKind::None {
-                            form.target = Some(AssignmentTarget::None);
-                        }
-                    }
-                    // Anchored to the character whose panel this is, not to
-                    // the leader chosen: picking someone else to lead must
-                    // not collapse the panel it was picked in.
-                    let expanded =
-                        form.assignment.as_ref() == Some(key) && form.about == Some(leader);
-                    if expanded {
-                        ui.indent(key.to_string(), |ui| {
-                            if def.target != AssignmentTargetKind::None {
-                                pick_target(
-                                    ui, strings, def.target, content, politics, player_org, data,
-                                    form,
-                                );
-                            }
-                            draw_forecast(
-                                ui,
-                                &data.theme,
-                                strings,
-                                cache,
-                                form,
-                                picker,
-                                LeaderChoice::Free,
-                            );
-                            confirm_assignment(ui, strings, key, cache, form, queue);
-                        });
-                    }
-                }
-            }
-        }
-        AssignmentScope::OutsideCharacter(target_char) => {
-            // Every assignment that can be aimed at a character, filtered
-            // by what the simulation says is legal against this one. The
-            // client used to name "petition-the-consul" in its own source
-            // and check the Consul title itself; the requirement is now
-            // authored on the assignment, and this asks rather than knows.
-            let offered: Vec<(aeon_data::ContentKey, AssignmentDef)> =
-                assignments_of(&[AssignmentTargetKind::Character])
-                    .into_iter()
-                    .filter(|(key, _)| data.offers.allows(key))
-                    .collect();
+    // What this selection may be given, and how the popup should be set up
+    // when one is chosen.
+    let offered: Vec<(aeon_data::ContentKey, AssignmentDef)> = match scope {
+        AssignmentScope::OwnCharacter(_) => assignments_of(&[
+            AssignmentTargetKind::None,
+            AssignmentTargetKind::Organisation,
+            AssignmentTargetKind::Character,
+            AssignmentTargetKind::Province,
+        ]),
+        AssignmentScope::OutsideCharacter(_) => assignments_of(&[AssignmentTargetKind::Character])
+            .into_iter()
+            .filter(|(key, _)| data.offers.allows(key))
+            .collect(),
+        AssignmentScope::Province(_) => assignments_of(&[AssignmentTargetKind::Province])
+            .into_iter()
+            .filter(|(key, _)| data.offers.allows(key))
+            .collect(),
+        AssignmentScope::Army(_) => assignments_of(&[
+            AssignmentTargetKind::OwnArmy,
+            AssignmentTargetKind::OwnArmyAndProvince,
+        ]),
+        AssignmentScope::Ship(_) => assignments_of(&[AssignmentTargetKind::OwnShipAndProvince]),
+    };
 
-            for (key, def) in &offered {
-                let targets_them = def.target == AssignmentTargetKind::Character;
-                if ui
-                    .button(&def.title)
-                    .on_hover_text(assignment_hover(strings, def))
-                    .clicked()
-                {
-                    form.reset();
-                    form.assignment = Some(key.clone());
-                    form.target = Some(if targets_them {
-                        AssignmentTarget::Character(target_char)
-                    } else {
-                        AssignmentTarget::None
-                    });
-                    form.leader = player_head.filter(|h| leader_ok(*h));
-                    form.about = Some(target_char);
+    // A character of ours who cannot take anything on says why, rather
+    // than showing a list of buttons that would all be refused.
+    if let AssignmentScope::OwnCharacter(who) = scope
+        && let Some(state) = data.availability.of(who)
+        && !matches!(
+            state,
+            LeaderAvailability::Available | LeaderAvailability::Posted(_)
+        )
+    {
+        ui.weak(state.describe(strings, |key| {
+            content
+                .assignments
+                .get(key)
+                .map(|def| def.title.clone())
+                .unwrap_or_else(|| key.to_string())
+        }));
+        return;
+    }
+
+    if offered.is_empty() {
+        ui.weak(strings.text("ui.actions.none-here"));
+    }
+
+    for (key, def) in &offered {
+        if ui
+            .button(&def.title)
+            .on_hover_text(assignment_hover(strings, def))
+            .clicked()
+        {
+            form.reset();
+            form.assignment = Some(key.clone());
+            // Whatever the scope already settles is settled now, so the
+            // popup only ever asks for what is genuinely still open.
+            match scope {
+                AssignmentScope::OwnCharacter(leader) => {
+                    form.leader = Some(leader);
+                    form.about = Some(leader);
+                    if def.target == AssignmentTargetKind::None {
+                        form.target = Some(AssignmentTarget::None);
+                    }
                 }
-                let expanded =
-                    form.assignment.as_ref() == Some(key) && form.about == Some(target_char);
-                if expanded {
-                    ui.indent(key.to_string(), |ui| {
-                        draw_forecast(
-                            ui,
-                            &data.theme,
-                            strings,
-                            cache,
-                            form,
-                            picker,
-                            LeaderChoice::Free,
-                        );
-                        confirm_assignment(ui, strings, key, cache, form, queue);
-                    });
+                AssignmentScope::OutsideCharacter(them) => {
+                    form.about = Some(them);
+                    form.target = Some(AssignmentTarget::Character(them));
+                    form.leader = player_head;
                 }
-            }
-        }
-        AssignmentScope::Province(province) => {
-            // A province offers what can be done *to* a province. What an
-            // army does is offered under the army: it is the army being
-            // given the order, not the ground it happens to stand on.
-            let assignments = assignments_of(&[AssignmentTargetKind::Province])
-                .into_iter()
-                .filter(|(key, _)| data.offers.allows(key))
-                .collect::<Vec<_>>();
-            if assignments.is_empty() {
-                ui.weak(strings.text("ui.actions.none-for-province"));
-            }
-            for (key, def) in &assignments {
-                if ui
-                    .button(&def.title)
-                    .on_hover_text(assignment_hover(strings, def))
-                    .clicked()
-                {
-                    form.reset();
-                    form.assignment = Some(key.clone());
+                AssignmentScope::Province(province) => {
                     form.province = Some(province);
                     form.target = Some(AssignmentTarget::Province(province));
                 }
-                let expanded =
-                    form.assignment.as_ref() == Some(key) && form.province == Some(province);
-                if expanded {
-                    ui.indent(key.to_string(), |ui| {
-                        draw_forecast(
-                            ui,
-                            &data.theme,
-                            strings,
-                            cache,
-                            form,
-                            picker,
-                            LeaderChoice::Free,
-                        );
-                        confirm_assignment(ui, strings, key, cache, form, queue);
-                    });
+                AssignmentScope::Army(army) => {
+                    form.army = Some(army);
+                    let record = data.armies.iter().find(|a| a.id == army);
+                    let (leader, _) = force_leader(record, None);
+                    form.leader = leader;
+                    if def.target == AssignmentTargetKind::OwnArmy {
+                        form.target = Some(AssignmentTarget::OwnArmy(army));
+                    }
+                }
+                AssignmentScope::Ship(ship) => {
+                    form.ship = Some(ship);
+                    let record = data.ships.iter().find(|s| s.id == ship);
+                    let (leader, _) = force_leader(None, record);
+                    form.leader = leader;
                 }
             }
-        }
-        AssignmentScope::Army(army_id) => {
-            let Some(army) = data.armies.iter().find(|a| a.id == army_id) else {
-                return;
-            };
-            // An army is commanded by its general and by nobody else, so
-            // there is no leader to choose here — only where to go.
-            let assignments = assignments_of(&[
-                AssignmentTargetKind::OwnArmy,
-                AssignmentTargetKind::OwnArmyAndProvince,
-            ]);
-            for (key, def) in &assignments {
-                if ui
-                    .button(&def.title)
-                    .on_hover_text(assignment_hover(strings, def))
-                    .clicked()
-                {
-                    form.reset();
-                    form.assignment = Some(key.clone());
-                    form.army = Some(army_id);
-                    form.leader = Some(army.general);
-                }
-                let expanded = form.assignment.as_ref() == Some(key) && form.army == Some(army_id);
-                if expanded {
-                    ui.indent(key.to_string(), |ui| {
-                        if def.target == AssignmentTargetKind::OwnArmyAndProvince {
-                            pick_destination(ui, strings, data, form);
-                            form.target = form
-                                .province
-                                .map(|to| AssignmentTarget::ArmyToProvince(army_id, to));
-                        } else {
-                            form.target = Some(AssignmentTarget::OwnArmy(army_id));
-                        }
-                        let (leader, _) = force_leader(Some(army), None);
-                        form.leader = leader;
-                        draw_forecast(
-                            ui,
-                            &data.theme,
-                            strings,
-                            cache,
-                            form,
-                            picker,
-                            LeaderChoice::Fixed("ui.actions.leader-fixed"),
-                        );
-                        confirm_assignment(ui, strings, key, cache, form, queue);
-                    });
-                }
-            }
-        }
-        AssignmentScope::Ship(ship_id) => {
-            let Some(ship) = data.ships.iter().find(|s| s.id == ship_id) else {
-                return;
-            };
-            let assignments = assignments_of(&[AssignmentTargetKind::OwnShipAndProvince]);
-            for (key, def) in &assignments {
-                if ui
-                    .button(&def.title)
-                    .on_hover_text(assignment_hover(strings, def))
-                    .clicked()
-                {
-                    form.reset();
-                    form.assignment = Some(key.clone());
-                    form.ship = Some(ship_id);
-                }
-                let expanded = form.assignment.as_ref() == Some(key) && form.ship == Some(ship_id);
-                if expanded {
-                    ui.indent(key.to_string(), |ui| {
-                        pick_destination(ui, strings, data, form);
-                        form.target = form
-                            .province
-                            .map(|to| AssignmentTarget::ShipToProvince(ship_id, to));
-                        let (leader, obstacle) = force_leader(None, Some(ship));
-                        form.leader = leader;
-                        // Stated where the choice is made, not discovered
-                        // after pressing Confirm.
-                        if let Some(obstacle) = obstacle {
-                            ui.colored_label(
-                                data.theme.semantics.target(TargetState::IneligibleFixable),
-                                strings.text(obstacle.text_key()),
-                            );
-                        }
-                        draw_forecast(
-                            ui,
-                            &data.theme,
-                            strings,
-                            cache,
-                            form,
-                            picker,
-                            LeaderChoice::Fixed("ui.actions.leader-fixed"),
-                        );
-                        confirm_assignment(ui, strings, key, cache, form, queue);
-                    });
-                }
-            }
+            let _ = player_org;
+            popup.open();
         }
     }
 
@@ -372,9 +206,8 @@ pub fn draw_context_assignments(
     }
 }
 
-/// A permille chance as a player-facing percentage.
 /// The Confirm button for an expanded action.
-fn confirm_assignment(
+pub fn confirm_assignment(
     ui: &mut egui::Ui,
     strings: &TextDb,
     key: &aeon_data::ContentKey,
@@ -407,7 +240,7 @@ fn confirm_assignment(
 
 /// Whether the player picks who leads an action, or the action settles it.
 #[derive(Copy, Clone, PartialEq, Eq)]
-enum LeaderChoice {
+pub enum LeaderChoice {
     /// Any eligible member of the house may be chosen.
     Free,
     /// Fixed by what is being ordered, holding the key of the reason why.
@@ -424,7 +257,7 @@ enum LeaderChoice {
 /// The breakdown itself is drawn by [`draw_forecast_body`], shared with the
 /// character picker, so the figures a player compares candidates on are the
 /// figures they commit to.
-fn draw_forecast(
+pub fn draw_forecast(
     ui: &mut egui::Ui,
     theme: &UiTheme,
     strings: &TextDb,
@@ -514,7 +347,7 @@ fn draw_leader_slot(
 }
 
 #[allow(clippy::too_many_arguments)]
-fn pick_target(
+pub fn pick_target(
     ui: &mut egui::Ui,
     strings: &TextDb,
     kind: AssignmentTargetKind,
@@ -632,6 +465,7 @@ fn pick_target(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
     use aeon_sim::warfare::StandingOrder;
     use aeon_sim::{ArmyId, ShipId};
 
@@ -661,10 +495,6 @@ mod tests {
         }
     }
 
-    fn province() -> ProvinceId {
-        ProvinceId::from_raw(7).unwrap()
-    }
-
     #[test]
     fn a_march_is_led_by_the_armys_general() {
         let army = army(42);
@@ -688,25 +518,18 @@ mod tests {
     #[test]
     fn a_captained_ship_is_ordered_by_its_captain() {
         let ship = ship(Some(9));
-        let action = province_action(
-            AssignmentTargetKind::OwnShipAndProvince,
-            province(),
-            None,
-            Some(&ship),
-        );
-        assert_eq!(
-            action.target,
-            Some(AssignmentTarget::ShipToProvince(ship.id, province()))
-        );
-        assert_eq!(action.leader, ship.captain);
-        assert_eq!(action.obstacle, None);
+        let (leader, obstacle) = force_leader(None, Some(&ship));
+        assert_eq!(leader, ship.captain);
+        assert_eq!(obstacle, None);
     }
 
     #[test]
-    fn no_chosen_force_means_nothing_to_confirm() {
-        let action = province_action(AssignmentTargetKind::OwnArmy, province(), None, None);
-        assert_eq!(action.target, None);
-        assert_eq!(action.leader, None);
+    fn no_force_at_all_names_nobody_and_blames_nobody() {
+        // Reaching here with neither is not a player-visible state, but it
+        // must not invent a leader if it happens.
+        let (leader, obstacle) = force_leader(None, None);
+        assert_eq!(leader, None);
+        assert_eq!(obstacle, None);
     }
 }
 
@@ -719,9 +542,9 @@ pub enum Obstacle {
 
 impl Obstacle {
     /// The key of the sentence explaining this obstacle.
-    fn text_key(self) -> &'static str {
+    pub fn text_key(self) -> &'static str {
         match self {
-            Obstacle::ShipHasNoCaptain => "ui.actions.no-captain",
+            Obstacle::ShipHasNoCaptain => "ui.actions.obstacle.ship-has-no-captain",
         }
     }
 }
@@ -732,7 +555,7 @@ impl Obstacle {
 /// post is substitutable, and a vacant one is an obstacle rather than an
 /// excuse to fall back on the house head. Kept as a function of its own
 /// because it is a rule, and rules are worth testing.
-fn force_leader(
+pub fn force_leader(
     army: Option<&ArmyRecord>,
     ship: Option<&ShipRecord>,
 ) -> (Option<CharacterId>, Option<Obstacle>) {
@@ -749,7 +572,7 @@ fn force_leader(
 }
 
 /// Picks the province a force is being sent to.
-fn pick_destination(
+pub fn pick_destination(
     ui: &mut egui::Ui,
     strings: &TextDb,
     data: &PanelData,

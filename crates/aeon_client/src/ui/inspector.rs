@@ -238,14 +238,11 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                         ui,
                         AssignmentScope::Province(id),
                         ctx.content,
-                        ctx.politics,
+                        ctx.data,
                         org,
                         ctx.player_head,
-                        ctx.data,
-                        &ctx.data.cache,
                         out.form,
-                        out.queue,
-                        out.picker,
+                        out.popup,
                     );
                 }
             }
@@ -281,14 +278,11 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                     ui,
                     AssignmentScope::Army(id),
                     ctx.content,
-                    ctx.politics,
+                    ctx.data,
                     army.owner,
                     ctx.player_head,
-                    ctx.data,
-                    &ctx.data.cache,
                     out.form,
-                    out.queue,
-                    out.picker,
+                    out.popup,
                 );
             }
         }
@@ -316,14 +310,11 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                     ui,
                     AssignmentScope::Ship(id),
                     ctx.content,
-                    ctx.politics,
+                    ctx.data,
                     ship.owner,
                     ctx.player_head,
-                    ctx.data,
-                    &ctx.data.cache,
                     out.form,
-                    out.queue,
-                    out.picker,
+                    out.popup,
                 );
             }
         }
@@ -645,14 +636,11 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                         ui,
                         scope,
                         ctx.content,
-                        ctx.politics,
+                        ctx.data,
                         org,
                         ctx.player_head,
-                        ctx.data,
-                        &ctx.data.cache,
                         out.form,
-                        out.queue,
-                        out.picker,
+                        out.popup,
                     );
                 }
             }

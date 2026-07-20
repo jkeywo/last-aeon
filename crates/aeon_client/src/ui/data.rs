@@ -31,19 +31,19 @@ use crate::assignment_ui::AssignmentForm;
 use crate::forecast_view::{AvailabilityView, ForecastCache};
 use crate::map_modes::MapReadout;
 use crate::offer_view::OfferView;
+use crate::ui::assignment_popup::AssignmentPopup;
 use crate::ui::dock::DockState;
-use crate::ui::picker::PickerState;
 use crate::ui::theme::UiTheme;
 use crate::view::MapMode;
 
-/// The two resources an in-progress action writes to.
+/// The two resources the panels write while an action is being started.
 ///
-/// They belong together: the form holds the choice being made, and the
-/// picker is how one of its slots gets filled in.
+/// The picker is not here: it belongs to the popup that contains it, and
+/// the panels only ever open that.
 #[derive(SystemParam)]
 pub struct AssignmentUi<'w> {
     pub form: ResMut<'w, AssignmentForm>,
-    pub picker: ResMut<'w, PickerState>,
+    pub popup: ResMut<'w, AssignmentPopup>,
 }
 
 /// How the player is looking at things: what the map shows, and where

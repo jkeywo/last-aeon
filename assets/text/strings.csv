@@ -334,14 +334,12 @@ trait.scheming.name,Authored trait 'scheming': name. Moved from the content scri
 trait.scheming.summary,Authored trait 'scheming': one-line summary. Moved from the content scripts.,[Every word is a move.]
 trait.wary.name,Authored trait 'wary': name. Moved from the content scripts.,[Wary]
 trait.wary.summary,Authored trait 'wary': one-line summary. Moved from the content scripts.,[Trusts slowly and watches exits.]
-ui.actions.choose-army,"Placeholder on the closed army dropdown, before one is chosen.",[Choose an army]
 ui.actions.choose-character,"Placeholder on the closed character-target dropdown, before one is chosen.",[Choose a character]
 ui.actions.choose-destination,Placeholder in the destination picker for a force order.,Choose a destination
 ui.actions.choose-leader,Button that opens the leader comparison list for an action.,[Choose…]
 ui.actions.choose-leader.hover,"Tooltip on the choose-leader button. {free} is how many house members could take the assignment on now, {total} how many there are.",[Compare everyone in your house for this assignment. {free} of {total} could take it on now.]
 ui.actions.choose-org,"Placeholder on the closed organisation-target dropdown, before one is chosen.",[Choose an organisation]
 ui.actions.choose-province,"Placeholder on the closed province-target dropdown, before one is chosen.",[Choose a province]
-ui.actions.choose-ship,"Placeholder on the closed ship dropdown, before one is chosen.",[Choose a ship]
 ui.actions.confirm,Button that issues the composed action to the simulation.,[Confirm]
 ui.actions.forecast-pending,Shown in place of the forecast while the action still has empty slots.,[Choose the remaining details to see the forecast.]
 ui.actions.heading,Heading above the context-sensitive assignment buttons under a selection.,[Actions]
@@ -349,11 +347,8 @@ ui.actions.leader-chosen,"The chosen leader and their odds, beside the led-by la
 ui.actions.leader-fixed,"Reason shown when an action's leader cannot be chosen, because a force is led by whoever commands it.",[led by the force's own commander]
 ui.actions.leader-fixed-note,"Wraps the reason a leader is fixed, shown beside the led-by slot. {reason} is that reason.",[({reason})]
 ui.actions.led-by,Label before whoever would lead the action being composed.,[Led by]
-ui.actions.no-armies,Shown in place of the army dropdown when the player commands none.,[You command no armies. Muster the levies first.]
-ui.actions.no-captain,Shown when a ship has nobody to give the order to.,This ship has no captain. Appoint one before it can be ordered.
 ui.actions.no-leader,Shown beside the led-by label before anyone has been chosen.,[nobody yet]
-ui.actions.no-ships,Shown in place of the ship dropdown when the player has no docked ships.,[You have no docked ships.]
-ui.actions.none-for-province,Shown when a province offers no assignments of its own.,Nothing to order here. An army or ship is ordered from its own panel.
+ui.actions.none-here,Shown when a selection offers no assignments at all.,Nothing to order here.
 ui.actions.obstacle.ship-has-no-captain,Shown at the ship slot when the chosen ship has no captain to carry the order. The ship's own name is already on screen beside it.,[This ship has no captain. A ship is ordered by the officer who commands it — assign one first.]
 ui.actions.unavailable,Fallback shown when a character cannot take on work and no more specific reason is known.,[unavailable]
 ui.body-kind.moon,What kind of body this is: a moon orbiting a planet.,[Moon]

@@ -45,7 +45,7 @@ pub fn draw_panels(
 ) {
     let AssignmentUi {
         mut form,
-        mut picker,
+        mut popup,
     } = assignment_ui;
     let MapUi { mut mode, mut dock } = map_ui;
     let Ok(ctx) = contexts.ctx_mut() else {
@@ -113,7 +113,7 @@ pub fn draw_panels(
         view: &mut view,
         form: &mut form,
         queue: &mut queue,
-        picker: &mut picker,
+        popup: &mut popup,
         filter: &mut filter,
     };
 
