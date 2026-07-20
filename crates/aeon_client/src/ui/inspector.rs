@@ -193,10 +193,16 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                     ui.label(strings.text("ui.inspector.province.forces"));
                     for army in armies_here {
                         ui.horizontal(|ui| {
-                            ui.label(strings.format(
-                                "ui.inspector.province.army",
-                                &[("army", &army.name), ("men", &army.manpower.to_string())],
-                            ));
+                            if linked(
+                                ui,
+                                &strings.format(
+                                    "ui.inspector.province.army",
+                                    &[("army", &army.name), ("men", &army.manpower.to_string())],
+                                ),
+                                strings.text("ui.inspector.province.army.hover"),
+                            ) {
+                                out.view.selected = Some(Selection::Army(army.id));
+                            }
                             if let Some((general, ..)) = ctx.lookup.chars.get(&army.general) {
                                 ui.label("·");
                                 if linked(ui, &general.name, &ctx.lookup.char_hover(army.general)) {
@@ -207,10 +213,14 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                     }
                     for ship in ships_here {
                         ui.horizontal(|ui| {
-                            ui.label(
-                                strings
+                            if linked(
+                                ui,
+                                &strings
                                     .format("ui.inspector.province.ship", &[("ship", &ship.name)]),
-                            );
+                                strings.text("ui.inspector.province.ship.hover"),
+                            ) {
+                                out.view.selected = Some(Selection::Ship(ship.id));
+                            }
                             if let Some(captain) = ship.captain
                                 && let Some((c, ..)) = ctx.lookup.chars.get(&captain)
                             {
@@ -238,6 +248,83 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                         out.picker,
                     );
                 }
+            }
+        }
+        Some(Selection::Army(id)) => {
+            let Some(army) = ctx.data.armies.iter().find(|a| a.id == id) else {
+                return;
+            };
+            ui.strong(&army.name);
+            ui.label(strings.format(
+                "ui.inspector.army.strength",
+                &[
+                    ("men", &army.manpower.to_string()),
+                    ("supplies", &army.supplies.to_string()),
+                ],
+            ));
+            ui.horizontal(|ui| {
+                ui.label(strings.text("ui.inspector.army.standing-at"));
+                let place = ctx.lookup.province_name(army.location);
+                if linked(ui, &place, &place) {
+                    out.view.selected = Some(Selection::Province(army.location));
+                }
+            });
+            ui.horizontal(|ui| {
+                ui.label(strings.text("ui.inspector.army.general"));
+                let name = ctx.lookup.char_name(army.general);
+                if linked(ui, &name, &ctx.lookup.char_hover(army.general)) {
+                    out.view.selected = Some(Selection::Character(army.general));
+                }
+            });
+            if Some(army.owner) == ctx.player_org {
+                draw_context_assignments(
+                    ui,
+                    AssignmentScope::Army(id),
+                    ctx.content,
+                    ctx.politics,
+                    army.owner,
+                    ctx.player_head,
+                    ctx.data,
+                    &ctx.data.cache,
+                    out.form,
+                    out.queue,
+                    out.picker,
+                );
+            }
+        }
+        Some(Selection::Ship(id)) => {
+            let Some(ship) = ctx.data.ships.iter().find(|s| s.id == id) else {
+                return;
+            };
+            ui.strong(&ship.name);
+            ui.horizontal(|ui| {
+                ui.label(strings.text("ui.inspector.ship.captain"));
+                match ship.captain {
+                    Some(captain) => {
+                        let name = ctx.lookup.char_name(captain);
+                        if linked(ui, &name, &ctx.lookup.char_hover(captain)) {
+                            out.view.selected = Some(Selection::Character(captain));
+                        }
+                    }
+                    None => {
+                        ui.weak(strings.text("ui.inspector.ship.no-captain"));
+                    }
+                }
+            });
+            if Some(ship.owner) == ctx.player_org {
+                draw_context_assignments(
+                    ui,
+                    AssignmentScope::Ship(id),
+                    ctx.content,
+                    ctx.politics,
+                    ship.owner,
+                    ctx.player_head,
+                    ctx.data,
+                    &ctx.data.cache,
+                    out.form,
+                    out.queue,
+                    out.picker,
+                );
             }
         }
         Some(Selection::Org(id)) => {

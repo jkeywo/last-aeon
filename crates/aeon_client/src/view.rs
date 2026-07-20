@@ -3,7 +3,7 @@
 //! Pure presentation — none of this is authoritative simulation state, and
 //! none of it appears in snapshots.
 
-use aeon_sim::{BodyId, CharacterId, OrgId, ProvinceId};
+use aeon_sim::{ArmyId, BodyId, CharacterId, OrgId, ProvinceId, ShipId};
 use bevy::math::Vec3;
 use bevy::prelude::Resource;
 
@@ -128,6 +128,11 @@ pub enum Selection {
     Org(OrgId),
     /// A character.
     Character(CharacterId),
+    /// An army. Selectable because an army is a thing that is given
+    /// orders, and orders belong under the thing they are given to.
+    Army(ArmyId),
+    /// A ship, for the same reason.
+    Ship(ShipId),
 }
 
 /// The active view and selection.

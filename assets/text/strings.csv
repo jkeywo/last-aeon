@@ -336,6 +336,7 @@ trait.wary.name,Authored trait 'wary': name. Moved from the content scripts.,[Wa
 trait.wary.summary,Authored trait 'wary': one-line summary. Moved from the content scripts.,[Trusts slowly and watches exits.]
 ui.actions.choose-army,"Placeholder on the closed army dropdown, before one is chosen.",[Choose an army]
 ui.actions.choose-character,"Placeholder on the closed character-target dropdown, before one is chosen.",[Choose a character]
+ui.actions.choose-destination,Placeholder in the destination picker for a force order.,Choose a destination
 ui.actions.choose-leader,Button that opens the leader comparison list for an action.,[Choose…]
 ui.actions.choose-leader.hover,"Tooltip on the choose-leader button. {free} is how many house members could take the assignment on now, {total} how many there are.",[Compare everyone in your house for this assignment. {free} of {total} could take it on now.]
 ui.actions.choose-org,"Placeholder on the closed organisation-target dropdown, before one is chosen.",[Choose an organisation]
@@ -349,8 +350,10 @@ ui.actions.leader-fixed,"Reason shown when an action's leader cannot be chosen, 
 ui.actions.leader-fixed-note,"Wraps the reason a leader is fixed, shown beside the led-by slot. {reason} is that reason.",[({reason})]
 ui.actions.led-by,Label before whoever would lead the action being composed.,[Led by]
 ui.actions.no-armies,Shown in place of the army dropdown when the player commands none.,[You command no armies. Muster the levies first.]
+ui.actions.no-captain,Shown when a ship has nobody to give the order to.,This ship has no captain. Appoint one before it can be ordered.
 ui.actions.no-leader,Shown beside the led-by label before anyone has been chosen.,[nobody yet]
 ui.actions.no-ships,Shown in place of the ship dropdown when the player has no docked ships.,[You have no docked ships.]
+ui.actions.none-for-province,Shown when a province offers no assignments of its own.,Nothing to order here. An army or ship is ordered from its own panel.
 ui.actions.obstacle.ship-has-no-captain,Shown at the ship slot when the chosen ship has no captain to carry the order. The ship's own name is already on screen beside it.,[This ship has no captain. A ship is ordered by the officer who commands it — assign one first.]
 ui.actions.unavailable,Fallback shown when a character cannot take on work and no more specific reason is known.,[unavailable]
 ui.body-kind.moon,What kind of body this is: a moon orbiting a planet.,[Moon]
@@ -396,6 +399,9 @@ ui.hover.standing.vassal,A house's standing when it is a vassal but its liege is
 ui.hover.standing.vassal-of,"A house's standing, in its hover summary. {liege} is the house it answers to.",[vassal of {liege}]
 ui.identity.leaderless,Shown in the top-bar identity when the player's house currently has no head.,[leaderless]
 ui.identity.no-house,Shown in the top-bar identity when the player has no house at all.,[No house]
+ui.inspector.army.general,Label before an army's general.,Led by
+ui.inspector.army.standing-at,Label before where an army is standing.,Standing at
+ui.inspector.army.strength,An army's manpower and supplies. {men} {supplies},{men} men · {supplies} supplies
 ui.inspector.body.open-map,Button in the inspector that opens the selected body's surface map.,[Open strategic view]
 ui.inspector.body.provinces,"Row label in the body inspector, counting the provinces on that body.",[Provinces]
 ui.inspector.body.radius,"Row label in the body inspector, for the body's radius.",[Radius]
@@ -424,6 +430,7 @@ ui.inspector.org.obligations.hover,"Tooltip on the obligations row, explaining t
 ui.inspector.org.titles-held,Line in the house inspector counting the titles it holds. {count} is a whole number.,[Titles held: {count}]
 ui.inspector.org.vassal-of,"Row label in the house inspector, before the name of the house it answers to.",[Vassal of]
 ui.inspector.province.army,"Line for one army standing in the selected province. The crossed-swords glyph opens it. {army} is the army's name, {men} its strength.",[⚔ {army} ({men} men)]
+ui.inspector.province.army.hover,Tooltip on an army listed under a province.,Open this army
 ui.inspector.province.forces,"Row label in the province inspector, before the armies and ships standing there.",[Forces here:]
 ui.inspector.province.held-by,"Row label in the province inspector, before the name of whoever holds it.",[Held by]
 ui.inspector.province.latitude,"Row label in the province inspector, for its latitude on the body.",[Latitude]
@@ -436,8 +443,11 @@ ui.inspector.province.order.hover,"Tooltip on the order reading, explaining what
 ui.inspector.province.output,"Row label in the province inspector, before its monthly output figures.",[Monthly output]
 ui.inspector.province.output-value,"The three monthly output figures. W, M and S abbreviate wealth, manpower and supplies.",[W {wealth} / M {manpower} / S {supplies}]
 ui.inspector.province.ship,Line for one ship docked at the selected province. The anchor glyph opens it. {ship} is the ship's name.,[⚓ {ship}]
+ui.inspector.province.ship.hover,Tooltip on a ship listed under a province.,Open this ship
 ui.inspector.province.unrest,Warning line in the province inspector when the province is counting down to revolt. {days} is a number of days.,[In unrest — revolts in {days} days]
 ui.inspector.province.unrest.hover,"Tooltip on the unrest warning, naming the ways out of it.","[Garrison it, go there in person, or hold court to restore order before the province is lost.]"
+ui.inspector.ship.captain,Label before a ship's captain.,Captained by
+ui.inspector.ship.no-captain,"Shown where a ship's captain would be, when it has none.",nobody
 ui.inspector.skill.command,"Row label in the character inspector for the command skill, which governs warfare.",[Command]
 ui.inspector.skill.diplomacy,Row label in the character inspector for the diplomacy skill.,[Diplomacy]
 ui.inspector.skill.intrigue,Row label in the character inspector for the intrigue skill.,[Intrigue]
@@ -471,6 +481,7 @@ ui.legend.relations.yours,"Map legend key, relations mode: the player's own hold
 ui.legend.wealth.middling,"Map legend key, wealth mode: the middle of the range of provincial output.",[Middling]
 ui.legend.wealth.poor,"Map legend key, wealth mode: the lowest provincial output.",[Poor]
 ui.legend.wealth.rich,"Map legend key, wealth mode: the highest provincial output.",[Rich]
+ui.listing.army.hover,Tooltip on an army row in the listing.,Open this army
 ui.listing.bodies,Heading above the list of celestial bodies in the listing panel.,[Bodies]
 ui.listing.defending,The standing order of an army holding ground and giving battle if attacked.,[Defending]
 ui.listing.disband,Button that dissolves an army back into the population.,[Disband]
@@ -479,6 +490,7 @@ ui.listing.hold-fast,The standing order of an army holding its position without 
 ui.listing.houses,Heading above the list of houses in the listing panel.,[Houses]
 ui.listing.move-to,Placeholder on the closed dropdown that sends a ship somewhere.,[Move to...]
 ui.listing.provinces,Heading above the list of provinces in the listing panel.,[Provinces]
+ui.listing.ship.hover,Tooltip on a ship row in the listing.,Open this ship
 ui.location.in-transit,"Where a character is when travelling. {place} is the destination province, {date} when they arrive.",[In transit to {place} (arrives {date})]
 ui.location.unknown,Shown where a character's location should be but none is recorded.,[Unknown]
 ui.location.unknown-province,Stand-in for a destination province whose name could not be resolved. An ellipsis.,[...]

@@ -10,8 +10,8 @@ use aeon_data::ContentSet;
 use aeon_data::model::{AssignmentDef, AssignmentTargetKind};
 use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
 use aeon_sim::{
-    AssignmentTarget, CharacterId, LeaderAvailability, OrgId, PlayerCommand, PoliticsIndex,
-    ProvinceId, TextDb,
+    ArmyId, AssignmentTarget, CharacterId, LeaderAvailability, OrgId, PlayerCommand, PoliticsIndex,
+    ProvinceId, ShipId, TextDb,
 };
 use bevy_egui::egui;
 
@@ -28,8 +28,13 @@ pub enum AssignmentScope {
     OwnCharacter(CharacterId),
     /// A character outside the player's house, targeted by the assignment.
     OutsideCharacter(CharacterId),
-    /// A province, targeted by military assignments.
+    /// A province, targeted by assignments that act on ground.
     Province(ProvinceId),
+    /// One of the player's armies. Its own orders live here, under it,
+    /// rather than under whatever province it happens to be standing in.
+    Army(ArmyId),
+    /// One of the player's ships.
+    Ship(ShipId),
 }
 
 /// A tooltip summarising a assignment's effect, costs, and risks.
@@ -224,11 +229,16 @@ pub fn draw_context_assignments(
             }
         }
         AssignmentScope::Province(province) => {
-            let assignments = assignments_of(&[
-                AssignmentTargetKind::OwnArmy,
-                AssignmentTargetKind::OwnArmyAndProvince,
-                AssignmentTargetKind::OwnShipAndProvince,
-            ]);
+            // A province offers what can be done *to* a province. What an
+            // army does is offered under the army: it is the army being
+            // given the order, not the ground it happens to stand on.
+            let assignments = assignments_of(&[AssignmentTargetKind::Province])
+                .into_iter()
+                .filter(|(key, _)| data.offers.allows(key))
+                .collect::<Vec<_>>();
+            if assignments.is_empty() {
+                ui.weak(strings.text("ui.actions.none-for-province"));
+            }
             for (key, def) in &assignments {
                 if ui
                     .button(&def.title)
@@ -238,30 +248,101 @@ pub fn draw_context_assignments(
                     form.reset();
                     form.assignment = Some(key.clone());
                     form.province = Some(province);
+                    form.target = Some(AssignmentTarget::Province(province));
                 }
                 let expanded =
                     form.assignment.as_ref() == Some(key) && form.province == Some(province);
                 if expanded {
                     ui.indent(key.to_string(), |ui| {
-                        if def.target == AssignmentTargetKind::OwnShipAndProvince {
-                            pick_ship(ui, strings, player_org, data, form);
+                        draw_forecast(
+                            ui,
+                            &data.theme,
+                            strings,
+                            cache,
+                            form,
+                            picker,
+                            LeaderChoice::Free,
+                        );
+                        confirm_assignment(ui, strings, key, cache, form, queue);
+                    });
+                }
+            }
+        }
+        AssignmentScope::Army(army_id) => {
+            let Some(army) = data.armies.iter().find(|a| a.id == army_id) else {
+                return;
+            };
+            // An army is commanded by its general and by nobody else, so
+            // there is no leader to choose here — only where to go.
+            let assignments = assignments_of(&[
+                AssignmentTargetKind::OwnArmy,
+                AssignmentTargetKind::OwnArmyAndProvince,
+            ]);
+            for (key, def) in &assignments {
+                if ui
+                    .button(&def.title)
+                    .on_hover_text(assignment_hover(strings, def))
+                    .clicked()
+                {
+                    form.reset();
+                    form.assignment = Some(key.clone());
+                    form.army = Some(army_id);
+                    form.leader = Some(army.general);
+                }
+                let expanded = form.assignment.as_ref() == Some(key) && form.army == Some(army_id);
+                if expanded {
+                    ui.indent(key.to_string(), |ui| {
+                        if def.target == AssignmentTargetKind::OwnArmyAndProvince {
+                            pick_destination(ui, strings, data, form);
+                            form.target = form
+                                .province
+                                .map(|to| AssignmentTarget::ArmyToProvince(army_id, to));
                         } else {
-                            pick_army(ui, strings, player_org, data, form);
+                            form.target = Some(AssignmentTarget::OwnArmy(army_id));
                         }
-                        // Publish the resolved target and leader so the
-                        // forecast is for exactly what would be ordered.
-                        let army = form
-                            .army
-                            .and_then(|id| data.armies.iter().find(|a| a.id == id));
-                        let ship = form
-                            .ship
-                            .and_then(|id| data.ships.iter().find(|s| s.id == id));
-                        let action = province_action(def.target, province, army, ship);
-                        form.target = action.target;
-                        form.leader = action.leader;
-                        // An obstacle is stated where the choice is made,
-                        // not discovered after pressing Confirm.
-                        if let Some(obstacle) = &action.obstacle {
+                        let (leader, _) = force_leader(Some(army), None);
+                        form.leader = leader;
+                        draw_forecast(
+                            ui,
+                            &data.theme,
+                            strings,
+                            cache,
+                            form,
+                            picker,
+                            LeaderChoice::Fixed("ui.actions.leader-fixed"),
+                        );
+                        confirm_assignment(ui, strings, key, cache, form, queue);
+                    });
+                }
+            }
+        }
+        AssignmentScope::Ship(ship_id) => {
+            let Some(ship) = data.ships.iter().find(|s| s.id == ship_id) else {
+                return;
+            };
+            let assignments = assignments_of(&[AssignmentTargetKind::OwnShipAndProvince]);
+            for (key, def) in &assignments {
+                if ui
+                    .button(&def.title)
+                    .on_hover_text(assignment_hover(strings, def))
+                    .clicked()
+                {
+                    form.reset();
+                    form.assignment = Some(key.clone());
+                    form.ship = Some(ship_id);
+                }
+                let expanded = form.assignment.as_ref() == Some(key) && form.ship == Some(ship_id);
+                if expanded {
+                    ui.indent(key.to_string(), |ui| {
+                        pick_destination(ui, strings, data, form);
+                        form.target = form
+                            .province
+                            .map(|to| AssignmentTarget::ShipToProvince(ship_id, to));
+                        let (leader, obstacle) = force_leader(None, Some(ship));
+                        form.leader = leader;
+                        // Stated where the choice is made, not discovered
+                        // after pressing Confirm.
+                        if let Some(obstacle) = obstacle {
                             ui.colored_label(
                                 data.theme.semantics.target(TargetState::IneligibleFixable),
                                 strings.text(obstacle.text_key()),
@@ -432,76 +513,6 @@ fn draw_leader_slot(
     });
 }
 
-/// What a province-scoped military order would be, and who would carry it.
-///
-/// A force is led by the character who commands it and nobody else, so a
-/// ship with no captain has no order to give — reported here rather than
-/// silently substituting the head of the house and failing later.
-#[derive(Debug, PartialEq, Eq)]
-struct ProvinceAction {
-    target: Option<AssignmentTarget>,
-    leader: Option<CharacterId>,
-    /// Why this cannot be ordered yet, for showing at the slot.
-    obstacle: Option<Obstacle>,
-}
-
-/// Something standing between a chosen force and the order it would carry.
-///
-/// Named rather than worded, so [`province_action`] stays pure over the
-/// records it is given and its tests assert the reason rather than a
-/// phrase any rewording would break.
-#[derive(Debug, PartialEq, Eq)]
-enum Obstacle {
-    /// The ship has nobody to order it.
-    ShipHasNoCaptain,
-}
-
-impl Obstacle {
-    /// The key of the sentence explaining this obstacle.
-    fn text_key(&self) -> &'static str {
-        match self {
-            Obstacle::ShipHasNoCaptain => "ui.actions.obstacle.ship-has-no-captain",
-        }
-    }
-}
-
-/// Resolves the order a chosen force would carry out against a province.
-///
-/// Pure over the chosen force's records, so what the interface offers —
-/// and refuses — is testable without a world or a frame.
-fn province_action(
-    kind: AssignmentTargetKind,
-    province: ProvinceId,
-    army: Option<&ArmyRecord>,
-    ship: Option<&ShipRecord>,
-) -> ProvinceAction {
-    match kind {
-        AssignmentTargetKind::OwnArmy | AssignmentTargetKind::OwnArmyAndProvince => {
-            ProvinceAction {
-                target: army.map(|a| match kind {
-                    AssignmentTargetKind::OwnArmy => AssignmentTarget::OwnArmy(a.id),
-                    _ => AssignmentTarget::ArmyToProvince(a.id, province),
-                }),
-                leader: army.map(|a| a.general),
-                obstacle: None,
-            }
-        }
-        AssignmentTargetKind::OwnShipAndProvince => ProvinceAction {
-            target: ship.map(|s| AssignmentTarget::ShipToProvince(s.id, province)),
-            leader: ship.and_then(|s| s.captain),
-            obstacle: match ship {
-                Some(ship) if ship.captain.is_none() => Some(Obstacle::ShipHasNoCaptain),
-                _ => None,
-            },
-        },
-        _ => ProvinceAction {
-            target: None,
-            leader: None,
-            obstacle: None,
-        },
-    }
-}
-
 #[allow(clippy::too_many_arguments)]
 fn pick_target(
     ui: &mut egui::Ui,
@@ -618,78 +629,6 @@ fn pick_target(
     }
 }
 
-fn pick_army(
-    ui: &mut egui::Ui,
-    strings: &TextDb,
-    player_org: OrgId,
-    data: &PanelData,
-    form: &mut AssignmentForm,
-) {
-    let mut armies: Vec<&ArmyRecord> = data
-        .armies
-        .iter()
-        .filter(|a| a.owner == player_org)
-        .collect();
-    armies.sort_by_key(|a| a.id);
-    let label = form
-        .army
-        .and_then(|id| armies.iter().find(|a| a.id == id))
-        .map(|a| a.name.clone())
-        .unwrap_or_else(|| strings.text("ui.actions.choose-army").to_owned());
-    if armies.is_empty() {
-        ui.weak(strings.text("ui.actions.no-armies"));
-        return;
-    }
-    egui::ComboBox::from_id_salt("ctx-army")
-        .selected_text(label)
-        .show_ui(ui, |ui| {
-            for army in &armies {
-                if ui
-                    .selectable_label(form.army == Some(army.id), &army.name)
-                    .clicked()
-                {
-                    form.army = Some(army.id);
-                }
-            }
-        });
-}
-
-fn pick_ship(
-    ui: &mut egui::Ui,
-    strings: &TextDb,
-    player_org: OrgId,
-    data: &PanelData,
-    form: &mut AssignmentForm,
-) {
-    let mut ships: Vec<&ShipRecord> = data
-        .ships
-        .iter()
-        .filter(|s| s.owner == player_org && matches!(s.location, ShipLocation::Docked(_)))
-        .collect();
-    ships.sort_by_key(|s| s.id);
-    if ships.is_empty() {
-        ui.weak(strings.text("ui.actions.no-ships"));
-        return;
-    }
-    let label = form
-        .ship
-        .and_then(|id| ships.iter().find(|s| s.id == id))
-        .map(|s| s.name.clone())
-        .unwrap_or_else(|| strings.text("ui.actions.choose-ship").to_owned());
-    egui::ComboBox::from_id_salt("ctx-ship")
-        .selected_text(label)
-        .show_ui(ui, |ui| {
-            for ship in &ships {
-                if ui
-                    .selectable_label(form.ship == Some(ship.id), &ship.name)
-                    .clicked()
-                {
-                    form.ship = Some(ship.id);
-                }
-            }
-        });
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -729,32 +668,18 @@ mod tests {
     #[test]
     fn a_march_is_led_by_the_armys_general() {
         let army = army(42);
-        let action = province_action(
-            AssignmentTargetKind::OwnArmyAndProvince,
-            province(),
-            Some(&army),
-            None,
-        );
-        assert_eq!(
-            action.target,
-            Some(AssignmentTarget::ArmyToProvince(army.id, province()))
-        );
-        assert_eq!(action.leader, Some(army.general));
-        assert_eq!(action.obstacle, None);
+        let (leader, obstacle) = force_leader(Some(&army), None);
+        assert_eq!(leader, Some(army.general), "and by nobody else");
+        assert_eq!(obstacle, None);
     }
 
     #[test]
     fn a_ship_without_a_captain_has_no_order_to_give() {
         let ship = ship(None);
-        let action = province_action(
-            AssignmentTargetKind::OwnShipAndProvince,
-            province(),
-            None,
-            Some(&ship),
-        );
-        assert_eq!(action.leader, None, "nobody is silently substituted");
+        let (leader, obstacle) = force_leader(None, Some(&ship));
+        assert_eq!(leader, None, "nobody is silently substituted");
         assert_eq!(
-            action.obstacle,
+            obstacle,
             Some(Obstacle::ShipHasNoCaptain),
             "the obstacle is stated where the choice is made"
         );
@@ -783,4 +708,70 @@ mod tests {
         assert_eq!(action.target, None);
         assert_eq!(action.leader, None);
     }
+}
+
+/// What stops a force being ordered.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum Obstacle {
+    /// The ship has no captain, so there is nobody to give the order to.
+    ShipHasNoCaptain,
+}
+
+impl Obstacle {
+    /// The key of the sentence explaining this obstacle.
+    fn text_key(self) -> &'static str {
+        match self {
+            Obstacle::ShipHasNoCaptain => "ui.actions.no-captain",
+        }
+    }
+}
+
+/// Who gives this force its orders, and what stops it.
+///
+/// An army is commanded by its general and a ship by its captain; neither
+/// post is substitutable, and a vacant one is an obstacle rather than an
+/// excuse to fall back on the house head. Kept as a function of its own
+/// because it is a rule, and rules are worth testing.
+fn force_leader(
+    army: Option<&ArmyRecord>,
+    ship: Option<&ShipRecord>,
+) -> (Option<CharacterId>, Option<Obstacle>) {
+    if let Some(army) = army {
+        return (Some(army.general), None);
+    }
+    match ship {
+        Some(ship) => match ship.captain {
+            Some(captain) => (Some(captain), None),
+            None => (None, Some(Obstacle::ShipHasNoCaptain)),
+        },
+        None => (None, None),
+    }
+}
+
+/// Picks the province a force is being sent to.
+fn pick_destination(
+    ui: &mut egui::Ui,
+    strings: &TextDb,
+    data: &PanelData,
+    form: &mut AssignmentForm,
+) {
+    let label = form
+        .province
+        .and_then(|id| data.provinces.iter().find(|(r, _, _)| r.id == id))
+        .map(|(_, name, _)| name.0.clone())
+        .unwrap_or_else(|| strings.text("ui.actions.choose-destination").to_owned());
+    egui::ComboBox::from_id_salt("ctx-destination")
+        .selected_text(label)
+        .show_ui(ui, |ui| {
+            let mut sorted: Vec<_> = data.provinces.iter().collect();
+            sorted.sort_by_key(|(r, _, _)| r.id);
+            for (record, name, _) in sorted {
+                if ui
+                    .selectable_label(form.province == Some(record.id), &name.0)
+                    .clicked()
+                {
+                    form.province = Some(record.id);
+                }
+            }
+        });
 }

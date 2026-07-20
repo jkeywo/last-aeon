@@ -64,6 +64,10 @@ pub fn refresh_offers(world: &mut World) {
             Some(Selection::Character(id)) => Some(AssignmentTarget::Character(id)),
             Some(Selection::Org(id)) => Some(AssignmentTarget::Org(id)),
             Some(Selection::Province(id)) => Some(AssignmentTarget::Province(id)),
+            // A force's own orders: the target is the force itself, which
+            // is what lets `army_present` be answered before a
+            // destination has been chosen.
+            Some(Selection::Army(id)) => Some(AssignmentTarget::OwnArmy(id)),
             _ => None,
         }
     };

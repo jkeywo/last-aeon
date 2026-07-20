@@ -9,6 +9,7 @@ use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
 use bevy_egui::egui;
 
 use crate::ui::panel::{PanelCtx, PanelOut};
+use crate::ui::widgets::linked;
 use crate::view::{MapView, Selection};
 
 /// Draws the listing's contents.
@@ -66,7 +67,13 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                             ),
                         };
                         ui.horizontal(|ui| {
-                            ui.label(format!("{} ({class}) — {place}", ship.name));
+                            if linked(
+                                ui,
+                                &format!("{} ({}) — {place}", ship.name, strings.text(class)),
+                                strings.text("ui.listing.ship.hover"),
+                            ) {
+                                out.view.selected = Some(Selection::Ship(ship.id));
+                            }
                         });
                         if Some(ship.owner) == ctx.player_org
                             && matches!(ship.location, ShipLocation::Docked(_))
@@ -99,10 +106,18 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                             .copied()
                             .unwrap_or("...");
                         ui.horizontal(|ui| {
-                            ui.label(format!(
-                                "{} — {} men, {} supplies — {place}",
-                                army.name, army.manpower, army.supplies
-                            ));
+                            // A way in to the army, where its own orders
+                            // are given.
+                            if linked(
+                                ui,
+                                &format!(
+                                    "{} — {} men, {} supplies — {place}",
+                                    army.name, army.manpower, army.supplies
+                                ),
+                                strings.text("ui.listing.army.hover"),
+                            ) {
+                                out.view.selected = Some(Selection::Army(army.id));
+                            }
                             if Some(army.owner) == ctx.player_org {
                                 let defending = army.standing_order
                                     == aeon_sim::warfare::StandingOrder::DefendHoldings;
