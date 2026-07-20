@@ -1352,6 +1352,49 @@ entities:
       classification: domain
       authority: authoritative
 
+  - component: characters-are-the-acting-unit
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Characters Are the Acting Unit
+      summary: >-
+        A house never acts; a person does. Every autonomous choice is made
+        by a character wielding the authority of the organisation they
+        command — today, the head of a house — so a leaderless house sits
+        on its troubles until someone holds the authority to answer them.
+        The pressures scored are the house's; the judgement, and what may
+        even be weighed, is the person's.
+      references:
+        - organisation-agency-model
+        - intent-driven-organisation-agency
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
+  - component: plans-are-authored-campaigns
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Plans Are Authored Campaigns
+      summary: >-
+        Above the reactive pressure scorer, characters pursue authored
+        plans: a goal from the shared intent vocabulary decomposed into
+        alternative methods and ordered steps, each step an ordinary
+        assignment started through the same gate the player uses. Everyday
+        behaviour stays cheap and reactive; campaigns are for the special
+        occasions — claims, grievances — and end legibly, by completion or
+        abandonment, with the player able to learn what a rival has set
+        their mind to.
+      references:
+        - characters-are-the-acting-unit
+        - intent-driven-organisation-agency
+        - job-system
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
   - component: job-forecast-and-explanation-ui
     core:
       status: accepted

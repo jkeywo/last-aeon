@@ -25,6 +25,11 @@ entities:
         legibly when they fail, and spoken about in the log so the
         player can learn what a rival has set their mind to.
       references:
+        - characters-are-the-acting-unit
+        - plans-are-authored-campaigns
+        - plans-are-data-not-script
+        - plans-live-in-one-resource
+        - plan-steps-bypass-ai-available-not-validation
         - intent-driven-organisation-agency
         - ai-agency-through-the-job-catalogue
         - agency-intents-are-authored-on-jobs
@@ -201,8 +206,8 @@ entities:
 
   - milestone: m5-plans-speak
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "M5.5: Plans Speak"
       summary: >-
         Adoption, completion and abandonment reach the log with the
@@ -216,6 +221,24 @@ entities:
         - The reasons shown are the reasons used — the same scored pressure, not a narration invented for display.
     implementation:
       paths:
+        - crates/aeon_sim/src/plans.rs
         - crates/aeon_client/src/ui/inspector.rs
+        - crates/aeon_client/src/ui/shell.rs
         - assets/text/strings.csv
+      tests:
+        - crates/aeon_sim/tests/plans.rs
       status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/plans.rs
+        summary: >-
+          When an autonomous head adopts a plan aimed at the player's
+          house, a rumour line stamped to the player and about the
+          plotter appears in the log the same day — no probability gate,
+          no espionage system, just the whisper.
+      - kind: manual-review
+        reference: crates/aeon_client/src/ui/inspector.rs
+        summary: >-
+          An autonomous character's inspector names the plan they are
+          pursuing, read straight from the plans resource — the same
+          openness the agency log has always had about why houses act.

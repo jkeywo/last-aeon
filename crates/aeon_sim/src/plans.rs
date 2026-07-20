@@ -321,7 +321,45 @@ pub fn try_adopt(
         entry = entry.about(subject);
     }
     crate::access::log(world, entry);
+
+    // When the campaign is aimed at the player, a rumour reaches them:
+    // the modest hint, deliberately short of an espionage system — no
+    // probability gate, no detail beyond who and about what.
+    let player = world
+        .get_resource::<crate::politics::PlayerHouse>()
+        .and_then(|p| p.0);
+    let concerns_player = match target {
+        AssignmentTarget::Org(org) => player == Some(org),
+        AssignmentTarget::Province(province) => {
+            crate::warfare::province_holder(world, province) == player
+        }
+        _ => false,
+    };
+    if concerns_player && player.is_some() {
+        let text = world.resource::<TextDb>().format(
+            "sim.plan.rumour",
+            &[
+                ("house", &crate::access::org_name(world, authority)),
+                ("target", &target_label(world, target)),
+            ],
+        );
+        crate::access::log(
+            world,
+            LogEntry::line(text, LogChannel::Politics)
+                .by(player)
+                .about(LogSubject::Character(actor)),
+        );
+    }
     true
+}
+
+/// A short display label for what a plan is aimed at.
+fn target_label(world: &World, target: AssignmentTarget) -> String {
+    match target {
+        AssignmentTarget::Org(org) => crate::access::org_name(world, org),
+        AssignmentTarget::Province(province) => crate::access::province_name(world, province),
+        _ => String::new(),
+    }
 }
 
 /// Daily: every active plan advances one decision.

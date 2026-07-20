@@ -110,6 +110,36 @@ define_plan(#{
         #{ id: "desperate", steps: [ #{ start: "doomed-errand" } ] },
     ],
 });
+
+// A grievance held by the player, and a campaign aimed back at them,
+// so the rumour path has something to whisper about.
+define_obligation(#{
+    id: "birch-resented-by-ash",
+    kind: "grievance", debtor: "birch", creditor: "ash", weight: 30,
+    origin: "an old slight at court",
+});
+define_assignment(#{
+    id: "make-amends",
+    ai_intent: "standing", category: "consequential", duration_days: 20,
+    skill: "diplomacy", difficulty: 5, target: "organisation",
+    ai_available: true,
+    results: #{
+        success: #{ weight: 999 },
+        failure: #{ weight: 1 },
+    },
+});
+define_plan(#{
+    id: "mend-the-rift",
+    goal: "standing",
+    target: "organisation",
+    score_bonus: 40,
+    cooldown_days: 120,
+    max_days: 200,
+    max_step_retries: 1,
+    methods: [
+        #{ id: "gently", steps: [ #{ start: "make-amends", target: "plan" } ] },
+    ],
+});
 "#;
 
 fn content() -> Arc<aeon_data::ContentSet> {
@@ -390,4 +420,38 @@ fn plans_replay_identically_and_survive_snapshots() {
         a.state_hash(),
         "and continue identically afterwards"
     );
+}
+
+#[test]
+fn a_plan_aimed_at_the_player_reaches_them_as_a_rumour() {
+    use aeon_sim::{LogSubject, MessageLog};
+
+    let mut h = host(26);
+    let head = bela(&mut h);
+    let ash = org(&mut h, "ash");
+
+    // With nothing else pressing, Birch's heaviest pressure is the
+    // grievance Ash holds, and the plan answering it is aimed at Ash —
+    // the player's own house.
+    for _ in 0..400 {
+        h.advance_days(1);
+        if h.world_mut().resource::<Plans>().active.contains_key(&head) {
+            let plan = h.world_mut().resource::<Plans>().active[&head].clone();
+            assert_eq!(plan.def.as_str(), "mend-the-rift");
+            let whispered = h
+                .world_mut()
+                .resource::<MessageLog>()
+                .entries
+                .iter()
+                .any(|entry| {
+                    entry.org == Some(ash) && entry.subject == Some(LogSubject::Character(head))
+                });
+            assert!(
+                whispered,
+                "adopting a plan against the player should leave them a rumour"
+            );
+            return;
+        }
+    }
+    panic!("the grievance plan was never adopted");
 }

@@ -108,4 +108,7 @@ pub struct PanelData<'w, 's> {
     pub theme: Res<'w, UiTheme>,
     /// Every string the panels draw. Absent until a campaign starts.
     pub strings: Option<Res<'w, TextDb>>,
+    /// Plans autonomous characters are pursuing. Absent until a
+    /// campaign starts.
+    pub plans: Option<Res<'w, aeon_sim::plans::Plans>>,
 }

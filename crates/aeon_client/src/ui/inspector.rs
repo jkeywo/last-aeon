@@ -537,6 +537,18 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                             }
                         });
                 }
+                // What an autonomous character has set their mind to. The
+                // game's stance is that AI reasons are visible: the plan
+                // is named openly, matching how the log already explains
+                // why houses act.
+                if record.organisation != ctx.player_org
+                    && let Some(plan) = ctx.plans.and_then(|plans| plans.active.get(&id))
+                    && let Some(def) = ctx.content.plans.get(&plan.def)
+                {
+                    ui.label(
+                        strings.format("ui.inspector.character.pursuing", &[("plan", &def.title)]),
+                    );
+                }
                 ui.separator();
 
                 egui::Grid::new("skills").show(ui, |ui| {

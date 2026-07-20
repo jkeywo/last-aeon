@@ -54,6 +54,8 @@ pub struct PanelCtx<'a, 'w, 's> {
     pub player_head: Option<CharacterId>,
     /// The message log, if a campaign is running.
     pub log: Option<&'a MessageLog>,
+    /// Plans autonomous characters are pursuing, if a campaign is running.
+    pub plans: Option<&'a aeon_sim::plans::Plans>,
 }
 
 /// Everything a panel writes.

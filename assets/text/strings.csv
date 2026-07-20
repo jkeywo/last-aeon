@@ -646,3 +646,5 @@ plan.answer-a-grievance.title,Plan title: answering a grievance another house ho
 plan.answer-a-grievance.summary,One-line summary of the grievance plan.,"[Mend what was wronged - from strength directly, from weakness by rebuilding standing first.]"
 plan.shore-up-standing.title,Plan title: rebuilding thin political standing.,[Shore Up Standing]
 plan.shore-up-standing.summary,One-line summary of the standing plan.,[Win friends and endorsements until the house's standing recovers.]
+sim.plan.rumour,"Log line for the player when a rival's newly adopted plan is aimed at them or their holding. {house} is the plotting house, {target} what it concerns.",[You hear whispers that {house} intends something concerning {target}.]
+ui.inspector.character.pursuing,Inspector line naming the plan an autonomous character is pursuing. {plan} is the plan's title.,[Pursuing: {plan}]

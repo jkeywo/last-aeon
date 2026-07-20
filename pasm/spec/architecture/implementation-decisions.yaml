@@ -1383,3 +1383,67 @@ entities:
       references:
         - intent-driven-organisation-agency
         - single-source-leader-availability
+
+  - decision: plans-are-data-not-script
+    core:
+      status: accepted
+      confidence: confirmed
+      title: A Plan Is Data All the Way Down
+      summary: >-
+        define_plan declares a goal from the shared intent vocabulary,
+        methods gated by declarative integer conditions, and ordered steps
+        naming assignments or sub-plans. Loading validates every key,
+        target compatibility, and acyclic sub-plan composition no deeper
+        than three; nothing about a plan is script. Conditions evaluate
+        over visible state and replay identically.
+      rationale:
+        - Conditions as data validate at load and can be shown to the player as reasons; a scripted condition can do neither and is a determinism risk besides.
+        - A step field is spelled 'start' rather than 'do' because 'do' is a reserved word in Rhai; recorded so nobody "fixes" it back.
+      references:
+        - agency-intents-are-authored-on-jobs
+        - plans-are-authored-campaigns
+        - content-ids-are-kebab-case-strings
+
+  - decision: plan-steps-bypass-ai-available-not-validation
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Plan Steps Bypass ai_available, Never validate_start
+      summary: >-
+        A plan step may name an assignment the reactive scorer cannot
+        reach, because ai_available gates the scorer's monthly repertoire
+        and nothing else. What a step can never bypass is validate_start,
+        which every start still passes.
+      rationale:
+        - A campaign may deliberately call for assignments the scorer must not reach for on a whim, muster being the standing example; the guarantee worth keeping is the gate, not the flag.
+      references:
+        - plans-are-authored-campaigns
+        - standing-orders-are-priority-lists
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/plans.rs
+        summary: >-
+          The peace plan's first step is an ai_available:false assignment
+          and starts anyway; every step still passes validate_start, the
+          same guarantee standing orders live under.
+
+  - decision: plans-live-in-one-resource
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Plan State Is One Resource, Snapshot Section Like Any Other
+      summary: >-
+        Active plans and cooldowns live in a single resource of BTreeMaps
+        keyed by character, serialised into the campaign snapshot
+        (format v11) beside obligations and events. Steps are flattened at
+        adoption — sub-plans expand then, by first eligible method — so a
+        running plan never consults another definition. Abandonment plus
+        cooldown is the entire failure policy; there is no replanning
+        search, and max_days is the single safety valve for a blocked step.
+      rationale:
+        - Plans are consulted by stable character id from several systems; BTreeMaps give the iteration order determinism requires for free.
+        - One legible safety valve beats a second per-step policy nobody can reason about; a house that still wants the goal adopts afresh after the cooldown, visibly.
+      references:
+        - plans-are-authored-campaigns
+        - characters-are-the-acting-unit
+        - rng-stream-labels-are-identities-not-names
