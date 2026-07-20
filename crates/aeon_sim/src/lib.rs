@@ -14,6 +14,8 @@
 //! - [`command`] — the ordered player-command pipeline: every meaningful
 //!   player decision is a validated, logged [`command::PlayerCommand`].
 //! - [`state`] — the authoritative campaign resources.
+//! - [`text`] — the display-text string table every player-facing string
+//!   is resolved through.
 //! - [`snapshot`] — versioned canonical state capture, restore, and hashing.
 //! - [`persistence`] — RON snapshot files and the JSONL command log.
 //! - [`host`] — [`host::SimHost`], the embedding API used by the tools CLI,
@@ -40,6 +42,7 @@ pub mod politics;
 pub mod presence;
 pub mod snapshot;
 pub mod state;
+pub mod text;
 pub mod warfare;
 
 use bevy::app::{App, Plugin};
@@ -66,6 +69,7 @@ pub use politics::{
 };
 pub use presence::{CharacterLocation, Location};
 pub use snapshot::{CampaignSnapshot, CampaignState, SNAPSHOT_FORMAT_VERSION, SnapshotError};
+pub use text::TextDb;
 
 /// Root plugin installing the authoritative simulation into a Bevy [`App`].
 ///

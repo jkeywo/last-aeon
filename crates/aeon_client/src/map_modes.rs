@@ -20,8 +20,8 @@ use aeon_sim::politics::great_house_of;
 use aeon_sim::state::ContentDb;
 use aeon_sim::warfare::province_holder;
 use aeon_sim::{
-    BodyId, CampaignClock, OrgId, OrgRecord, PlayerHouse, PoliticsIndex, ProvinceId, answers_to,
-    opinion_between,
+    BodyId, CampaignClock, OrgId, OrgRecord, PlayerHouse, PoliticsIndex, ProvinceId, TextDb,
+    answers_to, opinion_between,
 };
 use bevy::prelude::*;
 
@@ -200,6 +200,7 @@ fn readout_for(
     all: &[(ProvinceId, ProvinceRecord)],
 ) -> ProvinceReadout {
     let holder = province_holder(world, province);
+    let strings = world.resource::<TextDb>();
     match mode {
         MapMode::Holder | MapMode::GreatHouse => {
             let painted = holder.map(|org| {
@@ -213,8 +214,11 @@ fn readout_for(
                 colour: painted.map(|org| org_colour(world, org)).unwrap_or(NEUTRAL),
                 value: None,
                 hint: match painted {
-                    Some(org) => format!("Held by {}", org_name(world, org)),
-                    None => "Unclaimed — in revolt or never held".to_owned(),
+                    Some(org) => strings.format(
+                        "ui.map-mode.holder.hint.held",
+                        &[("holder", &org_name(world, org))],
+                    ),
+                    None => strings.text("ui.map-mode.holder.hint.lost").to_owned(),
                 },
                 alert: holder.is_none(),
             }
@@ -231,21 +235,23 @@ fn readout_for(
             match (hops, holder) {
                 (Some(0), _) => ProvinceReadout {
                     colour: mine,
-                    value: Some("direct".to_owned()),
-                    hint: "Held directly by your house".to_owned(),
+                    value: Some(strings.text("ui.map-mode.holder.value.direct").to_owned()),
+                    hint: strings.text("ui.map-mode.holder.hint.direct").to_owned(),
                     alert: false,
                 },
                 (Some(hops), Some(holder)) => {
                     // Each step away washes the colour further toward neutral.
                     let fade = (hops.min(3) * 300).min(750) as i32;
+                    let name = org_name(world, holder);
                     ProvinceReadout {
                         colour: mine_faded(mine, fade),
-                        value: Some(format!("via {}", org_name(world, holder))),
-                        hint: format!(
-                            "Held by {}, {} step{} down your chain of vassalage",
-                            org_name(world, holder),
-                            hops,
-                            if hops == 1 { "" } else { "s" }
+                        value: Some(
+                            strings.format("ui.map-mode.holder.value.vassal", &[("holder", &name)]),
+                        ),
+                        hint: strings.format_plural(
+                            "ui.map-mode.holder.hint.vassal",
+                            i64::from(hops),
+                            &[("holder", &name), ("hops", &hops.to_string())],
                         ),
                         alert: false,
                     }
@@ -253,13 +259,16 @@ fn readout_for(
                 (_, Some(holder)) => ProvinceReadout {
                     colour: NEUTRAL,
                     value: None,
-                    hint: format!("{} — outside your realm", org_name(world, holder)),
+                    hint: strings.format(
+                        "ui.map-mode.holder.hint.outside",
+                        &[("holder", &org_name(world, holder))],
+                    ),
                     alert: false,
                 },
                 (_, None) => ProvinceReadout {
                     colour: NEUTRAL,
                     value: None,
-                    hint: "Unclaimed — answers to nobody".to_owned(),
+                    hint: strings.text("ui.map-mode.holder.hint.unclaimed").to_owned(),
                     alert: false,
                 },
             }
@@ -268,9 +277,19 @@ fn readout_for(
             let state: ProvincialOrder = province_order(world, province);
             let pressure = pressures(world, province);
             let percent = state.order * 100 / ORDER_MAX;
-            let mut hint = format!("Order {percent}% — {}", pressure.describe());
+            let mut hint = strings.format(
+                "ui.map-mode.order.hint",
+                &[
+                    ("percent", &percent.to_string()),
+                    ("pressure", &pressure.describe()),
+                ],
+            );
             if let Some(days) = state.days_to_revolt() {
-                hint.push_str(&format!("\nIn unrest: revolts in {days} days"));
+                hint.push('\n');
+                hint.push_str(&strings.format(
+                    "ui.map-mode.order.hint.revolt",
+                    &[("days", &days.to_string())],
+                ));
             }
             ProvinceReadout {
                 colour: if state.in_unrest() {
@@ -300,7 +319,10 @@ fn readout_for(
             ProvinceReadout {
                 colour: mix([60, 55, 45], [235, 200, 90], (output * 1000 / best) as i32),
                 value: Some(output.to_string()),
-                hint: format!("Worth {output} wealth a month at full order"),
+                hint: strings.format(
+                    "ui.map-mode.wealth.hint",
+                    &[("output", &output.to_string())],
+                ),
                 alert: false,
             }
         }
@@ -324,13 +346,11 @@ fn readout_for(
                 colour: base,
                 value: (men > 0).then(|| men.to_string()),
                 hint: match owner {
-                    Some(org) if men > 0 => {
-                        format!(
-                            "{men} men here, the strongest under {}",
-                            org_name(world, org)
-                        )
-                    }
-                    _ => "No troops standing here".to_owned(),
+                    Some(org) if men > 0 => strings.format(
+                        "ui.map-mode.military.hint.garrison",
+                        &[("men", &men.to_string()), ("owner", &org_name(world, org))],
+                    ),
+                    _ => strings.text("ui.map-mode.military.hint.empty").to_owned(),
                 },
                 alert: !friendly && men > 0 && holder == player,
             }
@@ -340,8 +360,8 @@ fn readout_for(
             match (holder, player) {
                 (Some(holder), Some(player)) if holder == player => ProvinceReadout {
                     colour: [80, 130, 200],
-                    value: Some("you".to_owned()),
-                    hint: "Your own holding".to_owned(),
+                    value: Some(strings.text("ui.map-mode.relations.value.you").to_owned()),
+                    hint: strings.text("ui.map-mode.relations.hint.you").to_owned(),
                     alert: false,
                 },
                 (Some(holder), _) => {
@@ -352,15 +372,18 @@ fn readout_for(
                     ProvinceReadout {
                         colour: ramp((opinion.clamp(-100, 100) + 100) * 5),
                         value: Some(format!("{opinion:+}")),
-                        hint: format!(
-                            "{} regards your house at {opinion:+}",
-                            org_name(world, holder)
+                        hint: strings.format(
+                            "ui.map-mode.relations.hint.opinion",
+                            &[
+                                ("holder", &org_name(world, holder)),
+                                ("opinion", &format!("{opinion:+}")),
+                            ],
                         ),
                         alert: opinion <= -50,
                     }
                 }
                 _ => ProvinceReadout {
-                    hint: "Unclaimed".to_owned(),
+                    hint: strings.text("ui.map-mode.relations.hint.unclaimed").to_owned(),
                     alert: true,
                     ..Default::default()
                 },
@@ -389,22 +412,24 @@ fn readout_for(
                             )
                         },
                         value: Some(held.to_string()),
-                        hint: format!(
-                            "{} holds {held} of {} provinces here{}",
-                            org_name(world, org),
-                            all.len(),
+                        hint: strings.format(
                             if leading {
-                                " — currently leading the claim"
+                                "ui.map-mode.claim.hint.leading"
                             } else {
-                                ""
-                            }
+                                "ui.map-mode.claim.hint.held"
+                            },
+                            &[
+                                ("holder", &org_name(world, org)),
+                                ("held", &held.to_string()),
+                                ("total", &all.len().to_string()),
+                            ],
                         ),
                         alert: leading && Some(org) != player,
                     }
                 }
                 None => ProvinceReadout {
-                    value: Some("—".to_owned()),
-                    hint: "Unclaimed: it counts for nobody's claim".to_owned(),
+                    value: Some(strings.text("ui.map-mode.claim.value.unclaimed").to_owned()),
+                    hint: strings.text("ui.map-mode.claim.hint.unclaimed").to_owned(),
                     alert: false,
                     ..Default::default()
                 },
@@ -418,6 +443,8 @@ fn legend_for(
     mode: MapMode,
     provinces: &[(ProvinceId, ProvinceRecord)],
 ) -> Vec<(String, [u8; 3])> {
+    let strings = world.resource::<TextDb>();
+    let key = |suffix: &str| strings.text(suffix).to_owned();
     match mode {
         MapMode::Holder | MapMode::GreatHouse => {
             // Political modes legend themselves: list the houses on show.
@@ -447,47 +474,56 @@ fn legend_for(
                 .map(|org| org_colour(world, org))
                 .unwrap_or(NEUTRAL);
             vec![
-                ("Held directly".to_owned(), mine),
-                ("Through a vassal".to_owned(), mine_faded(mine, 300)),
-                ("Further down".to_owned(), mine_faded(mine, 600)),
-                ("Not your realm".to_owned(), NEUTRAL),
+                (key("ui.legend.my-control.direct"), mine),
+                (key("ui.legend.my-control.vassal"), mine_faded(mine, 300)),
+                (key("ui.legend.my-control.further"), mine_faded(mine, 600)),
+                (key("ui.legend.my-control.outside"), NEUTRAL),
             ]
         }
         MapMode::Order => vec![
-            ("In unrest".to_owned(), [150, 40, 40]),
-            ("Restive".to_owned(), ramp(250)),
-            ("Settled".to_owned(), ramp(750)),
-            ("Loyal".to_owned(), ramp(1000)),
+            (key("ui.legend.order.unrest"), [150, 40, 40]),
+            (key("ui.legend.order.restive"), ramp(250)),
+            (key("ui.legend.order.settled"), ramp(750)),
+            (key("ui.legend.order.loyal"), ramp(1000)),
         ],
         MapMode::Wealth => vec![
-            ("Poor".to_owned(), mix([60, 55, 45], [235, 200, 90], 0)),
             (
-                "Middling".to_owned(),
+                key("ui.legend.wealth.poor"),
+                mix([60, 55, 45], [235, 200, 90], 0),
+            ),
+            (
+                key("ui.legend.wealth.middling"),
                 mix([60, 55, 45], [235, 200, 90], 500),
             ),
-            ("Rich".to_owned(), mix([60, 55, 45], [235, 200, 90], 1000)),
+            (
+                key("ui.legend.wealth.rich"),
+                mix([60, 55, 45], [235, 200, 90], 1000),
+            ),
         ],
         MapMode::Military => vec![
-            ("Empty".to_owned(), NEUTRAL),
-            ("Yours".to_owned(), mix([50, 70, 110], [110, 170, 240], 900)),
+            (key("ui.legend.military.empty"), NEUTRAL),
             (
-                "Others".to_owned(),
+                key("ui.legend.military.yours"),
+                mix([50, 70, 110], [110, 170, 240], 900),
+            ),
+            (
+                key("ui.legend.military.others"),
                 mix([110, 60, 55], [240, 120, 100], 900),
             ),
         ],
         MapMode::PlayerRelations => vec![
-            ("Hostile".to_owned(), ramp(0)),
-            ("Indifferent".to_owned(), ramp(500)),
-            ("Friendly".to_owned(), ramp(1000)),
-            ("Yours".to_owned(), [80, 130, 200]),
+            (key("ui.legend.relations.hostile"), ramp(0)),
+            (key("ui.legend.relations.indifferent"), ramp(500)),
+            (key("ui.legend.relations.friendly"), ramp(1000)),
+            (key("ui.legend.relations.yours"), [80, 130, 200]),
         ],
         MapMode::ClaimPressure => vec![
-            ("Out of it".to_owned(), [70, 70, 80]),
+            (key("ui.legend.claim.out"), [70, 70, 80]),
             (
-                "Contending".to_owned(),
+                key("ui.legend.claim.contending"),
                 mix([70, 70, 80], [190, 150, 90], 700),
             ),
-            ("Leading".to_owned(), [230, 190, 70]),
+            (key("ui.legend.claim.leading"), [230, 190, 70]),
         ],
     }
 }
@@ -507,6 +543,7 @@ fn situation_for(world: &World, player: Option<OrgId>, body: BodyId) -> Vec<Situ
     let Some(player) = player else {
         return Vec::new();
     };
+    let strings = world.resource::<TextDb>();
     let mut items = Vec::new();
 
     let provinces: Vec<ProvinceRecord> = world
@@ -526,22 +563,26 @@ fn situation_for(world: &World, player: Option<OrgId>, body: BodyId) -> Vec<Situ
                 items.push(SituationItem {
                     province,
                     body: record.body,
-                    headline: format!("{name} revolts in {days}d"),
-                    detail: format!(
-                        "{name} is in open unrest. Garrison it, go there in person, \
-                         or hold court to restore order before it throws you off."
+                    headline: strings.format(
+                        "ui.situation.revolt.headline",
+                        &[("province", &name), ("days", &days.to_string())],
                     ),
+                    detail: strings
+                        .format("ui.situation.revolt.detail", &[("province", &name)]),
                     urgent: days <= 30,
                 });
             } else if state.order < aeon_sim::order::ORDER_START / 2 {
                 items.push(SituationItem {
                     province,
                     body: record.body,
-                    headline: format!("{name} is restive"),
-                    detail: format!(
-                        "Order in {name} has fallen to {}%. It will not recover \
-                         unless you attend to it.",
-                        state.order * 100 / ORDER_MAX
+                    headline: strings
+                        .format("ui.situation.restive.headline", &[("province", &name)]),
+                    detail: strings.format(
+                        "ui.situation.restive.detail",
+                        &[
+                            ("province", &name),
+                            ("percent", &(state.order * 100 / ORDER_MAX).to_string()),
+                        ],
                     ),
                     urgent: false,
                 });
@@ -553,11 +594,15 @@ fn situation_for(world: &World, player: Option<OrgId>, body: BodyId) -> Vec<Situ
                 items.push(SituationItem {
                     province,
                     body: record.body,
-                    headline: format!("{name} occupied"),
-                    detail: format!(
-                        "{} has {men} men standing in {name}, and its order is \
-                         falling while they remain.",
-                        org_name(world, occupier)
+                    headline: strings
+                        .format("ui.situation.occupied.headline", &[("province", &name)]),
+                    detail: strings.format(
+                        "ui.situation.occupied.detail",
+                        &[
+                            ("province", &name),
+                            ("occupier", &org_name(world, occupier)),
+                            ("men", &men.to_string()),
+                        ],
                     ),
                     urgent: true,
                 });
