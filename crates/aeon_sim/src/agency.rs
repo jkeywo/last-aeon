@@ -341,9 +341,12 @@ pub fn pick_intent<'a>(
 /// Autonomous characters act on their house's most pressing business.
 ///
 /// The acting unit is the person, not the house: characters are walked
-/// in stable ID order, and a character acts here only when they head a
-/// non-player house that is still standing — a house cannot take
-/// independent action, so its business waits on the one person with the
+/// in stable ID order, each a member of a non-player house that still
+/// stands. What a person may do here depends on who they are: the head
+/// acts with the house's full authority — a plan or a single costed
+/// assignment — while everyone else may only adopt a household ambition,
+/// a plan that provably spends nothing. A house cannot take independent
+/// action, so its costed business still waits on the one person with the
 /// authority to conduct it.
 pub fn characters_act(world: &mut World) {
     if world.get_resource::<AssignmentsIndex>().is_none()
@@ -354,17 +357,19 @@ pub fn characters_act(world: &mut World) {
     let date = world.resource::<CampaignClock>().date;
     let player = world.get_resource::<PlayerHouse>().and_then(|p| p.0);
 
-    let actors: Vec<(CharacterId, OrgId)> = crate::access::living_character_ids(world)
+    let actors: Vec<(CharacterId, OrgId, bool)> = crate::access::living_character_ids(world)
         .into_iter()
         .filter_map(|who| crate::access::organisation_of(world, who).map(|org| (who, org)))
-        .filter(|(who, org)| {
-            Some(*org) != player
-                && crate::access::org(world, *org).is_some_and(|r| !r.defunct)
-                && crate::access::org_head(world, *org) == Some(*who)
+        .filter(|(_, org)| {
+            Some(*org) != player && crate::access::org(world, *org).is_some_and(|r| !r.defunct)
+        })
+        .map(|(who, org)| {
+            let is_head = crate::access::org_head(world, org) == Some(who);
+            (who, org, is_head)
         })
         .collect();
 
-    for (actor, authority) in actors {
+    for (actor, authority, is_head) in actors {
         // A head pursuing a plan has already decided what their months
         // are for; the reactive pass leaves them to it.
         if world
@@ -386,8 +391,15 @@ pub fn characters_act(world: &mut World) {
 
         let intents = score_intents(world, actor, authority);
         // A heavy enough pressure with an authored plan behind it becomes
-        // a campaign instead of a single act.
+        // a campaign instead of a single act. try_adopt itself knows what
+        // this actor may reach for.
         if crate::plans::try_adopt(world, actor, authority, &intents) {
+            continue;
+        }
+        // The one-shot fallback spends with the house's authority, which
+        // only the head carries; the household's free single acts are
+        // household_acts' business, not this pass's.
+        if !is_head {
             continue;
         }
         let shortlist: Vec<&ScoredIntent> = intents

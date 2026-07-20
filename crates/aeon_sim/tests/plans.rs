@@ -45,6 +45,17 @@ define_character(#{
     birth_year: 372, organisation: "birch",
     skills: #{ command: 6, diplomacy: 9, intrigue: 8, stewardship: 5 },
 });
+// Household members below the head, for the ambition tests.
+define_character(#{
+    id: "yeva-birch", gender: "female",
+    birth_year: 380, organisation: "birch",
+    skills: #{ command: 4, diplomacy: 7, intrigue: 6, stewardship: 8 },
+});
+define_character(#{
+    id: "brakk-birch", gender: "male",
+    birth_year: 382, organisation: "birch",
+    skills: #{ command: 7, diplomacy: 5, intrigue: 5, stewardship: 6 },
+});
 
 // The reactive scorer may only reach these two.
 define_assignment(#{
@@ -66,10 +77,12 @@ define_assignment(#{
     },
 });
 
-// Reserved for plans: the scorer cannot start these.
+// Reserved for plans: the scorer cannot start these. raise-a-fund
+// carries a token cost so the peace plan is a head's plan, not a
+// household ambition.
 define_assignment(#{
     id: "raise-a-fund",
-    category: "consequential", duration_days: 10,
+    category: "consequential", duration_days: 10, wealth_cost: 10,
     skill: "stewardship", difficulty: 5, ai_available: false,
     results: #{
         success: #{ weight: 999 },
@@ -605,5 +618,57 @@ fn a_worst_holding_selector_aims_at_the_most_disordered_province() {
         active.target,
         aeon_sim::AssignmentTarget::Province(beta),
         "the selector should have named the disordered holding"
+    );
+}
+
+#[test]
+fn a_courtier_adopts_only_what_spends_nothing() {
+    use aeon_data::model::AiIntent;
+
+    let mut h = host(30);
+    let yeva = h.world_mut().resource::<PoliticsIndex>().character_keys[&key("yeva-birch")];
+    let birch = org(&mut h, "birch");
+
+    // The peace plan's first step costs the house wealth; a courtier may
+    // not reach for it, however heavy the pressure.
+    assert!(
+        !aeon_sim::plans::try_adopt(h.world_mut(), yeva, birch, &[pressure(AiIntent::Order)]),
+        "a costed plan is the head's to adopt, not the household's"
+    );
+
+    // The coffers plan spends nothing, so the ambition is hers to have.
+    assert!(aeon_sim::plans::try_adopt(
+        h.world_mut(),
+        yeva,
+        birch,
+        &[pressure(AiIntent::Resources)]
+    ));
+    let plans = h.world_mut().resource::<Plans>().clone();
+    assert_eq!(plans.active[&yeva].def.as_str(), "fill-the-coffers");
+}
+
+#[test]
+fn an_ambition_the_house_already_has_in_hand_is_not_duplicated() {
+    use aeon_data::model::AiIntent;
+
+    let mut h = host(31);
+    let yeva = h.world_mut().resource::<PoliticsIndex>().character_keys[&key("yeva-birch")];
+    let brakk = h.world_mut().resource::<PoliticsIndex>().character_keys[&key("brakk-birch")];
+    let birch = org(&mut h, "birch");
+
+    assert!(aeon_sim::plans::try_adopt(
+        h.world_mut(),
+        yeva,
+        birch,
+        &[pressure(AiIntent::Resources)]
+    ));
+    assert!(
+        !aeon_sim::plans::try_adopt(
+            h.world_mut(),
+            brakk,
+            birch,
+            &[pressure(AiIntent::Resources)]
+        ),
+        "one member already pursues it; a second ambition adds nothing but noise"
     );
 }

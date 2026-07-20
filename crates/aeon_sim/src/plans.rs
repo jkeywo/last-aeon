@@ -245,11 +245,17 @@ fn flatten_steps(
     Some(steps)
 }
 
-/// Offers a head the chance to adopt a plan for their heaviest pressure.
+/// Offers a character the chance to adopt a plan for their heaviest
+/// pressure.
 ///
 /// Called from the monthly agency pass with the intents already scored.
 /// Returns `true` when a plan was adopted, in which case the one-shot
-/// path is skipped: the head's attention is the campaign now.
+/// path is skipped: the actor's attention is the campaign now.
+///
+/// Who the actor is decides what they may reach for. A head adopts with
+/// the house's full authority; anyone else wears the household's leash —
+/// only plans that spend nothing, and never one another member of the
+/// house is already pursuing.
 ///
 /// Candidate plans are walked in content-key order; the only roll is
 /// choosing among several eligible methods of the chosen plan, drawn
@@ -266,6 +272,7 @@ pub fn try_adopt(
     };
     let date = world.resource::<CampaignClock>().date;
     let content = world.resource::<ContentDb>().0.clone();
+    let is_head = crate::access::org_head(world, authority) == Some(actor);
 
     // Candidates answer the top pressure's intent, aim at its kind of
     // target, are off cooldown, and clear the plan threshold with their
@@ -274,6 +281,22 @@ pub fn try_adopt(
     for (key, def) in &content.plans {
         if def.goal != top.intent || top.score + def.score_bonus < PLAN_THRESHOLD {
             continue;
+        }
+        if !is_head {
+            // The household leash, provable over the whole plan rather
+            // than a single act: no step may spend the house's stores,
+            // and armies are not the household's to command.
+            if !spend_free(&content, def) {
+                continue;
+            }
+            // And no ambition duplicates work the house already has in
+            // hand, whoever holds it.
+            let taken = world.resource::<Plans>().active.iter().any(|(who, plan)| {
+                plan.def == *key && crate::access::organisation_of(world, *who) == Some(authority)
+            });
+            if taken {
+                continue;
+            }
         }
         let target = match (def.target, top.target) {
             (AssignmentTargetKind::None, _) => AssignmentTarget::None,
@@ -507,6 +530,33 @@ pub fn advance_plans(world: &mut World) {
             }
         }
     }
+}
+
+/// Whether a plan spends nothing in any method, step, or sub-plan.
+///
+/// The household's leash, checked structurally: every assignment a step
+/// could ever start costs no wealth, manpower, supplies or influence,
+/// and no step commands an army. Sub-plans are checked whole — every
+/// method, not just the one that would be chosen — so the answer cannot
+/// change out from under an adopted ambition.
+pub fn spend_free(content: &aeon_data::ContentSet, def: &PlanDef) -> bool {
+    def.methods.iter().all(|method| {
+        method.steps.iter().all(|step| match &step.action {
+            PlanStepAction::Assignment { key, .. } => {
+                content.assignments.get(key).is_some_and(|assignment| {
+                    assignment.wealth_cost == 0
+                        && assignment.manpower_cost == 0
+                        && assignment.supplies_cost == 0
+                        && assignment.influence_cost == 0
+                })
+            }
+            PlanStepAction::Orders { .. } => false,
+            PlanStepAction::SubPlan(sub) => content
+                .plans
+                .get(sub)
+                .is_some_and(|sub_def| spend_free(content, sub_def)),
+        })
+    })
 }
 
 /// The authority's most disordered holding, if it holds anything.

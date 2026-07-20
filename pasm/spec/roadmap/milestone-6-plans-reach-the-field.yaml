@@ -133,8 +133,8 @@ entities:
 
   - milestone: m6-household-ambitions
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "M6.3: The Household Has Ambitions"
       summary: >-
         Characters below the head may adopt small plans of their own,
@@ -154,12 +154,28 @@ entities:
         - A household member's ambition never pre-empts work the head or player assigns them; leader availability already arbitrates, and keeps doing so.
     implementation:
       paths:
-        - crates/aeon_data/src/model.rs
         - crates/aeon_sim/src/plans.rs
         - crates/aeon_sim/src/agency.rs
       tests:
         - crates/aeon_sim/tests/plans.rs
       status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/plans.rs
+        summary: >-
+          A courtier refuses the plan whose first step spends the house's
+          wealth however heavy the pressure, adopts the one that spends
+          nothing, and a second courtier cannot duplicate an ambition the
+          house already has in hand.
+      - kind: manual-review
+        reference: crates/aeon_sim/src/plans.rs
+        summary: >-
+          The leash is structural, not incidental: spend-free is proved
+          over every method of the plan and of every sub-plan, so the
+          answer cannot change out from under an adopted ambition, and an
+          orders step disqualifies outright — armies are not the
+          household's to command. No new schema; the same plans resource,
+          the same inspector line, one plan per person whoever they are.
 
   - milestone: m6-campaigns-in-the-field
     core:
