@@ -244,6 +244,8 @@ pub struct AssignmentDef {
     /// button, the forecast, the autonomous houses and any standing order
     /// all agree by construction.
     pub requires: AssignmentRequires,
+    /// How loudly it asks to be done.
+    pub urgency: Urgency,
     /// The phases it runs through, in order.
     ///
     /// Never empty once loaded: content that authors none gets a single
@@ -689,6 +691,24 @@ pub enum EventFamily {
 ///
 /// Conditions are data rather than script so they can be validated at
 /// load and evaluated identically on every replay.
+/// How loudly an assignment asks to be done.
+///
+/// Only two things read it: whether an idle character will pick an
+/// assignment up unbidden, and whether a more pressing one may interrupt
+/// a less pressing one. It is deliberately coarse — a finer scale would
+/// invite tuning that no player could perceive.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Urgency {
+    /// Worth doing when there is nothing better.
+    #[default]
+    Routine,
+    /// Worth doing soon.
+    Pressing,
+    /// Worth dropping other work for.
+    Urgent,
+}
+
 /// One phase of an assignment, and whether it can be called off.
 ///
 /// An assignment that authors no stages is one stage long and can be

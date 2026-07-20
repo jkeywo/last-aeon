@@ -372,6 +372,7 @@ mod tests {
             supplies_cost: 0,
             influence_cost: 0,
             requires: Default::default(),
+            urgency: Default::default(),
             stages: vec![aeon_data::model::StageDef {
                 id: "whole".to_owned(),
                 days: 30,

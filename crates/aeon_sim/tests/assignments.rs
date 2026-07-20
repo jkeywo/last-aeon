@@ -185,6 +185,24 @@ define_assignment(#{
     ],
     results: #{ success: #{ weight: 1 }, failure: #{ weight: 1 } },
 });
+
+// Costs nothing: an idle member of the house may take this up unbidden.
+define_assignment(#{
+    id: "free-errand",
+    category: "routine", duration_days: 10,
+    skill: "stewardship", difficulty: 0, target: "none",
+    ai_available: false,
+    results: #{ success: #{ weight: 1 }, failure: #{ weight: 1 } },
+});
+// Costs the house: it waits for whoever owns the stores.
+define_assignment(#{
+    id: "costly-errand",
+    category: "routine", duration_days: 10,
+    skill: "stewardship", difficulty: 0, target: "none",
+    wealth_cost: 10,
+    ai_available: false,
+    results: #{ success: #{ weight: 1 }, failure: #{ weight: 1 } },
+});
 "#;
 
 /// The prose behind the fixture's IDs.
@@ -245,6 +263,10 @@ fn strings() -> aeon_data::StringTable {
             "assignment.even-gamble.disaster.log-text",
             "OUTCOME-DISASTER",
         ),
+        ("assignment.free-errand.title", "A Free Errand"),
+        ("assignment.free-errand.summary", "It costs nothing."),
+        ("assignment.costly-errand.title", "A Costly Errand"),
+        ("assignment.costly-errand.summary", "It costs."),
         ("assignment.staged-work.title", "Staged Work"),
         ("assignment.staged-work.summary", "It has phases."),
         ("assignment.gated-raid.title", "Raid"),
@@ -1161,6 +1183,46 @@ mod stages {
             staged.stage_at(999),
             1,
             "a late tick saturates rather than indexing past the work"
+        );
+    }
+}
+
+/// A household that finds its own work, within its own means.
+mod household {
+    use super::*;
+
+    #[test]
+    fn an_idle_member_takes_up_work_that_costs_the_house_nothing() {
+        let mut h = host(11);
+        // Long enough for the monthly pulse to come round.
+        h.advance_days(40);
+        let log = h.world_mut().resource::<MessageLog>().clone();
+        assert!(
+            log.entries.iter().any(|e| e.text.contains("unbidden")),
+            "somebody in the house should have found something to do"
+        );
+    }
+
+    #[test]
+    fn nobody_spends_the_houses_stores_unbidden() {
+        // The leash. A household that quietly drains the treasury while
+        // the player is looking elsewhere is worse than one that stands
+        // idle, so anything with a cost waits for the person whose stores
+        // they are.
+        let mut h = host(12);
+        h.advance_days(120);
+
+        let costly = key("costly-errand");
+        let world = h.world_mut();
+        let index = world.resource::<AssignmentsIndex>().clone();
+        let started_costly = index.assignments.values().any(|entity| {
+            world
+                .get::<aeon_sim::ActiveAssignment>(*entity)
+                .is_some_and(|active| active.def == costly)
+        });
+        assert!(
+            !started_costly,
+            "an assignment with a cost is never picked up unbidden"
         );
     }
 }

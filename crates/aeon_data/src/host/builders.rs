@@ -23,7 +23,7 @@ use crate::model::{
     GoverningSkill, HolderRelation, HouseTier, MilitaryOp, NamePoolDef, ObligationDef,
     ObligationKind, OfficeDef, OrgDef, OrgKind, OutcomeDef, OutcomeKind, PopupChoiceDef,
     ProvinceDef, RiskTag, ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SkillsDef, StageDef,
-    TitleDef, TitleHolderDef, TitleKindDef, TitleNeed, TraitDef,
+    TitleDef, TitleHolderDef, TitleKindDef, TitleNeed, TraitDef, Urgency,
 };
 use crate::report::{ContentReport, Severity};
 
@@ -663,6 +663,17 @@ fn define_assignment(state: &mut BuilderState, map: Map) {
 
     let requires = assignment_requires(&mut f);
     let stages = assignment_stages(&mut f, duration_days as u32);
+    let Some(urgency) = f.opt_enum(
+        "urgency",
+        &[
+            ("routine", Urgency::Routine),
+            ("pressing", Urgency::Pressing),
+            ("urgent", Urgency::Urgent),
+        ],
+        Urgency::Routine,
+    ) else {
+        return;
+    };
 
     let Some(results_value) = f.take_raw("results") else {
         f.error("missing required field 'results'");
@@ -701,6 +712,7 @@ fn define_assignment(state: &mut BuilderState, map: Map) {
             supplies_cost,
             influence_cost,
             requires,
+            urgency,
             stages,
             results,
         },

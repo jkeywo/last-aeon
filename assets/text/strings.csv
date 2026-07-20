@@ -270,6 +270,7 @@ ship.ember-crown.name,Authored ship 'ember-crown': name. Moved from the content 
 ship.pale-lantern.name,Authored ship 'pale-lantern': name. Moved from the content scripts.,[Pale Lantern]
 ship.redwater-runner.name,Authored ship 'redwater-runner': name. Moved from the content scripts.,[Redwater Runner]
 ship.spire-picket.name,Authored ship 'spire-picket': name. Moved from the content scripts.,[Spire Picket]
+sim.agency.took-it-up,"Log line when an idle household member finds work unbidden. {character} {assignment}","{character} took up {assignment} unbidden."
 sim.agency.began,"Log line when a house other than the player's starts a assignment, giving its own stated reason. {house} is a house name, {assignment} the assignment's title, {reason} why it acted.",[{house} began '{assignment}': {reason}.]
 sim.assignment.called-off,"Log line when an assignment is called off part-way. {assignment} {stage}","{assignment} was called off during {stage}."
 sim.assignment.captain,How a character's standing command reads when they captain a ship. {force} is the ship's name.,"[Captain, {force}]"

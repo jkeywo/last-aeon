@@ -502,9 +502,12 @@ pub fn standing_orders(world: &mut World) {
                     .map(|a| a.name.clone())
                     .unwrap_or_default();
                 let title = world
-                    .resource::<TextDb>()
-                    .text(&format!("assignment.{assignment}.title"))
-                    .to_owned();
+                    .resource::<ContentDb>()
+                    .0
+                    .assignments
+                    .get(assignment)
+                    .map(|def| def.title.clone())
+                    .unwrap_or_default();
                 let line = world.resource::<TextDb>().format(
                     "sim.warfare.standing-order",
                     &[("army", &name), ("assignment", &title)],

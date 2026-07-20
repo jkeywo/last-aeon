@@ -393,6 +393,115 @@ fn announce(world: &mut World, org: OrgId, intent: &ScoredIntent) {
     crate::access::log(world, entry);
 }
 
+/// Daily: members of a house with nothing to do find something.
+///
+/// The leash is deliberate and narrow: a character acts only on
+/// assignments that cost the house nothing. Touring a holding, holding
+/// court where they stand. Anything that spends wealth, manpower,
+/// supplies or influence still waits for the person whose stores they
+/// are — a household that quietly drains the treasury while the player
+/// is looking elsewhere is worse than one that stands idle.
+///
+/// Everything else follows the rules already in place: the assignment
+/// must pass `validate_start`, so nothing can be started unbidden that
+/// the head could not have ordered by hand, and candidates are walked in
+/// stable ID order so this replays identically.
+///
+/// This is the household acting within a house. Whole houses acting are
+/// [`ai_start_assignments`], which is a different level and untouched.
+pub fn household_acts(world: &mut World) {
+    if world.get_resource::<AssignmentsIndex>().is_none()
+        || world.get_resource::<CampaignOver>().is_some()
+    {
+        return;
+    }
+    let date = world.resource::<CampaignClock>().date;
+    let content = world.resource::<ContentDb>().0.clone();
+
+    // Assignments anyone may pick up unbidden: no cost, and reachable
+    // without a target that has to be chosen for them.
+    let free: Vec<ContentKey> = {
+        let mut keys: Vec<ContentKey> = content
+            .assignments
+            .iter()
+            .filter(|(_, def)| {
+                def.wealth_cost == 0
+                    && def.manpower_cost == 0
+                    && def.supplies_cost == 0
+                    && def.influence_cost == 0
+                    && def.target == aeon_data::model::AssignmentTargetKind::None
+            })
+            .map(|(key, _)| key.clone())
+            .collect();
+        keys.sort();
+        keys
+    };
+    if free.is_empty() {
+        return;
+    }
+
+    let orgs: Vec<OrgId> = crate::access::org_ids(world)
+        .into_iter()
+        .filter(|org| crate::access::org(world, *org).is_some_and(|r| !r.defunct))
+        .collect();
+
+    for org in orgs {
+        let idle: Vec<crate::ids::CharacterId> = crate::access::living_character_ids(world)
+            .into_iter()
+            .filter(|who| crate::access::organisation_of(world, *who) == Some(org))
+            .filter(|who| {
+                matches!(
+                    crate::assignments::leader_availability(world, org, *who, date),
+                    crate::assignments::LeaderAvailability::Available
+                )
+            })
+            .collect();
+
+        for who in idle {
+            for assignment in &free {
+                if crate::assignments::validate_start(
+                    world,
+                    org,
+                    assignment,
+                    who,
+                    crate::assignments::AssignmentTarget::None,
+                )
+                .is_ok()
+                {
+                    crate::assignments::start_assignment(
+                        world,
+                        org,
+                        assignment,
+                        who,
+                        crate::assignments::AssignmentTarget::None,
+                    );
+                    let name = crate::access::character_name(world, who);
+                    let title = content
+                        .assignments
+                        .get(assignment)
+                        .map(|def| def.title.clone())
+                        .unwrap_or_default();
+                    let line = world.resource::<TextDb>().format(
+                        "sim.agency.took-it-up",
+                        &[("character", &name), ("assignment", &title)],
+                    );
+                    crate::access::log(
+                        world,
+                        LogEntry {
+                            date,
+                            text: line,
+                            org: Some(org),
+                            subject: Some(LogSubject::Character(who)),
+                            channel: LogChannel::Assignments,
+                        },
+                    );
+                    break;
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
