@@ -21,10 +21,10 @@ use crate::model::{
     AiIntent, ArmyDef, AssignmentCategory, AssignmentDef, AssignmentRequires, AssignmentTargetKind,
     BodyDef, BodyKind, CharacterDef, EventChoiceDef, EventDef, EventFamily, EventRequires, Gender,
     GoverningSkill, HolderRelation, HouseTier, MilitaryOp, NamePoolDef, ObligationDef,
-    ObligationKind, OfficeDef, OrgDef, OrgKind, OutcomeDef, OutcomeKind, PlanDef, PlanMethodDef,
-    PlanRequires, PlanStepAction, PlanStepDef, PlanTargetSelector, PopupChoiceDef, ProvinceDef,
-    RiskTag, ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SkillsDef, StageDef, TitleDef,
-    TitleHolderDef, TitleKindDef, TitleNeed, TraitDef, Urgency,
+    ObligationKind, OfficeDef, OrgDef, OrgKind, OutcomeDef, OutcomeKind, PlanArmySelector, PlanDef,
+    PlanMethodDef, PlanRequires, PlanStepAction, PlanStepDef, PlanTargetSelector, PopupChoiceDef,
+    ProvinceDef, RiskTag, ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SkillsDef, StageDef,
+    TitleDef, TitleHolderDef, TitleKindDef, TitleNeed, TraitDef, Urgency,
 };
 use crate::report::{ContentReport, Severity};
 
@@ -1870,11 +1870,51 @@ fn plan_step(f: &mut Fields, entry: rhai::Dynamic) -> Option<PlanStepDef> {
         Some(f.key.as_str()),
         // "start" rather than "do": `do` is a reserved word in Rhai, and a
         // map literal keyed with it fails to parse.
-        &["id", "start", "plan", "target", "skip_if"],
+        &["id", "start", "plan", "orders", "army", "target", "skip_if"],
     );
     let key_str = f.key_str();
     let doing = opt_key(f.state, Some(&key_str), &map, "start")?;
     let sub = opt_key(f.state, Some(&key_str), &map, "plan")?;
+    let ordering = map.contains_key("orders");
+    if ordering {
+        if doing.is_some() || sub.is_some() {
+            f.error("a step is exactly one of 'start', 'plan', or 'orders'");
+            return None;
+        }
+        let orders = key_list(f.state, Some(&key_str), &map, "orders")?;
+        if orders.is_empty() {
+            f.error("an orders step needs at least one standing order");
+            return None;
+        }
+        let army = match map
+            .get("army")
+            .and_then(|v| v.clone().into_string().ok())
+            .as_deref()
+        {
+            None | Some("own") => PlanArmySelector::Own,
+            Some(other) => {
+                f.error(format!("unknown step army '{other}' (expected own)"));
+                return None;
+            }
+        };
+        if map.contains_key("target") {
+            f.error("an orders step takes no target");
+            return None;
+        }
+        let id = match opt_str(f.state, Some(&key_str), &map, "id")? {
+            Some(id) => id,
+            None => "orders".to_owned(),
+        };
+        let skip_if = match map.get("skip_if") {
+            None => None,
+            Some(raw) => Some(plan_requires(f, raw.clone())?),
+        };
+        return Some(PlanStepDef {
+            id,
+            action: PlanStepAction::Orders { army, orders },
+            skip_if,
+        });
+    }
     let action = match (doing, sub) {
         (Some(assignment), None) => {
             let target = match map
@@ -1904,11 +1944,14 @@ fn plan_step(f: &mut Fields, entry: rhai::Dynamic) -> Option<PlanStepDef> {
             PlanStepAction::SubPlan(plan)
         }
         (Some(_), Some(_)) => {
-            f.error("a step is either 'start' or 'plan', not both");
+            f.error("a step is exactly one of 'start', 'plan', or 'orders'");
             return None;
         }
         (None, None) => {
-            f.error("a step needs 'start' (an assignment) or 'plan' (a sub-plan)");
+            f.error(
+                "a step needs 'start' (an assignment), 'plan' (a sub-plan), \
+                 or 'orders' (standing orders for an army)",
+            );
             return None;
         }
     };
@@ -1917,6 +1960,7 @@ fn plan_step(f: &mut Fields, entry: rhai::Dynamic) -> Option<PlanStepDef> {
         None => match &action {
             PlanStepAction::Assignment { key, .. } => key.to_string(),
             PlanStepAction::SubPlan(key) => key.to_string(),
+            PlanStepAction::Orders { .. } => "orders".to_owned(),
         },
     };
     let skip_if = match map.get("skip_if") {

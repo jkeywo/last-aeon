@@ -25,7 +25,8 @@ use std::collections::BTreeMap;
 use aeon_core::calendar::GameDate;
 use aeon_data::ContentKey;
 use aeon_data::model::{
-    AssignmentTargetKind, OutcomeKind, PlanDef, PlanRequires, PlanStepAction, PlanTargetSelector,
+    AssignmentTargetKind, OutcomeKind, PlanArmySelector, PlanDef, PlanRequires, PlanStepAction,
+    PlanTargetSelector,
 };
 use bevy::prelude::{Resource, World};
 use serde::{Deserialize, Serialize};
@@ -52,12 +53,29 @@ pub const PLAN_THRESHOLD: i64 = 60;
 pub struct PlanStepInstance {
     /// The authored step id, for logs and tests.
     pub id: String,
-    /// The assignment this step starts.
-    pub assignment: ContentKey,
-    /// Where the assignment's target comes from.
-    pub target: PlanTargetSelector,
+    /// What taking the step means.
+    pub task: StepTask,
     /// Skip the step when these already hold.
     pub skip_if: Option<PlanRequires>,
+}
+
+/// What a flattened step does when its turn comes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum StepTask {
+    /// Start an assignment and wait for its outcome.
+    Start {
+        /// The assignment to start.
+        assignment: ContentKey,
+        /// Where its target comes from.
+        target: PlanTargetSelector,
+    },
+    /// Set one army's standing orders, instantly.
+    Orders {
+        /// Which army receives them.
+        army: PlanArmySelector,
+        /// The list, in priority order.
+        orders: Vec<ContentKey>,
+    },
 }
 
 /// A plan a character is pursuing.
@@ -199,8 +217,18 @@ fn flatten_steps(
                 target: selector,
             } => steps.push(PlanStepInstance {
                 id: step.id.clone(),
-                assignment: key.clone(),
-                target: *selector,
+                task: StepTask::Start {
+                    assignment: key.clone(),
+                    target: *selector,
+                },
+                skip_if: step.skip_if.clone(),
+            }),
+            PlanStepAction::Orders { army, orders } => steps.push(PlanStepInstance {
+                id: step.id.clone(),
+                task: StepTask::Orders {
+                    army: *army,
+                    orders: orders.clone(),
+                },
                 skip_if: step.skip_if.clone(),
             }),
             PlanStepAction::SubPlan(sub_key) => {
@@ -431,24 +459,93 @@ pub fn advance_plans(world: &mut World) {
                     .step = step;
                 continue;
             }
-            let target = match instance.target {
-                PlanTargetSelector::None => AssignmentTarget::None,
-                PlanTargetSelector::PlanTarget => plan.target,
-            };
-            if validate_start(world, authority, &instance.assignment, actor, target).is_ok() {
-                let id = start_assignment(world, authority, &instance.assignment, actor, target);
-                world
-                    .resource_mut::<Plans>()
-                    .active
-                    .get_mut(&actor)
-                    .expect("present")
-                    .current_assignment = Some(id);
+            match &instance.task {
+                StepTask::Start { assignment, target } => {
+                    let target = match target {
+                        PlanTargetSelector::None => AssignmentTarget::None,
+                        PlanTargetSelector::PlanTarget => plan.target,
+                    };
+                    if validate_start(world, authority, assignment, actor, target).is_ok() {
+                        let id = start_assignment(world, authority, assignment, actor, target);
+                        world
+                            .resource_mut::<Plans>()
+                            .active
+                            .get_mut(&actor)
+                            .expect("present")
+                            .current_assignment = Some(id);
+                    }
+                    // Blocked: wait. The stall counts against max_days and
+                    // nothing else; per-step timers would be a second
+                    // policy.
+                    break;
+                }
+                StepTask::Orders { army, orders } => {
+                    // No army to order leaves the step waiting, like any
+                    // blocked step; max_days remains the valve.
+                    let Some(army) = resolve_army(world, actor, authority, *army) else {
+                        break;
+                    };
+                    set_standing_orders(world, authority, army, orders);
+                    step += 1;
+                    world
+                        .resource_mut::<Plans>()
+                        .active
+                        .get_mut(&actor)
+                        .expect("present")
+                        .step = step;
+                    // Instant: the day continues to the next step.
+                }
             }
-            // Blocked: wait. The stall counts against max_days and
-            // nothing else; per-step timers would be a second policy.
-            break;
         }
     }
+}
+
+/// The one army an orders step is for, if it exists right now.
+///
+/// `Own` is the army the acting character generals, the lowest stable ID
+/// when they general several — deterministic, and the honest reading of
+/// "point my own force at the doctrine".
+fn resolve_army(
+    world: &World,
+    actor: CharacterId,
+    authority: OrgId,
+    selector: PlanArmySelector,
+) -> Option<crate::ids::ArmyId> {
+    let forces = world.get_resource::<crate::forces::ForcesIndex>()?;
+    match selector {
+        PlanArmySelector::Own => forces.armies.iter().find_map(|(id, entity)| {
+            world
+                .get::<crate::forces::ArmyRecord>(*entity)
+                .filter(|army| army.owner == authority && army.general == actor)
+                .map(|_| *id)
+        }),
+    }
+}
+
+/// Writes a standing-order list onto an army and says so in the log —
+/// the same component the player edits by hand, so an order set by a
+/// plan is indistinguishable from one the player gave.
+fn set_standing_orders(
+    world: &mut World,
+    authority: OrgId,
+    army: crate::ids::ArmyId,
+    orders: &[ContentKey],
+) {
+    let Some(entity) = crate::access::army_entity(world, army) else {
+        return;
+    };
+    let Some(mut record) = world.get_mut::<crate::forces::ArmyRecord>(entity) else {
+        return;
+    };
+    record.standing_order = crate::warfare::StandingOrders(orders.to_vec());
+    let name = record.name.clone();
+    let text = world
+        .resource::<TextDb>()
+        .format("sim.plan.ordered", &[("army", &name)]);
+    crate::access::log(
+        world,
+        LogEntry::line(text, LogChannel::Politics).by(Some(authority)),
+    );
 }
 
 /// Notes that an assignment a plan was waiting on has resolved.

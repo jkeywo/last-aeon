@@ -1009,6 +1009,31 @@ pub enum PlanStepAction {
     },
     /// Expand another plan's first eligible method in place, at adoption.
     SubPlan(ContentKey),
+    /// Set one army's standing orders — the same editable list the player
+    /// sets by hand, driving the same reactive behaviour. A plan never
+    /// commands a battle; it points the army at the doctrine and the
+    /// doctrine fights.
+    Orders {
+        /// Which army receives the orders.
+        army: PlanArmySelector,
+        /// The standing orders, in priority order.
+        orders: Vec<ContentKey>,
+    },
+}
+
+/// Which single army an orders step is for.
+///
+/// Per army, deliberately, never a broadcast to everything the house
+/// fields: an order is given to a force, and which force is part of what
+/// the plan means. The vocabulary grows by demonstrated need, like
+/// [`PlanTargetSelector`]'s.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PlanArmySelector {
+    /// The army the acting character generals; the lowest stable ID when
+    /// they general several. No such army leaves the step waiting.
+    #[default]
+    Own,
 }
 
 /// Where a plan step's assignment target comes from.

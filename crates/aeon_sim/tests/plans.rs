@@ -111,6 +111,30 @@ define_plan(#{
     ],
 });
 
+// An army for the orders step to point at, and a doctrine to point it to.
+define_army(#{
+    id: "birch-levy", owner: "birch", general: "bela-birch",
+    province: "beta", manpower: 400, supplies: 100,
+});
+define_assignment(#{
+    id: "stand-guard",
+    category: "consequential", duration_days: 10,
+    skill: "command", difficulty: 5, target: "own-army",
+    ai_available: false,
+    results: #{
+        success: #{ weight: 999 },
+        failure: #{ weight: 1 },
+    },
+});
+define_plan(#{
+    id: "call-to-arms",
+    goal: "muster",
+    max_days: 60,
+    methods: [
+        #{ id: "ready", steps: [ #{ orders: ["stand-guard"], army: "own" } ] },
+    ],
+});
+
 // A grievance held by the player, and a campaign aimed back at them,
 // so the rumour path has something to whisper about.
 define_obligation(#{
@@ -454,4 +478,75 @@ fn a_plan_aimed_at_the_player_reaches_them_as_a_rumour() {
         }
     }
     panic!("the grievance plan was never adopted");
+}
+
+/// A pressure built by hand, for driving adoption directly in tests
+/// whose subject is what happens after.
+fn pressure(intent: aeon_data::model::AiIntent) -> aeon_sim::agency::ScoredIntent {
+    aeon_sim::agency::ScoredIntent {
+        intent,
+        assignment: key("settle-the-shire"),
+        target: aeon_sim::AssignmentTarget::None,
+        score: 100,
+        reason: String::new(),
+        subject: None,
+        explains: false,
+    }
+}
+
+#[test]
+fn an_orders_step_points_the_actors_own_army_at_the_doctrine() {
+    use aeon_data::model::AiIntent;
+
+    let mut h = host(27);
+    let head = bela(&mut h);
+    let birch = org(&mut h, "birch");
+
+    assert!(
+        aeon_sim::plans::try_adopt(h.world_mut(), head, birch, &[pressure(AiIntent::Muster)]),
+        "the muster pressure should adopt call-to-arms"
+    );
+    h.advance_days(1);
+
+    let world = h.world_mut();
+    let orders: Vec<Vec<ContentKey>> = {
+        let forces = world.resource::<aeon_sim::ForcesIndex>().clone();
+        forces
+            .armies
+            .values()
+            .filter_map(|e| world.get::<aeon_sim::ArmyRecord>(*e))
+            .filter(|a| a.owner == birch)
+            .map(|a| a.standing_order.0.clone())
+            .collect()
+    };
+    assert_eq!(
+        orders,
+        vec![vec![key("stand-guard")]],
+        "the general's own army should carry the plan's doctrine"
+    );
+    assert!(
+        !world.resource::<Plans>().active.contains_key(&head),
+        "a single instant step completes the plan the same day"
+    );
+}
+
+#[test]
+fn an_orders_step_with_no_army_to_order_waits() {
+    use aeon_data::model::AiIntent;
+
+    let mut h = host(28);
+    let aron = h.world_mut().resource::<PoliticsIndex>().character_keys[&key("aron-ash")];
+    let ash = org(&mut h, "ash");
+
+    // Ash fields no army; the step has nothing to order and waits.
+    assert!(aeon_sim::plans::try_adopt(
+        h.world_mut(),
+        aron,
+        ash,
+        &[pressure(AiIntent::Muster)]
+    ));
+    h.advance_days(5);
+    let plans = h.world_mut().resource::<Plans>().clone();
+    let plan = plans.active.get(&aron).expect("the plan waits, not dies");
+    assert_eq!(plan.step, 0, "a blocked orders step stays where it is");
 }

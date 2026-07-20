@@ -39,8 +39,8 @@ entities:
 
   - milestone: m6-plans-command-forces
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "M6.1: A Plan Step Sets Standing Orders"
       summary: >-
         A new kind of plan step writes an ordered list of standing orders
@@ -69,6 +69,23 @@ entities:
       tests:
         - crates/aeon_sim/tests/plans.rs
       status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/plans.rs
+        summary: >-
+          An orders step writes its doctrine onto the one army the acting
+          character generals and completes the same day; an actor with no
+          army to order waits at the step rather than dying; loading
+          refuses an orders list naming a missing assignment or one that
+          does not target an army.
+      - kind: manual-review
+        reference: crates/aeon_sim/src/plans.rs
+        summary: >-
+          Orders go to one army, never a broadcast: the selector vocabulary
+          opens with own — the army the actor generals, lowest stable ID
+          when several — and setting orders writes the same component the
+          player edits, so a plan's order is indistinguishable from a
+          hand-given one. No new RNG stream; the act is deterministic.
 
   - milestone: m6-targets-worth-aiming-at
     core:

@@ -463,6 +463,41 @@ fn validate_plans(builder: &BuilderState, findings: &mut Vec<(String, Option<Str
                             }
                         }
                     },
+                    PlanStepAction::Orders { orders, .. } => {
+                        for order in orders {
+                            match builder.assignments.get(order) {
+                                None => err(
+                                    key,
+                                    format!(
+                                        "step '{}': standing order '{order}' is not defined",
+                                        step.id
+                                    ),
+                                ),
+                                // Only orders a force can actually take up:
+                                // the standing-orders pass targets the army
+                                // itself or the army and a province, and an
+                                // assignment of any other kind would sit in
+                                // the list doing nothing forever.
+                                Some(def)
+                                    if !matches!(
+                                        def.target,
+                                        AssignmentTargetKind::OwnArmy
+                                            | AssignmentTargetKind::OwnArmyAndProvince
+                                    ) =>
+                                {
+                                    err(
+                                        key,
+                                        format!(
+                                            "step '{}': '{order}' cannot be a standing order; \
+                                             it does not target an army",
+                                            step.id
+                                        ),
+                                    );
+                                }
+                                Some(_) => {}
+                            }
+                        }
+                    }
                     PlanStepAction::SubPlan(sub) => match builder.plans.get(sub) {
                         None => err(
                             key,
@@ -522,7 +557,7 @@ fn plan_depth_problem<'a>(
         plan.methods.iter().find_map(|method| {
             method.steps.iter().find_map(|step| match &step.action {
                 PlanStepAction::SubPlan(sub) => plan_depth_problem(builder, sub, trail),
-                PlanStepAction::Assignment { .. } => None,
+                PlanStepAction::Assignment { .. } | PlanStepAction::Orders { .. } => None,
             })
         })
     });

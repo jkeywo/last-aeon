@@ -616,3 +616,55 @@ define_plan(#{
         report.findings
     );
 }
+
+#[test]
+fn an_orders_step_naming_a_non_army_assignment_fails_to_load() {
+    let script = r#"
+define_plan(#{
+    id: "misfiled-doctrine",
+    goal: "muster",
+    max_days: 60,
+    methods: [ #{ id: "m", steps: [ #{ orders: ["manage-estates"] } ] } ],
+});
+"#;
+    let (set, report) = load_content(
+        &[
+            source("core/assignments.rhai", GOOD_JOBS),
+            source("core/plans.rhai", script),
+        ],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|f| f.message.contains("cannot be a standing order")),
+        "findings: {:?}",
+        report.findings
+    );
+}
+
+#[test]
+fn an_orders_step_naming_a_missing_assignment_fails_to_load() {
+    let script = r#"
+define_plan(#{
+    id: "phantom-doctrine",
+    goal: "muster",
+    max_days: 60,
+    methods: [ #{ id: "m", steps: [ #{ orders: ["no-such-doctrine"] } ] } ],
+});
+"#;
+    let (set, report) = load_content(
+        &[source("core/plans.rhai", script)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    assert!(
+        report.findings.iter().any(|f| f
+            .message
+            .contains("standing order 'no-such-doctrine' is not defined")),
+        "findings: {:?}",
+        report.findings
+    );
+}

@@ -648,3 +648,4 @@ plan.shore-up-standing.title,Plan title: rebuilding thin political standing.,[Sh
 plan.shore-up-standing.summary,One-line summary of the standing plan.,[Win friends and endorsements until the house's standing recovers.]
 sim.plan.rumour,"Log line for the player when a rival's newly adopted plan is aimed at them or their holding. {house} is the plotting house, {target} what it concerns.",[You hear whispers that {house} intends something concerning {target}.]
 ui.inspector.character.pursuing,Inspector line naming the plan an autonomous character is pursuing. {plan} is the plan's title.,[Pursuing: {plan}]
+sim.plan.ordered,Log line when a plan gives an army new standing orders. {army} is the army's name.,[{army} was given new standing orders.]
