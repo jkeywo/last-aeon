@@ -86,6 +86,10 @@ pub(super) fn fill_display_text(builder: &mut BuilderState, strings: &StringTabl
             choice.label = fill.at(&format!("event.{key}.choice.{}", choice.id));
         }
     }
+    for (key, def) in &mut builder.plans {
+        def.title = fill.req("plan", key, "title");
+        def.summary = fill.req("plan", key, "summary");
+    }
     if let Some(scenario) = &mut builder.scenario {
         let key = scenario.key.clone();
         scenario.name = fill.req("scenario", &key, "name");
@@ -161,6 +165,10 @@ pub fn text_keys(set: &ContentSet) -> BTreeSet<String> {
         for choice in &def.choices {
             add(format!("event.{key}.choice.{}", choice.id));
         }
+    }
+    for key in set.plans.keys() {
+        add(format!("plan.{key}.title"));
+        add(format!("plan.{key}.summary"));
     }
     if let Some(scenario) = &set.scenario {
         add(format!("scenario.{}.name", scenario.key));

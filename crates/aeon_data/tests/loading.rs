@@ -431,3 +431,188 @@ define_assignment(#{
         report.findings
     );
 }
+
+// ---------------------------------------------------------------------------
+// Plans
+// ---------------------------------------------------------------------------
+
+const GOOD_PLANS: &str = r#"
+define_plan(#{
+    id: "court-the-court",
+    goal: "standing",
+    target: "organisation",
+    score_bonus: 25,
+    cooldown_days: 180,
+    max_days: 360,
+    max_step_retries: 2,
+    methods: [
+        #{ id: "the-patient-way",
+           requires: #{ min_wealth: 50 },
+           steps: [
+               #{ start: "manage-estates", skip_if: #{ min_legitimacy: 80 } },
+               #{ id: "approach", start: "court-a-rival", target: "plan" },
+               #{ plan: "tend-the-books" },
+           ] },
+    ],
+});
+define_plan(#{
+    id: "tend-the-books",
+    goal: "resources",
+    max_days: 90,
+    methods: [
+        #{ id: "only-way", steps: [ #{ start: "manage-estates" } ] },
+    ],
+});
+"#;
+
+#[test]
+fn loads_a_valid_plan() {
+    use aeon_data::model::{AiIntent, AssignmentTargetKind, PlanStepAction, PlanTargetSelector};
+
+    let (set, report) = load_content(
+        &[
+            source("core/assignments.rhai", GOOD_JOBS),
+            source("core/plans.rhai", GOOD_PLANS),
+        ],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(
+        !report.has_errors(),
+        "unexpected findings: {:?}",
+        report.findings
+    );
+    let set = set.expect("valid plans load");
+    assert_eq!(set.plans.len(), 2);
+
+    let plan = &set.plans[&aeon_data::ContentKey::new("court-the-court").unwrap()];
+    assert_eq!(plan.goal, AiIntent::Standing);
+    assert_eq!(plan.target, AssignmentTargetKind::Organisation);
+    assert_eq!(plan.score_bonus, 25);
+    assert_eq!(plan.max_step_retries, 2);
+
+    let method = &plan.methods[0];
+    assert_eq!(method.id, "the-patient-way");
+    assert_eq!(method.requires.min_wealth, Some(50));
+
+    // A step without an id borrows its action's key.
+    assert_eq!(method.steps[0].id, "manage-estates");
+    assert_eq!(
+        method.steps[0].skip_if.as_ref().unwrap().min_legitimacy,
+        Some(80)
+    );
+    assert!(matches!(
+        &method.steps[1].action,
+        PlanStepAction::Assignment {
+            target: PlanTargetSelector::PlanTarget,
+            ..
+        }
+    ));
+    assert!(matches!(
+        &method.steps[2].action,
+        PlanStepAction::SubPlan(key) if key.as_str() == "tend-the-books"
+    ));
+}
+
+#[test]
+fn a_plan_step_naming_a_missing_assignment_fails_to_load() {
+    let script = r#"
+define_plan(#{
+    id: "castles-in-the-air",
+    goal: "routine",
+    max_days: 30,
+    methods: [ #{ id: "somehow", steps: [ #{ start: "no-such-work" } ] } ],
+});
+"#;
+    let (set, report) = load_content(
+        &[source("core/plans.rhai", script)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    assert!(
+        report.findings.iter().any(|f| f
+            .message
+            .contains("assignment 'no-such-work' is not defined")),
+        "findings: {:?}",
+        report.findings
+    );
+}
+
+#[test]
+fn sub_plans_that_form_a_cycle_fail_to_load() {
+    let script = r#"
+define_plan(#{
+    id: "the-chicken", goal: "routine", max_days: 30,
+    methods: [ #{ id: "m", steps: [ #{ plan: "the-egg" } ] } ],
+});
+define_plan(#{
+    id: "the-egg", goal: "routine", max_days: 30,
+    methods: [ #{ id: "m", steps: [ #{ plan: "the-chicken" } ] } ],
+});
+"#;
+    let (set, report) = load_content(
+        &[source("core/plans.rhai", script)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    assert!(
+        report.findings.iter().any(|f| f.message.contains("cycle")),
+        "findings: {:?}",
+        report.findings
+    );
+}
+
+#[test]
+fn a_step_whose_target_kind_disagrees_with_its_assignment_fails_to_load() {
+    let script = r#"
+define_plan(#{
+    id: "aim-at-nothing",
+    goal: "standing",
+    max_days: 60,
+    methods: [ #{ id: "m", steps: [ #{ start: "court-a-rival" } ] } ],
+});
+"#;
+    let (set, report) = load_content(
+        &[
+            source("core/assignments.rhai", GOOD_JOBS),
+            source("core/plans.rhai", script),
+        ],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|f| f.message.contains("wants a Organisation target")),
+        "findings: {:?}",
+        report.findings
+    );
+}
+
+#[test]
+fn a_step_aiming_at_a_target_the_plan_does_not_have_fails_to_load() {
+    let script = r#"
+define_plan(#{
+    id: "aim-at-the-void",
+    goal: "standing",
+    max_days: 60,
+    methods: [ #{ id: "m", steps: [ #{ start: "court-a-rival", target: "plan" } ] } ],
+});
+"#;
+    let (set, report) = load_content(
+        &[
+            source("core/assignments.rhai", GOOD_JOBS),
+            source("core/plans.rhai", script),
+        ],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|f| f.message.contains("the plan has none")),
+        "findings: {:?}",
+        report.findings
+    );
+}

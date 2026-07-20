@@ -174,6 +174,7 @@ pub fn load_content(
         armies: builder.armies,
         obligations: builder.obligations,
         events: builder.events,
+        plans: builder.plans,
         scenario: builder.scenario,
         asts,
         content_hash: content_hash(&sources),

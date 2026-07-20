@@ -10,7 +10,8 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::key::ContentKey;
 use crate::model::{
-    AssignmentDef, BodyKind, HouseTier, OrgKind, OutcomeKind, ShipClass, TitleKindDef,
+    AssignmentDef, AssignmentTargetKind, BodyKind, HouseTier, OrgKind, OutcomeKind, PlanStepAction,
+    PlanTargetSelector, ShipClass, TitleKindDef,
 };
 
 use super::builders::BuilderState;
@@ -128,6 +129,7 @@ pub(super) fn validate_cross_references(
     }
 
     validate_political_references(builder, &mut findings);
+    validate_plans(builder, &mut findings);
 
     for (path, key, message) in findings {
         builder.report.error(&path, key.as_deref(), message);
@@ -402,6 +404,130 @@ fn validate_political_references(
             Some(_) => {}
         }
     }
+}
+
+/// How deep sub-plans may nest. A plan counting only itself has depth 1.
+const MAX_PLAN_DEPTH: usize = 3;
+
+/// Cross-reference validation for plans: every step's key exists, step
+/// targets are compatible with what they name, and sub-plans compose
+/// acyclically to a shallow depth.
+fn validate_plans(builder: &BuilderState, findings: &mut Vec<(String, Option<String>, String)>) {
+    let mut err = |key: &ContentKey, message: String| {
+        findings.push((String::new(), Some(key.to_string()), message));
+    };
+
+    for (key, plan) in &builder.plans {
+        for method in &plan.methods {
+            for step in &method.steps {
+                match &step.action {
+                    PlanStepAction::Assignment {
+                        key: assignment,
+                        target,
+                    } => match builder.assignments.get(assignment) {
+                        None => err(
+                            key,
+                            format!(
+                                "step '{}': assignment '{assignment}' is not defined",
+                                step.id
+                            ),
+                        ),
+                        Some(def) => {
+                            // The step's selector must produce exactly the
+                            // target kind the assignment demands, so a plan
+                            // cannot author a step its runtime could never
+                            // start.
+                            let produced = match target {
+                                PlanTargetSelector::None => AssignmentTargetKind::None,
+                                PlanTargetSelector::PlanTarget => plan.target,
+                            };
+                            if *target == PlanTargetSelector::PlanTarget
+                                && plan.target == AssignmentTargetKind::None
+                            {
+                                err(
+                                    key,
+                                    format!(
+                                        "step '{}' aims at the plan's target, but the plan has none",
+                                        step.id
+                                    ),
+                                );
+                            } else if def.target != produced {
+                                err(
+                                    key,
+                                    format!(
+                                        "step '{}': assignment '{assignment}' wants a {:?} target, \
+                                         but the step provides {:?}",
+                                        step.id, def.target, produced
+                                    ),
+                                );
+                            }
+                        }
+                    },
+                    PlanStepAction::SubPlan(sub) => match builder.plans.get(sub) {
+                        None => err(
+                            key,
+                            format!("step '{}': sub-plan '{sub}' is not defined", step.id),
+                        ),
+                        // A sub-plan expands inside another plan's target
+                        // context; giving it a target of its own would
+                        // leave two answers to one question.
+                        Some(def) if def.target != AssignmentTargetKind::None => err(
+                            key,
+                            format!(
+                                "step '{}': sub-plan '{sub}' declares a target; \
+                                 only targetless plans may be sub-plans",
+                                step.id
+                            ),
+                        ),
+                        Some(_) => {}
+                    },
+                }
+            }
+        }
+    }
+
+    // Sub-plan composition: acyclic, and no deeper than MAX_PLAN_DEPTH.
+    for key in builder.plans.keys() {
+        let mut trail: Vec<&ContentKey> = Vec::new();
+        if let Some(message) = plan_depth_problem(builder, key, &mut trail) {
+            err(key, message);
+        }
+    }
+}
+
+/// Walks a plan's sub-plans depth-first, reporting a cycle or excessive
+/// depth. `trail` carries the path walked so a cycle can be named.
+fn plan_depth_problem<'a>(
+    builder: &'a BuilderState,
+    key: &'a ContentKey,
+    trail: &mut Vec<&'a ContentKey>,
+) -> Option<String> {
+    if trail.contains(&key) {
+        let named: Vec<String> = trail.iter().map(|k| k.to_string()).collect();
+        return Some(format!(
+            "sub-plans form a cycle: {} -> {key}",
+            named.join(" -> ")
+        ));
+    }
+    trail.push(key);
+    if trail.len() > MAX_PLAN_DEPTH {
+        let named: Vec<String> = trail.iter().map(|k| k.to_string()).collect();
+        trail.pop();
+        return Some(format!(
+            "sub-plans nest deeper than {MAX_PLAN_DEPTH}: {}",
+            named.join(" -> ")
+        ));
+    }
+    let problem = builder.plans.get(key).and_then(|plan| {
+        plan.methods.iter().find_map(|method| {
+            method.steps.iter().find_map(|step| match &step.action {
+                PlanStepAction::SubPlan(sub) => plan_depth_problem(builder, sub, trail),
+                PlanStepAction::Assignment { .. } => None,
+            })
+        })
+    });
+    trail.pop();
+    problem
 }
 
 fn fn_ref_path(assignment: &AssignmentDef) -> String {

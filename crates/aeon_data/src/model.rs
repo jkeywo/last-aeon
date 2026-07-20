@@ -397,6 +397,8 @@ pub struct ContentSet {
     pub obligations: BTreeMap<ContentKey, ObligationDef>,
     /// Contextual events, by key.
     pub events: BTreeMap<ContentKey, EventDef>,
+    /// Plans autonomous characters may pursue, by key.
+    pub plans: BTreeMap<ContentKey, PlanDef>,
     /// The scenario, if this content set defines one.
     pub scenario: Option<ScenarioDef>,
     /// Compiled ASTs by content-relative path, for runtime function calls.
@@ -420,6 +422,7 @@ impl ContentSet {
             && self.offices == other.offices
             && self.ships == other.ships
             && self.armies == other.armies
+            && self.plans == other.plans
             && self.scenario == other.scenario
             && self.content_hash == other.content_hash
     }
@@ -927,6 +930,128 @@ pub struct ObligationDef {
     pub weight: i32,
     /// Days until it lapses; `None` never lapses.
     pub days: Option<i64>,
+}
+
+/// An authored plan: a goal a character may pursue over months, decomposed
+/// into methods and steps.
+///
+/// A plan is the AI's counterpart to a campaign the player would run by
+/// hand: where the reactive scorer answers a pressure with a single
+/// assignment, a plan answers one with an ordered sequence of them. It is
+/// data all the way down — the goal names a pressure from the existing
+/// intent vocabulary, methods are gated by declarative conditions, and
+/// every step names an ordinary assignment or a sub-plan — so a new plan
+/// is authored content, not an engine change, and conditions validate at
+/// load and replay identically.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlanDef {
+    /// The plan's stable content key.
+    pub key: ContentKey,
+    /// Short player-facing title.
+    pub title: String,
+    /// One-sentence player-facing summary.
+    pub summary: String,
+    /// The pressure this plan answers, from the shared intent vocabulary.
+    pub goal: AiIntent,
+    /// Added to the scored pressure when weighing the plan against acting
+    /// on the pressure directly: how much better a campaign is than a
+    /// single act.
+    pub score_bonus: i64,
+    /// What the plan as a whole is aimed at. Restricted to `None`,
+    /// `Organisation`, or `Province`; the finer target kinds belong to
+    /// individual assignments.
+    pub target: AssignmentTargetKind,
+    /// Days after completion or abandonment before the same character may
+    /// adopt this plan again.
+    pub cooldown_days: u32,
+    /// Abandon the plan outright if it is still running after this many
+    /// days. The single safety valve against a plan waiting forever on a
+    /// step that never becomes possible.
+    pub max_days: u32,
+    /// How many times one step may fail before the plan is abandoned.
+    pub max_step_retries: u32,
+    /// Ways to pursue the goal, in authored preference order.
+    pub methods: Vec<PlanMethodDef>,
+}
+
+/// One way to pursue a plan's goal: a gate and an ordered list of steps.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlanMethodDef {
+    /// Stable id within its plan, for naming it in logs and tests.
+    pub id: String,
+    /// Conditions the actor must meet before this method may be chosen.
+    pub requires: PlanRequires,
+    /// The steps, in the order they are taken.
+    pub steps: Vec<PlanStepDef>,
+}
+
+/// One step of a plan method.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlanStepDef {
+    /// Stable id within its method; defaults to the action's key.
+    pub id: String,
+    /// What taking this step means.
+    pub action: PlanStepAction,
+    /// Skip the step when these conditions already hold — a treasury that
+    /// is full does not need filling.
+    pub skip_if: Option<PlanRequires>,
+}
+
+/// What a plan step does when its turn comes.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum PlanStepAction {
+    /// Start an ordinary assignment through the same gate the player uses.
+    Assignment {
+        /// The assignment to start.
+        key: ContentKey,
+        /// Where its target comes from.
+        target: PlanTargetSelector,
+    },
+    /// Expand another plan's first eligible method in place, at adoption.
+    SubPlan(ContentKey),
+}
+
+/// Where a plan step's assignment target comes from.
+///
+/// Deliberately tiny: a step either needs no target or is aimed at the
+/// plan's own target. Richer selection (the nearest hostile army, the
+/// weakest neighbour) is a later milestone's vocabulary, not a default to
+/// grow into silently.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum PlanTargetSelector {
+    /// The assignment takes no target.
+    #[default]
+    None,
+    /// The assignment is aimed at the plan's target.
+    PlanTarget,
+}
+
+/// Declarative conditions gating a plan method or skipping a step.
+///
+/// The same shape and reason as [`AssignmentRequires`]: conditions are
+/// data rather than script, so they validate at load and evaluate
+/// identically on every replay. Every field defaults to "do not care".
+/// Integer facts about the actor's authority and the plan's target only —
+/// a condition the player could not check by looking at the same screens
+/// does not belong here.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct PlanRequires {
+    /// The authority's wealth must be at or above this.
+    pub min_wealth: Option<i64>,
+    /// The authority's manpower must be at or above this.
+    pub min_manpower: Option<i64>,
+    /// The authority's influence must be at or above this.
+    pub min_influence: Option<i64>,
+    /// The authority's effective legitimacy must be at or above this.
+    pub min_legitimacy: Option<i32>,
+    /// Whether the authority must have (or must not have) a standing army.
+    pub has_army: Option<bool>,
+    /// The plan's target organisation must owe the authority an open
+    /// favour.
+    pub target_owes_favour: bool,
+    /// The authority must be the dominant claimant of the crisis body.
+    pub dominant_claimant: bool,
 }
 
 /// An authored office: a revocable appointment held by a character.

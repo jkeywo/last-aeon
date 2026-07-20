@@ -68,8 +68,8 @@ entities:
 
   - milestone: m5-the-plan-vocabulary
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "M5.2: Plans Are Authored Content"
       summary: >-
         A plan is data: a goal drawn from the existing pressure
@@ -90,9 +90,21 @@ entities:
         - crates/aeon_data/src/model.rs
         - crates/aeon_data/src/host/builders.rs
         - crates/aeon_data/src/host/validate.rs
+        - crates/aeon_data/src/host/display.rs
       tests:
-        - crates/aeon_data/src/host/builders.rs
+        - crates/aeon_data/tests/loading.rs
       status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_data/tests/loading.rs
+        summary: >-
+          A valid plan loads with its methods, defaulted step ids, target
+          selectors and skip conditions intact; a step naming a missing
+          assignment, a cyclic pair of sub-plans, a step whose target kind
+          disagrees with its assignment, and a step aiming at a target its
+          plan does not have each fail to load with a named error. One
+          discovery recorded in the builder: `do` is a reserved word in
+          Rhai, so the step field is spelled `start`.
 
   - milestone: m5-the-plan-runtime
     core:

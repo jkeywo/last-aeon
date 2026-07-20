@@ -21,9 +21,10 @@ use crate::model::{
     AiIntent, ArmyDef, AssignmentCategory, AssignmentDef, AssignmentRequires, AssignmentTargetKind,
     BodyDef, BodyKind, CharacterDef, EventChoiceDef, EventDef, EventFamily, EventRequires, Gender,
     GoverningSkill, HolderRelation, HouseTier, MilitaryOp, NamePoolDef, ObligationDef,
-    ObligationKind, OfficeDef, OrgDef, OrgKind, OutcomeDef, OutcomeKind, PopupChoiceDef,
-    ProvinceDef, RiskTag, ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SkillsDef, StageDef,
-    TitleDef, TitleHolderDef, TitleKindDef, TitleNeed, TraitDef, Urgency,
+    ObligationKind, OfficeDef, OrgDef, OrgKind, OutcomeDef, OutcomeKind, PlanDef, PlanMethodDef,
+    PlanRequires, PlanStepAction, PlanStepDef, PlanTargetSelector, PopupChoiceDef, ProvinceDef,
+    RiskTag, ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SkillsDef, StageDef, TitleDef,
+    TitleHolderDef, TitleKindDef, TitleNeed, TraitDef, Urgency,
 };
 use crate::report::{ContentReport, Severity};
 
@@ -45,6 +46,7 @@ pub(super) struct BuilderState {
     pub(super) armies: BTreeMap<ContentKey, ArmyDef>,
     pub(super) obligations: BTreeMap<ContentKey, ObligationDef>,
     pub(super) events: BTreeMap<ContentKey, EventDef>,
+    pub(super) plans: BTreeMap<ContentKey, PlanDef>,
     pub(super) scenario: Option<ScenarioDef>,
 }
 
@@ -72,6 +74,7 @@ impl BuilderState {
             armies: std::mem::take(&mut self.armies),
             obligations: std::mem::take(&mut self.obligations),
             events: std::mem::take(&mut self.events),
+            plans: std::mem::take(&mut self.plans),
             scenario: self.scenario.take(),
         }
     }
@@ -1701,6 +1704,272 @@ fn define_event(state: &mut BuilderState, map: Map) {
     );
 }
 
+fn define_plan(state: &mut BuilderState, map: Map) {
+    let Some(mut f) = Fields::begin(state, map) else {
+        return;
+    };
+    let title = f.moved_to_table("title", "plan");
+    let summary = f.moved_to_table("summary", "plan");
+    let Some(goal) = f.req_enum(
+        "goal",
+        &[
+            ("routine", AiIntent::Routine),
+            ("order", AiIntent::Order),
+            ("muster", AiIntent::Muster),
+            ("obligation", AiIntent::Obligation),
+            ("resources", AiIntent::Resources),
+            ("standing", AiIntent::Standing),
+            ("claim", AiIntent::Claim),
+        ],
+    ) else {
+        return;
+    };
+    let Some(score_bonus) = f.opt_int("score_bonus", 0) else {
+        return;
+    };
+    // A plan aims at coarse things only; the finer target kinds belong to
+    // the assignments its steps start.
+    let Some(target) = f.opt_enum(
+        "target",
+        &[
+            ("none", AssignmentTargetKind::None),
+            ("organisation", AssignmentTargetKind::Organisation),
+            ("province", AssignmentTargetKind::Province),
+        ],
+        AssignmentTargetKind::None,
+    ) else {
+        return;
+    };
+    let Some(cooldown_days) = f.opt_int("cooldown_days", 0) else {
+        return;
+    };
+    if !(0..=100_000).contains(&cooldown_days) {
+        f.error(format!(
+            "cooldown_days must be 0..=100000, got {cooldown_days}"
+        ));
+        return;
+    }
+    let Some(max_days) = f.req_int("max_days") else {
+        return;
+    };
+    if !(1..=100_000).contains(&max_days) {
+        f.error(format!("max_days must be 1..=100000, got {max_days}"));
+        return;
+    }
+    let Some(max_step_retries) = f.opt_int("max_step_retries", 1) else {
+        return;
+    };
+    if !(0..=100).contains(&max_step_retries) {
+        f.error(format!(
+            "max_step_retries must be 0..=100, got {max_step_retries}"
+        ));
+        return;
+    }
+
+    let Some(raw_methods) = f.take_raw("methods") else {
+        f.error("missing required field 'methods'");
+        return;
+    };
+    let Some(list) = raw_methods.try_cast::<rhai::Array>() else {
+        f.error("methods must be a list");
+        return;
+    };
+    let mut methods: Vec<PlanMethodDef> = Vec::new();
+    for entry in list {
+        let Some(method) = plan_method(&mut f, entry) else {
+            return;
+        };
+        if methods.iter().any(|m| m.id == method.id) {
+            f.error(format!("duplicate method id '{}'", method.id));
+            return;
+        }
+        methods.push(method);
+    }
+    if methods.is_empty() {
+        f.error("a plan needs at least one method");
+        return;
+    }
+
+    let (state, key) = f.finish();
+    if state.plans.contains_key(&key) {
+        state.error(Some(key.as_str()), "duplicate plan id");
+        return;
+    }
+    state.plans.insert(
+        key.clone(),
+        PlanDef {
+            key,
+            title,
+            summary,
+            goal,
+            score_bonus,
+            target,
+            cooldown_days: cooldown_days as u32,
+            max_days: max_days as u32,
+            max_step_retries: max_step_retries as u32,
+            methods,
+        },
+    );
+}
+
+/// Reads one of a plan's methods: a gate and its ordered steps.
+fn plan_method(f: &mut Fields, entry: rhai::Dynamic) -> Option<PlanMethodDef> {
+    let Some(map) = entry.try_cast::<Map>() else {
+        f.error("each method must be a map");
+        return None;
+    };
+    warn_unknown_fields(
+        f.state,
+        &map,
+        Some(f.key.as_str()),
+        &["id", "requires", "steps"],
+    );
+    let key_str = f.key_str();
+    let id = req_str(f.state, Some(&key_str), &map, "id")?;
+    let requires = match map.get("requires") {
+        None => PlanRequires::default(),
+        Some(raw) => plan_requires(f, raw.clone())?,
+    };
+    let Some(raw_steps) = map.get("steps").cloned() else {
+        f.error(format!("method '{id}' needs steps"));
+        return None;
+    };
+    let Some(list) = raw_steps.try_cast::<rhai::Array>() else {
+        f.error(format!("method '{id}' steps must be a list"));
+        return None;
+    };
+    let mut steps: Vec<PlanStepDef> = Vec::new();
+    for entry in list {
+        let step = plan_step(f, entry)?;
+        if steps.iter().any(|s| s.id == step.id) {
+            f.error(format!("method '{id}' repeats step id '{}'", step.id));
+            return None;
+        }
+        steps.push(step);
+    }
+    if steps.is_empty() {
+        f.error(format!("method '{id}' needs at least one step"));
+        return None;
+    }
+    Some(PlanMethodDef {
+        id,
+        requires,
+        steps,
+    })
+}
+
+/// Reads one step: an assignment to start or a sub-plan to expand.
+fn plan_step(f: &mut Fields, entry: rhai::Dynamic) -> Option<PlanStepDef> {
+    let Some(map) = entry.try_cast::<Map>() else {
+        f.error("each step must be a map");
+        return None;
+    };
+    warn_unknown_fields(
+        f.state,
+        &map,
+        Some(f.key.as_str()),
+        // "start" rather than "do": `do` is a reserved word in Rhai, and a
+        // map literal keyed with it fails to parse.
+        &["id", "start", "plan", "target", "skip_if"],
+    );
+    let key_str = f.key_str();
+    let doing = opt_key(f.state, Some(&key_str), &map, "start")?;
+    let sub = opt_key(f.state, Some(&key_str), &map, "plan")?;
+    let action = match (doing, sub) {
+        (Some(assignment), None) => {
+            let target = match map
+                .get("target")
+                .and_then(|v| v.clone().into_string().ok())
+                .as_deref()
+            {
+                None | Some("none") => PlanTargetSelector::None,
+                Some("plan") => PlanTargetSelector::PlanTarget,
+                Some(other) => {
+                    f.error(format!(
+                        "unknown step target '{other}' (expected none, plan)"
+                    ));
+                    return None;
+                }
+            };
+            PlanStepAction::Assignment {
+                key: assignment,
+                target,
+            }
+        }
+        (None, Some(plan)) => {
+            if map.contains_key("target") {
+                f.error("a sub-plan step takes no target");
+                return None;
+            }
+            PlanStepAction::SubPlan(plan)
+        }
+        (Some(_), Some(_)) => {
+            f.error("a step is either 'start' or 'plan', not both");
+            return None;
+        }
+        (None, None) => {
+            f.error("a step needs 'start' (an assignment) or 'plan' (a sub-plan)");
+            return None;
+        }
+    };
+    let id = match opt_str(f.state, Some(&key_str), &map, "id")? {
+        Some(id) => id,
+        None => match &action {
+            PlanStepAction::Assignment { key, .. } => key.to_string(),
+            PlanStepAction::SubPlan(key) => key.to_string(),
+        },
+    };
+    let skip_if = match map.get("skip_if") {
+        None => None,
+        Some(raw) => Some(plan_requires(f, raw.clone())?),
+    };
+    Some(PlanStepDef {
+        id,
+        action,
+        skip_if,
+    })
+}
+
+/// Reads a plan's declarative conditions.
+///
+/// Every field defaults to "do not care", the same contract
+/// [`assignment_requires`] keeps: a gate that says nothing gates nothing.
+fn plan_requires(f: &mut Fields, raw: rhai::Dynamic) -> Option<PlanRequires> {
+    let Some(map) = raw.try_cast::<Map>() else {
+        f.error("plan conditions must be a map");
+        return None;
+    };
+    warn_unknown_fields(
+        f.state,
+        &map,
+        Some(f.key.as_str()),
+        &[
+            "min_wealth",
+            "min_manpower",
+            "min_influence",
+            "min_legitimacy",
+            "has_army",
+            "target_owes_favour",
+            "dominant_claimant",
+        ],
+    );
+    let int = |name: &str| map.get(name).and_then(|v| v.as_int().ok());
+    let flag = |name: &str| {
+        map.get(name)
+            .and_then(|v| v.as_bool().ok())
+            .unwrap_or(false)
+    };
+    Some(PlanRequires {
+        min_wealth: int("min_wealth"),
+        min_manpower: int("min_manpower"),
+        min_influence: int("min_influence"),
+        min_legitimacy: int("min_legitimacy").map(|v| v as i32),
+        has_army: map.get("has_army").and_then(|v| v.as_bool().ok()),
+        target_owes_favour: flag("target_owes_favour"),
+        dominant_claimant: flag("dominant_claimant"),
+    })
+}
+
 fn define_obligation(state: &mut BuilderState, map: Map) {
     let Some(mut f) = Fields::begin(state, map) else {
         return;
@@ -1886,5 +2155,6 @@ pub(super) fn loading_engine(state: Arc<Mutex<BuilderState>>) -> Engine {
     register!("define_army", define_army);
     register!("define_obligation", define_obligation);
     register!("define_event", define_event);
+    register!("define_plan", define_plan);
     engine
 }
