@@ -43,6 +43,13 @@ pub fn draw_assignments_panel(
                     .unwrap_or_else(|| strings.text("ui.inspector.unknown"));
                 let leader = lookup.char_name(assignment.leader);
                 let remaining = date.days_until(assignment.completes).max(0);
+                // Which phase it has reached, and whether it is still
+                // yours to call off.
+                let def = content.0.assignments.get(&assignment.def);
+                let recallable = def.is_some_and(|def| assignment.interruptible_on(def, date));
+                let phase = def
+                    .filter(|def| def.stages.len() > 1)
+                    .map(|def| def.stages[assignment.stage(def, date)].id.clone());
                 ui.horizontal(|ui| {
                     ui.label(strings.format(
                         "ui.assignments.row",
@@ -52,8 +59,19 @@ pub fn draw_assignments_panel(
                             ("days", &remaining.to_string()),
                         ],
                     ));
-                    if ui
-                        .small_button(strings.text("ui.assignments.cancel"))
+                    if let Some(phase) = &phase {
+                        ui.weak(strings.format("ui.assignments.phase", &[("phase", phase)]));
+                    }
+                    if assignment.cancel_requested {
+                        // The click landed; it is simply waiting for a
+                        // phase that can be interrupted.
+                        ui.weak(strings.text("ui.assignments.cancel-pending"));
+                    } else if ui
+                        .add_enabled(
+                            recallable,
+                            egui::Button::new(strings.text("ui.assignments.cancel")).small(),
+                        )
+                        .on_disabled_hover_text(strings.text("ui.assignments.cannot-recall"))
                         .clicked()
                     {
                         queue.0.push(PlayerCommand::CancelAssignment {

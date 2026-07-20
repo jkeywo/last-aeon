@@ -85,6 +85,12 @@ pub struct AssignmentForecast {
     pub military_op: Option<MilitaryOp>,
     /// Why this assignment cannot be started now, if it cannot.
     pub blocked: Option<AssignmentRejection>,
+    /// Days from the start after which it can no longer be called off.
+    ///
+    /// `None` means it can be called off at any point. Reported because a
+    /// commitment the player cannot see before making it is not a
+    /// decision they get to make.
+    pub point_of_no_return: Option<i64>,
 }
 
 impl AssignmentForecast {
@@ -322,6 +328,7 @@ pub fn forecast(
         risks,
         military_op: def.military_op,
         blocked: crate::assignments::validate_start(world, org, def_key, leader, target).err(),
+        point_of_no_return: def.point_of_no_return(),
     })
 }
 

@@ -66,6 +66,11 @@ define_assignment(#{
     influence_cost: 20,
     ai_available: false,
     requires: #{ target_holder: "other" },
+    // The lines can be lifted; the storm cannot be called back.
+    stages: [
+        #{ id: "invest", days: 45, interruptible: true },
+        #{ id: "storm", days: 15, interruptible: false },
+    ],
     results: #{
         critical_success: #{
             weight: 100, popup: true, log: true,
@@ -94,6 +99,12 @@ define_assignment(#{
     supplies_cost: 15,
     ai_available: false,
     requires: #{ target_holder: "other" },
+    // Riders can be recalled on the way out, not once they are among
+    // the steadings.
+    stages: [
+        #{ id: "ride-out", days: 15, interruptible: true },
+        #{ id: "plunder", days: 10, interruptible: false },
+    ],
     results: #{
         critical_success: #{
             weight: 150, log: true,
@@ -121,6 +132,11 @@ define_assignment(#{
     supplies_cost: 10,
     ai_available: false,
     requires: #{ target_holder: "other" },
+    // A fleet can be turned back before it closes the sea lane.
+    stages: [
+        #{ id: "close-the-lane", days: 6, interruptible: true },
+        #{ id: "hold-station", days: 14, interruptible: false },
+    ],
     results: #{
         success: #{
             weight: 800, log: true,

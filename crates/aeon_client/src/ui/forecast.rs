@@ -153,6 +153,21 @@ pub fn draw_forecast_body(
         .on_hover_text(strings.text("ui.forecast.military-op.hover"));
     }
 
+    // What committing actually commits to.
+    match view.point_of_no_return {
+        Some(0) => {
+            ui.colored_label(
+                theme.semantics.target(TargetState::NotInteractable),
+                strings.text("ui.forecast.no-recall"),
+            );
+        }
+        Some(day) => {
+            ui.label(strings.format("ui.forecast.recall-until", &[("days", &day.to_string())]))
+                .on_hover_text(strings.text("ui.forecast.recall-until.hover"));
+        }
+        None => {}
+    }
+
     if let Some(reason) = &view.blocked {
         ui.colored_label(
             theme.semantics.target(TargetState::IneligibleFixable),

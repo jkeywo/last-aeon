@@ -352,6 +352,9 @@ ui.actions.no-leader,Shown beside the led-by label before anyone has been chosen
 ui.actions.none-here,Shown when a selection offers no assignments at all.,Nothing to order here.
 ui.actions.obstacle.ship-has-no-captain,Shown at the ship slot when the chosen ship has no captain to carry the order. The ship's own name is already on screen beside it.,[This ship has no captain. A ship is ordered by the officer who commands it — assign one first.]
 ui.actions.unavailable,Fallback shown when a character cannot take on work and no more specific reason is known.,[unavailable]
+ui.assignments.cancel-pending,Shown instead of the cancel button once calling off has been asked for but cannot yet happen.,Called off when it can be
+ui.assignments.cannot-recall,Tooltip on the disabled cancel button while an assignment is past recall.,This is past the point of recall. It will run to its end.
+ui.assignments.phase,Which phase an assignment has reached. {phase} is the phase name.,({phase})
 ui.body-kind.moon,What kind of body this is: a moon orbiting a planet.,[Moon]
 ui.body-kind.planet,What kind of body this is: a planet.,[Planet]
 ui.body-kind.starbase,What kind of body this is: an artificial station rather than a natural body.,[Starbase]
@@ -373,8 +376,11 @@ ui.forecast.duration,Line in a forecast giving how long the assignment takes onc
 ui.forecast.duration.hover,Tooltip on the duration line.,[Days from the order taking effect until it resolves. A march takes at least as long as the army needs to reach its objective.]
 ui.forecast.military-op,Line warning that a military assignment is settled in the field after its roll. {operation} is the operation's name.,[Then contested in the field ({operation})]
 ui.forecast.military-op.hover,Tooltip explaining that the field contest is deliberately outside the percentages.,"[These chances cover the order itself. Even a successful order is then decided by the operation — the strength, supply and order of the forces present settle it, and that contest is deliberately not folded into the percentages above.]"
+ui.forecast.no-recall,Shown when an assignment cannot be called off at all once begun.,Once begun this cannot be called off.
 ui.forecast.outcomes,Heading above the outcome distribution in a forecast.,[If ordered now]
 ui.forecast.outcomes.hover,Tooltip on the outcome heading.,[The exact outcome distribution the simulation would roll against today. It moves with the leader you choose and their skill.]
+ui.forecast.recall-until,How long an assignment can still be called off. {days} is a day count.,Can be called off for the first {days} days
+ui.forecast.recall-until.hover,Tooltip explaining the point of recall.,After that it runs to its end whatever you order.
 ui.forecast.result.asks-you,An outcome row for a result that opens a popup asking the player to choose. {result} is the outcome name.,[{result}  (asks you)]
 ui.forecast.result.unauthored,Tooltip on an outcome with no authored consequence written for it.,[No authored consequence for this outcome.]
 ui.forecast.risk,A personal risk to the assignment's leader. {risk} is the risk's name; {on_failure} and {on_disaster} are percentages.,"[{risk} risk — {on_failure} on a failure, {on_disaster} on a disaster]"
