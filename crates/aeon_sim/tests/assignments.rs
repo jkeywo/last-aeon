@@ -172,6 +172,19 @@ define_assignment(#{
     ai_available: false,
     results: #{ success: #{ weight: 1 }, failure: #{ weight: 1 } },
 });
+// Two phases: the road, which can be turned back from, and the work
+// itself, which cannot.
+define_assignment(#{
+    id: "staged-work",
+    category: "consequential", duration_days: 20,
+    skill: "command", difficulty: 0, target: "none",
+    ai_available: false,
+    stages: [
+        #{ id: "approach", days: 14, interruptible: true },
+        #{ id: "commit", days: 6, interruptible: false },
+    ],
+    results: #{ success: #{ weight: 1 }, failure: #{ weight: 1 } },
+});
 "#;
 
 /// The prose behind the fixture's IDs.
@@ -232,6 +245,8 @@ fn strings() -> aeon_data::StringTable {
             "assignment.even-gamble.disaster.log-text",
             "OUTCOME-DISASTER",
         ),
+        ("assignment.staged-work.title", "Staged Work"),
+        ("assignment.staged-work.summary", "It has phases."),
         ("assignment.gated-raid.title", "Raid"),
         ("assignment.gated-raid.summary", "Take what is theirs."),
         ("assignment.gated-alarm.title", "Respond"),
@@ -1043,5 +1058,109 @@ mod requirements {
             ash,
             AssignmentTarget::Org(birch)
         ));
+    }
+}
+
+/// Phases, and what being called off means during each.
+///
+/// An assignment that authors no phases is one phase long and can be
+/// called off at any time, which is how every assignment behaved before
+/// phases existed — so the default has to keep working exactly as it did.
+mod stages {
+    use super::*;
+    use aeon_sim::AssignmentTarget;
+
+    fn start(h: &mut SimHost, who: &str, what: &str) -> aeon_sim::AssignmentId {
+        let org = org_id(h, "ash");
+        let leader = char_id(h, who);
+        aeon_sim::start_assignment(
+            h.world_mut(),
+            org,
+            &key(what),
+            leader,
+            AssignmentTarget::None,
+        )
+    }
+
+    fn live(h: &mut SimHost, id: aeon_sim::AssignmentId) -> bool {
+        aeon_sim::access::assignment(h.world_mut(), id).is_some()
+    }
+
+    #[test]
+    fn an_assignment_with_no_phases_can_be_called_off_at_any_time() {
+        let mut h = host(1);
+        let id = start(&mut h, "aron-ash", "sure-court");
+        h.advance_days(3);
+        aeon_sim::request_cancel(h.world_mut(), id);
+        assert!(!live(&mut h, id), "one phase, always interruptible");
+    }
+
+    #[test]
+    fn calling_off_during_an_interruptible_phase_ends_it_at_once() {
+        let mut h = host(2);
+        let id = start(&mut h, "aron-ash", "staged-work");
+        h.advance_days(5); // still on the road
+        aeon_sim::request_cancel(h.world_mut(), id);
+        assert!(!live(&mut h, id), "the approach can be turned back");
+    }
+
+    #[test]
+    fn calling_off_during_a_committed_phase_waits_rather_than_refusing() {
+        let mut h = host(3);
+        let id = start(&mut h, "aron-ash", "staged-work");
+        h.advance_days(16); // past day 14: committed
+
+        aeon_sim::request_cancel(h.world_mut(), id);
+        assert!(
+            live(&mut h, id),
+            "an army mid-assault does not turn round because a message arrived"
+        );
+        let asked = aeon_sim::access::assignment(h.world_mut(), id)
+            .is_some_and(|active| active.cancel_requested);
+        assert!(
+            asked,
+            "but the request is recorded, so the click is not silently lost"
+        );
+    }
+
+    #[test]
+    fn a_deferred_cancellation_is_honoured_when_the_work_ends() {
+        let mut h = host(4);
+        let id = start(&mut h, "aron-ash", "staged-work");
+        h.advance_days(16);
+        aeon_sim::request_cancel(h.world_mut(), id);
+        // Run past the end of the committed phase.
+        h.advance_days(10);
+        assert!(!live(&mut h, id), "it ends once it can");
+    }
+
+    #[test]
+    fn the_point_of_no_return_is_the_start_of_the_first_committed_phase() {
+        // What the interface shows before the player commits: a deadline
+        // they cannot see is not a decision they get to make.
+        let set = content();
+        let staged = &set.assignments[&key("staged-work")];
+        assert_eq!(staged.point_of_no_return(), Some(14));
+
+        let plain = &set.assignments[&key("sure-court")];
+        assert_eq!(
+            plain.point_of_no_return(),
+            None,
+            "an assignment that can always be called off has no such day"
+        );
+    }
+
+    #[test]
+    fn phases_are_walked_in_order_and_do_not_run_off_the_end() {
+        let set = content();
+        let staged = &set.assignments[&key("staged-work")];
+        assert_eq!(staged.stage_at(0), 0);
+        assert_eq!(staged.stage_at(13), 0, "the last day of the approach");
+        assert_eq!(staged.stage_at(14), 1, "the first day of the work");
+        assert_eq!(
+            staged.stage_at(999),
+            1,
+            "a late tick saturates rather than indexing past the work"
+        );
     }
 }

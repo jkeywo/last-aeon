@@ -339,14 +339,7 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
             }
         }
         PlayerCommand::CancelAssignment { assignment } => {
-            let entity = crate::access::assignment_entity(world, *assignment);
-            if let Some(entity) = entity {
-                world.despawn(entity);
-                world
-                    .resource_mut::<crate::assignments::AssignmentsIndex>()
-                    .assignments
-                    .remove(assignment);
-            }
+            crate::assignments::request_cancel(world, *assignment);
         }
         PlayerCommand::AnswerPopup { popup, choice } => {
             let _ = assignments::answer_popup(world, *popup, choice);

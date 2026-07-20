@@ -244,7 +244,55 @@ pub struct AssignmentDef {
     /// button, the forecast, the autonomous houses and any standing order
     /// all agree by construction.
     pub requires: AssignmentRequires,
+    /// The phases it runs through, in order.
+    ///
+    /// Never empty once loaded: content that authors none gets a single
+    /// interruptible phase covering `duration_days`, so the two can never
+    /// disagree about how long the work takes.
+    pub stages: Vec<StageDef>,
     pub results: BTreeMap<OutcomeKind, OutcomeDef>,
+}
+
+impl AssignmentDef {
+    /// The phase covering `day`, counted from the assignment's start.
+    ///
+    /// Saturates at the last phase rather than running off the end, so a
+    /// late tick cannot index past the work.
+    pub fn stage_at(&self, day: i64) -> usize {
+        let mut elapsed = 0i64;
+        for (index, stage) in self.stages.iter().enumerate() {
+            elapsed += i64::from(stage.days);
+            if day < elapsed {
+                return index;
+            }
+        }
+        self.stages.len().saturating_sub(1)
+    }
+
+    /// The day, counted from the start, on which `stage` ends.
+    pub fn stage_ends(&self, stage: usize) -> i64 {
+        self.stages
+            .iter()
+            .take(stage + 1)
+            .map(|s| i64::from(s.days))
+            .sum()
+    }
+
+    /// The first day from which this can no longer be called off, if
+    /// there is one.
+    ///
+    /// What the interface shows before the player commits: a deadline
+    /// they cannot see is not a decision they get to make.
+    pub fn point_of_no_return(&self) -> Option<i64> {
+        let mut elapsed = 0i64;
+        for stage in &self.stages {
+            if !stage.interruptible {
+                return Some(elapsed);
+            }
+            elapsed += i64::from(stage.days);
+        }
+        None
+    }
 }
 
 /// What kind of celestial body a map body is.
@@ -641,6 +689,28 @@ pub enum EventFamily {
 ///
 /// Conditions are data rather than script so they can be validated at
 /// load and evaluated identically on every replay.
+/// One phase of an assignment, and whether it can be called off.
+///
+/// An assignment that authors no stages is one stage long and can be
+/// called off at any time, which is exactly how every assignment behaved
+/// before stages existed. Authoring them is how content says that some
+/// part of the work is a commitment: a march can be turned around, an
+/// assault under way cannot.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct StageDef {
+    /// Stable id within its assignment, for naming it to the player.
+    pub id: String,
+    /// How long this phase lasts.
+    pub days: u32,
+    /// Whether the assignment can be called off during it.
+    pub interruptible: bool,
+    /// Applied if the assignment is called off during this phase.
+    ///
+    /// Being turned back on the road is not the same as abandoning a
+    /// siege, so what it costs is authored per phase rather than once.
+    pub on_interrupt: Option<ScriptFnRef>,
+}
+
 /// Who a target has to be, for an assignment to be offered against it.
 ///
 /// The same shape as [`EventRequires`], and for the same reason: conditions

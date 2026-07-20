@@ -365,6 +365,12 @@ mod tests {
             supplies_cost: 0,
             influence_cost: 0,
             requires: Default::default(),
+            stages: vec![aeon_data::model::StageDef {
+                id: "whole".to_owned(),
+                days: 30,
+                interruptible: true,
+                on_interrupt: None,
+            }],
             results,
         }
     }

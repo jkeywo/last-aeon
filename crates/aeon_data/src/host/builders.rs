@@ -22,8 +22,8 @@ use crate::model::{
     BodyDef, BodyKind, CharacterDef, EventChoiceDef, EventDef, EventFamily, EventRequires, Gender,
     GoverningSkill, HolderRelation, HouseTier, MilitaryOp, NamePoolDef, ObligationDef,
     ObligationKind, OfficeDef, OrgDef, OrgKind, OutcomeDef, OutcomeKind, PopupChoiceDef,
-    ProvinceDef, RiskTag, ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SkillsDef, TitleDef,
-    TitleHolderDef, TitleKindDef, TitleNeed, TraitDef,
+    ProvinceDef, RiskTag, ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SkillsDef, StageDef,
+    TitleDef, TitleHolderDef, TitleKindDef, TitleNeed, TraitDef,
 };
 use crate::report::{ContentReport, Severity};
 
@@ -662,6 +662,7 @@ fn define_assignment(state: &mut BuilderState, map: Map) {
     };
 
     let requires = assignment_requires(&mut f);
+    let stages = assignment_stages(&mut f, duration_days as u32);
 
     let Some(results_value) = f.take_raw("results") else {
         f.error("missing required field 'results'");
@@ -700,9 +701,92 @@ fn define_assignment(state: &mut BuilderState, map: Map) {
             supplies_cost,
             influence_cost,
             requires,
+            stages,
             results,
         },
     );
+}
+
+/// Reads an assignment's phases.
+///
+/// Content that authors none gets one interruptible phase covering the
+/// whole duration, which is exactly how assignments behaved before phases
+/// existed. Content that authors them owns the duration: `duration_days`
+/// is checked against their sum rather than believed, because two numbers
+/// that can disagree eventually will.
+fn assignment_stages(f: &mut Fields, duration_days: u32) -> Vec<StageDef> {
+    let default = || {
+        vec![StageDef {
+            id: "whole".to_owned(),
+            days: duration_days,
+            interruptible: true,
+            on_interrupt: None,
+        }]
+    };
+    let Some(raw) = f.take_raw("stages") else {
+        return default();
+    };
+    let Some(list) = raw.try_cast::<rhai::Array>() else {
+        f.error("stages must be a list");
+        return default();
+    };
+
+    let mut stages = Vec::new();
+    for entry in list {
+        let Some(map) = entry.try_cast::<Map>() else {
+            f.error("each stage must be a map");
+            return default();
+        };
+        warn_unknown_fields(
+            f.state,
+            &map,
+            Some(f.key.as_str()),
+            &["id", "days", "interruptible", "on_interrupt"],
+        );
+        let Some(id) = map.get("id").and_then(|v| v.clone().into_string().ok()) else {
+            f.error("a stage needs an id");
+            return default();
+        };
+        let Some(days) = map.get("days").and_then(|v| v.as_int().ok()) else {
+            f.error("a stage needs days");
+            return default();
+        };
+        if days <= 0 {
+            f.error("a stage must last at least a day");
+            return default();
+        }
+        let interruptible = map
+            .get("interruptible")
+            .and_then(|v| v.as_bool().ok())
+            .unwrap_or(true);
+        // Script references carry the file they were written in, so a
+        // stage's effect resolves the same way a result's does.
+        let on_interrupt = map
+            .get("on_interrupt")
+            .and_then(|v| v.clone().into_string().ok())
+            .map(|name| ScriptFnRef {
+                path: f.state.current_path.clone(),
+                name,
+            });
+        stages.push(StageDef {
+            id,
+            days: days as u32,
+            interruptible,
+            on_interrupt,
+        });
+    }
+
+    if stages.is_empty() {
+        f.error("stages must not be empty");
+        return default();
+    }
+    let total: u32 = stages.iter().map(|s| s.days).sum();
+    if total != duration_days {
+        f.error(format!(
+            "stages last {total} days but duration_days says {duration_days}"
+        ));
+    }
+    stages
 }
 
 /// Reads an assignment's target requirements.

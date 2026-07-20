@@ -61,6 +61,27 @@ pub struct ActiveAssignment {
     pub started: GameDate,
     /// The day it resolves.
     pub completes: GameDate,
+    /// Whether the owner has asked for it to be called off.
+    ///
+    /// A request rather than an act, because it may land during a phase
+    /// that cannot be interrupted — in which case it waits, and the
+    /// player can see that it is waiting rather than wondering whether
+    /// the click registered.
+    pub cancel_requested: bool,
+}
+
+impl ActiveAssignment {
+    /// Which phase it is in on `date`, given its definition.
+    pub fn stage(&self, def: &AssignmentDef, date: GameDate) -> usize {
+        def.stage_at(self.started.days_until(date))
+    }
+
+    /// Whether it can be called off on `date`.
+    pub fn interruptible_on(&self, def: &AssignmentDef, date: GameDate) -> bool {
+        def.stages
+            .get(self.stage(def, date))
+            .is_some_and(|stage| stage.interruptible)
+    }
 }
 
 /// Temporary states that keep a character from leading new assignments.
@@ -651,6 +672,113 @@ fn target_valid(
     shaped && requirements_met(world, def, owner, target)
 }
 
+/// Asks for an assignment to be called off.
+///
+/// Whether that happens now depends on the phase it is in. During an
+/// interruptible one it ends immediately, running whatever the phase says
+/// being called off costs. During one that is not, the request is
+/// recorded and honoured the moment the phase ends — an army mid-assault
+/// does not turn round because a message arrived.
+///
+/// Recording rather than refusing matters: a click that appears to do
+/// nothing is indistinguishable from a click that was not registered.
+pub fn request_cancel(world: &mut World, assignment: AssignmentId) {
+    let Some(entity) = crate::access::assignment_entity(world, assignment) else {
+        return;
+    };
+    let date = world.resource::<CampaignClock>().date;
+    let Some(active) = world.get::<ActiveAssignment>(entity).cloned() else {
+        return;
+    };
+    let content = world.resource::<ContentDb>().0.clone();
+    let Some(def) = content.assignments.get(&active.def) else {
+        return;
+    };
+
+    if active.interruptible_on(def, date) {
+        end_interrupted(world, entity, &active, def, date);
+        return;
+    }
+    if let Some(mut record) = world.get_mut::<ActiveAssignment>(entity) {
+        record.cancel_requested = true;
+    }
+}
+
+/// Ends an assignment that has been called off, running the phase's own
+/// account of what that costs.
+fn end_interrupted(
+    world: &mut World,
+    entity: Entity,
+    active: &ActiveAssignment,
+    def: &AssignmentDef,
+    date: GameDate,
+) {
+    let stage = active.stage(def, date);
+    if let Some(on_interrupt) = def
+        .stages
+        .get(stage)
+        .and_then(|stage| stage.on_interrupt.clone())
+    {
+        // The same path a result's effect takes, so being called off can
+        // do anything an outcome can and is subject to the same rules.
+        let roles = resolve_roles(world, active);
+        let target_label = target_name(world, active.target);
+        let content = world.resource::<ContentDb>().0.clone();
+        let ctx = effect_context(
+            world,
+            &active.def,
+            "interrupted",
+            Some(active.leader),
+            &target_label,
+        );
+        let effects = {
+            let runtime = world.resource::<ScriptRuntime>();
+            runtime.0.call_effect_fn(&content, &on_interrupt, ctx)
+        };
+        if let Ok(effects) = effects {
+            apply_effects(world, &effects, &roles, Some(active.owner));
+        }
+    }
+    log_interrupted(world, active, def, stage);
+    world.despawn(entity);
+    world
+        .resource_mut::<AssignmentsIndex>()
+        .assignments
+        .remove(&active.id);
+}
+
+/// Says in the log that an assignment was called off, and from where.
+fn log_interrupted(
+    world: &mut World,
+    active: &ActiveAssignment,
+    def: &AssignmentDef,
+    stage: usize,
+) {
+    let date = world.resource::<CampaignClock>().date;
+    let strings = world.resource::<TextDb>().clone();
+    let name = strings.text(&format!("assignment.{}.title", active.def));
+    let phase = def
+        .stages
+        .get(stage)
+        .map(|stage| stage.id.clone())
+        .unwrap_or_default();
+    let text = strings.format(
+        "sim.assignment.called-off",
+        &[("assignment", name), ("stage", &phase)],
+    );
+    let _ = date;
+    crate::access::log(
+        world,
+        LogEntry {
+            date: world.resource::<CampaignClock>().date,
+            text,
+            org: Some(active.owner),
+            subject: Some(LogSubject::Character(active.leader)),
+            channel: LogChannel::Assignments,
+        },
+    );
+}
+
 /// Whether this target is a legal one for this assignment.
 ///
 /// Public so the interface can ask the question it is about to offer the
@@ -930,6 +1058,7 @@ pub fn start_assignment(
             target,
             started: date,
             completes: date.add_days(duration),
+            cancel_requested: false,
         })
         .id();
     world
@@ -1258,12 +1387,45 @@ pub fn apply_risk(world: &mut World, leader: CharacterId, tag: RiskTag, date: Ga
     }
 }
 
+/// Ends assignments whose cancellation was asked for during a phase that
+/// could not be interrupted, and which now can be.
+///
+/// Runs before the day's resolutions, so an assignment called off on the
+/// first day it becomes interruptible does not also resolve.
+fn honour_deferred_cancels(world: &mut World, date: GameDate) {
+    let waiting: Vec<Entity> = world
+        .resource::<AssignmentsIndex>()
+        .assignments
+        .values()
+        .filter(|entity| {
+            world
+                .get::<ActiveAssignment>(**entity)
+                .is_some_and(|active| active.cancel_requested)
+        })
+        .copied()
+        .collect();
+
+    let content = world.resource::<ContentDb>().0.clone();
+    for entity in waiting {
+        let Some(active) = world.get::<ActiveAssignment>(entity).cloned() else {
+            continue;
+        };
+        let Some(def) = content.assignments.get(&active.def) else {
+            continue;
+        };
+        if active.interruptible_on(def, date) {
+            end_interrupted(world, entity, &active, def, date);
+        }
+    }
+}
+
 /// Daily: resolves every assignment due today, in stable-ID order.
 pub fn resolve_due_assignments(world: &mut World) {
     if world.get_resource::<AssignmentsIndex>().is_none() {
         return;
     }
     let date = world.resource::<CampaignClock>().date;
+    honour_deferred_cancels(world, date);
     let player = world.get_resource::<PlayerHouse>().and_then(|p| p.0);
 
     let due: Vec<(AssignmentId, Entity)> = world
@@ -1608,6 +1770,7 @@ pub fn restore_assignments(world: &mut World, state: &AssignmentsState) {
                 target: assignment.target,
                 started: assignment.started,
                 completes: assignment.completes,
+                cancel_requested: false,
             })
             .id();
         index.assignments.insert(assignment.id, entity);
