@@ -7,6 +7,7 @@
 //! because unlike this strip it is something a player may want to keep
 //! beside the map while reading it.
 
+use aeon_sim::TextDb;
 use bevy_egui::egui;
 
 use crate::map_modes::MapReadout;
@@ -17,6 +18,7 @@ use crate::view::{MapView, Selection, ViewState};
 pub fn draw_overlays(
     ctx: &egui::Context,
     theme: &UiTheme,
+    strings: &TextDb,
     readout: &MapReadout,
     view: &mut ViewState,
 ) {
@@ -29,8 +31,8 @@ pub fn draw_overlays(
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.horizontal_wrapped(|ui| {
-                        ui.strong("Needs attention:")
-                            .on_hover_text("Threats to your holdings. Click one to go to it.");
+                        ui.strong(strings.text("ui.situation.heading"))
+                            .on_hover_text(strings.text("ui.situation.heading.hover"));
                         for item in &readout.situation {
                             let colour = if item.urgent {
                                 egui::Color32::from(theme.semantics.urgent)

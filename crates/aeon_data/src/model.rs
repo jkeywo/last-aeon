@@ -104,6 +104,23 @@ pub enum RiskTag {
     Death,
 }
 
+impl RiskTag {
+    /// The key of this risk's player-facing name.
+    ///
+    /// Risks used to reach the player through `{:?}`, which put the Rust
+    /// variant name on screen — readable only because English happened to
+    /// be the language the enum was written in.
+    pub fn label_key(self) -> &'static str {
+        match self {
+            RiskTag::Injury => "ui.risk.injury",
+            RiskTag::Capture => "ui.risk.capture",
+            RiskTag::Scandal => "ui.risk.scandal",
+            RiskTag::Incapacity => "ui.risk.incapacity",
+            RiskTag::Death => "ui.risk.death",
+        }
+    }
+}
+
 /// What kind of target a job requires.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -147,6 +164,20 @@ pub enum MilitaryOp {
     Blockade,
 }
 
+impl MilitaryOp {
+    /// The key of this operation's player-facing name.
+    pub fn label_key(self) -> &'static str {
+        match self {
+            MilitaryOp::Move => "ui.military-op.move",
+            MilitaryOp::Resupply => "ui.military-op.resupply",
+            MilitaryOp::Patrol => "ui.military-op.patrol",
+            MilitaryOp::Besiege => "ui.military-op.besiege",
+            MilitaryOp::Raid => "ui.military-op.raid",
+            MilitaryOp::Blockade => "ui.military-op.blockade",
+        }
+    }
+}
+
 /// The skill that governs a job's outcome.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -159,6 +190,18 @@ pub enum GoverningSkill {
     Intrigue,
     /// Administration.
     Stewardship,
+}
+
+impl GoverningSkill {
+    /// The key of this skill's player-facing name.
+    pub fn label_key(self) -> &'static str {
+        match self {
+            GoverningSkill::Command => "ui.inspector.skill.command",
+            GoverningSkill::Diplomacy => "ui.inspector.skill.diplomacy",
+            GoverningSkill::Intrigue => "ui.inspector.skill.intrigue",
+            GoverningSkill::Stewardship => "ui.inspector.skill.stewardship",
+        }
+    }
 }
 
 /// An authored job definition.

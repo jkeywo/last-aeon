@@ -9,6 +9,7 @@
 //! Nothing here computes anything: every number arrives in the forecast.
 
 use aeon_data::model::JobResultKind;
+use aeon_sim::TextDb;
 use aeon_sim::forecast::{JobForecast, Permille};
 use bevy_egui::egui;
 
@@ -20,12 +21,12 @@ pub fn permille_text(value: Permille) -> String {
 }
 
 /// The name of a graded outcome; its colour comes from the theme.
-pub fn result_label(kind: JobResultKind) -> &'static str {
+pub fn result_label_key(kind: JobResultKind) -> &'static str {
     match kind {
-        JobResultKind::CriticalSuccess => "Critical success",
-        JobResultKind::Success => "Success",
-        JobResultKind::Failure => "Failure",
-        JobResultKind::Disaster => "Disaster",
+        JobResultKind::CriticalSuccess => "ui.result.critical-success",
+        JobResultKind::Success => "ui.result.success",
+        JobResultKind::Failure => "ui.result.failure",
+        JobResultKind::Disaster => "ui.result.disaster",
     }
 }
 
@@ -34,79 +35,91 @@ pub fn result_label(kind: JobResultKind) -> &'static str {
 ///
 /// Draws bare, without a frame of its own, so the caller decides whether it
 /// sits in a group box or in a tooltip.
-pub fn draw_forecast_body(ui: &mut egui::Ui, theme: &UiTheme, view: &JobForecast) {
+pub fn draw_forecast_body(
+    ui: &mut egui::Ui,
+    theme: &UiTheme,
+    strings: &TextDb,
+    view: &JobForecast,
+) {
     // Timing.
     ui.horizontal_wrapped(|ui| {
-        ui.label(format!("Takes {} days", view.duration_days))
-            .on_hover_text(
-                "Days from the order taking effect until it resolves. A march \
-                 takes at least as long as the army needs to reach its objective.",
-            );
+        ui.label(strings.format(
+            "ui.forecast.duration",
+            &[("days", &view.duration_days.to_string())],
+        ))
+            .on_hover_text(strings.text("ui.forecast.duration.hover"));
         if view.order_delay_days > 0 {
-            ui.label(format!("· begins in {}d", view.order_delay_days))
-                .on_hover_text(
-                    "Your order has to physically reach the leader first. \
-                     Distance from your head, and any travel in progress, add \
-                     this delay before the job even starts.",
-                );
+            ui.label(strings.format(
+                "ui.forecast.delay",
+                &[("days", &view.order_delay_days.to_string())],
+            ))
+                .on_hover_text(strings.text("ui.forecast.delay.hover"));
         }
     });
 
     // Immediate costs.
     let mut costs = Vec::new();
     if view.wealth_cost > 0 {
-        costs.push(format!("W {}", view.wealth_cost));
+        costs.push(strings.format("ui.cost.wealth", &[("amount", &view.wealth_cost.to_string())]));
     }
     if view.manpower_cost > 0 {
-        costs.push(format!("M {}", view.manpower_cost));
+        costs.push(strings.format(
+            "ui.cost.manpower",
+            &[("amount", &view.manpower_cost.to_string())],
+        ));
     }
     if view.supplies_cost > 0 {
-        costs.push(format!("S {}", view.supplies_cost));
+        costs.push(strings.format(
+            "ui.cost.supplies",
+            &[("amount", &view.supplies_cost.to_string())],
+        ));
     }
     if view.influence_cost > 0 {
-        costs.push(format!("I {}", view.influence_cost));
+        costs.push(strings.format(
+            "ui.cost.influence",
+            &[("amount", &view.influence_cost.to_string())],
+        ));
     }
     if !costs.is_empty() {
-        ui.label(format!("Costs {}", costs.join(" · ")))
-            .on_hover_text(
-                "Taken from your house's stores the moment the job begins. \
-                 This is spent whatever the outcome — a guaranteed cost, not \
-                 a risk.",
-            );
+        ui.label(strings.format(
+            "ui.forecast.costs",
+            &[("costs", &costs.join(" · "))],
+        ))
+            .on_hover_text(strings.text("ui.forecast.costs.hover"));
     }
 
     // The skill contest behind the odds.
-    ui.label(format!(
-        "{:?} {} vs difficulty {} → {:+}",
-        view.skill, view.skill_value, view.difficulty, view.effectiveness
+    ui.label(strings.format(
+        "ui.forecast.contest",
+        &[
+            ("skill", strings.text(view.skill.label_key())),
+            ("value", &view.skill_value.to_string()),
+            ("difficulty", &view.difficulty.to_string()),
+            ("effect", &format!("{:+}", view.effectiveness)),
+        ],
     ))
-    .on_hover_text(
-        "The leader's governing skill against the job's authored difficulty. \
-         Each point of advantage shifts weight out of the bad outcomes and \
-         into the good ones; each point of deficit does the reverse.",
-    );
+    .on_hover_text(strings.text("ui.forecast.contest.hover"));
 
     ui.separator();
-    ui.label("If ordered now").on_hover_text(
-        "The exact outcome distribution the simulation would roll against \
-         today. It moves with the leader you choose and their skill.",
-    );
+    ui.label(strings.text("ui.forecast.outcomes"))
+        .on_hover_text(strings.text("ui.forecast.outcomes.hover"));
     for result in &view.results {
-        let label = result_label(result.kind);
+        let label = strings.text(result_label_key(result.kind));
         let colour = theme.semantics.outcome(result.kind);
         ui.horizontal(|ui| {
             ui.colored_label(colour, permille_text(result.chance));
-            let mut text = label.to_owned();
-            if result.popup {
-                text.push_str("  (asks you)");
-            }
+            let text = if result.popup {
+                strings.format("ui.forecast.result.asks-you", &[("result", label)])
+            } else {
+                label.to_owned()
+            };
             let response = ui.label(text);
             match &result.text {
                 Some(detail) => {
                     response.on_hover_text(detail);
                 }
                 None => {
-                    response.on_hover_text("No authored consequence for this outcome.");
+                    response.on_hover_text(strings.text("ui.forecast.result.unauthored"));
                 }
             }
         });
@@ -116,38 +129,34 @@ pub fn draw_forecast_body(ui: &mut egui::Ui, theme: &UiTheme, view: &JobForecast
     for risk in &view.risks {
         ui.colored_label(
             theme.semantics.target(TargetState::NotInteractable),
-            format!(
-                "{:?} risk — {} on a failure, {} on a disaster",
-                risk.tag,
-                permille_text(risk.on_failure),
-                permille_text(risk.on_disaster)
+            strings.format(
+                "ui.forecast.risk",
+                &[
+                    ("risk", strings.text(risk.tag.label_key())),
+                    ("on_failure", &permille_text(risk.on_failure)),
+                    ("on_disaster", &permille_text(risk.on_disaster)),
+                ],
             ),
         )
-        .on_hover_text(
-            "A personal consequence for the leader, rolled only if the job \
-             goes badly. It is conditional on the outcome above, not an \
-             additional chance on the order itself.",
-        );
+        .on_hover_text(strings.text("ui.forecast.risk.hover"));
     }
 
     // A military operation is settled after the roll, not by it.
     if let Some(op) = view.military_op {
         ui.colored_label(
             theme.semantics.target(TargetState::AlreadyDoing),
-            format!("Then contested in the field ({op:?})"),
+            strings.format(
+                "ui.forecast.military-op",
+                &[("operation", strings.text(op.label_key()))],
+            ),
         )
-        .on_hover_text(
-            "These chances cover the order itself. Even a successful order is \
-             then decided by the operation — the strength, supply and order of \
-             the forces present settle it, and that contest is deliberately \
-             not folded into the percentages above.",
-        );
+        .on_hover_text(strings.text("ui.forecast.military-op.hover"));
     }
 
     if let Some(reason) = &view.blocked {
         ui.colored_label(
             theme.semantics.target(TargetState::IneligibleFixable),
-            format!("Cannot start: {reason}"),
+            strings.format("ui.forecast.blocked", &[("reason", &reason.to_string())]),
         );
     }
 }

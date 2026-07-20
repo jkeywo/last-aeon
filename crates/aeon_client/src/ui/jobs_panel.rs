@@ -22,6 +22,7 @@ pub fn draw_jobs_panel(
     jobs: &Query<&ActiveJob>,
     queue: &mut UiCommandQueue,
 ) {
+    let strings = lookup.strings;
     egui::ScrollArea::vertical()
         .id_salt("jobs-scroll")
         .show(ui, |ui| {
@@ -31,7 +32,7 @@ pub fn draw_jobs_panel(
                 .collect();
             sorted.sort_by_key(|job| job.id);
             if sorted.is_empty() {
-                ui.label("No jobs under way.");
+                ui.label(strings.text("ui.jobs.none"));
             }
             for job in sorted {
                 let title = content
@@ -39,12 +40,19 @@ pub fn draw_jobs_panel(
                     .jobs
                     .get(&job.def)
                     .map(|def| def.title.as_str())
-                    .unwrap_or("Unknown");
+                    .unwrap_or_else(|| strings.text("ui.inspector.unknown"));
                 let leader = lookup.char_name(job.leader);
                 let remaining = date.days_until(job.completes).max(0);
                 ui.horizontal(|ui| {
-                    ui.label(format!("{title} — {leader} ({remaining}d left)"));
-                    if ui.small_button("Cancel").clicked() {
+                    ui.label(strings.format(
+                        "ui.jobs.row",
+                        &[
+                            ("job", title),
+                            ("leader", &leader),
+                            ("days", &remaining.to_string()),
+                        ],
+                    ));
+                    if ui.small_button(strings.text("ui.jobs.cancel")).clicked() {
                         queue.0.push(PlayerCommand::CancelJob { job: job.id });
                     }
                 });

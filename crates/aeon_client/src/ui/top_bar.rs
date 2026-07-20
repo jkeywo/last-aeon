@@ -50,7 +50,7 @@ pub fn draw_top_bar(
             ui.separator();
 
             if let Some((_, Some(resources))) = player_org.and_then(|org| lookup.orgs.get(&org)) {
-                resource_readout(ui, resources);
+                resource_readout(ui, strings, resources);
                 ui.separator();
             }
 

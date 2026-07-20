@@ -16,7 +16,7 @@ use aeon_core::calendar::GameDate;
 use aeon_data::ContentSet;
 use aeon_data::model::{HouseTier, OrgKind};
 use aeon_sim::presence::{CharacterLocation, Location};
-use aeon_sim::{BodyId, CharacterId, OrgId, ProvinceId, TitleHolder};
+use aeon_sim::{BodyId, CharacterId, OrgId, ProvinceId, TextDb, TitleHolder};
 
 use crate::ui::data::{CharMap, OrgMap, PanelData};
 
@@ -24,6 +24,8 @@ use crate::ui::data::{CharMap, OrgMap, PanelData};
 pub struct Lookup<'a> {
     /// The authored content, for names and definitions.
     pub content: &'a ContentSet,
+    /// Every string the summaries are built from.
+    pub strings: &'a TextDb,
     /// Today, for ages and durations.
     pub date: GameDate,
     /// Every character, by id.
@@ -43,7 +45,12 @@ pub struct Lookup<'a> {
 
 impl<'a> Lookup<'a> {
     /// Builds the frame's lookups from the panel queries.
-    pub fn build(data: &'a PanelData, content: &'a ContentSet, date: GameDate) -> Self {
+    pub fn build(
+        data: &'a PanelData,
+        content: &'a ContentSet,
+        strings: &'a TextDb,
+        date: GameDate,
+    ) -> Self {
         let mut titles_held: BTreeMap<OrgId, usize> = BTreeMap::new();
         for title in &data.titles {
             if let TitleHolder::Org(org) = title.holder {
@@ -52,6 +59,7 @@ impl<'a> Lookup<'a> {
         }
         Self {
             content,
+            strings,
             date,
             chars: data
                 .characters
@@ -96,7 +104,10 @@ impl<'a> Lookup<'a> {
 
     /// A body's name, or "Unknown" if it is not one we know.
     pub fn body_name(&self, id: BodyId) -> &str {
-        self.body_names.get(&id).copied().unwrap_or("Unknown")
+        self.body_names
+            .get(&id)
+            .copied()
+            .unwrap_or_else(|| self.strings.text("ui.inspector.unknown"))
     }
 
     /// A province's name, or empty if it is unknown.
@@ -112,10 +123,17 @@ impl<'a> Lookup<'a> {
         match location.map(|l| l.0) {
             Some(Location::Province(province)) => self.province_name(province),
             Some(Location::Transit { to, arrives }) => {
-                let dest = self.province_names.get(&to).copied().unwrap_or("...");
-                format!("In transit to {dest} (arrives {arrives})")
+                let dest = self
+                    .province_names
+                    .get(&to)
+                    .copied()
+                    .unwrap_or_else(|| self.strings.text("ui.location.unknown-province"));
+                self.strings.format(
+                    "ui.location.in-transit",
+                    &[("place", dest), ("date", &arrives.to_string())],
+                )
             }
-            None => "Unknown".to_owned(),
+            None => self.strings.text("ui.location.unknown").to_owned(),
         }
     }
 
@@ -127,26 +145,36 @@ impl<'a> Lookup<'a> {
         let house = record
             .organisation
             .map(|o| self.org_name(o))
-            .unwrap_or_else(|| "no house".to_owned());
+            .unwrap_or_else(|| self.strings.text("ui.hover.no-house").to_owned());
         let age = match record.death {
-            None => format!("age {}", record.age_years(self.date)),
-            Some(death) => format!("died {death}"),
+            None => self.strings.format(
+                "ui.hover.age",
+                &[("years", &record.age_years(self.date).to_string())],
+            ),
+            Some(death) => self
+                .strings
+                .format("ui.hover.died", &[("date", &death.to_string())]),
         };
         let trait_names: Vec<&str> = traits
             .0
             .iter()
             .filter_map(|k| self.content.traits.get(k).map(|d| d.name.as_str()))
             .collect();
-        let mut summary = format!(
-            "{} — {house}, {age}\nCmd {} · Dip {} · Int {} · Ste {}",
-            record.name,
-            skills.0.command,
-            skills.0.diplomacy,
-            skills.0.intrigue,
-            skills.0.stewardship,
+        let mut summary = self.strings.format(
+            "ui.hover.character",
+            &[
+                ("name", &record.name),
+                ("house", &house),
+                ("age", &age),
+                ("command", &skills.0.command.to_string()),
+                ("diplomacy", &skills.0.diplomacy.to_string()),
+                ("intrigue", &skills.0.intrigue.to_string()),
+                ("stewardship", &skills.0.stewardship.to_string()),
+            ],
         );
         if !trait_names.is_empty() {
-            summary.push_str(&format!("\n{}", trait_names.join(", ")));
+            summary.push('\n');
+            summary.push_str(&trait_names.join(", "));
         }
         summary
     }
@@ -158,26 +186,50 @@ impl<'a> Lookup<'a> {
         };
         let name = self.org_name(id);
         let standing = match (record.kind, record.tier) {
-            (OrgKind::SanctoraImperim, _) => "Imperial government".to_owned(),
-            (_, Some(HouseTier::Great)) => "great house".to_owned(),
+            (OrgKind::SanctoraImperim, _) => {
+                self.strings.text("ui.hover.standing.imperial").to_owned()
+            }
+            (_, Some(HouseTier::Great)) => {
+                self.strings.text("ui.hover.standing.great").to_owned()
+            }
             (_, Some(HouseTier::Vassal)) => match record.liege {
-                Some(liege) => format!("vassal of {}", self.org_name(liege)),
-                None => "vassal house".to_owned(),
+                Some(liege) => self.strings.format(
+                    "ui.hover.standing.vassal-of",
+                    &[("liege", &self.org_name(liege))],
+                ),
+                None => self.strings.text("ui.hover.standing.vassal").to_owned(),
             },
-            (_, Some(HouseTier::Independent)) => "independent house".to_owned(),
+            (_, Some(HouseTier::Independent)) => {
+                self.strings.text("ui.hover.standing.independent").to_owned()
+            }
             _ => String::new(),
         };
         let head = record
             .head
             .and_then(|h| self.chars.get(&h))
             .map(|(r, ..)| r.name.as_str())
-            .unwrap_or("none");
+            .unwrap_or_else(|| self.strings.text("ui.hover.no-head"));
         let held = self.titles_held.get(&id).copied().unwrap_or(0);
-        let mut summary = format!("{name} — {standing}\nHead: {head} · {held} titles held");
+        let mut summary = self.strings.format(
+            "ui.hover.org",
+            &[
+                ("name", &name),
+                ("standing", &standing),
+                ("head", head),
+                ("titles", &held.to_string()),
+            ],
+        );
         if let Some(r) = resources {
-            summary.push_str(&format!(
-                "\nW {} · M {} · S {} · I {}/{}",
-                r.wealth, r.manpower, r.supplies, r.influence, r.legitimacy
+            summary.push('\n');
+            summary.push_str(&self.strings.format(
+                "ui.hover.org.resources",
+                &[
+                    ("wealth", &r.wealth.to_string()),
+                    ("manpower", &r.manpower.to_string()),
+                    ("supplies", &r.supplies.to_string()),
+                    ("influence", &r.influence.to_string()),
+                    ("legitimacy", &r.legitimacy.to_string()),
+                ],
             ));
         }
         summary

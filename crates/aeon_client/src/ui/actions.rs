@@ -11,7 +11,7 @@ use aeon_data::model::{JobDef, JobTargetKind};
 use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
 use aeon_sim::{
     CharacterId, JobTarget, LeaderAvailability, OrgId, PlayerCommand, PoliticsIndex, ProvinceId,
-    TitleHolder, TitleKind,
+    TextDb, TitleHolder, TitleKind,
 };
 use bevy_egui::egui;
 
@@ -33,27 +33,31 @@ pub enum JobScope {
 }
 
 /// A tooltip summarising a job's effect, costs, and risks.
-fn job_hover(def: &JobDef) -> String {
+fn job_hover(strings: &TextDb, def: &JobDef) -> String {
     let mut text = def.summary.clone();
     let mut costs = Vec::new();
-    if def.wealth_cost > 0 {
-        costs.push(format!("W {}", def.wealth_cost));
-    }
-    if def.manpower_cost > 0 {
-        costs.push(format!("M {}", def.manpower_cost));
-    }
-    if def.supplies_cost > 0 {
-        costs.push(format!("S {}", def.supplies_cost));
-    }
-    if def.influence_cost > 0 {
-        costs.push(format!("I {}", def.influence_cost));
+    for (amount, key) in [
+        (def.wealth_cost, "ui.cost.wealth"),
+        (def.manpower_cost, "ui.cost.manpower"),
+        (def.supplies_cost, "ui.cost.supplies"),
+        (def.influence_cost, "ui.cost.influence"),
+    ] {
+        if amount > 0 {
+            costs.push(strings.format(key, &[("amount", &amount.to_string())]));
+        }
     }
     if !costs.is_empty() {
-        text.push_str(&format!("\nCost: {}", costs.join(", ")));
+        text.push('\n');
+        text.push_str(&strings.format("ui.job.costs", &[("costs", &costs.join(", "))]));
     }
     if !def.risks.is_empty() {
-        let risks: Vec<String> = def.risks.iter().map(|r| format!("{r:?}")).collect();
-        text.push_str(&format!("\nRisks: {}", risks.join(", ")));
+        let risks: Vec<&str> = def
+            .risks
+            .iter()
+            .map(|risk| strings.text(risk.label_key()))
+            .collect();
+        text.push('\n');
+        text.push_str(&strings.format("ui.job.risks", &[("risks", &risks.join(", "))]));
     }
     text
 }
@@ -98,8 +102,9 @@ pub fn draw_context_jobs(
         jobs
     };
 
+    let strings = data.strings.as_deref().expect("a campaign is running");
     ui.separator();
-    ui.strong("Actions");
+    ui.strong(strings.text("ui.actions.heading"));
 
     // Every action expands to a forecast before it can be confirmed, so
     // nothing is ever committed to unseen.
@@ -119,7 +124,7 @@ pub fn draw_context_jobs(
                                     .unwrap_or_else(|| key.to_string())
                             })
                         })
-                        .unwrap_or_else(|| "unavailable".to_owned()),
+                        .unwrap_or_else(|| strings.text("ui.actions.unavailable").to_owned()),
                 );
             } else {
                 let jobs = jobs_of(&[
@@ -131,7 +136,7 @@ pub fn draw_context_jobs(
                 for (key, def) in &jobs {
                     if ui
                         .button(&def.title)
-                        .on_hover_text(job_hover(def))
+                        .on_hover_text(job_hover(strings, def))
                         .clicked()
                     {
                         form.reset();
@@ -150,11 +155,12 @@ pub fn draw_context_jobs(
                         ui.indent(key.to_string(), |ui| {
                             if def.target != JobTargetKind::None {
                                 pick_target(
-                                    ui, def.target, content, politics, player_org, data, form,
+                                    ui, strings, def.target, content, politics,
+                                    player_org, data, form,
                                 );
                             }
-                            draw_forecast(ui, &data.theme, cache, form, picker, LeaderChoice::Free);
-                            confirm_job(ui, key, cache, form, queue);
+                            draw_forecast(ui, &data.theme, strings, cache, form, picker, LeaderChoice::Free);
+                            confirm_job(ui, strings, key, cache, form, queue);
                         });
                     }
                 }
@@ -180,7 +186,7 @@ pub fn draw_context_jobs(
                 let targets_them = def.target == JobTargetKind::Character;
                 if ui
                     .button(&def.title)
-                    .on_hover_text(job_hover(def))
+                    .on_hover_text(job_hover(strings, def))
                     .clicked()
                 {
                     form.reset();
@@ -196,8 +202,8 @@ pub fn draw_context_jobs(
                 let expanded = form.job.as_ref() == Some(key) && form.about == Some(target_char);
                 if expanded {
                     ui.indent(key.to_string(), |ui| {
-                        draw_forecast(ui, &data.theme, cache, form, picker, LeaderChoice::Free);
-                        confirm_job(ui, key, cache, form, queue);
+                        draw_forecast(ui, &data.theme, strings, cache, form, picker, LeaderChoice::Free);
+                        confirm_job(ui, strings, key, cache, form, queue);
                     });
                 }
             }
@@ -211,7 +217,7 @@ pub fn draw_context_jobs(
             for (key, def) in &jobs {
                 if ui
                     .button(&def.title)
-                    .on_hover_text(job_hover(def))
+                    .on_hover_text(job_hover(strings, def))
                     .clicked()
                 {
                     form.reset();
@@ -222,9 +228,9 @@ pub fn draw_context_jobs(
                 if expanded {
                     ui.indent(key.to_string(), |ui| {
                         if def.target == JobTargetKind::OwnShipAndProvince {
-                            pick_ship(ui, player_org, data, form);
+                            pick_ship(ui, strings, player_org, data, form);
                         } else {
-                            pick_army(ui, player_org, data, form);
+                            pick_army(ui, strings, player_org, data, form);
                         }
                         // Publish the resolved target and leader so the
                         // forecast is for exactly what would be ordered.
@@ -242,18 +248,19 @@ pub fn draw_context_jobs(
                         if let Some(obstacle) = &action.obstacle {
                             ui.colored_label(
                                 data.theme.semantics.target(TargetState::IneligibleFixable),
-                                obstacle,
+                                strings.text(obstacle.text_key()),
                             );
                         }
                         draw_forecast(
                             ui,
                             &data.theme,
+                            strings,
                             cache,
                             form,
                             picker,
-                            LeaderChoice::Fixed("led by the force's own commander"),
+                            LeaderChoice::Fixed("ui.actions.leader-fixed"),
                         );
-                        confirm_job(ui, key, cache, form, queue);
+                        confirm_job(ui, strings, key, cache, form, queue);
                     });
                 }
             }
@@ -272,6 +279,7 @@ pub fn draw_context_jobs(
 /// The Confirm button for an expanded action.
 fn confirm_job(
     ui: &mut egui::Ui,
+    strings: &TextDb,
     key: &aeon_data::ContentKey,
     cache: &ForecastCache,
     form: &mut JobForm,
@@ -286,7 +294,7 @@ fn confirm_job(
         .unwrap_or(false);
     let ready = form.leader.is_some() && form.target.is_some() && forecast_allows;
     if ui
-        .add_enabled(ready, egui::Button::new("Confirm"))
+        .add_enabled(ready, egui::Button::new(strings.text("ui.actions.confirm")))
         .clicked()
         && let (Some(leader), Some(target)) = (form.leader, form.target)
     {
@@ -305,7 +313,7 @@ fn confirm_job(
 enum LeaderChoice {
     /// Any eligible member of the house may be chosen.
     Free,
-    /// Fixed by what is being ordered, with the reason why.
+    /// Fixed by what is being ordered, holding the key of the reason why.
     ///
     /// A force is led by the character who commands it and nobody else, so
     /// offering a picker for a march would be offering a choice that does
@@ -322,20 +330,21 @@ enum LeaderChoice {
 fn draw_forecast(
     ui: &mut egui::Ui,
     theme: &UiTheme,
+    strings: &TextDb,
     cache: &ForecastCache,
     form: &mut JobForm,
     picker: &mut PickerState,
     choice: LeaderChoice,
 ) {
-    draw_leader_slot(ui, theme, cache, form, picker, choice);
+    draw_leader_slot(ui, theme, strings, cache, form, picker, choice);
 
     let Some(view) = &cache.forecast else {
-        ui.weak("Choose the remaining details to see the forecast.");
+        ui.weak(strings.text("ui.actions.forecast-pending"));
         return;
     };
 
     egui::Frame::group(ui.style()).show(ui, |ui| {
-        draw_forecast_body(ui, theme, view);
+        draw_forecast_body(ui, theme, strings, view);
     });
 }
 
@@ -347,6 +356,7 @@ fn draw_forecast(
 fn draw_leader_slot(
     ui: &mut egui::Ui,
     theme: &UiTheme,
+    strings: &TextDb,
     cache: &ForecastCache,
     form: &mut JobForm,
     picker: &mut PickerState,
@@ -357,23 +367,32 @@ fn draw_leader_slot(
         .and_then(|id| cache.leaders.iter().find(|option| option.id == id));
 
     ui.horizontal(|ui| {
-        ui.label("Led by");
+        ui.label(strings.text("ui.actions.led-by"));
         match chosen {
             Some(option) => {
                 ui.colored_label(
                     theme.semantics.target(TargetState::Valid),
-                    format!("{} — {}", option.name, permille_text(option.success())),
+                    strings.format(
+                        "ui.actions.leader-chosen",
+                        &[
+                            ("leader", &option.name),
+                            ("chance", &permille_text(option.success())),
+                        ],
+                    ),
                 );
             }
             None => {
                 ui.colored_label(
                     theme.semantics.target(TargetState::IneligibleFixable),
-                    "nobody yet",
+                    strings.text("ui.actions.no-leader"),
                 );
             }
         }
         if let LeaderChoice::Fixed(reason) = choice {
-            ui.weak(format!("({reason})"));
+            ui.weak(strings.format(
+                "ui.actions.leader-fixed-note",
+                &[("reason", strings.text(reason))],
+            ));
             return;
         }
         let free = cache
@@ -382,10 +401,13 @@ fn draw_leader_slot(
             .filter(|option| option.blocked().is_none())
             .count();
         if ui
-            .button("Choose…")
-            .on_hover_text(format!(
-                "Compare everyone in your house for this job.                  {free} of {} could take it on now.",
-                cache.leaders.len()
+            .button(strings.text("ui.actions.choose-leader"))
+            .on_hover_text(strings.format(
+                "ui.actions.choose-leader.hover",
+                &[
+                    ("free", &free.to_string()),
+                    ("total", &cache.leaders.len().to_string()),
+                ],
             ))
             .clicked()
         {
@@ -403,8 +425,28 @@ fn draw_leader_slot(
 struct ProvinceAction {
     target: Option<JobTarget>,
     leader: Option<CharacterId>,
-    /// Why this cannot be ordered yet, in words, for showing at the slot.
-    obstacle: Option<String>,
+    /// Why this cannot be ordered yet, for showing at the slot.
+    obstacle: Option<Obstacle>,
+}
+
+/// Something standing between a chosen force and the order it would carry.
+///
+/// Named rather than worded, so [`province_action`] stays pure over the
+/// records it is given and its tests assert the reason rather than a
+/// phrase any rewording would break.
+#[derive(Debug, PartialEq, Eq)]
+enum Obstacle {
+    /// The ship has nobody to order it.
+    ShipHasNoCaptain,
+}
+
+impl Obstacle {
+    /// The key of the sentence explaining this obstacle.
+    fn text_key(&self) -> &'static str {
+        match self {
+            Obstacle::ShipHasNoCaptain => "ui.actions.obstacle.ship-has-no-captain",
+        }
+    }
 }
 
 /// Resolves the order a chosen force would carry out against a province.
@@ -430,11 +472,7 @@ fn province_action(
             target: ship.map(|s| JobTarget::ShipToProvince(s.id, province)),
             leader: ship.and_then(|s| s.captain),
             obstacle: match ship {
-                Some(ship) if ship.captain.is_none() => Some(format!(
-                    "{} has no captain. A ship is ordered by the officer who \
-                     commands it — assign one first.",
-                    ship.name
-                )),
+                Some(ship) if ship.captain.is_none() => Some(Obstacle::ShipHasNoCaptain),
                 _ => None,
             },
         },
@@ -446,8 +484,10 @@ fn province_action(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn pick_target(
     ui: &mut egui::Ui,
+    strings: &TextDb,
     kind: JobTargetKind,
     content: &ContentSet,
     politics: &PoliticsIndex,
@@ -465,7 +505,7 @@ fn pick_target(
                     .and_then(|(r, _)| content.organisations.get(&r.key))
                     .map(|d| d.name.clone())
                     .unwrap_or_default(),
-                _ => "Choose an organisation".to_owned(),
+                _ => strings.text("ui.actions.choose-org").to_owned(),
             };
             egui::ComboBox::from_id_salt("ctx-org")
                 .selected_text(label)
@@ -497,7 +537,7 @@ fn pick_target(
                     .and_then(|e| data.characters.get(*e).ok())
                     .map(|(r, ..)| r.name.clone())
                     .unwrap_or_default(),
-                _ => "Choose a character".to_owned(),
+                _ => strings.text("ui.actions.choose-character").to_owned(),
             };
             egui::ComboBox::from_id_salt("ctx-char")
                 .selected_text(label)
@@ -530,7 +570,7 @@ fn pick_target(
                     .find(|(r, _, _)| r.id == id)
                     .map(|(_, n, _)| n.0.clone())
                     .unwrap_or_default(),
-                _ => "Choose a province".to_owned(),
+                _ => strings.text("ui.actions.choose-province").to_owned(),
             };
             egui::ComboBox::from_id_salt("ctx-prov")
                 .selected_text(label)
@@ -554,7 +594,13 @@ fn pick_target(
     }
 }
 
-fn pick_army(ui: &mut egui::Ui, player_org: OrgId, data: &PanelData, form: &mut JobForm) {
+fn pick_army(
+    ui: &mut egui::Ui,
+    strings: &TextDb,
+    player_org: OrgId,
+    data: &PanelData,
+    form: &mut JobForm,
+) {
     let mut armies: Vec<&ArmyRecord> = data
         .armies
         .iter()
@@ -565,9 +611,9 @@ fn pick_army(ui: &mut egui::Ui, player_org: OrgId, data: &PanelData, form: &mut 
         .army
         .and_then(|id| armies.iter().find(|a| a.id == id))
         .map(|a| a.name.clone())
-        .unwrap_or_else(|| "Choose an army".to_owned());
+        .unwrap_or_else(|| strings.text("ui.actions.choose-army").to_owned());
     if armies.is_empty() {
-        ui.weak("You command no armies. Muster the levies first.");
+        ui.weak(strings.text("ui.actions.no-armies"));
         return;
     }
     egui::ComboBox::from_id_salt("ctx-army")
@@ -584,7 +630,13 @@ fn pick_army(ui: &mut egui::Ui, player_org: OrgId, data: &PanelData, form: &mut 
         });
 }
 
-fn pick_ship(ui: &mut egui::Ui, player_org: OrgId, data: &PanelData, form: &mut JobForm) {
+fn pick_ship(
+    ui: &mut egui::Ui,
+    strings: &TextDb,
+    player_org: OrgId,
+    data: &PanelData,
+    form: &mut JobForm,
+) {
     let mut ships: Vec<&ShipRecord> = data
         .ships
         .iter()
@@ -592,14 +644,14 @@ fn pick_ship(ui: &mut egui::Ui, player_org: OrgId, data: &PanelData, form: &mut 
         .collect();
     ships.sort_by_key(|s| s.id);
     if ships.is_empty() {
-        ui.weak("You have no docked ships.");
+        ui.weak(strings.text("ui.actions.no-ships"));
         return;
     }
     let label = form
         .ship
         .and_then(|id| ships.iter().find(|s| s.id == id))
         .map(|s| s.name.clone())
-        .unwrap_or_else(|| "Choose a ship".to_owned());
+        .unwrap_or_else(|| strings.text("ui.actions.choose-ship").to_owned());
     egui::ComboBox::from_id_salt("ctx-ship")
         .selected_text(label)
         .show_ui(ui, |ui| {
@@ -677,11 +729,9 @@ mod tests {
             Some(&ship),
         );
         assert_eq!(action.leader, None, "nobody is silently substituted");
-        assert!(
-            action
-                .obstacle
-                .as_deref()
-                .is_some_and(|o| o.contains("no captain")),
+        assert_eq!(
+            action.obstacle,
+            Some(Obstacle::ShipHasNoCaptain),
             "the obstacle is stated where the choice is made"
         );
     }

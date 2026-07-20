@@ -42,6 +42,7 @@ pub fn draw_search_results(
     view: &mut ViewState,
     search: &mut SearchState,
 ) {
+    let strings = lookup.strings;
     // Search results, floating below the top bar while the query is set.
     let query = search.query.trim().to_lowercase();
     if !query.is_empty() {
@@ -63,16 +64,16 @@ pub fn draw_search_results(
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.set_min_width(240.0);
                     if hits.is_empty() {
-                        ui.label("No matches.");
+                        ui.label(strings.text("ui.search.no-matches"));
                     }
                     egui::ScrollArea::vertical()
                         .max_height(320.0)
                         .show(ui, |ui| {
                             for (label, hit) in &hits {
                                 let tag = match hit {
-                                    SearchHit::Character(_) => "character",
-                                    SearchHit::Org(_) => "house",
-                                    SearchHit::Province(..) => "province",
+                                    SearchHit::Character(_) => "ui.search.tag.character",
+                                    SearchHit::Org(_) => "ui.search.tag.house",
+                                    SearchHit::Province(..) => "ui.search.tag.province",
                                 };
                                 if ui
                                     .selectable_label(false, format!("{label}  ({tag})"))

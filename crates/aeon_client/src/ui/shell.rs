@@ -63,7 +63,7 @@ pub fn draw_panels(
     let player_org = player.as_ref().and_then(|p| p.0);
 
     // Every name, label and hover summary the panels need, built once.
-    let lookup = Lookup::build(&data, &content.0, date);
+    let lookup = Lookup::build(&data, &content.0, strings, date);
     let player_head: Option<CharacterId> =
         player_org.and_then(|org| lookup.orgs.get(&org).and_then(|(r, _)| r.head));
 
@@ -94,7 +94,7 @@ pub fn draw_panels(
     );
 
     draw_search_results(ctx, &lookup, &data, &mut view, &mut search);
-    draw_overlays(ctx, theme, &data.readout, &mut view);
+    draw_overlays(ctx, theme, strings, &data.readout, &mut view);
 
     let panel_ctx = PanelCtx {
         lookup: &lookup,

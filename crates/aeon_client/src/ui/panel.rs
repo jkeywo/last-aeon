@@ -138,6 +138,7 @@ pub fn draw_panel_body(ui: &mut egui::Ui, kind: PanelKind, ctx: &PanelCtx, out: 
         PanelKind::Log => match ctx.log {
             Some(log) => draw_log_panel(
                 ui,
+                ctx.strings,
                 log,
                 out.filter,
                 ctx.player_org,

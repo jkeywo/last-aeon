@@ -18,7 +18,7 @@ use crate::ui::actions::{JobScope, draw_context_jobs};
 use crate::ui::data::CharacterParts;
 use crate::ui::panel::{PanelCtx, PanelOut};
 use crate::ui::theme::TargetState;
-use crate::ui::widgets::{kind_label, linked, resource_readout};
+use crate::ui::widgets::{kind_label_key, linked, resource_readout};
 use crate::view::{MapView, Selection};
 
 /// Draws the inspector for whatever is currently selected.
@@ -32,7 +32,7 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
             if let Some((record, name)) = ctx.data.bodies.iter().find(|(record, _)| record.id == id)
             {
                 ui.strong(&name.0);
-                ui.label(kind_label(record.kind));
+                ui.label(strings.text(kind_label_key(record.kind)));
                 ui.separator();
                 egui::Grid::new("body-facts").show(ui, |ui| {
                     ui.label(strings.text("ui.inspector.body.stable-id"));
@@ -287,7 +287,7 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                     );
                 }
                 if let Some(resources) = resources {
-                    ui.horizontal(|ui| resource_readout(ui, resources));
+                    ui.horizontal(|ui| resource_readout(ui, strings, resources));
                 }
                 ui.separator();
 

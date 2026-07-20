@@ -13,9 +13,10 @@ use crate::view::{MapView, Selection};
 
 /// Draws the listing's contents.
 pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
+    let strings = ctx.strings;
     match out.view.view {
         MapView::System => {
-            ui.heading("Bodies");
+            ui.heading(strings.text("ui.listing.bodies"));
             ui.separator();
             let mut sorted: Vec<_> = ctx.data.bodies.iter().collect();
             sorted.sort_by_key(|(record, _)| record.id);
@@ -27,7 +28,7 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
             }
 
             ui.add_space(8.0);
-            ui.heading("Houses");
+            ui.heading(strings.text("ui.listing.houses"));
             ui.separator();
             for (org_id, (record, _)) in &ctx.lookup.orgs {
                 let def = ctx.content.organisations.get(&record.key);
@@ -39,7 +40,7 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
             }
 
             ui.add_space(8.0);
-            ui.heading("Forces");
+            ui.heading(strings.text("ui.listing.forces"));
             ui.separator();
             egui::ScrollArea::vertical()
                 .id_salt("forces")
@@ -48,9 +49,9 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                     ships.sort_by_key(|s| s.id);
                     for ship in ships {
                         let class = match ship.class {
-                            ShipClass::Capital => "Capital",
-                            ShipClass::Transport => "Transport",
-                            ShipClass::Patrol => "Patrol",
+                            ShipClass::Capital => "ui.ship-class.capital",
+                            ShipClass::Transport => "ui.ship-class.transport",
+                            ShipClass::Patrol => "ui.ship-class.patrol",
                         };
                         let place = match ship.location {
                             ShipLocation::Docked(province) => ctx
@@ -71,7 +72,7 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                             && matches!(ship.location, ShipLocation::Docked(_))
                         {
                             egui::ComboBox::from_id_salt(("move-ship", ship.id))
-                                .selected_text("Move to...")
+                                .selected_text(strings.text("ui.listing.move-to"))
                                 .show_ui(ui, |ui| {
                                     let mut sorted: Vec<_> =
                                         ctx.lookup.province_names.iter().collect();
@@ -105,7 +106,11 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                             if Some(army.owner) == ctx.player_org {
                                 let defending = army.standing_order
                                     == aeon_sim::warfare::StandingOrder::DefendHoldings;
-                                let label = if defending { "Defending" } else { "Hold fast" };
+                                let label = strings.text(if defending {
+                                    "ui.listing.defending"
+                                } else {
+                                    "ui.listing.hold-fast"
+                                });
                                 if ui
                                     .small_button(label)
                                     .on_hover_text(
@@ -124,7 +129,7 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                                         order,
                                     });
                                 }
-                                if ui.small_button("Disband").clicked() {
+                                if ui.small_button(strings.text("ui.listing.disband")).clicked() {
                                     out.queue
                                         .0
                                         .push(PlayerCommand::DisbandArmy { army: army.id });
@@ -135,7 +140,7 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                 });
         }
         MapView::Body(body_id) => {
-            ui.heading("Provinces");
+            ui.heading(strings.text("ui.listing.provinces"));
             ui.separator();
             egui::ScrollArea::vertical().show(ui, |ui| {
                 let mut sorted: Vec<_> = ctx

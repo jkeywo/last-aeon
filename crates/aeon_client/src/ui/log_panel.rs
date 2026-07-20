@@ -6,7 +6,7 @@
 //! narrow column down an edge.
 
 use aeon_sim::map::ProvinceRecord;
-use aeon_sim::{LogChannel, LogEntry, LogSubject, MessageLog, OrgId};
+use aeon_sim::{LogChannel, LogEntry, LogSubject, MessageLog, OrgId, TextDb};
 use bevy::prelude::Query;
 use bevy_egui::egui;
 
@@ -16,6 +16,7 @@ use crate::view::{MapView, Selection, ViewState};
 /// Draws the log's filter row and its entries.
 pub fn draw_log_panel(
     ui: &mut egui::Ui,
+    strings: &TextDb,
     log: &MessageLog,
     filter: &mut LogFilter,
     player_org: Option<OrgId>,
@@ -33,11 +34,11 @@ pub fn draw_log_panel(
                 }
             }
         }
-        ui.toggle_value(&mut filter.mine_only, "Mine")
-            .on_hover_text("Show only entries concerning your own house.");
+        ui.toggle_value(&mut filter.mine_only, strings.text("ui.log.mine-only"))
+            .on_hover_text(strings.text("ui.log.mine-only.hover"));
         ui.add(
             egui::TextEdit::singleline(&mut filter.text)
-                .hint_text("Filter…")
+                .hint_text(strings.text("ui.log.filter-hint"))
                 .desired_width(90.0),
         );
     });
@@ -54,7 +55,7 @@ pub fn draw_log_panel(
                 .take(200)
                 .collect();
             if visible.is_empty() {
-                ui.weak("Nothing matches this filter.");
+                ui.weak(strings.text("ui.log.no-matches"));
             }
             for entry in visible.into_iter().rev() {
                 ui.horizontal_wrapped(|ui| {
@@ -64,7 +65,7 @@ pub fn draw_log_panel(
                         Some(subject) => {
                             if ui
                                 .link(&entry.text)
-                                .on_hover_text("Show what this is about")
+                                .on_hover_text(strings.text("ui.log.go-to-subject"))
                                 .clicked()
                             {
                                 match subject {

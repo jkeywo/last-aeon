@@ -15,6 +15,7 @@
 //! Nothing is computed here. The candidate list, the odds, and the reasons
 //! all arrive in [`ForecastCache`], which is filled by the simulation.
 
+use aeon_sim::TextDb;
 use aeon_sim::state::ContentDb;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
@@ -51,6 +52,7 @@ pub fn draw_picker(
     cache: Res<ForecastCache>,
     content: Option<Res<ContentDb>>,
     theme: Res<UiTheme>,
+    strings: Option<Res<TextDb>>,
 ) {
     if !picker.open {
         return;
@@ -65,15 +67,16 @@ pub fn draw_picker(
         picker.open = false;
         return;
     }
-    let Some(content) = content else {
+    let (Some(content), Some(strings)) = (content, strings) else {
         return;
     };
+    let strings = &*strings;
 
     let title = cache
         .forecast
         .as_ref()
-        .map(|view| format!("Who leads: {}", view.title))
-        .unwrap_or_else(|| "Who leads this".to_owned());
+        .map(|view| strings.format("ui.picker.title", &[("job", &view.title)]))
+        .unwrap_or_else(|| strings.text("ui.picker.title.generic").to_owned());
 
     let mut open = true;
     egui::Window::new(title)
@@ -98,17 +101,17 @@ pub fn draw_picker(
                 .max_height(420.0)
                 .show(ui, |ui| {
                     if free.is_empty() {
-                        draw_empty_state(ui, &theme, &committed);
+                        draw_empty_state(ui, &theme, strings, &committed);
                     }
                     for option in &free {
-                        draw_candidate(ui, &theme, &mut form, option);
+                        draw_candidate(ui, &theme, strings, &mut form, option);
                     }
 
                     if !committed.is_empty() {
                         ui.separator();
-                        ui.weak("Committed elsewhere");
+                        ui.weak(strings.text("ui.picker.committed"));
                         for option in &committed {
-                            draw_committed(ui, &theme, option, &job_title);
+                            draw_committed(ui, &theme, strings, option, &job_title);
                         }
                     }
                 });
@@ -119,16 +122,27 @@ pub fn draw_picker(
 }
 
 /// One candidate who could take the job on now.
-fn draw_candidate(ui: &mut egui::Ui, theme: &UiTheme, form: &mut JobForm, option: &LeaderOption) {
+fn draw_candidate(
+    ui: &mut egui::Ui,
+    theme: &UiTheme,
+    strings: &TextDb,
+    form: &mut JobForm,
+    option: &LeaderOption,
+) {
     let chosen = form.leader == Some(option.id);
-    let mut label = format!(
-        "{} — skill {} — {}",
-        option.name,
-        option.skill_value(),
-        permille_text(option.success())
+    let mut label = strings.format(
+        "ui.picker.candidate",
+        &[
+            ("name", &option.name),
+            ("skill", &option.skill_value().to_string()),
+            ("chance", &permille_text(option.success())),
+        ],
     );
     if let Some(assignment) = &option.assignment {
-        label.push_str(&format!(" — {assignment}"));
+        label.push_str(&strings.format(
+            "ui.picker.candidate.assigned",
+            &[("assignment", assignment)],
+        ));
     }
     let state = if chosen {
         TargetState::AlreadyDoing
@@ -147,7 +161,7 @@ fn draw_candidate(ui: &mut egui::Ui, theme: &UiTheme, form: &mut JobForm, option
                 ui.weak(assignment);
             }
             ui.separator();
-            draw_forecast_body(ui, theme, &option.forecast);
+            draw_forecast_body(ui, theme, strings, &option.forecast);
         });
     // Selecting writes the choice and leaves the window open, so the next
     // candidate can be weighed against this one without reopening it.
@@ -160,6 +174,7 @@ fn draw_candidate(ui: &mut egui::Ui, theme: &UiTheme, form: &mut JobForm, option
 fn draw_committed(
     ui: &mut egui::Ui,
     theme: &UiTheme,
+    strings: &TextDb,
     option: &LeaderOption,
     job_title: &impl Fn(&aeon_data::ContentKey) -> String,
 ) {
@@ -174,15 +189,26 @@ fn draw_committed(
     ui.add_enabled(
         false,
         egui::Button::new(
-            egui::RichText::new(format!("{} — {reason}", option.name))
-                .color(theme.semantics.target(state)),
+            egui::RichText::new(strings.format(
+                "ui.picker.committed.row",
+                &[("name", &option.name), ("reason", &reason)],
+            ))
+            .color(theme.semantics.target(state)),
         )
         .frame(false),
     )
-    .on_disabled_hover_text(format!(
-        "{} cannot lead this: {}.",
-        option.name,
-        option.blocked().as_deref().unwrap_or("unavailable")
+    .on_disabled_hover_text(strings.format(
+        "ui.picker.committed.hover",
+        &[
+            ("name", &option.name),
+            (
+                "reason",
+                option
+                    .blocked()
+                    .as_deref()
+                    .unwrap_or_else(|| strings.text("ui.actions.unavailable")),
+            ),
+        ],
     ));
 }
 
@@ -191,11 +217,16 @@ fn draw_committed(
 /// An empty list must explain itself and offer a way out, so it names the
 /// soonest date the household frees up rather than leaving the player to
 /// work out whether waiting would even help.
-fn draw_empty_state(ui: &mut egui::Ui, theme: &UiTheme, committed: &[&LeaderOption]) {
+fn draw_empty_state(
+    ui: &mut egui::Ui,
+    theme: &UiTheme,
+    strings: &TextDb,
+    committed: &[&LeaderOption],
+) {
     if committed.is_empty() {
         ui.colored_label(
             theme.semantics.target(TargetState::StructurallyIneligible),
-            "Nobody in your house can lead this.",
+            strings.text("ui.picker.empty.nobody"),
         );
         return;
     }
@@ -213,16 +244,17 @@ fn draw_empty_state(ui: &mut egui::Ui, theme: &UiTheme, committed: &[&LeaderOpti
 
     ui.colored_label(
         theme.semantics.target(TargetState::IneligibleFixable),
-        "Everyone who could lead this is committed.",
+        strings.text("ui.picker.empty.all-committed"),
     );
     match soonest {
         Some(date) => {
-            ui.weak(format!(
-                "Cancel a job below, or wait — the first comes free on {date}."
+            ui.weak(strings.format(
+                "ui.picker.empty.wait-until",
+                &[("date", &date.to_string())],
             ));
         }
         None => {
-            ui.weak("Cancel one of the jobs below to free someone.");
+            ui.weak(strings.text("ui.picker.empty.cancel-one"));
         }
     }
 }
