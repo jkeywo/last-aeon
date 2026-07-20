@@ -135,6 +135,28 @@ define_plan(#{
     ],
 });
 
+// A province-target assignment and a plan that aims it at whichever
+// holding is worst off when the step starts.
+define_assignment(#{
+    id: "hold-the-ground",
+    category: "consequential", duration_days: 10,
+    skill: "diplomacy", difficulty: 5, target: "province",
+    ai_available: false,
+    results: #{
+        success: #{ weight: 999 },
+        failure: #{ weight: 1 },
+    },
+});
+define_plan(#{
+    id: "calm-the-worst",
+    goal: "obligation",
+    max_days: 90,
+    methods: [
+        #{ id: "in-person",
+           steps: [ #{ start: "hold-the-ground", target: "worst-holding" } ] },
+    ],
+});
+
 // A grievance held by the player, and a campaign aimed back at them,
 // so the rumour path has something to whisper about.
 define_obligation(#{
@@ -549,4 +571,39 @@ fn an_orders_step_with_no_army_to_order_waits() {
     let plans = h.world_mut().resource::<Plans>().clone();
     let plan = plans.active.get(&aron).expect("the plan waits, not dies");
     assert_eq!(plan.step, 0, "a blocked orders step stays where it is");
+}
+
+#[test]
+fn a_worst_holding_selector_aims_at_the_most_disordered_province() {
+    use aeon_data::model::AiIntent;
+
+    let mut h = host(29);
+    let head = bela(&mut h);
+    let birch = org(&mut h, "birch");
+    press_birch(&mut h);
+
+    assert!(aeon_sim::plans::try_adopt(
+        h.world_mut(),
+        head,
+        birch,
+        &[pressure(AiIntent::Obligation)]
+    ));
+    h.advance_days(1);
+
+    let beta = h.world_mut().resource::<MapIndex>().province_keys[&key("beta")];
+    let plans = h.world_mut().resource::<Plans>().clone();
+    let id = plans.active[&head]
+        .current_assignment
+        .expect("the step should have started");
+    let world = h.world_mut();
+    let entity = world.resource::<aeon_sim::AssignmentsIndex>().assignments[&id];
+    let active = world
+        .get::<aeon_sim::assignments::ActiveAssignment>(entity)
+        .expect("live");
+    assert_eq!(active.def.as_str(), "hold-the-ground");
+    assert_eq!(
+        active.target,
+        aeon_sim::AssignmentTarget::Province(beta),
+        "the selector should have named the disordered holding"
+    );
 }

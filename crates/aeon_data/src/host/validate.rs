@@ -440,6 +440,7 @@ fn validate_plans(builder: &BuilderState, findings: &mut Vec<(String, Option<Str
                             let produced = match target {
                                 PlanTargetSelector::None => AssignmentTargetKind::None,
                                 PlanTargetSelector::PlanTarget => plan.target,
+                                PlanTargetSelector::WorstHolding => AssignmentTargetKind::Province,
                             };
                             if *target == PlanTargetSelector::PlanTarget
                                 && plan.target == AssignmentTargetKind::None

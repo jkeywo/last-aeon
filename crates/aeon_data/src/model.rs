@@ -1038,10 +1038,10 @@ pub enum PlanArmySelector {
 
 /// Where a plan step's assignment target comes from.
 ///
-/// Deliberately tiny: a step either needs no target or is aimed at the
-/// plan's own target. Richer selection (the nearest hostile army, the
-/// weakest neighbour) is a later milestone's vocabulary, not a default to
-/// grow into silently.
+/// Deliberately tiny, and grown only by demonstrated need: a selector is
+/// an integer choice over visible state, resolved at the moment its step
+/// starts, so a plan aims at what is true then rather than what was true
+/// at adoption.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum PlanTargetSelector {
@@ -1050,6 +1050,10 @@ pub enum PlanTargetSelector {
     None,
     /// The assignment is aimed at the plan's target.
     PlanTarget,
+    /// The authority's most disordered holding — lowest order, lowest
+    /// stable ID on a tie. Produces a province target; holding nothing
+    /// leaves the step waiting.
+    WorstHolding,
 }
 
 /// Declarative conditions gating a plan method or skipping a step.

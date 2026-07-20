@@ -461,9 +461,18 @@ pub fn advance_plans(world: &mut World) {
             }
             match &instance.task {
                 StepTask::Start { assignment, target } => {
-                    let target = match target {
-                        PlanTargetSelector::None => AssignmentTarget::None,
-                        PlanTargetSelector::PlanTarget => plan.target,
+                    // Selectors resolve now, not at adoption, so the step
+                    // aims at what is true today. One that finds nothing
+                    // waits like any blocked step.
+                    let resolved = match target {
+                        PlanTargetSelector::None => Some(AssignmentTarget::None),
+                        PlanTargetSelector::PlanTarget => Some(plan.target),
+                        PlanTargetSelector::WorstHolding => {
+                            worst_holding(world, authority).map(AssignmentTarget::Province)
+                        }
+                    };
+                    let Some(target) = resolved else {
+                        break;
                     };
                     if validate_start(world, authority, assignment, actor, target).is_ok() {
                         let id = start_assignment(world, authority, assignment, actor, target);
@@ -498,6 +507,21 @@ pub fn advance_plans(world: &mut World) {
             }
         }
     }
+}
+
+/// The authority's most disordered holding, if it holds anything.
+///
+/// Lowest order first; a tie breaks to the lowest stable ID, so the
+/// choice never depends on iteration luck.
+fn worst_holding(world: &World, authority: OrgId) -> Option<crate::ids::ProvinceId> {
+    crate::order::held_provinces(world, authority)
+        .into_iter()
+        .min_by_key(|province| {
+            (
+                crate::order::province_order(world, *province).order,
+                *province,
+            )
+        })
 }
 
 /// The one army an orders step is for, if it exists right now.

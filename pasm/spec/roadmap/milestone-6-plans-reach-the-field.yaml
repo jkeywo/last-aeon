@@ -89,8 +89,8 @@ entities:
 
   - milestone: m6-targets-worth-aiming-at
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "M6.2: The Target Vocabulary Grows As Needed"
       summary: >-
         PlanTargetSelector grows past none-or-plan by exactly the
@@ -115,6 +115,21 @@ entities:
       tests:
         - crates/aeon_sim/tests/plans.rs
       status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/plans.rs
+        summary: >-
+          A worst-holding step, started while a holding sits in disorder,
+          aims its assignment at exactly that province; loading refuses a
+          worst-holding selector feeding an assignment that takes no
+          target.
+      - kind: manual-review
+        reference: crates/aeon_sim/src/plans.rs
+        summary: >-
+          Selectors resolve when their step starts, not at adoption, so a
+          months-old plan aims at what is true today; lowest order wins
+          and a tie breaks to the lowest stable ID, so the choice never
+          depends on iteration luck.
 
   - milestone: m6-household-ambitions
     core:

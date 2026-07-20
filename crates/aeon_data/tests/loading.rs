@@ -668,3 +668,31 @@ define_plan(#{
         report.findings
     );
 }
+
+#[test]
+fn a_worst_holding_selector_must_feed_a_province_assignment() {
+    let script = r#"
+define_plan(#{
+    id: "misaimed-care",
+    goal: "order",
+    max_days: 60,
+    methods: [ #{ id: "m", steps: [ #{ start: "manage-estates", target: "worst-holding" } ] } ],
+});
+"#;
+    let (set, report) = load_content(
+        &[
+            source("core/assignments.rhai", GOOD_JOBS),
+            source("core/plans.rhai", script),
+        ],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|f| f.message.contains("wants a None target")),
+        "findings: {:?}",
+        report.findings
+    );
+}
