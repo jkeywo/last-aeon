@@ -24,6 +24,7 @@ use crate::jobs::{LogChannel, LogEntry, LogSubject};
 use crate::map::MapIndex;
 use crate::politics::{CharacterRecord, PoliticsIndex, TitleHolder, TitleRecord};
 use crate::presence::{CharacterLocation, Location};
+use crate::text::TextDb;
 
 /// The highest order a province can hold.
 pub const ORDER_MAX: i32 = 1000;
@@ -188,25 +189,21 @@ impl OrderPressures {
     }
 
     /// A short player-facing explanation of the pressures in force.
-    pub fn describe(&self) -> String {
+    pub fn describe(&self, strings: &TextDb) -> String {
         let mut parts = Vec::new();
-        if self.occupied {
-            parts.push("hostile army present");
-        }
-        if self.blockaded {
-            parts.push("blockaded");
-        }
-        if self.shortage {
-            parts.push("supplies exhausted");
-        }
-        if self.garrison {
-            parts.push("garrisoned");
-        }
-        if self.presence {
-            parts.push("ruler present");
+        for (in_force, key) in [
+            (self.occupied, "sim.pressure.occupied"),
+            (self.blockaded, "sim.pressure.blockaded"),
+            (self.shortage, "sim.pressure.shortage"),
+            (self.garrison, "sim.pressure.garrison"),
+            (self.presence, "sim.pressure.presence"),
+        ] {
+            if in_force {
+                parts.push(strings.text(key));
+            }
         }
         if parts.is_empty() {
-            "quiet, but unattended".to_owned()
+            strings.text("sim.pressure.none").to_owned()
         } else {
             parts.join(", ")
         }
@@ -302,16 +299,16 @@ pub fn daily_order(world: &mut World) {
         if state.unrest_days == 1 {
             let name = crate::access::province_name(world, province);
             let holder = crate::warfare::province_holder(world, province);
+            let line = world.resource::<TextDb>().format(
+                "sim.order.unrest-begins",
+                &[
+                    ("province", &name),
+                    ("days", &REVOLT_DAYS.to_string()),
+                ],
+            );
             crate::access::log(
                 world,
-                LogEntry::line(
-                    format!(
-                        "{name} has fallen into open unrest. Without a garrison or \
-                         the ruler's presence it will throw off its allegiance in \
-                         {REVOLT_DAYS} days."
-                    ),
-                    LogChannel::Economy,
-                )
+                LogEntry::line(line, LogChannel::Economy)
                 .by(holder)
                 .about(LogSubject::Province(province)),
             );
@@ -344,12 +341,12 @@ fn revolt(world: &mut World, province: ProvinceId) {
     }
     reset_order(world, province, ORDER_AFTER_REVOLT);
 
+    let line = world
+        .resource::<TextDb>()
+        .format("sim.order.revolted", &[("province", &name)]);
     crate::access::log(
         world,
-        LogEntry::line(
-            format!("{name} has revolted and thrown off its ruler. The province stands unclaimed."),
-            LogChannel::Politics,
-        )
+        LogEntry::line(line, LogChannel::Politics)
         .by(holder)
         .about(LogSubject::Province(province)),
     );

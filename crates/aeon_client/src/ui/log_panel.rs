@@ -26,7 +26,7 @@ pub fn draw_log_panel(
     ui.horizontal_wrapped(|ui| {
         for channel in LogChannel::ALL {
             let mut on = filter.channels.contains(&channel);
-            if ui.toggle_value(&mut on, channel.label()).changed() {
+            if ui.toggle_value(&mut on, strings.text(channel.label_key())).changed() {
                 if on {
                     filter.channels.insert(channel);
                 } else {

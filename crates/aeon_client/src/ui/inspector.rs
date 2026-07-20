@@ -347,7 +347,7 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                             };
                             let mut detail = format!(
                                 "{}\n{}",
-                                entry.summary(|org| ctx.lookup.org_name(org)),
+                                entry.summary(strings, |org| ctx.lookup.org_name(org)),
                                 strings
                                     .format("ui.obligation.origin", &[("origin", &entry.origin)])
                             );

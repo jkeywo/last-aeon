@@ -81,6 +81,11 @@ pub struct AeonSimPlugin;
 
 impl Plugin for AeonSimPlugin {
     fn build(&self, app: &mut App) {
+        // The string table is not campaign state — it is embedded at build
+        // time and identical for every campaign — so it belongs to the
+        // plugin. A world restored from a snapshot has it for the same
+        // reason a fresh one does.
+        app.init_resource::<text::TextDb>();
         clock::install(app);
         command::install(app);
         politics::install(app);

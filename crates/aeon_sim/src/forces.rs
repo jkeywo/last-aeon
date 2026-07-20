@@ -15,6 +15,7 @@ use bevy::prelude::{Component, Entity, IntoScheduleConfigs, Resource, World};
 use serde::{Deserialize, Serialize};
 
 use crate::clock::MonthlyPulse;
+use crate::text::TextDb;
 use crate::ids::{ArmyId, CharacterId, OrgId, ProvinceId, ShipId};
 use crate::map::MapIndex;
 use crate::politics::PoliticsIndex;
@@ -184,11 +185,15 @@ pub fn form_army(
         *counter
     };
     let owner_name = crate::access::org_name(world, owner);
+    let army_name = world.resource::<TextDb>().format(
+        "sim.forces.levy-name",
+        &[("ordinal", &ordinal.to_string()), ("house", &owner_name)],
+    );
     let id: ArmyId = world.resource_mut::<CampaignIds>().0.allocate();
     let entity = world
         .spawn(ArmyRecord {
             id,
-            name: format!("{ordinal}. {owner_name} Levy"),
+            name: army_name,
             owner,
             general,
             manpower,

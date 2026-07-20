@@ -17,6 +17,7 @@ use bevy::prelude::{Component, Entity, IntoScheduleConfigs, Resource, World};
 use serde::{Deserialize, Serialize};
 
 use crate::clock::{CampaignClock, DailyTick, MonthlyPulse, TickSet};
+use crate::text::TextDb;
 use crate::ids::{ArmyId, CharacterId, JobId, OrgId, ProvinceId, ShipId};
 use crate::politics::{CampaignOver, OpinionEntry, OpinionLedger, PlayerHouse, process_death};
 use crate::state::{CampaignIds, ContentDb};
@@ -124,14 +125,14 @@ impl LogChannel {
         LogChannel::Events,
     ];
 
-    /// A short player-facing label.
-    pub fn label(self) -> &'static str {
+    /// The key of a short player-facing label.
+    pub fn label_key(self) -> &'static str {
         match self {
-            LogChannel::Jobs => "Jobs",
-            LogChannel::Politics => "Politics",
-            LogChannel::Military => "Military",
-            LogChannel::Economy => "Economy",
-            LogChannel::Events => "Events",
+            LogChannel::Jobs => "ui.log.channel.jobs",
+            LogChannel::Politics => "ui.log.channel.politics",
+            LogChannel::Military => "ui.log.channel.military",
+            LogChannel::Economy => "ui.log.channel.economy",
+            LogChannel::Events => "ui.log.channel.events",
         }
     }
 }
@@ -349,6 +350,31 @@ pub enum JobRejection {
     CannotAfford,
 }
 
+impl JobRejection {
+    /// The key of the player-facing sentence for this refusal.
+    ///
+    /// Separate from [`Display`], which stays the developer-facing
+    /// message an error type owes its reader: the same refusal is both
+    /// a diagnostic and something the player is shown at the slot.
+    ///
+    /// [`Display`]: core::fmt::Display
+    pub fn label_key(&self) -> &'static str {
+        match self {
+            JobRejection::CampaignOver => "sim.refusal.campaign-over",
+            JobRejection::UnknownJob(_) => "sim.refusal.unknown-job",
+            JobRejection::NoPlayerOrg => "sim.refusal.no-player-org",
+            JobRejection::IneligibleLeader => "sim.refusal.ineligible-leader",
+            JobRejection::LeaderBusy => "sim.refusal.leader-busy",
+            JobRejection::AlreadyAssigned => "sim.refusal.already-assigned",
+            JobRejection::LeaderIndisposed => "sim.refusal.leader-indisposed",
+            JobRejection::BadTarget => "sim.refusal.bad-target",
+            JobRejection::BadPopupAnswer => "sim.refusal.bad-popup-answer",
+            JobRejection::BadJob => "sim.refusal.bad-job",
+            JobRejection::CannotAfford => "sim.refusal.cannot-afford",
+        }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // Eligibility and start
 // ---------------------------------------------------------------------------
@@ -374,10 +400,14 @@ pub enum Assignment {
 
 impl Assignment {
     /// A short phrase naming the command, for the interface.
-    pub fn describe(&self) -> String {
+    pub fn describe(&self, strings: &TextDb) -> String {
         match self {
-            Assignment::General { name, .. } => format!("General, {name}"),
-            Assignment::Captain { name, .. } => format!("Captain, {name}"),
+            Assignment::General { name, .. } => {
+                strings.format("sim.assignment.general", &[("force", name)])
+            }
+            Assignment::Captain { name, .. } => {
+                strings.format("sim.assignment.captain", &[("force", name)])
+            }
         }
     }
 }
@@ -455,21 +485,29 @@ impl LeaderAvailability {
     }
 
     /// A short player-facing phrase, for showing beside a name.
-    pub fn describe(&self, job_title: impl Fn(&ContentKey) -> String) -> String {
+    pub fn describe(
+        &self,
+        strings: &TextDb,
+        job_title: impl Fn(&ContentKey) -> String,
+    ) -> String {
         match self {
-            LeaderAvailability::Available => "available".to_owned(),
-            LeaderAvailability::Busy { def, completes, .. } => {
-                format!("leading {} until {completes}", job_title(def))
+            LeaderAvailability::Available => strings.text("sim.leader.available").to_owned(),
+            LeaderAvailability::Busy { def, completes, .. } => strings.format(
+                "sim.leader.busy",
+                &[
+                    ("job", &job_title(def)),
+                    ("date", &completes.to_string()),
+                ],
+            ),
+            LeaderAvailability::Indisposed { until: Some(until) } => strings
+                .format("sim.leader.indisposed-until", &[("date", &until.to_string())]),
+            LeaderAvailability::Indisposed { until: None } => {
+                strings.text("sim.leader.indisposed").to_owned()
             }
-            LeaderAvailability::Indisposed { until: Some(until) } => {
-                format!("indisposed until {until}")
+            LeaderAvailability::Assigned(assignment) => assignment.describe(strings),
+            LeaderAvailability::Ineligible(rejection) => {
+                strings.text(rejection.label_key()).to_owned()
             }
-            LeaderAvailability::Indisposed { until: None } => "indisposed".to_owned(),
-            LeaderAvailability::Assigned(assignment) => assignment.describe(),
-            LeaderAvailability::Ineligible(JobRejection::IneligibleLeader) => {
-                "not able to lead for this house".to_owned()
-            }
-            LeaderAvailability::Ineligible(rejection) => rejection.to_string(),
         }
     }
 }

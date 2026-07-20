@@ -19,6 +19,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::clock::{CampaignClock, DailyTick, TickSet};
 use crate::forces::{ArmyRecord, ForcesIndex, ShipRecord};
+use crate::text::TextDb;
 use crate::ids::{ArmyId, OrgId, ProvinceId};
 use crate::jobs::{ActiveJob, JobTarget, JobsIndex, LogChannel, LogEntry};
 use crate::politics::{PoliticsIndex, TitleHolder, TitleKind, TitleRecord};
@@ -311,7 +312,10 @@ pub fn apply_military_op(world: &mut World, op: MilitaryOp, job: &ActiveJob) -> 
             {
                 let name = record.name.clone();
                 record.holder = TitleHolder::Org(job.owner);
-                log(world, job.owner, format!("{name} has fallen to siege."));
+                let line = world
+                    .resource::<TextDb>()
+                    .format("sim.warfare.fallen-to-siege", &[("place", &name)]);
+                log(world, job.owner, line);
             }
             // Conquest breeds resentment: the province starts its new
             // allegiance badly out of order.
@@ -477,7 +481,10 @@ pub fn standing_orders(world: &mut World) {
             let name = crate::access::army(world, army)
                 .map(|a| a.name.clone())
                 .unwrap_or_default();
-            log(world, owner, format!("{name} marches to answer the alarm."));
+            let line = world
+                .resource::<TextDb>()
+                .format("sim.warfare.answering-alarm", &[("army", &name)]);
+            log(world, owner, line);
         }
     }
 }

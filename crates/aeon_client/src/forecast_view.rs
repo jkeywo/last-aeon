@@ -194,7 +194,9 @@ pub fn refresh_forecast(world: &mut World) {
             };
             let availability = leader_availability(world, org, candidate, date);
             let assignment = match &availability {
-                LeaderAvailability::Assigned(assignment) => Some(assignment.describe()),
+                LeaderAvailability::Assigned(assignment) => {
+                    Some(assignment.describe(world.resource::<aeon_sim::TextDb>()))
+                }
                 _ => None,
             };
             let name = name_of(world, candidate);

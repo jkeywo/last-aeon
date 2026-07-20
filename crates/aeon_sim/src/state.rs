@@ -66,5 +66,4 @@ pub fn start_campaign_with_content(
     crate::obligations::seed_from_content(world, &content);
     crate::jobs::init_jobs(world);
     world.insert_resource(ContentDb(content));
-    world.init_resource::<crate::text::TextDb>();
 }

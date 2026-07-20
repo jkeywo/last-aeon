@@ -12,6 +12,7 @@
 use bevy::prelude::World;
 
 use crate::economy::OrgResources;
+use crate::text::TextDb;
 use crate::ids::{BodyId, OrgId, TitleId};
 use crate::jobs::{LogChannel, LogEntry};
 use crate::map::ProvinceRecord;
@@ -96,11 +97,10 @@ pub fn claim_paramountcy(world: &mut World, claimant: OrgId) -> bool {
         title.holder = TitleHolder::Org(claimant);
     }
     let name = crate::access::org_name(world, claimant);
-    log(
-        world,
-        Some(claimant),
-        format!("{name} has claimed the Paramountcy of the planet."),
-    );
+    let line = world
+        .resource::<TextDb>()
+        .format("sim.crisis.paramountcy-claimed", &[("house", &name)]);
+    log(world, Some(claimant), line);
     true
 }
 
@@ -139,10 +139,10 @@ pub fn collect_tithes(world: &mut World, collector: OrgId) -> bool {
     if let Some(mut r) = world.get_mut::<OrgResources>(entity) {
         r.wealth += total;
     }
-    log(
-        world,
-        Some(collector),
-        format!("The Sanctora collected {total} in Imperial tithes."),
+    let line = world.resource::<TextDb>().format(
+        "sim.crisis.tithes-collected",
+        &[("amount", &total.to_string())],
     );
+    log(world, Some(collector), line);
     true
 }

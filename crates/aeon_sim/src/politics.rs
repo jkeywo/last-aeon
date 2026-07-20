@@ -1034,12 +1034,12 @@ pub fn process_death(world: &mut World, id: CharacterId, date: GameDate) {
         {
             record.captain = None;
         }
+        let line = world
+            .resource::<crate::text::TextDb>()
+            .format("sim.politics.ship-without-captain", &[("ship", &name)]);
         crate::access::log(
             world,
-            crate::jobs::LogEntry::line(
-                format!("{name} is without a captain."),
-                crate::jobs::LogChannel::Military,
-            )
+            crate::jobs::LogEntry::line(line, crate::jobs::LogChannel::Military)
             .by(Some(owner)),
         );
     }

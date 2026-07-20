@@ -17,6 +17,7 @@ use serde::{Deserialize, Serialize};
 use aeon_core::calendar::GameDate;
 
 use crate::clock::{CampaignClock, DailyTick, TickSet};
+use crate::text::TextDb;
 use crate::ids::OrgId;
 use crate::jobs::{LogChannel, LogEntry, LogSubject};
 
@@ -40,13 +41,13 @@ pub enum ObligationStatus {
 }
 
 impl ObligationStatus {
-    /// A short player-facing name.
-    pub fn label(self) -> &'static str {
+    /// The key of a short player-facing name.
+    pub fn label_key(self) -> &'static str {
         match self {
-            ObligationStatus::Open => "open",
-            ObligationStatus::Fulfilled => "fulfilled",
-            ObligationStatus::Broken => "broken",
-            ObligationStatus::Expired => "expired",
+            ObligationStatus::Open => "ui.obligation.status.open",
+            ObligationStatus::Fulfilled => "ui.obligation.status.fulfilled",
+            ObligationStatus::Broken => "ui.obligation.status.broken",
+            ObligationStatus::Expired => "ui.obligation.status.expired",
         }
     }
 }
@@ -81,14 +82,15 @@ impl ObligationRecord {
     }
 
     /// A one-line description for the inspector.
-    pub fn summary(&self, name_of: impl Fn(OrgId) -> String) -> String {
+    pub fn summary(&self, strings: &TextDb, name_of: impl Fn(OrgId) -> String) -> String {
         let debtor = name_of(self.debtor);
         let creditor = name_of(self.creditor);
-        match self.kind {
-            ObligationKind::Favour => format!("{debtor} owes {creditor} a favour"),
-            ObligationKind::Promise => format!("{debtor} has promised {creditor}"),
-            ObligationKind::Grievance => format!("{creditor} resents {debtor}"),
-        }
+        let key = match self.kind {
+            ObligationKind::Favour => "sim.obligation.favour.summary",
+            ObligationKind::Promise => "sim.obligation.promise.summary",
+            ObligationKind::Grievance => "sim.obligation.grievance.summary",
+        };
+        strings.format(key, &[("debtor", &debtor), ("creditor", &creditor)])
     }
 }
 
@@ -234,12 +236,13 @@ pub fn expire_due(world: &mut World) {
         // a grievance simply fades.
         if kind == ObligationKind::Promise {
             let name = crate::access::org_name(world, debtor);
+            let line = world.resource::<TextDb>().format(
+                "sim.obligation.promise-lapsed",
+                &[("house", &name), ("origin", &origin)],
+            );
             crate::access::log(
                 world,
-                LogEntry::line(
-                    format!("{name} let a promise lapse: {origin}."),
-                    LogChannel::Politics,
-                )
+                LogEntry::line(line, LogChannel::Politics)
                 .by(Some(debtor))
                 .about(LogSubject::Org(debtor)),
             );

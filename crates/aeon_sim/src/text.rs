@@ -1,11 +1,14 @@
 //! The display-text string table, as a campaign resource.
 //!
-//! The table is embedded at build time and inserted alongside the content
-//! database, so the simulation and any client attached to the same world
-//! read one copy of every player-facing string. Sim-side log lines resolve
-//! as they are written, which keeps [`crate::jobs::LogEntry`] a plain
-//! `String` and leaves the snapshot format, state hashing, and the
-//! client's log filter untouched.
+//! The table is embedded at build time and inserted by the simulation
+//! plugin, so the simulation and any client attached to the same world read
+//! one copy of every player-facing string. It is not campaign state — it
+//! does not vary between campaigns and is not snapshotted — so a world
+//! restored from a save has it for the same reason a fresh one does.
+//!
+//! Sim-side log lines resolve as they are written, which keeps
+//! [`crate::jobs::LogEntry`] a plain `String` and leaves the snapshot
+//! format, state hashing, and the client's log filter untouched.
 
 use std::sync::Arc;
 

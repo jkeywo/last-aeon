@@ -180,7 +180,7 @@ fn draw_committed(
 ) {
     // The simulation's own account of where they are, which names the job
     // and when it ends rather than saying only that they are unavailable.
-    let reason = option.availability.describe(job_title);
+    let reason = option.availability.describe(strings, job_title);
     // A refusal the player can lift reads differently from one they cannot.
     let state = match option.availability {
         aeon_sim::LeaderAvailability::Ineligible(_) => TargetState::StructurallyIneligible,

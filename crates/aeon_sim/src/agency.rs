@@ -28,6 +28,7 @@ use crate::ids::{OrgId, ProvinceId};
 use crate::jobs::{
     JobTarget, JobsIndex, LogChannel, LogEntry, LogSubject, start_job, validate_start,
 };
+use crate::text::TextDb;
 use crate::obligations::{ObligationKind, Obligations};
 use crate::order::{ORDER_START, held_provinces, province_order};
 use crate::politics::{CampaignOver, PlayerHouse};
@@ -92,6 +93,7 @@ fn resources(world: &World, org: OrgId) -> Option<OrgResources> {
 /// stable ID order, and every score is integer arithmetic over visible
 /// state.
 pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
+    let strings = world.resource::<TextDb>();
     let mut intents: Vec<ScoredIntent> = Vec::new();
 
     // ---- Holdings that are slipping, or that someone is standing on ----
@@ -120,7 +122,7 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
                 job,
                 target: JobTarget::None,
                 score: score + 10,
-                reason: format!("{name} is occupied"),
+                reason: strings.format("sim.intent.occupied", &[("province", &name)]),
                 subject: Some(LogSubject::Province(province)),
                 explains: true,
             });
@@ -130,7 +132,7 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
                 job,
                 target: JobTarget::None,
                 score,
-                reason: format!("{name} is restive"),
+                reason: strings.format("sim.intent.restive", &[("province", &name)]),
                 subject: Some(LogSubject::Province(province)),
                 explains: true,
             });
@@ -165,9 +167,9 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
                 job,
                 target: JobTarget::Org(debtor),
                 score: i64::from(weight) + 20,
-                reason: format!(
-                    "{} owes us a favour",
-                    crate::access::org_name(world, debtor)
+                reason: strings.format(
+                    "sim.intent.favour-owed",
+                    &[("house", &crate::access::org_name(world, debtor))],
                 ),
                 subject: Some(LogSubject::Org(debtor)),
                 explains: true,
@@ -183,9 +185,9 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
                 job,
                 target: JobTarget::Org(aggrieved),
                 score: i64::from(weight),
-                reason: format!(
-                    "{} holds a grievance against us",
-                    crate::access::org_name(world, aggrieved)
+                reason: strings.format(
+                    "sim.intent.grievance-held",
+                    &[("house", &crate::access::org_name(world, aggrieved))],
                 ),
                 subject: Some(LogSubject::Org(aggrieved)),
                 explains: true,
@@ -202,7 +204,7 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
                 job,
                 target: JobTarget::None,
                 score: (100 - resources.wealth).max(0) / 2 + 20,
-                reason: "the treasury is low".to_owned(),
+                reason: strings.text("sim.intent.treasury-low").to_owned(),
                 subject: Some(LogSubject::Org(org)),
                 explains: true,
             });
@@ -216,7 +218,7 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
                 job,
                 target: JobTarget::None,
                 score: i64::from(50 - legitimacy) + 15,
-                reason: "our standing is thin".to_owned(),
+                reason: strings.text("sim.intent.standing-thin").to_owned(),
                 subject: Some(LogSubject::Org(org)),
                 explains: true,
             });
@@ -236,7 +238,7 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
             job,
             target: JobTarget::None,
             score: 120,
-            reason: "we hold more of the planet than any rival".to_owned(),
+            reason: strings.text("sim.intent.claim-ready").to_owned(),
             subject: Some(LogSubject::Org(org)),
             explains: true,
         });
@@ -248,7 +250,7 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
             job,
             target: JobTarget::None,
             score: THRESHOLD + 5,
-            reason: "ordinary business".to_owned(),
+            reason: strings.text("sim.intent.routine").to_owned(),
             subject: Some(LogSubject::Org(org)),
             explains: false,
         });
@@ -346,7 +348,14 @@ fn announce(world: &mut World, org: OrgId, intent: &ScoredIntent) {
         .unwrap_or_default();
     let name = crate::access::org_name(world, org);
     let mut entry = LogEntry::line(
-        format!("{name} began '{title}': {}.", intent.reason),
+        world.resource::<TextDb>().format(
+            "sim.agency.began",
+            &[
+                ("house", &name),
+                ("job", &title),
+                ("reason", &intent.reason),
+            ],
+        ),
         LogChannel::Politics,
     )
     .by(Some(org));

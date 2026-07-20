@@ -281,7 +281,7 @@ fn readout_for(
                 "ui.map-mode.order.hint",
                 &[
                     ("percent", &percent.to_string()),
-                    ("pressure", &pressure.describe()),
+                    ("pressure", &pressure.describe(strings)),
                 ],
             );
             if let Some(days) = state.days_to_revolt() {

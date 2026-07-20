@@ -116,7 +116,7 @@ pub fn draw_context_jobs(
                     data.availability
                         .of(leader)
                         .map(|state| {
-                            state.describe(|key| {
+                            state.describe(strings, |key| {
                                 content
                                     .jobs
                                     .get(key)
