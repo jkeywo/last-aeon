@@ -218,3 +218,51 @@ entities:
       - kind: manual-review
         reference: assets/text/strings.csv
         summary: The orphan check found a job result whose log line had been keyed without its result kind, so that outcome logged nothing; the row was re-keyed under the failing result. It also found one speculative row nothing drew, which was removed.
+
+  - milestone: m3-theme-and-projection
+    core:
+      status: accepted
+      confidence: confirmed
+      title: "M3.5: A Theme Worth Designing, and a Map That Lies Flat"
+      summary: >-
+        Finish the interface pass. The token layer grows from a colour list
+        into the whole appearance — control behaviour, spacing, shadows,
+        chrome — with every token enforced to be read, watched on disk, and
+        shown in a specimen panel. The map gains a second projection, laid
+        out from the same directions the globe already used.
+      references:
+        - egui-with-owned-design-tokens
+        - surface-positions-are-directions-not-points
+        - strategic-map-intelligence-modes
+      goals:
+        - No colour, size, spacing or interaction behaviour is a literal anywhere in the client, and a token that changes nothing when applied fails the build by name.
+        - The token file reloads from disk on save in native builds, and a specimen panel shows every token in context, so restyling is a save rather than a rebuild.
+        - Nothing is tokenised that the interface toolkit cannot express, so no token can promise a control that does not exist.
+        - A body's surface can be drawn as a globe or as a flat sheet, with labels, selection pin and click targets following the projection rather than being repeated per projection.
+        - Placing a direction and reading it back returns the same place under both projections, so no province can be drawn where it cannot be clicked.
+    implementation:
+      paths:
+        - crates/aeon_client/assets/theme.ron
+        - crates/aeon_client/src/ui/theme.rs
+        - crates/aeon_client/src/ui/specimen.rs
+        - crates/aeon_client/src/ui/widgets.rs
+        - crates/aeon_client/src/view.rs
+        - crates/aeon_client/src/scene.rs
+        - crates/aeon_client/src/camera.rs
+        - crates/aeon_client/src/selection.rs
+        - crates/aeon_client/src/map_overlay.rs
+      tests:
+        - crates/aeon_client/src/ui/theme.rs
+        - crates/aeon_client/src/view.rs
+      status: declared
+
+    evidence:
+      - kind: test
+        reference: crates/aeon_client/src/ui/theme.rs
+        summary: Each token is named alongside a way to change it, and applying the changed theme must yield a different style or that row fails by name. Written because three tokens had already gone bad unnoticed — two never read at all, and one that pointed ordinary label colour at the secondary tone, so every plain label in the game was drawn muted.
+      - kind: test
+        reference: crates/aeon_client/src/view.rs
+        summary: Placing a direction and reading it back returns the same direction at five latitudes under both projections; the flat map puts the poles exactly on its top and bottom edges and the date line on its side edge; and only the globe culls its far side.
+      - kind: manual-review
+        reference: crates/aeon_client/src/ui/specimen.rs
+        summary: Verified in the native client that editing theme.ron is reflected without a rebuild, that a deliberately broken file logs a warning and leaves the interface standing, and that the specimen shows every widget state, semantic colour, type role and spacing value under its own token path.

@@ -931,10 +931,22 @@ entities:
         which is exactly what tooltips and dropdowns need, and this
         interface is made of pervasive hover explanations, pickers, scroll
         areas and modal windows.
+
+        The token set covers the whole appearance, not only colour: widget
+        state surfaces, per-state stroke weights and hover expansion,
+        button padding, shadows, scrollbars, menus, tooltips, sliders, the
+        structural on/off choices, and the sizes of the parts the client
+        draws by hand. Every token is read by something, and a test names
+        each one and fails if changing it leaves the applied style
+        identical. On native the file is also watched and re-applied on
+        save, and a specimen panel renders every token in context, so the
+        design loop is a save rather than a rebuild.
       rationale:
         - The web build is the primary playable surface, so an approach that cannot compile to wasm32 could never serve it whatever its merits natively.
-        - Owning roughly 250 lines of token struct carries no migration risk and no dependency that can go stale, where the published egui theme crates are either abandoned or unverified against the egui version in use.
+        - Owning the token struct carries no migration risk and no dependency that can go stale, where the published egui theme crates are either abandoned or unverified against the egui version in use.
         - Tokens translate mechanically into egui's state-keyed style, so design work can be requested as a token file plus static mockups rather than as shipping code.
+        - A token nothing reads is worse than no token, because it lies to whoever sets it; three had already gone bad unnoticed, including one that drew every plain label in the muted secondary colour, so the rule is enforced by a test rather than left as an intention.
+        - Nothing is tokenised that egui cannot express — there is no disabled colour, because egui fades by alpha rather than carrying a disabled widget state, and no font family, because the build ships one face.
       references:
         - job-forecast-and-explanation-ui
         - context-sensitive-job-ui
@@ -1222,3 +1234,25 @@ entities:
         - Approval becomes a one-character edit in the file being read, which is the smallest possible ceremony for the act that matters most.
       references:
         - display-text-lives-in-one-string-table
+
+  - decision: surface-positions-are-directions-not-points
+    core:
+      status: accepted
+      confidence: confirmed
+      title: A Body's Surface Is Addressed by Direction, Not by World Position
+      summary: >-
+        Every place on a body is held as a unit direction derived from its
+        authored latitude and longitude, never as a rendered position. One
+        projection type turns a direction into a world point, turns a world
+        point back into a direction, and answers whether a place faces the
+        camera. Mesh, labels, selection pin and click targets all ask it,
+        so the globe and the flat map are the same map drawn two ways
+        rather than two maps kept in step.
+      rationale:
+        - Placing and un-placing are inverses, and are tested as such, because a projection that drew a province somewhere it could not be clicked would be worse than offering no second projection at all.
+        - The baked political texture is equirectangular in latitude and longitude, which is what a sphere's UVs and a plane's UVs both ask for, so one bake serves both meshes and no second texture pipeline exists.
+        - A flat map needs only four vertices, since an equirectangular texture maps linearly across a plane, where the sphere needs a grid to curve between the same UVs.
+        - "Back-face culling belongs to the projection rather than to the label renderer: a globe hides half its surface and a flat map hides nothing, and that is a fact about the projection."
+      references:
+        - strategic-map-intelligence-modes
+        - painter-drawn-ui-icons
