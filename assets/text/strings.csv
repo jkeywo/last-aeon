@@ -1,0 +1,8 @@
+id,context,english
+ui.map-mode.holder.hint.direct,"Province hover hint in the holder map mode, when the player's own house holds the province directly.","[Held directly by your house]"
+ui.map-mode.holder.hint.outside,"Province hover hint in the holder map mode, when the province is held by a house outside the player's chain of vassalage. {holder} is a house or organisation name.","[{holder} — outside your realm]"
+ui.map-mode.holder.hint.unclaimed,"Province hover hint in the holder map mode, when nobody holds the province.","[Unclaimed — answers to nobody]"
+ui.map-mode.holder.hint.vassal.one,"Province hover hint when the province is held one step down the player's chain of vassalage. {holder} is a house or organisation name.","[Held by {holder}, 1 step down your chain of vassalage]"
+ui.map-mode.holder.hint.vassal.other,"Plural form of ui.map-mode.holder.hint.vassal.one; {hops} is 2 or more.","[Held by {holder}, {hops} steps down your chain of vassalage]"
+ui.map-mode.holder.value.direct,"Short value shown on the province itself in the holder map mode when the player holds it directly.","[direct]"
+ui.map-mode.holder.value.vassal,"Short value shown on the province in the holder map mode when a vassal holds it. {holder} is a house or organisation name.","[via {holder}]"

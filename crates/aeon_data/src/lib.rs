@@ -13,9 +13,11 @@ pub mod host;
 pub mod key;
 pub mod model;
 pub mod report;
+pub mod text;
 
 pub use effect::{EffectRole, ScriptEffect};
 pub use host::{ContentSource, ScriptError, ScriptHost, load_content};
-pub use key::ContentKey;
+pub use key::{ContentKey, TextKey};
 pub use model::ContentSet;
 pub use report::{ContentFinding, ContentReport, Severity};
+pub use text::{StringTable, TextRow, placeholders_in};

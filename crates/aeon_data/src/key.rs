@@ -35,6 +35,43 @@ impl ContentKey {
     }
 }
 
+/// A validated display-text ID: dot-separated kebab-case segments, like
+/// `ui.inspector.heading` or `province.karvessa.name`.
+///
+/// Text keys name rows in the string table. UI keys are written at their
+/// call sites; content keys are derived from a definition's [`ContentKey`]
+/// and the field being resolved, so a definition's display text cannot
+/// drift from its ID.
+#[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
+pub struct TextKey(String);
+
+/// A string that is not a valid dotted text key.
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
+#[error("text keys must be dot-separated lowercase kebab-case segments: '{0}'")]
+pub struct InvalidTextKey(pub String);
+
+impl TextKey {
+    /// Validates and wraps a key.
+    pub fn new(value: &str) -> Result<Self, InvalidTextKey> {
+        if !value.is_empty() && value.split('.').all(is_kebab_case) {
+            Ok(Self(value.to_owned()))
+        } else {
+            Err(InvalidTextKey(value.to_owned()))
+        }
+    }
+
+    /// The key text.
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+impl fmt::Display for TextKey {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
 fn is_kebab_case(value: &str) -> bool {
     if value.is_empty() {
         return false;
@@ -95,6 +132,35 @@ mod tests {
                 ContentKey::new(invalid).is_err(),
                 "{invalid} should be invalid"
             );
+        }
+    }
+
+    #[test]
+    fn accepts_dotted_text_keys() {
+        for valid in [
+            "ui",
+            "ui.inspector.heading",
+            "province.karvessa.name",
+            "ui.map-mode.holder.hint.vassal.one",
+            "job.hold-court.success.log-text",
+        ] {
+            assert!(TextKey::new(valid).is_ok(), "{valid} should be valid");
+        }
+    }
+
+    #[test]
+    fn rejects_malformed_text_keys() {
+        for invalid in [
+            "",
+            ".leading",
+            "trailing.",
+            "double..dot",
+            "ui.Inspector",
+            "ui.under_score",
+            "ui.sp ace",
+            "ui.-lead",
+        ] {
+            assert!(TextKey::new(invalid).is_err(), "{invalid} should be invalid");
         }
     }
 }
