@@ -50,6 +50,7 @@ use bevy::app::{App, Plugin};
 pub use assignments::{
     ActiveAssignment, AssignmentRejection, AssignmentTarget, AssignmentsIndex, LeaderAvailability,
     LogChannel, LogEntry, LogSubject, MessageLog, PendingPopups, Post, leader_availability,
+    target_allowed,
 };
 pub use clock::{CampaignClock, DailyTick, MonthlyPulse, TickSet, YearlyPulse, advance_one_day};
 pub use command::{CommandEnvelope, CommandRejection, PlayerCommand};

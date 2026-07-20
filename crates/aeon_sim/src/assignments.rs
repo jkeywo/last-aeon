@@ -11,7 +11,8 @@ use std::collections::BTreeMap;
 
 use aeon_core::calendar::GameDate;
 use aeon_data::model::{
-    AssignmentCategory, AssignmentDef, AssignmentTargetKind, OutcomeKind, RiskTag,
+    AssignmentCategory, AssignmentDef, AssignmentTargetKind, HolderRelation, OutcomeKind, RiskTag,
+    TitleNeed,
 };
 use aeon_data::{ContentKey, EffectRole, ScriptEffect, ScriptHost};
 use bevy::app::App;
@@ -620,7 +621,9 @@ fn target_valid(
     target: AssignmentTarget,
 ) -> bool {
     let province_known = |id: ProvinceId| crate::access::province_entity(world, id).is_some();
-    match (def.target, target) {
+    // Two questions, kept apart: is this the *shape* of target the
+    // assignment takes, and is this particular target a legal one.
+    let shaped = match (def.target, target) {
         (AssignmentTargetKind::None, AssignmentTarget::None) => true,
         (AssignmentTargetKind::Character, AssignmentTarget::Character(id)) => {
             crate::access::character(world, id).is_some_and(|r| r.alive())
@@ -644,7 +647,198 @@ fn target_valid(
                 && crate::access::ship(world, ship).is_some_and(|record| record.owner == owner)
         }
         _ => false,
+    };
+    shaped && requirements_met(world, def, owner, target)
+}
+
+/// Whether this target is a legal one for this assignment.
+///
+/// Public so the interface can ask the question it is about to offer the
+/// player, rather than deciding for itself and drifting. It takes no
+/// leader: whether a target is legal has nothing to do with who would go.
+pub fn target_allowed(
+    world: &World,
+    def_key: &ContentKey,
+    owner: OrgId,
+    target: AssignmentTarget,
+) -> bool {
+    let Some(content) = world.get_resource::<ContentDb>() else {
+        return false;
+    };
+    let Some(def) = content.0.assignments.get(def_key) else {
+        return false;
+    };
+    let def = def.clone();
+    target_valid(world, &def, owner, target)
+}
+
+/// Whether the authored requirements hold between this owner and target.
+///
+/// The one place a relational condition is asked. The button, the
+/// forecast, an autonomous house and a standing order all reach the
+/// simulation through `validate_start`, which reaches here — so none of
+/// them can offer something the others would refuse.
+///
+/// Before this existed, the only check was that the target *existed*: a
+/// province was a legal raid target because it was a province, which is
+/// how raiding your own holdings came to be on the menu.
+fn requirements_met(
+    world: &World,
+    def: &AssignmentDef,
+    owner: OrgId,
+    target: AssignmentTarget,
+) -> bool {
+    let requires = &def.requires;
+
+    // Whichever province this assignment ultimately acts on.
+    let province = match target {
+        AssignmentTarget::Province(id) => Some(id),
+        AssignmentTarget::ArmyToProvince(_, id) => Some(id),
+        AssignmentTarget::ShipToProvince(_, id) => Some(id),
+        AssignmentTarget::OwnArmy(army) => {
+            crate::access::army(world, army).map(|record| record.location)
+        }
+        _ => None,
+    };
+
+    if requires.target_holder != HolderRelation::Any {
+        let Some(province) = province else {
+            return false;
+        };
+        let holder = crate::warfare::province_holder(world, province);
+        let ok = match requires.target_holder {
+            // Unheld ground belongs to nobody, so it is not somebody
+            // else's: there is nobody there to raid.
+            HolderRelation::Other => holder.is_some_and(|held| held != owner),
+            HolderRelation::Own => holder == Some(owner),
+            HolderRelation::Any => true,
+        };
+        if !ok {
+            return false;
+        }
     }
+
+    if requires.target_occupied {
+        let Some(province) = province else {
+            return false;
+        };
+        if !hostile_force_in(world, owner, province) {
+            return false;
+        }
+    }
+
+    if requires.army_present {
+        let at = match target {
+            AssignmentTarget::OwnArmy(army) | AssignmentTarget::ArmyToProvince(army, _) => {
+                crate::access::army(world, army).map(|record| record.location)
+            }
+            _ => None,
+        };
+        if at.is_none() || at != province {
+            return false;
+        }
+    }
+
+    if requires.target_house != HolderRelation::Any {
+        let AssignmentTarget::Character(id) = target else {
+            return false;
+        };
+        let house = crate::access::character(world, id).and_then(|record| record.organisation);
+        let ok = match requires.target_house {
+            HolderRelation::Own => house == Some(owner),
+            HolderRelation::Other => house.is_some_and(|house| house != owner),
+            HolderRelation::Any => true,
+        };
+        if !ok {
+            return false;
+        }
+    }
+
+    if let Some(need) = requires.target_holds_title {
+        let AssignmentTarget::Character(id) = target else {
+            return false;
+        };
+        if !holds_title(world, id, need) {
+            return false;
+        }
+    }
+
+    if requires.target_owes_favour {
+        let AssignmentTarget::Org(debtor) = target else {
+            return false;
+        };
+        let owed = world
+            .get_resource::<crate::obligations::Obligations>()
+            .is_some_and(|ledger| ledger.owed(debtor, owner).next().is_some());
+        if !owed {
+            return false;
+        }
+    }
+
+    // About the owner rather than the target: what stops an assignment
+    // that answers an alarm being offered when none is sounding.
+    if requires.owner_threatened && !any_holding_threatened(world, owner) {
+        return false;
+    }
+
+    if requires.max_order.is_some() || requires.min_order.is_some() {
+        let Some(province) = province else {
+            return false;
+        };
+        let order = crate::order::province_order(world, province).order;
+        if requires.max_order.is_some_and(|max| order > max) {
+            return false;
+        }
+        if requires.min_order.is_some_and(|min| order < min) {
+            return false;
+        }
+    }
+
+    true
+}
+
+/// Whether a force belonging to anyone but `owner` stands in `province`.
+fn hostile_force_in(world: &World, owner: OrgId, province: ProvinceId) -> bool {
+    let Some(forces) = world.get_resource::<crate::forces::ForcesIndex>() else {
+        return false;
+    };
+    forces.armies.values().any(|entity| {
+        world
+            .get::<crate::forces::ArmyRecord>(*entity)
+            .is_some_and(|army| army.location == province && army.owner != owner)
+    })
+}
+
+/// Whether any province this organisation holds has a hostile force in it.
+fn any_holding_threatened(world: &World, owner: OrgId) -> bool {
+    crate::order::held_provinces(world, owner)
+        .into_iter()
+        .any(|province| hostile_force_in(world, owner, province))
+}
+
+/// Whether a character holds a title of the required kind.
+fn holds_title(world: &World, character: CharacterId, need: TitleNeed) -> bool {
+    let Some(index) = world.get_resource::<crate::politics::PoliticsIndex>() else {
+        return false;
+    };
+    index.titles.values().any(|entity| {
+        world
+            .get::<crate::politics::TitleRecord>(*entity)
+            .is_some_and(|title| {
+                title.holder == crate::politics::TitleHolder::Character(character)
+                    && match need {
+                        TitleNeed::Consul => {
+                            matches!(title.kind, crate::politics::TitleKind::Consul)
+                        }
+                        TitleNeed::Paramount => {
+                            matches!(title.kind, crate::politics::TitleKind::Paramount(_))
+                        }
+                        TitleNeed::Province => {
+                            matches!(title.kind, crate::politics::TitleKind::Province(_))
+                        }
+                    }
+            })
+    })
 }
 
 /// Validates a start-assignment request for an organisation.

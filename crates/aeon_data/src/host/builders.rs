@@ -18,11 +18,12 @@ use rhai::{Engine, Map};
 
 use crate::key::ContentKey;
 use crate::model::{
-    AiIntent, ArmyDef, AssignmentCategory, AssignmentDef, AssignmentTargetKind, BodyDef, BodyKind,
-    CharacterDef, EventChoiceDef, EventDef, EventFamily, EventRequires, Gender, GoverningSkill,
-    HouseTier, MilitaryOp, NamePoolDef, ObligationDef, ObligationKind, OfficeDef, OrgDef, OrgKind,
-    OutcomeDef, OutcomeKind, PopupChoiceDef, ProvinceDef, RiskTag, ScenarioDef, ScriptFnRef,
-    ShipClass, ShipDef, SkillsDef, TitleDef, TitleHolderDef, TitleKindDef, TraitDef,
+    AiIntent, ArmyDef, AssignmentCategory, AssignmentDef, AssignmentRequires, AssignmentTargetKind,
+    BodyDef, BodyKind, CharacterDef, EventChoiceDef, EventDef, EventFamily, EventRequires, Gender,
+    GoverningSkill, HolderRelation, HouseTier, MilitaryOp, NamePoolDef, ObligationDef,
+    ObligationKind, OfficeDef, OrgDef, OrgKind, OutcomeDef, OutcomeKind, PopupChoiceDef,
+    ProvinceDef, RiskTag, ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SkillsDef, TitleDef,
+    TitleHolderDef, TitleKindDef, TitleNeed, TraitDef,
 };
 use crate::report::{ContentReport, Severity};
 
@@ -660,6 +661,8 @@ fn define_assignment(state: &mut BuilderState, map: Map) {
         return;
     };
 
+    let requires = assignment_requires(&mut f);
+
     let Some(results_value) = f.take_raw("results") else {
         f.error("missing required field 'results'");
         return;
@@ -696,9 +699,86 @@ fn define_assignment(state: &mut BuilderState, map: Map) {
             manpower_cost,
             supplies_cost,
             influence_cost,
+            requires,
             results,
         },
     );
+}
+
+/// Reads an assignment's target requirements.
+///
+/// Every field is optional and defaults to "do not care", so an assignment
+/// that declares nothing is offered exactly as widely as it was before
+/// requirements existed. Unknown keys warn rather than fail, matching how
+/// every other authored block behaves.
+fn assignment_requires(f: &mut Fields) -> AssignmentRequires {
+    let mut requires = AssignmentRequires::default();
+    let Some(raw) = f.take_raw("requires") else {
+        return requires;
+    };
+    let Some(conditions) = raw.try_cast::<Map>() else {
+        f.error("requires must be a map");
+        return requires;
+    };
+    warn_unknown_fields(
+        f.state,
+        &conditions,
+        Some(f.key.as_str()),
+        &[
+            "target_holder",
+            "target_occupied",
+            "army_present",
+            "target_house",
+            "target_holds_title",
+            "target_owes_favour",
+            "owner_threatened",
+            "max_order",
+            "min_order",
+        ],
+    );
+
+    let relation = |conditions: &Map, name: &str| -> HolderRelation {
+        match conditions
+            .get(name)
+            .and_then(|v| v.clone().into_string().ok())
+            .as_deref()
+        {
+            Some("own") => HolderRelation::Own,
+            Some("other") => HolderRelation::Other,
+            _ => HolderRelation::Any,
+        }
+    };
+    let flag = |conditions: &Map, name: &str| -> bool {
+        conditions
+            .get(name)
+            .and_then(|v| v.as_bool().ok())
+            .unwrap_or(false)
+    };
+
+    requires.target_holder = relation(&conditions, "target_holder");
+    requires.target_house = relation(&conditions, "target_house");
+    requires.target_occupied = flag(&conditions, "target_occupied");
+    requires.army_present = flag(&conditions, "army_present");
+    requires.target_owes_favour = flag(&conditions, "target_owes_favour");
+    requires.owner_threatened = flag(&conditions, "owner_threatened");
+    requires.target_holds_title = conditions
+        .get("target_holds_title")
+        .and_then(|v| v.clone().into_string().ok())
+        .and_then(|name| match name.as_str() {
+            "consul" => Some(TitleNeed::Consul),
+            "paramount" => Some(TitleNeed::Paramount),
+            "province" => Some(TitleNeed::Province),
+            _ => None,
+        });
+    requires.max_order = conditions
+        .get("max_order")
+        .and_then(|v| v.as_int().ok())
+        .map(|v| v as i32);
+    requires.min_order = conditions
+        .get("min_order")
+        .and_then(|v| v.as_int().ok())
+        .map(|v| v as i32);
+    requires
 }
 
 /// Reads a assignment's graded results, each an optional nested map.

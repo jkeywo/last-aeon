@@ -30,6 +30,7 @@ use aeon_sim::{
 use crate::assignment_ui::AssignmentForm;
 use crate::forecast_view::{AvailabilityView, ForecastCache};
 use crate::map_modes::MapReadout;
+use crate::offer_view::OfferView;
 use crate::ui::dock::DockState;
 use crate::ui::picker::PickerState;
 use crate::ui::theme::UiTheme;
@@ -100,6 +101,7 @@ pub struct PanelData<'w, 's> {
     pub order: Query<'w, 's, (&'static ProvinceRecord, &'static ProvincialOrder)>,
     pub obligations: Option<Res<'w, Obligations>>,
     pub availability: Res<'w, AvailabilityView>,
+    pub offers: Res<'w, OfferView>,
     pub province_records: Query<'w, 's, &'static ProvinceRecord>,
     pub cache: Res<'w, ForecastCache>,
     pub readout: Res<'w, MapReadout>,

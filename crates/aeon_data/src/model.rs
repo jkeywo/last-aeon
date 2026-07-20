@@ -240,6 +240,10 @@ pub struct AssignmentDef {
     /// Influence spent when the assignment starts.
     pub influence_cost: i64,
     /// Possible outcomes, keyed by kind. Success and failure are mandatory.
+    /// Who this may be aimed at. Checked in exactly one place, so the
+    /// button, the forecast, the autonomous houses and any standing order
+    /// all agree by construction.
+    pub requires: AssignmentRequires,
     pub results: BTreeMap<OutcomeKind, OutcomeDef>,
 }
 
@@ -637,6 +641,71 @@ pub enum EventFamily {
 ///
 /// Conditions are data rather than script so they can be validated at
 /// load and evaluated identically on every replay.
+/// Who a target has to be, for an assignment to be offered against it.
+///
+/// The same shape as [`EventRequires`], and for the same reason: conditions
+/// are data rather than script, so they can be validated at load, shown to
+/// the player as the reason a button is refused, and evaluated identically
+/// on every replay.
+///
+/// Every field defaults to "do not care", so an assignment that says
+/// nothing is offered exactly as widely as it was before this existed.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AssignmentRequires {
+    /// Whose the target province must be.
+    pub target_holder: HolderRelation,
+    /// A force hostile to the owner must be standing in the target.
+    pub target_occupied: bool,
+    /// The ordered army must already be in the target province.
+    pub army_present: bool,
+    /// Whose house the target character must belong to.
+    pub target_house: HolderRelation,
+    /// The target must hold a title of this kind.
+    pub target_holds_title: Option<TitleNeed>,
+    /// The target organisation must owe the owner an open favour.
+    pub target_owes_favour: bool,
+    /// The owner must have a holding with a hostile force standing in it.
+    ///
+    /// Unlike the rest, this is about the owner rather than the target: it
+    /// is what stops an assignment that answers an alarm being offered
+    /// when no alarm is sounding.
+    pub owner_threatened: bool,
+    /// The target province's order must be at or below this.
+    pub max_order: Option<i32>,
+    /// The target province's order must be at or above this.
+    pub min_order: Option<i32>,
+}
+
+/// A kind of title a target must hold.
+///
+/// Deliberately without the body or province a real title names: the
+/// question an assignment asks is "are they the Consul", not "are they
+/// Consul of this particular place".
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum TitleNeed {
+    /// Holds a province's title.
+    Province,
+    /// Holds a body's paramountcy.
+    Paramount,
+    /// Holds the Consulship.
+    Consul,
+}
+
+/// Whose something must be, relative to the organisation acting.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum HolderRelation {
+    /// Anyone's, including nobody's.
+    #[default]
+    Any,
+    /// The acting organisation's own.
+    Own,
+    /// Somebody else's. Unheld ground counts as nobody's, and so is not
+    /// somebody else's — you cannot raid an empty province.
+    Other,
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EventRequires {
     /// Only fire for the player's own house.

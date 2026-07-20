@@ -11,7 +11,7 @@ use aeon_data::model::{AssignmentDef, AssignmentTargetKind};
 use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
 use aeon_sim::{
     AssignmentTarget, CharacterId, LeaderAvailability, OrgId, PlayerCommand, PoliticsIndex,
-    ProvinceId, TextDb, TitleHolder, TitleKind,
+    ProvinceId, TextDb,
 };
 use bevy_egui::egui;
 
@@ -177,20 +177,16 @@ pub fn draw_context_assignments(
             }
         }
         AssignmentScope::OutsideCharacter(target_char) => {
-            let mut offered: Vec<(aeon_data::ContentKey, AssignmentDef)> =
-                assignments_of(&[AssignmentTargetKind::Character]);
-            // If this character holds the Consul title, the head can petition.
-            let is_consul = data.titles.iter().any(|t| {
-                t.kind == TitleKind::Consul && t.holder == TitleHolder::Character(target_char)
-            });
-            if is_consul
-                && let Some((key, def)) = content
-                    .assignments
-                    .iter()
-                    .find(|(k, _)| k.as_str() == "petition-the-consul")
-            {
-                offered.push((key.clone(), def.clone()));
-            }
+            // Every assignment that can be aimed at a character, filtered
+            // by what the simulation says is legal against this one. The
+            // client used to name "petition-the-consul" in its own source
+            // and check the Consul title itself; the requirement is now
+            // authored on the assignment, and this asks rather than knows.
+            let offered: Vec<(aeon_data::ContentKey, AssignmentDef)> =
+                assignments_of(&[AssignmentTargetKind::Character])
+                    .into_iter()
+                    .filter(|(key, _)| data.offers.allows(key))
+                    .collect();
 
             for (key, def) in &offered {
                 let targets_them = def.target == AssignmentTargetKind::Character;

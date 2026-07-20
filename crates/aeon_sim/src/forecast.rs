@@ -364,6 +364,7 @@ mod tests {
             manpower_cost: 0,
             supplies_cost: 0,
             influence_cost: 0,
+            requires: Default::default(),
             results,
         }
     }

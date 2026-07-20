@@ -130,6 +130,48 @@ define_assignment(#{
         failure: #{ weight: 300 },
     },
 });
+// One per requirement, so each gate is proved on its own rather than
+// through some other assignment that happens to share it.
+define_assignment(#{
+    id: "gated-raid",
+    category: "consequential", duration_days: 5,
+    skill: "command", difficulty: 0, target: "province",
+    requires: #{ target_holder: "other" },
+    ai_available: false,
+    results: #{ success: #{ weight: 1 }, failure: #{ weight: 1 } },
+});
+define_assignment(#{
+    id: "gated-alarm",
+    category: "consequential", duration_days: 5,
+    skill: "command", difficulty: 0, target: "province",
+    requires: #{ owner_threatened: true },
+    ai_available: false,
+    results: #{ success: #{ weight: 1 }, failure: #{ weight: 1 } },
+});
+define_assignment(#{
+    id: "gated-petition",
+    category: "consequential", duration_days: 5,
+    skill: "diplomacy", difficulty: 0, target: "character",
+    requires: #{ target_holds_title: "consul" },
+    ai_available: false,
+    results: #{ success: #{ weight: 1 }, failure: #{ weight: 1 } },
+});
+define_assignment(#{
+    id: "gated-favour",
+    category: "consequential", duration_days: 5,
+    skill: "diplomacy", difficulty: 0, target: "organisation",
+    requires: #{ target_owes_favour: true },
+    ai_available: false,
+    results: #{ success: #{ weight: 1 }, failure: #{ weight: 1 } },
+});
+define_assignment(#{
+    id: "gated-whisper",
+    category: "consequential", duration_days: 5,
+    skill: "intrigue", difficulty: 0, target: "character",
+    requires: #{ target_house: "other" },
+    ai_available: false,
+    results: #{ success: #{ weight: 1 }, failure: #{ weight: 1 } },
+});
 "#;
 
 /// The prose behind the fixture's IDs.
@@ -190,6 +232,16 @@ fn strings() -> aeon_data::StringTable {
             "assignment.even-gamble.disaster.log-text",
             "OUTCOME-DISASTER",
         ),
+        ("assignment.gated-raid.title", "Raid"),
+        ("assignment.gated-raid.summary", "Take what is theirs."),
+        ("assignment.gated-alarm.title", "Respond"),
+        ("assignment.gated-alarm.summary", "Answer the alarm."),
+        ("assignment.gated-petition.title", "Petition"),
+        ("assignment.gated-petition.summary", "Ask the Consul."),
+        ("assignment.gated-favour.title", "Call In Favour"),
+        ("assignment.gated-favour.summary", "Collect what is owed."),
+        ("assignment.gated-whisper.title", "Discredit"),
+        ("assignment.gated-whisper.summary", "Spread a word."),
         ("assignment.ai-errand.title", "An AI errand"),
         ("assignment.ai-errand.summary", "Ordinary business."),
         (
@@ -833,5 +885,163 @@ fn the_simulation_and_its_availability_report_never_disagree() {
                 );
             }
         }
+    }
+}
+
+/// The authored requirements, one test per gate.
+///
+/// These are the defects playtesting reported: buttons to raid your own
+/// holdings, and an alarm to answer with nothing sounding. Before the
+/// requirements existed, `target_valid` asked only whether the target
+/// *existed*, so a province was a legal raid target because it was a
+/// province.
+mod requirements {
+    use super::*;
+    use aeon_sim::{AssignmentTarget, ProvinceId, target_allowed};
+
+    fn province(h: &mut SimHost, name: &str) -> ProvinceId {
+        h.world_mut()
+            .resource::<aeon_sim::map::MapIndex>()
+            .province_keys[&key(name)]
+    }
+
+    #[test]
+    fn you_cannot_raid_your_own_holding() {
+        let mut h = host(1);
+        let ash = org_id(&mut h, "ash");
+        let ours = province(&mut h, "alpha");
+        let theirs = province(&mut h, "beta");
+
+        assert!(
+            !target_allowed(
+                h.world_mut(),
+                &key("gated-raid"),
+                ash,
+                AssignmentTarget::Province(ours)
+            ),
+            "Alpha is ours, so raiding it must not be on offer"
+        );
+        assert!(
+            target_allowed(
+                h.world_mut(),
+                &key("gated-raid"),
+                ash,
+                AssignmentTarget::Province(theirs)
+            ),
+            "Beta is Birch's, so raiding it is a legal thing to want"
+        );
+    }
+
+    #[test]
+    fn an_alarm_needs_something_to_answer() {
+        let mut h = host(2);
+        let ash = org_id(&mut h, "ash");
+        let ours = province(&mut h, "alpha");
+        // Nobody is standing in Ash's holdings at the start.
+        assert!(
+            !target_allowed(
+                h.world_mut(),
+                &key("gated-alarm"),
+                ash,
+                AssignmentTarget::Province(ours)
+            ),
+            "with no hostile force anywhere of ours, there is no alarm"
+        );
+    }
+
+    #[test]
+    fn only_the_consul_can_be_petitioned() {
+        let mut h = host(3);
+        let ash = org_id(&mut h, "ash");
+        let bela = char_id(&mut h, "bela-birch");
+        // The fixture appoints no Consul, so nobody qualifies — which is
+        // the case the client used to get wrong by naming the assignment
+        // in its own source.
+        assert!(
+            !target_allowed(
+                h.world_mut(),
+                &key("gated-petition"),
+                ash,
+                AssignmentTarget::Character(bela)
+            ),
+            "Bela holds no Consulship, so there is nothing to petition"
+        );
+    }
+
+    #[test]
+    fn a_favour_can_only_be_called_in_from_someone_who_owes_one() {
+        let mut h = host(4);
+        let ash = org_id(&mut h, "ash");
+        let birch = org_id(&mut h, "birch");
+        assert!(
+            !target_allowed(
+                h.world_mut(),
+                &key("gated-favour"),
+                ash,
+                AssignmentTarget::Org(birch)
+            ),
+            "Birch owes Ash nothing, so there is nothing to call in"
+        );
+
+        aeon_sim::obligations::create(
+            h.world_mut(),
+            aeon_sim::obligations::ObligationKind::Favour,
+            birch,
+            ash,
+            "a debt",
+            10,
+            None,
+        );
+        assert!(
+            target_allowed(
+                h.world_mut(),
+                &key("gated-favour"),
+                ash,
+                AssignmentTarget::Org(birch)
+            ),
+            "and once they owe one, it can be called in"
+        );
+    }
+
+    #[test]
+    fn whispers_are_spread_about_other_peoples_people() {
+        let mut h = host(5);
+        let ash = org_id(&mut h, "ash");
+        let ours = char_id(&mut h, "cera-ash");
+        let theirs = char_id(&mut h, "bela-birch");
+
+        assert!(
+            !target_allowed(
+                h.world_mut(),
+                &key("gated-whisper"),
+                ash,
+                AssignmentTarget::Character(ours)
+            ),
+            "Cera is ours"
+        );
+        assert!(
+            target_allowed(
+                h.world_mut(),
+                &key("gated-whisper"),
+                ash,
+                AssignmentTarget::Character(theirs)
+            ),
+            "Bela is not"
+        );
+    }
+
+    #[test]
+    fn an_assignment_that_declares_nothing_is_offered_as_widely_as_before() {
+        // The gate must be opt-in: content that says nothing about its
+        // targets keeps whatever reach it had.
+        let mut h = host(6);
+        let ash = org_id(&mut h, "ash");
+        let birch = org_id(&mut h, "birch");
+        assert!(target_allowed(
+            h.world_mut(),
+            &key("sure-court"),
+            ash,
+            AssignmentTarget::Org(birch)
+        ));
     }
 }

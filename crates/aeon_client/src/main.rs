@@ -12,6 +12,7 @@ mod content;
 mod forecast_view;
 mod map_modes;
 mod map_overlay;
+mod offer_view;
 mod scene;
 mod selection;
 mod sim_driver;
@@ -53,6 +54,7 @@ fn main() {
         .init_resource::<scene::GlobeBake>()
         .init_resource::<forecast_view::ForecastCache>()
         .init_resource::<forecast_view::AvailabilityView>()
+        .init_resource::<offer_view::OfferView>()
         .init_resource::<assignment_ui::LogFilter>()
         .init_resource::<map_modes::MapReadout>()
         .init_resource::<ui::theme::UiTheme>()
@@ -84,6 +86,7 @@ fn main() {
                 assignment_ui::auto_pause_on_popups,
                 assignment_ui::flush_ui_commands,
                 forecast_view::refresh_availability,
+                offer_view::refresh_offers,
                 forecast_view::refresh_forecast,
                 // The bake must observe the readout computed this frame.
                 (map_modes::refresh_map_readout, scene::refresh_globe_texture).chain(),

@@ -125,6 +125,7 @@ define_assignment(#{
     difficulty: 12,
     target: "character",
     risks: ["scandal", "capture"],
+    requires: #{ target_house: "other" },
     results: #{
         critical_success: #{
             weight: 100, log: true,
@@ -194,6 +195,7 @@ define_assignment(#{
     skill: "diplomacy",
     difficulty: 14,
     risks: ["scandal"],
+    requires: #{ target_holds_title: "consul" },
     results: #{
         success: #{
             weight: 450, log: true,
@@ -346,6 +348,7 @@ define_assignment(#{
     target: "organisation",
     ai_available: true,
     influence_cost: 5,
+    requires: #{ target_owes_favour: true },
     results: #{
         critical_success: #{
             weight: 200, log: true,

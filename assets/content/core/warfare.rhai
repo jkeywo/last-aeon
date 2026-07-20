@@ -43,6 +43,7 @@ define_assignment(#{
     target: "own-army",
     military_op: "patrol",
     ai_available: false,
+    requires: #{ army_present: true },
     results: #{
         success: #{ weight: 900, effect_fn: "patrol_kept" },
         failure: #{ weight: 100 },
@@ -64,6 +65,7 @@ define_assignment(#{
     supplies_cost: 40,
     influence_cost: 20,
     ai_available: false,
+    requires: #{ target_holder: "other" },
     results: #{
         critical_success: #{
             weight: 100, popup: true, log: true,
@@ -91,6 +93,7 @@ define_assignment(#{
     risks: ["injury", "capture"],
     supplies_cost: 15,
     ai_available: false,
+    requires: #{ target_holder: "other" },
     results: #{
         critical_success: #{
             weight: 150, log: true,
@@ -117,6 +120,7 @@ define_assignment(#{
     military_op: "blockade",
     supplies_cost: 10,
     ai_available: false,
+    requires: #{ target_holder: "other" },
     results: #{
         success: #{
             weight: 800, log: true,
@@ -135,6 +139,7 @@ define_assignment(#{
     target: "own-army-and-province",
     military_op: "move",
     ai_available: false,
+    requires: #{ owner_threatened: true },
     results: #{
         success: #{ weight: 950 },
         failure: #{ weight: 50 },
@@ -150,6 +155,7 @@ define_assignment(#{
     target: "organisation",
     influence_cost: 10,
     ai_available: false,
+    requires: #{ owner_threatened: true },
     results: #{
         success: #{
             weight: 550, log: true,
