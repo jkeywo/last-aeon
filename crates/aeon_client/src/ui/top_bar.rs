@@ -7,7 +7,7 @@
 use aeon_core::calendar::GameDate;
 use aeon_data::ContentSet;
 use aeon_sim::state::CampaignMeta;
-use aeon_sim::{CampaignOver, CharacterId, OrgId};
+use aeon_sim::{CampaignOver, CharacterId, OrgId, TextDb};
 use bevy_egui::egui;
 
 use crate::sim_driver::{SPEED_STEPS, TimeControl};
@@ -25,6 +25,7 @@ pub fn draw_top_bar(
     lookup: &Lookup,
     _content: &ContentSet,
     theme: &UiTheme,
+    strings: &TextDb,
     meta: &CampaignMeta,
     date: GameDate,
     over: Option<&CampaignOver>,
@@ -53,7 +54,11 @@ pub fn draw_top_bar(
                 ui.separator();
             }
 
-            let pause_label = if control.paused { "Resume" } else { "Pause" };
+            let pause_label = strings.text(if control.paused {
+                "ui.top-bar.resume"
+            } else {
+                "ui.top-bar.pause"
+            });
             if ui.button(pause_label).clicked() {
                 control.paused = !control.paused;
             }
@@ -70,15 +75,15 @@ pub fn draw_top_bar(
 
             match view.view {
                 MapView::System => {
-                    ui.label("Local System");
+                    ui.label(strings.text("ui.top-bar.local-system"));
                 }
                 MapView::Body(id) => {
-                    if ui.button("< System").clicked() {
+                    if ui.button(strings.text("ui.top-bar.back-to-system")).clicked() {
                         view.view = MapView::System;
                     }
                     ui.label(lookup.body_name(id));
                     ui.separator();
-                    if let Some(picked) = draw_mode_bar(ui, theme, *mode) {
+                    if let Some(picked) = draw_mode_bar(ui, theme, strings, *mode) {
                         *mode = picked;
                     }
                 }
@@ -88,7 +93,7 @@ pub fn draw_top_bar(
                 ui.separator();
                 ui.colored_label(
                     egui::Color32::from(theme.semantics.urgent),
-                    format!("CAMPAIGN OVER — {}", over.reason),
+                    strings.format("ui.top-bar.campaign-over", &[("reason", &over.reason)]),
                 );
             }
 
@@ -96,12 +101,12 @@ pub fn draw_top_bar(
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 ui.add(
                     egui::TextEdit::singleline(&mut search.query)
-                        .hint_text("Search…")
+                        .hint_text(strings.text("ui.top-bar.search-hint"))
                         .desired_width(150.0),
                 );
                 ui.label("\u{1f50d}");
                 ui.separator();
-                draw_panel_toggles(ui, dock);
+                draw_panel_toggles(ui, strings, dock);
             });
         });
     });
@@ -113,7 +118,7 @@ pub fn draw_top_bar(
 /// clicking the side it is already on puts it away. The right-click
 /// affordance is spelled out in the tooltip, because a control whose
 /// second function is invisible has, for most players, only one.
-fn draw_panel_toggles(ui: &mut egui::Ui, dock: &mut DockState) {
+fn draw_panel_toggles(ui: &mut egui::Ui, strings: &TextDb, dock: &mut DockState) {
     for kind in PanelKind::ALL {
         let side = dock.side_of(*kind);
         let (rect, response) = ui.allocate_exact_size(egui::vec2(24.0, 24.0), egui::Sense::click());
@@ -124,14 +129,18 @@ fn draw_panel_toggles(ui: &mut egui::Ui, dock: &mut DockState) {
         draw_panel_icon(ui.painter(), rect, *kind, visuals.fg_stroke.color);
 
         let where_now = match side {
-            Some(side) => format!("Showing on the {}.", side.label()),
-            None => "Not showing.".to_owned(),
+            Some(side) => strings.format(
+                "ui.panel-toggle.showing",
+                &[("side", strings.text(side.label_key()))],
+            ),
+            None => strings.text("ui.panel-toggle.hidden").to_owned(),
         };
         let response = response.on_hover_text(format!(
-            "{}\n{}\n\n{}\nClick to dock left, right-click to dock right.",
-            kind.title(),
-            kind.description(),
+            "{}\n{}\n\n{}\n{}",
+            strings.text(kind.title_key()),
+            strings.text(kind.description_key()),
             where_now,
+            strings.text("ui.panel-toggle.how"),
         ));
         if response.clicked() {
             dock.toggle(*kind, DockSide::Left);

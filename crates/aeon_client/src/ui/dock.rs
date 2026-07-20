@@ -38,11 +38,11 @@ impl DockSide {
     pub const ALL: &'static [DockSide] = &[DockSide::Bottom, DockSide::Left, DockSide::Right];
 
     /// A short player-facing name.
-    pub fn label(self) -> &'static str {
+    pub fn label_key(self) -> &'static str {
         match self {
-            DockSide::Left => "left",
-            DockSide::Right => "right",
-            DockSide::Bottom => "bottom",
+            DockSide::Left => "ui.dock.side.left",
+            DockSide::Right => "ui.dock.side.right",
+            DockSide::Bottom => "ui.dock.side.bottom",
         }
     }
 }
@@ -73,24 +73,24 @@ impl PanelKind {
     ];
 
     /// The panel's title.
-    pub fn title(self) -> &'static str {
+    pub fn title_key(self) -> &'static str {
         match self {
-            PanelKind::Inspector => "Inspector",
-            PanelKind::Listing => "Listing",
-            PanelKind::Log => "Log",
-            PanelKind::Jobs => "Active Jobs",
-            PanelKind::Ledger => "Map Ledger",
+            PanelKind::Inspector => "ui.panel.inspector.title",
+            PanelKind::Listing => "ui.panel.listing.title",
+            PanelKind::Log => "ui.panel.log.title",
+            PanelKind::Jobs => "ui.panel.jobs.title",
+            PanelKind::Ledger => "ui.panel.ledger.title",
         }
     }
 
     /// What the panel is for, for its toolbar button's tooltip.
-    pub fn description(self) -> &'static str {
+    pub fn description_key(self) -> &'static str {
         match self {
-            PanelKind::Inspector => "Whatever you currently have selected, in detail.",
-            PanelKind::Listing => "Bodies, houses, and the forces you command.",
-            PanelKind::Log => "What has happened, filterable by channel.",
-            PanelKind::Jobs => "Jobs under way, and how long each has left.",
-            PanelKind::Ledger => "What the colours on the map mean.",
+            PanelKind::Inspector => "ui.panel.inspector.description",
+            PanelKind::Listing => "ui.panel.listing.description",
+            PanelKind::Log => "ui.panel.log.description",
+            PanelKind::Jobs => "ui.panel.jobs.description",
+            PanelKind::Ledger => "ui.panel.ledger.description",
         }
     }
 }
@@ -266,13 +266,26 @@ mod tests {
     #[test]
     fn every_panel_has_a_title_and_a_description() {
         // The toolbar draws ALL and nothing else, so a panel missing from
-        // it is one the player cannot reach.
+        // it is one the player cannot reach — and a panel whose rows are
+        // missing is one that draws blank.
+        let strings = aeon_sim::TextDb::embedded();
         let mut seen: Vec<PanelKind> = Vec::new();
         for kind in PanelKind::ALL {
             assert!(!seen.contains(kind), "{kind:?} is listed twice");
             seen.push(*kind);
-            assert!(!kind.title().is_empty());
-            assert!(!kind.description().is_empty());
+            assert!(strings.0.get(kind.title_key()).is_some(), "{kind:?} title");
+            assert!(
+                strings.0.get(kind.description_key()).is_some(),
+                "{kind:?} description"
+            );
+        }
+    }
+
+    #[test]
+    fn every_dock_side_has_a_label() {
+        let strings = aeon_sim::TextDb::embedded();
+        for side in [DockSide::Left, DockSide::Right, DockSide::Bottom] {
+            assert!(strings.0.get(side.label_key()).is_some(), "{side:?}");
         }
     }
 }

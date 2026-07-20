@@ -5,16 +5,23 @@
 //! the map for as long as they are reading, not for as long as they hold a
 //! button.
 
+use aeon_sim::TextDb;
 use bevy_egui::egui;
 
 use crate::map_modes::MapReadout;
 use crate::view::MapMode;
 
 /// Draws the legend for the active map mode.
-pub fn draw_ledger_panel(ui: &mut egui::Ui, readout: &MapReadout, mode: MapMode) {
-    ui.strong(mode.label()).on_hover_text(mode.description());
+pub fn draw_ledger_panel(
+    ui: &mut egui::Ui,
+    strings: &TextDb,
+    readout: &MapReadout,
+    mode: MapMode,
+) {
+    ui.strong(strings.text(&mode.label_key()))
+        .on_hover_text(strings.text(&mode.description_key()));
     if readout.legend.is_empty() {
-        ui.weak("Open a body's map to see what its colours mean.");
+        ui.weak(strings.text("ui.ledger.no-map"));
         return;
     }
     egui::ScrollArea::vertical()
@@ -33,7 +40,7 @@ pub fn draw_ledger_panel(ui: &mut egui::Ui, readout: &MapReadout, mode: MapMode)
                 });
             }
             if !mode.is_political() {
-                ui.weak("Values are printed on the map.");
+                ui.weak(strings.text("ui.ledger.values-on-map"));
             }
         });
 }

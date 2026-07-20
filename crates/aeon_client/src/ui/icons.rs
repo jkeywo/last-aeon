@@ -14,6 +14,7 @@
 //! Each icon is drawn inside a unit square and scaled to whatever rect it
 //! is given, so the same shape serves a toolbar button and a legend swatch.
 
+use aeon_sim::TextDb;
 use bevy_egui::egui;
 
 use crate::ui::dock::PanelKind;
@@ -31,7 +32,12 @@ const BUTTON: f32 = 24.0;
 /// available, and cannot show which mode you are in without reading text.
 /// Every mode is one click from every other here, and each says what
 /// question it answers on hover.
-pub fn draw_mode_bar(ui: &mut egui::Ui, theme: &UiTheme, active: MapMode) -> Option<MapMode> {
+pub fn draw_mode_bar(
+    ui: &mut egui::Ui,
+    theme: &UiTheme,
+    strings: &TextDb,
+    active: MapMode,
+) -> Option<MapMode> {
     let mut picked = None;
     for mode in MapMode::ALL {
         let (rect, response) =
@@ -49,7 +55,11 @@ pub fn draw_mode_bar(ui: &mut egui::Ui, theme: &UiTheme, active: MapMode) -> Opt
         draw_mode_icon(ui.painter(), rect, *mode, visuals.fg_stroke.color);
 
         if response
-            .on_hover_text(format!("{}\n{}", mode.label(), mode.description()))
+            .on_hover_text(format!(
+                "{}\n{}",
+                strings.text(&mode.label_key()),
+                strings.text(&mode.description_key())
+            ))
             .clicked()
         {
             picked = Some(*mode);

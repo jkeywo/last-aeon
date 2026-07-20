@@ -23,7 +23,7 @@ use aeon_sim::obligations::Obligations;
 use aeon_sim::order::ProvincialOrder;
 use aeon_sim::politics::{CharacterSkills, CharacterTraits, Lineage, OpinionLedger};
 use aeon_sim::presence::CharacterLocation;
-use aeon_sim::{ActiveJob, CharacterId, CharacterRecord, OrgId, OrgRecord, TitleRecord};
+use aeon_sim::{ActiveJob, CharacterId, CharacterRecord, OrgId, OrgRecord, TextDb, TitleRecord};
 
 use crate::forecast_view::{AvailabilityView, ForecastCache};
 use crate::jobs_ui::JobForm;
@@ -102,4 +102,6 @@ pub struct PanelData<'w, 's> {
     pub cache: Res<'w, ForecastCache>,
     pub readout: Res<'w, MapReadout>,
     pub theme: Res<'w, UiTheme>,
+    /// Every string the panels draw. Absent until a campaign starts.
+    pub strings: Option<Res<'w, TextDb>>,
 }

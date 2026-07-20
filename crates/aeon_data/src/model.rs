@@ -674,13 +674,32 @@ impl ObligationKind {
         }
     }
 
-    /// A short player-facing name.
-    pub fn label(self) -> &'static str {
+    /// The stem of this kind's rows in the string table.
+    fn text_stem(self) -> &'static str {
         match self {
-            ObligationKind::Favour => "Favour",
-            ObligationKind::Promise => "Promise",
-            ObligationKind::Grievance => "Grievance",
+            ObligationKind::Favour => "favour",
+            ObligationKind::Promise => "promise",
+            ObligationKind::Grievance => "grievance",
         }
+    }
+
+    /// The key of a short player-facing name.
+    pub fn label_key(self) -> String {
+        format!("ui.obligation.{}.label", self.text_stem())
+    }
+
+    /// The key of the phrase for an obligation this house owes out.
+    ///
+    /// A whole phrase rather than a noun and a preposition: which
+    /// preposition a language wants, and whether it comes before or after,
+    /// is not something a caller can decide by concatenation.
+    pub fn owed_to_key(self) -> String {
+        format!("ui.obligation.{}.owed-to", self.text_stem())
+    }
+
+    /// The key of the phrase for an obligation owed to this house.
+    pub fn owed_from_key(self) -> String {
+        format!("ui.obligation.{}.owed-from", self.text_stem())
     }
 
     /// Whether this kind counts in the debtor's favour or against it.

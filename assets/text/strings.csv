@@ -1,50 +1,152 @@
 id,context,english
-ui.legend.claim.contending,"Map legend key, claim-pressure mode: a house holding some but not the most provinces on this body.","[Contending]"
-ui.legend.claim.leading,"Map legend key, claim-pressure mode: the house currently leading the claim to this body.","[Leading]"
-ui.legend.claim.out,"Map legend key, claim-pressure mode: a house with too few provinces to matter to the claim.","[Out of it]"
-ui.legend.military.empty,"Map legend key, military mode: no troops standing in the province.","[Empty]"
-ui.legend.military.others,"Map legend key, military mode: troops belonging to someone other than the player.","[Others]"
-ui.legend.military.yours,"Map legend key, military mode: the player's own troops.","[Yours]"
-ui.legend.my-control.direct,"Map legend key, my-realm mode: provinces the player's house holds itself.","[Held directly]"
-ui.legend.my-control.further,"Map legend key, my-realm mode: provinces two or more steps down the chain of vassalage.","[Further down]"
-ui.legend.my-control.outside,"Map legend key, my-realm mode: provinces outside the player's realm entirely.","[Not your realm]"
-ui.legend.my-control.vassal,"Map legend key, my-realm mode: provinces held one step down the chain of vassalage.","[Through a vassal]"
-ui.legend.order.loyal,"Map legend key, order mode: the highest band of provincial order.","[Loyal]"
-ui.legend.order.restive,"Map legend key, order mode: low order, not yet in unrest.","[Restive]"
-ui.legend.order.settled,"Map legend key, order mode: comfortable provincial order.","[Settled]"
-ui.legend.order.unrest,"Map legend key, order mode: the province is in open unrest and counting down to revolt.","[In unrest]"
-ui.legend.relations.friendly,"Map legend key, relations mode: the holder thinks well of the player's house.","[Friendly]"
-ui.legend.relations.hostile,"Map legend key, relations mode: the holder thinks badly of the player's house.","[Hostile]"
-ui.legend.relations.indifferent,"Map legend key, relations mode: the holder has no strong opinion of the player's house.","[Indifferent]"
-ui.legend.relations.yours,"Map legend key, relations mode: the player's own holdings, which have no opinion to show.","[Yours]"
-ui.legend.wealth.middling,"Map legend key, wealth mode: the middle of the range of provincial output.","[Middling]"
-ui.legend.wealth.poor,"Map legend key, wealth mode: the lowest provincial output.","[Poor]"
-ui.legend.wealth.rich,"Map legend key, wealth mode: the highest provincial output.","[Rich]"
-ui.map-mode.claim.hint.held,"Province hover hint, claim-pressure mode. {holder} is a house name, {held} how many provinces it holds on this body, {total} how many there are.","[{holder} holds {held} of {total} provinces here]"
-ui.map-mode.claim.hint.leading,"As ui.map-mode.claim.hint.held, but this house is currently leading the claim to the body.","[{holder} holds {held} of {total} provinces here — currently leading the claim]"
-ui.map-mode.claim.hint.unclaimed,"Province hover hint, claim-pressure mode, when nobody holds the province.","[Unclaimed: it counts for nobody's claim]"
-ui.map-mode.claim.value.unclaimed,"Value printed on an unheld province in claim-pressure mode. An em dash standing for no count.","[—]"
-ui.map-mode.holder.hint.direct,"Province hover hint in the my-realm map mode, when the player's own house holds the province directly.","[Held directly by your house]"
-ui.map-mode.holder.hint.held,"Province hover hint in the holder and great-house map modes. {holder} is a house or organisation name.","[Held by {holder}]"
-ui.map-mode.holder.hint.lost,"Province hover hint in the holder map mode, when nobody holds the province — it has revolted or was never taken.","[Unclaimed — in revolt or never held]"
-ui.map-mode.holder.hint.outside,"Province hover hint in the my-realm map mode, when the province is held outside the player's chain of vassalage. {holder} is a house or organisation name.","[{holder} — outside your realm]"
-ui.map-mode.holder.hint.unclaimed,"Province hover hint in the my-realm map mode, when nobody holds the province.","[Unclaimed — answers to nobody]"
-ui.map-mode.holder.hint.vassal.one,"Province hover hint when the province is held one step down the player's chain of vassalage. {holder} is a house or organisation name.","[Held by {holder}, 1 step down your chain of vassalage]"
-ui.map-mode.holder.hint.vassal.other,"Plural form of ui.map-mode.holder.hint.vassal.one; {hops} is 2 or more.","[Held by {holder}, {hops} steps down your chain of vassalage]"
-ui.map-mode.holder.value.direct,"Value printed on the province in the my-realm map mode when the player holds it directly. Kept short — it is drawn on the globe.","[direct]"
-ui.map-mode.holder.value.vassal,"Value printed on the province in the my-realm map mode when a vassal holds it. {holder} is a house name. Kept short — it is drawn on the globe.","[via {holder}]"
-ui.map-mode.military.hint.empty,"Province hover hint, military mode, when no troops are standing in the province.","[No troops standing here]"
+ui.dock.side.bottom,"The bottom edge of the screen, named inside sentences like ""Move to the bottom."" Lower case on purpose.",[bottom]
+ui.dock.side.left,"The left edge of the screen, named inside sentences like ""Move to the left."" Lower case on purpose.",[left]
+ui.dock.side.right,"The right edge of the screen, named inside sentences like ""Move to the right."" Lower case on purpose.",[right]
+ui.inspector.body.open-map,Button in the inspector that opens the selected body's surface map.,[Open strategic view]
+ui.inspector.body.provinces,"Row label in the body inspector, counting the provinces on that body.",[Provinces]
+ui.inspector.body.radius,"Row label in the body inspector, for the body's radius.",[Radius]
+ui.inspector.body.radius-value,Value beside the radius row. {km} is a whole number of kilometres.,[{km} km]
+ui.inspector.body.stable-id,"Row label in the body inspector, for the body's internal stable ID. A debugging aid shown to the player.",[Stable ID]
+ui.inspector.character.age,Line in the character inspector for a living character. {years} is a whole number.,[Age {years}]
+ui.inspector.character.at,Line in the character inspector naming where the character currently is. {place} is a province or other location name.,[At: {place}]
+ui.inspector.character.died,Line in the character inspector for a dead character. {date} is a campaign date.,[Died {date}]
+ui.inspector.character.opinion-of-them,Line in the character inspector giving the opinion the player's head of house holds of this character. {opinion} is a signed number such as +40.,[Your head's opinion of them: {opinion}]
+ui.inspector.character.opinion-of-you,Line in the character inspector giving this character's opinion of the player's head of house. {opinion} is a signed number.,[Their opinion of your head: {opinion}]
+ui.inspector.character.parent,"Row label in the character inspector, before a parent's name.",[Parent:]
+ui.inspector.character.spouse,"Row label in the character inspector, before a spouse's name.",[Spouse:]
+ui.inspector.character.traits,Line listing a character's traits. {traits} is a comma-separated list.,[Traits: {traits}]
+ui.inspector.character.travel-to,Placeholder text on the closed travel dropdown in the character inspector.,[Travel to...]
+ui.inspector.nothing-selected,Shown in the inspector panel when the player has selected nothing.,"[Select a body, province, house, or character.]"
+ui.inspector.org.defunct,Marker shown on a house that no longer exists. Upper case for emphasis.,[DEFUNCT]
+ui.inspector.org.great-house,Line in the house inspector for a house of the highest tier.,[Great house]
+ui.inspector.org.head,"Row label in the house inspector, before the name of its head.",[Head:]
+ui.inspector.org.imperial,Line in the organisation inspector for the imperial government rather than a house.,[Imperial government]
+ui.inspector.org.independent,Line in the house inspector for a house that answers to nobody.,[Independent house]
+ui.inspector.org.members,"Row label in the house inspector, before the list of its living members.",[Members:]
+ui.inspector.org.no-head,Shown in place of a name when a house currently has no head.,[None]
+ui.inspector.org.no-liege,Shown in place of a name when a vassal house's liege is unknown. An em dash.,[—]
+ui.inspector.org.obligations,"Row label in the house inspector, before its standing obligations.",[Obligations:]
+ui.inspector.org.obligations.hover,"Tooltip on the obligations row, explaining that obligations are facts rather than feelings.","[Favours, promises and grievances binding this house. These are political facts, separate from how anyone feels: a house may dislike its creditor and still owe it.]"
+ui.inspector.org.titles-held,Line in the house inspector counting the titles it holds. {count} is a whole number.,[Titles held: {count}]
+ui.inspector.org.vassal-of,"Row label in the house inspector, before the name of the house it answers to.",[Vassal of]
+ui.inspector.province.army,"Line for one army standing in the selected province. The crossed-swords glyph opens it. {army} is the army's name, {men} its strength.",[⚔ {army} ({men} men)]
+ui.inspector.province.forces,"Row label in the province inspector, before the armies and ships standing there.",[Forces here:]
+ui.inspector.province.held-by,"Row label in the province inspector, before the name of whoever holds it.",[Held by]
+ui.inspector.province.latitude,"Row label in the province inspector, for its latitude on the body.",[Latitude]
+ui.inspector.province.longitude,"Row label in the province inspector, for its longitude on the body.",[Longitude]
+ui.inspector.province.map-mode-says,Prefix before what the active map mode says about the selected province. {mode} is the map mode's name.,[{mode}:]
+ui.inspector.province.no-holder,Shown in the held-by row when nobody holds the province.,[No one]
+ui.inspector.province.of-body,Line under a province's name naming the body it sits on. {body} is a body name.,[Province of {body}]
+ui.inspector.province.order,"Row label in the province inspector, before its order percentage.",[Order]
+ui.inspector.province.order.hover,"Tooltip on the order reading, explaining what provincial order does.","[How governable this province is. It scales what the province pays and how reliably it is defended, and a province left in unrest will throw off its ruler entirely.]"
+ui.inspector.province.output,"Row label in the province inspector, before its monthly output figures.",[Monthly output]
+ui.inspector.province.output-value,"The three monthly output figures. W, M and S abbreviate wealth, manpower and supplies.",[W {wealth} / M {manpower} / S {supplies}]
+ui.inspector.province.ship,Line for one ship docked at the selected province. The anchor glyph opens it. {ship} is the ship's name.,[⚓ {ship}]
+ui.inspector.province.unrest,Warning line in the province inspector when the province is counting down to revolt. {days} is a number of days.,[In unrest — revolts in {days} days]
+ui.inspector.province.unrest.hover,"Tooltip on the unrest warning, naming the ways out of it.","[Garrison it, go there in person, or hold court to restore order before the province is lost.]"
+ui.inspector.skill.command,"Row label in the character inspector for the command skill, which governs warfare.",[Command]
+ui.inspector.skill.diplomacy,Row label in the character inspector for the diplomacy skill.,[Diplomacy]
+ui.inspector.skill.intrigue,Row label in the character inspector for the intrigue skill.,[Intrigue]
+ui.inspector.skill.stewardship,"Row label in the character inspector for the stewardship skill, which governs administration.",[Stewardship]
+ui.inspector.unknown,Stand-in shown where a name should be but none could be resolved.,[Unknown]
+ui.ledger.no-map,"Shown in the map ledger panel when no body's map is open, so there are no colours to explain.",[Open a body's map to see what its colours mean.]
+ui.ledger.values-on-map,"Footnote in the map ledger for graded map modes, telling the player the numbers are drawn on the globe itself.",[Values are printed on the map.]
+ui.legend.claim.contending,"Map legend key, claim-pressure mode: a house holding some but not the most provinces on this body.",[Contending]
+ui.legend.claim.leading,"Map legend key, claim-pressure mode: the house currently leading the claim to this body.",[Leading]
+ui.legend.claim.out,"Map legend key, claim-pressure mode: a house with too few provinces to matter to the claim.",[Out of it]
+ui.legend.military.empty,"Map legend key, military mode: no troops standing in the province.",[Empty]
+ui.legend.military.others,"Map legend key, military mode: troops belonging to someone other than the player.",[Others]
+ui.legend.military.yours,"Map legend key, military mode: the player's own troops.",[Yours]
+ui.legend.my-control.direct,"Map legend key, my-realm mode: provinces the player's house holds itself.",[Held directly]
+ui.legend.my-control.further,"Map legend key, my-realm mode: provinces two or more steps down the chain of vassalage.",[Further down]
+ui.legend.my-control.outside,"Map legend key, my-realm mode: provinces outside the player's realm entirely.",[Not your realm]
+ui.legend.my-control.vassal,"Map legend key, my-realm mode: provinces held one step down the chain of vassalage.",[Through a vassal]
+ui.legend.order.loyal,"Map legend key, order mode: the highest band of provincial order.",[Loyal]
+ui.legend.order.restive,"Map legend key, order mode: low order, not yet in unrest.",[Restive]
+ui.legend.order.settled,"Map legend key, order mode: comfortable provincial order.",[Settled]
+ui.legend.order.unrest,"Map legend key, order mode: the province is in open unrest and counting down to revolt.",[In unrest]
+ui.legend.relations.friendly,"Map legend key, relations mode: the holder thinks well of the player's house.",[Friendly]
+ui.legend.relations.hostile,"Map legend key, relations mode: the holder thinks badly of the player's house.",[Hostile]
+ui.legend.relations.indifferent,"Map legend key, relations mode: the holder has no strong opinion of the player's house.",[Indifferent]
+ui.legend.relations.yours,"Map legend key, relations mode: the player's own holdings, which have no opinion to show.",[Yours]
+ui.legend.wealth.middling,"Map legend key, wealth mode: the middle of the range of provincial output.",[Middling]
+ui.legend.wealth.poor,"Map legend key, wealth mode: the lowest provincial output.",[Poor]
+ui.legend.wealth.rich,"Map legend key, wealth mode: the highest provincial output.",[Rich]
+ui.map-mode.claim.description,"Hover description of the claim-pressure map mode, on its toolbar button.","[Each province's weight in the race for the Paramountcy: who leads, who is contesting, and who is out of it.]"
+ui.map-mode.claim.hint.held,"Province hover hint, claim-pressure mode. {holder} is a house name, {held} how many provinces it holds on this body, {total} how many there are.",[{holder} holds {held} of {total} provinces here]
+ui.map-mode.claim.hint.leading,"As ui.map-mode.claim.hint.held, but this house is currently leading the claim to the body.",[{holder} holds {held} of {total} provinces here — currently leading the claim]
+ui.map-mode.claim.hint.unclaimed,"Province hover hint, claim-pressure mode, when nobody holds the province.",[Unclaimed: it counts for nobody's claim]
+ui.map-mode.claim.label,"Name of the claim-pressure map mode, on its toolbar button. Kept to one word.",[Claim]
+ui.map-mode.claim.value.unclaimed,Value printed on an unheld province in claim-pressure mode. An em dash standing for no count.,[—]
+ui.map-mode.great-house.description,Hover description of the great-house map mode.,"[Which great house each province ultimately answers to, following its holder's liege chain.]"
+ui.map-mode.great-house.label,"Name of the great-house map mode, on its toolbar button.",[Great House]
+ui.map-mode.holder.description,Hover description of the holder map mode.,[Who directly holds each province.]
+ui.map-mode.holder.hint.direct,"Province hover hint in the my-realm map mode, when the player's own house holds the province directly.",[Held directly by your house]
+ui.map-mode.holder.hint.held,Province hover hint in the holder and great-house map modes. {holder} is a house or organisation name.,[Held by {holder}]
+ui.map-mode.holder.hint.lost,"Province hover hint in the holder map mode, when nobody holds the province — it has revolted or was never taken.",[Unclaimed — in revolt or never held]
+ui.map-mode.holder.hint.outside,"Province hover hint in the my-realm map mode, when the province is held outside the player's chain of vassalage. {holder} is a house or organisation name.",[{holder} — outside your realm]
+ui.map-mode.holder.hint.unclaimed,"Province hover hint in the my-realm map mode, when nobody holds the province.",[Unclaimed — answers to nobody]
+ui.map-mode.holder.hint.vassal.one,Province hover hint when the province is held one step down the player's chain of vassalage. {holder} is a house or organisation name.,"[Held by {holder}, 1 step down your chain of vassalage]"
+ui.map-mode.holder.hint.vassal.other,Plural form of ui.map-mode.holder.hint.vassal.one; {hops} is 2 or more.,"[Held by {holder}, {hops} steps down your chain of vassalage]"
+ui.map-mode.holder.label,"Name of the holder map mode, on its toolbar button. Kept to one word.",[Holder]
+ui.map-mode.holder.value.direct,Value printed on the province in the my-realm map mode when the player holds it directly. Kept short — it is drawn on the globe.,[direct]
+ui.map-mode.holder.value.vassal,Value printed on the province in the my-realm map mode when a vassal holds it. {holder} is a house name. Kept short — it is drawn on the globe.,[via {holder}]
+ui.map-mode.military.description,Hover description of the military map mode.,[Where the fighting strength stands.]
+ui.map-mode.military.hint.empty,"Province hover hint, military mode, when no troops are standing in the province.",[No troops standing here]
 ui.map-mode.military.hint.garrison,"Province hover hint, military mode. {men} is a troop count, {owner} the house whose force is strongest there.","[{men} men here, the strongest under {owner}]"
-ui.map-mode.order.hint,"Province hover hint, order mode. {percent} is provincial order as a percentage; {pressure} is a phrase describing what is pushing on it.","[Order {percent}% — {pressure}]"
-ui.map-mode.order.hint.revolt,"Second line of the order-mode hover hint, shown only when the province is in unrest and counting down. {days} is a number of days.","[In unrest: revolts in {days} days]"
-ui.map-mode.relations.hint.opinion,"Province hover hint, relations mode. {holder} is a house name; {opinion} is a signed number such as +40 or -15.","[{holder} regards your house at {opinion}]"
-ui.map-mode.relations.hint.unclaimed,"Province hover hint, relations mode, when nobody holds the province.","[Unclaimed]"
-ui.map-mode.relations.hint.you,"Province hover hint, relations mode, for the player's own holdings.","[Your own holding]"
-ui.map-mode.relations.value.you,"Value printed on the player's own provinces in relations mode. Kept short — it is drawn on the globe.","[you]"
-ui.map-mode.wealth.hint,"Province hover hint, wealth mode. {output} is the province's monthly wealth output.","[Worth {output} wealth a month at full order]"
+ui.map-mode.military.label,"Name of the military map mode, on its toolbar button. Kept to one word.",[Military]
+ui.map-mode.my-control.description,Hover description of the my-realm map mode.,"[What answers to you: ground you hold yourself, ground held through your vassals, and ground that is not yours at all.]"
+ui.map-mode.my-control.label,"Name of the my-realm map mode, on its toolbar button.",[My Realm]
+ui.map-mode.order.description,Hover description of the order map mode.,"[How governable each province is. Provinces in unrest are marked, and will throw off their ruler if left.]"
+ui.map-mode.order.hint,"Province hover hint, order mode. {percent} is provincial order as a percentage; {pressure} is a phrase describing what is pushing on it.",[Order {percent}% — {pressure}]
+ui.map-mode.order.hint.revolt,"Second line of the order-mode hover hint, shown only when the province is in unrest and counting down. {days} is a number of days.",[In unrest: revolts in {days} days]
+ui.map-mode.order.label,"Name of the order map mode, on its toolbar button. Kept to one word.",[Order]
+ui.map-mode.relations.description,Hover description of the relations map mode.,[How each province's holder regards your house.]
+ui.map-mode.relations.hint.opinion,"Province hover hint, relations mode. {holder} is a house name; {opinion} is a signed number such as +40 or -15.",[{holder} regards your house at {opinion}]
+ui.map-mode.relations.hint.unclaimed,"Province hover hint, relations mode, when nobody holds the province.",[Unclaimed]
+ui.map-mode.relations.hint.you,"Province hover hint, relations mode, for the player's own holdings.",[Your own holding]
+ui.map-mode.relations.label,"Name of the relations map mode, on its toolbar button. Kept to one word.",[Relations]
+ui.map-mode.relations.value.you,Value printed on the player's own provinces in relations mode. Kept short — it is drawn on the globe.,[you]
+ui.map-mode.wealth.description,Hover description of the wealth map mode.,[What each province is worth in monthly output.]
+ui.map-mode.wealth.hint,"Province hover hint, wealth mode. {output} is the province's monthly wealth output.",[Worth {output} wealth a month at full order]
+ui.map-mode.wealth.label,"Name of the wealth map mode, on its toolbar button. Kept to one word.",[Wealth]
+ui.obligation.favour.label,The name of a favour — an obligation one house owes another for a good turn done.,[Favour]
+ui.obligation.favour.owed-from,Shown before the name of a house that owes the selected house a favour.,[Favour from]
+ui.obligation.favour.owed-to,Shown before the name of a house the selected house owes a favour to.,[Favour to]
+ui.obligation.grievance.label,The name of a grievance — a wrong one house holds against another.,[Grievance]
+ui.obligation.grievance.owed-from,Shown before the name of a house that holds a grievance against the selected house.,[Grievance from]
+ui.obligation.grievance.owed-to,Shown before the name of a house the selected house holds a grievance against.,[Grievance to]
+ui.obligation.lapses,"Line in an obligation's tooltip giving when it expires. {date} is a campaign date, {days} a whole number.",[Lapses {date} ({days} days)]
+ui.obligation.origin,Line in an obligation's tooltip naming what created it. {origin} is a short phrase.,[Origin: {origin}]
+ui.obligation.promise.label,The name of a promise — an undertaking one house has given another.,[Promise]
+ui.obligation.promise.owed-from,Shown before the name of a house that has promised the selected house something.,[Promise from]
+ui.obligation.promise.owed-to,Shown before the name of a house the selected house has promised something to.,[Promise to]
+ui.obligation.stands,Line in an obligation's tooltip for one with no expiry date.,[Stands until settled]
+ui.obligation.weight,Line in an obligation's tooltip giving how much it counts for. {weight} is a number.,[Weight {weight}]
+ui.panel-toggle.hidden,Line in a panel toggle's tooltip when that panel is currently put away.,[Not showing.]
+ui.panel-toggle.how,"Line in every panel toggle's tooltip spelling out the right-click affordance, which is otherwise invisible.","[Click to dock left, right-click to dock right.]"
+ui.panel-toggle.showing,"Line in a panel toggle's tooltip naming where that panel currently sits. {side} is left, right, or bottom.",[Showing on the {side}.]
+ui.panel.close,Tooltip on the ✕ button in every panel header.,[Close this panel.]
+ui.panel.inspector.description,"Tooltip for the inspector panel, on its header and its toolbar toggle.","[Whatever you currently have selected, in detail.]"
+ui.panel.inspector.title,"Title of the inspector panel, in its header.",[Inspector]
+ui.panel.jobs.description,Tooltip for the active-jobs panel.,"[Jobs under way, and how long each has left.]"
+ui.panel.jobs.title,"Title of the active-jobs panel, in its header.",[Active Jobs]
+ui.panel.ledger.description,Tooltip for the map ledger panel.,[What the colours on the map mean.]
+ui.panel.ledger.title,"Title of the map ledger panel, in its header.",[Map Ledger]
+ui.panel.listing.description,Tooltip for the listing panel.,"[Bodies, houses, and the forces you command.]"
+ui.panel.listing.title,"Title of the listing panel, in its header.",[Listing]
+ui.panel.log.description,Tooltip for the log panel.,"[What has happened, filterable by channel.]"
+ui.panel.log.title,"Title of the log panel, in its header.",[Log]
+ui.panel.move-to,"Tooltip on the buttons that move a panel to another edge. {side} is left, right, or bottom.",[Move to the {side}.]
 ui.situation.occupied.detail,"Body of the needs-attention item for an occupied province. {occupier} is a house name, {men} a troop count, {province} the province name.","[{occupier} has {men} men standing in {province}, and its order is falling while they remain.]"
-ui.situation.occupied.headline,"Headline of the needs-attention item when someone else's troops are standing on the player's ground. Kept very short — it sits in a narrow strip.","[{province} occupied]"
-ui.situation.restive.detail,"Body of the needs-attention item for a province with falling order. {percent} is provincial order as a percentage.","[Order in {province} has fallen to {percent}%. It will not recover unless you attend to it.]"
-ui.situation.restive.headline,"Headline of the needs-attention item for a province whose order has fallen well below its starting level. Kept very short.","[{province} is restive]"
+ui.situation.occupied.headline,Headline of the needs-attention item when someone else's troops are standing on the player's ground. Kept very short — it sits in a narrow strip.,[{province} occupied]
+ui.situation.restive.detail,Body of the needs-attention item for a province with falling order. {percent} is provincial order as a percentage.,[Order in {province} has fallen to {percent}%. It will not recover unless you attend to it.]
+ui.situation.restive.headline,Headline of the needs-attention item for a province whose order has fallen well below its starting level. Kept very short.,[{province} is restive]
 ui.situation.revolt.detail,"Body of the needs-attention item for a province about to revolt, naming the ways out.","[{province} is in open unrest. Garrison it, go there in person, or hold court to restore order before it throws you off.]"
-ui.situation.revolt.headline,"Headline of the needs-attention item for a province counting down to revolt. {days} is a number of days; the d is an abbreviation for days. Kept very short.","[{province} revolts in {days}d]"
+ui.situation.revolt.headline,Headline of the needs-attention item for a province counting down to revolt. {days} is a number of days; the d is an abbreviation for days. Kept very short.,[{province} revolts in {days}d]
+ui.top-bar.back-to-system,Button in the top bar that leaves a body's surface map and returns to the system view. The < is a back arrow.,[< System]
+ui.top-bar.campaign-over,Banner shown in the top bar when the campaign has ended. {reason} explains how.,[CAMPAIGN OVER — {reason}]
+ui.top-bar.local-system,Label in the top bar when the system view is showing rather than a body's surface.,[Local System]
+ui.top-bar.pause,Top bar button that stops campaign time. Shown while time is running.,[Pause]
+ui.top-bar.resume,Top bar button that starts campaign time. Shown while paused.,[Resume]
+ui.top-bar.search-hint,Placeholder text inside the empty search box in the top bar.,[Search…]

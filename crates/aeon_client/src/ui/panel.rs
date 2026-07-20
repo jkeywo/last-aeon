@@ -13,7 +13,7 @@
 use aeon_core::calendar::GameDate;
 use aeon_data::ContentSet;
 use aeon_sim::state::ContentDb;
-use aeon_sim::{CharacterId, MessageLog, OrgId, PoliticsIndex};
+use aeon_sim::{CharacterId, MessageLog, OrgId, PoliticsIndex, TextDb};
 use bevy_egui::egui;
 
 use crate::jobs_ui::{JobForm, LogFilter, UiCommandQueue};
@@ -40,6 +40,8 @@ pub struct PanelCtx<'a, 'w, 's> {
     pub content_db: &'a ContentDb,
     /// The political index, for resolving ids to entities.
     pub politics: &'a PoliticsIndex,
+    /// Every string the panel draws.
+    pub strings: &'a TextDb,
     /// Today.
     pub date: GameDate,
     /// The active map mode.
@@ -79,14 +81,20 @@ pub enum HeaderAction {
 /// The three destination buttons are always all shown, with the current
 /// one disabled rather than hidden: a control that vanishes when active
 /// gives the player nothing to aim at, and no way to see where they are.
-pub fn draw_header(ui: &mut egui::Ui, kind: PanelKind, side: DockSide) -> Option<HeaderAction> {
+pub fn draw_header(
+    ui: &mut egui::Ui,
+    strings: &TextDb,
+    kind: PanelKind,
+    side: DockSide,
+) -> Option<HeaderAction> {
     let mut action = None;
     ui.horizontal(|ui| {
-        ui.strong(kind.title()).on_hover_text(kind.description());
+        ui.strong(strings.text(kind.title_key()))
+            .on_hover_text(strings.text(kind.description_key()));
         ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
             if ui
                 .small_button("✕")
-                .on_hover_text("Close this panel.")
+                .on_hover_text(strings.text("ui.panel.close"))
                 .clicked()
             {
                 action = Some(HeaderAction::Close);
@@ -100,7 +108,10 @@ pub fn draw_header(ui: &mut egui::Ui, kind: PanelKind, side: DockSide) -> Option
                 let here = target == side;
                 if ui
                     .add_enabled(!here, egui::Button::new(glyph).small())
-                    .on_hover_text(format!("Move to the {}.", target.label()))
+                    .on_hover_text(strings.format(
+                        "ui.panel.move-to",
+                        &[("side", strings.text(target.label_key()))],
+                    ))
                     .clicked()
                 {
                     action = Some(HeaderAction::Dock(target));
@@ -146,6 +157,6 @@ pub fn draw_panel_body(ui: &mut egui::Ui, kind: PanelKind, ctx: &PanelCtx, out: 
             &ctx.data.active_jobs,
             out.queue,
         ),
-        PanelKind::Ledger => draw_ledger_panel(ui, &ctx.data.readout, ctx.mode),
+        PanelKind::Ledger => draw_ledger_panel(ui, ctx.strings, &ctx.data.readout, ctx.mode),
     }
 }

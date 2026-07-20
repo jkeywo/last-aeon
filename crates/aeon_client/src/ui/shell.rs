@@ -55,6 +55,9 @@ pub fn draw_panels(
     else {
         return;
     };
+    let Some(strings) = data.strings.as_deref() else {
+        return;
+    };
     let date = clock.date;
     let theme = &data.theme;
     let player_org = player.as_ref().and_then(|p| p.0);
@@ -77,6 +80,7 @@ pub fn draw_panels(
         &lookup,
         &content.0,
         theme,
+        strings,
         &meta,
         date,
         over.as_deref(),
@@ -98,6 +102,7 @@ pub fn draw_panels(
         content: &content.0,
         content_db: &content,
         politics: &politics,
+        strings,
         date,
         mode: *mode,
         player_org,
@@ -166,7 +171,7 @@ fn draw_side(
     moves: &mut Vec<(PanelKind, Option<DockSide>)>,
 ) {
     let mut one = |ui: &mut egui::Ui, kind: PanelKind, out: &mut PanelOut| {
-        if let Some(action) = draw_header(ui, kind, side) {
+        if let Some(action) = draw_header(ui, ctx.strings, kind, side) {
             moves.push(match action {
                 HeaderAction::Dock(target) => (kind, Some(target)),
                 HeaderAction::Close => (kind, None),

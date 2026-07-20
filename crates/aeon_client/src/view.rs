@@ -97,44 +97,28 @@ impl MapMode {
         MapMode::ClaimPressure,
     ];
 
-    /// A short label for the mode selector.
-    pub fn label(self) -> &'static str {
+    /// The stem of this mode's rows in the string table.
+    fn text_stem(self) -> &'static str {
         match self {
-            MapMode::Holder => "Holder",
-            MapMode::GreatHouse => "Great House",
-            MapMode::MyControl => "My Realm",
-            MapMode::Order => "Order",
-            MapMode::Wealth => "Wealth",
-            MapMode::Military => "Military",
-            MapMode::PlayerRelations => "Relations",
-            MapMode::ClaimPressure => "Claim",
+            MapMode::Holder => "holder",
+            MapMode::GreatHouse => "great-house",
+            MapMode::MyControl => "my-control",
+            MapMode::Order => "order",
+            MapMode::Wealth => "wealth",
+            MapMode::Military => "military",
+            MapMode::PlayerRelations => "relations",
+            MapMode::ClaimPressure => "claim",
         }
     }
 
-    /// The strategic question this mode answers.
-    pub fn description(self) -> &'static str {
-        match self {
-            MapMode::Holder => "Who directly holds each province.",
-            MapMode::GreatHouse => {
-                "Which great house each province ultimately answers to, \
-                 following its holder's liege chain."
-            }
-            MapMode::MyControl => {
-                "What answers to you: ground you hold yourself, ground held \
-                 through your vassals, and ground that is not yours at all."
-            }
-            MapMode::Order => {
-                "How governable each province is. Provinces in unrest are \
-                 marked, and will throw off their ruler if left."
-            }
-            MapMode::Wealth => "What each province is worth in monthly output.",
-            MapMode::Military => "Where the fighting strength stands.",
-            MapMode::PlayerRelations => "How each province's holder regards your house.",
-            MapMode::ClaimPressure => {
-                "Each province's weight in the race for the Paramountcy: who \
-                 leads, who is contesting, and who is out of it."
-            }
-        }
+    /// The key of a short label for the mode selector.
+    pub fn label_key(self) -> String {
+        format!("ui.map-mode.{}.label", self.text_stem())
+    }
+
+    /// The key of the strategic question this mode answers.
+    pub fn description_key(self) -> String {
+        format!("ui.map-mode.{}.description", self.text_stem())
     }
 
     /// Whether this mode paints house colours rather than a graded scale.
@@ -164,10 +148,22 @@ mod tests {
         for mode in MapMode::ALL {
             assert!(!seen.contains(mode), "{mode:?} is listed twice");
             seen.push(*mode);
-            assert!(!mode.label().is_empty(), "{mode:?} has no label");
+        }
+    }
+
+    #[test]
+    fn every_mode_has_a_label_and_a_description_to_show() {
+        // A mode whose rows are missing would hover blank, which is not a
+        // compile error — but the table can be asked directly.
+        let strings = aeon_sim::TextDb::embedded();
+        for mode in MapMode::ALL {
             assert!(
-                !mode.description().is_empty(),
-                "{mode:?} has no description, so its button would hover blank"
+                strings.0.get(&mode.label_key()).is_some(),
+                "{mode:?} has no label row"
+            );
+            assert!(
+                strings.0.get(&mode.description_key()).is_some(),
+                "{mode:?} has no description row, so its button would hover blank"
             );
         }
     }
