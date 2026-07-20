@@ -65,7 +65,7 @@ fn scripted_playthrough(content: Arc<ContentSet>, seed: u64) -> SimHost {
 
     // The head courts the liege while the spouse manages the estates.
     h.submit(PlayerCommand::StartAssignment {
-        assignment: key("court-a-rival-house"),
+        assignment: key("court"),
         leader: edrun,
         target: AssignmentTarget::Org(veyrin),
     })
@@ -80,7 +80,7 @@ fn scripted_playthrough(content: Arc<ContentSet>, seed: u64) -> SimHost {
 
     // The head curries Sanctora favour, then musters a levy.
     h.submit(PlayerCommand::StartAssignment {
-        assignment: key("curry-favour-with-the-sanctora"),
+        assignment: key("curry-favour"),
         leader: edrun,
         target: AssignmentTarget::None,
     })
@@ -88,7 +88,7 @@ fn scripted_playthrough(content: Arc<ContentSet>, seed: u64) -> SimHost {
     h.advance_days(120);
 
     h.submit(PlayerCommand::StartAssignment {
-        assignment: key("muster-the-levies"),
+        assignment: key("muster"),
         leader: edrun,
         target: AssignmentTarget::None,
     })
@@ -127,7 +127,7 @@ fn a_scripted_campaign_replays_from_a_snapshot_through_its_log() {
 
     original
         .submit(PlayerCommand::StartAssignment {
-            assignment: key("court-a-rival-house"),
+            assignment: key("court"),
             leader: edrun,
             target: AssignmentTarget::Org(veyrin),
         })
@@ -140,7 +140,7 @@ fn a_scripted_campaign_replays_from_a_snapshot_through_its_log() {
 
     original
         .submit(PlayerCommand::StartAssignment {
-            assignment: key("muster-the-levies"),
+            assignment: key("muster"),
             leader: edrun,
             target: AssignmentTarget::None,
         })
@@ -148,7 +148,7 @@ fn a_scripted_campaign_replays_from_a_snapshot_through_its_log() {
     original.advance_days(150);
     original
         .submit(PlayerCommand::StartAssignment {
-            assignment: key("curry-favour-with-the-sanctora"),
+            assignment: key("curry-favour"),
             leader: edrun,
             target: AssignmentTarget::None,
         })
@@ -201,7 +201,7 @@ fn the_enhanced_campaign_replays_from_a_mid_campaign_snapshot() {
     // Year one: the head courts the liege while the realm settles.
     original
         .submit(PlayerCommand::StartAssignment {
-            assignment: key("court-a-rival-house"),
+            assignment: key("court"),
             leader: edrun,
             target: AssignmentTarget::Org(veyrin),
         })

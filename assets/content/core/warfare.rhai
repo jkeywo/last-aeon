@@ -3,7 +3,7 @@
 // engine-owned. Content declares pacing, costs, risks, and flavour.
 
 define_assignment(#{
-    id: "march-the-army",
+    id: "march",
     category: "consequential",
     duration_days: 5,
     skill: "command",
@@ -20,7 +20,7 @@ define_assignment(#{
 });
 
 define_assignment(#{
-    id: "resupply-the-army",
+    id: "resupply",
     category: "consequential",
     duration_days: 15,
     skill: "stewardship",
@@ -35,7 +35,7 @@ define_assignment(#{
 });
 
 define_assignment(#{
-    id: "patrol-the-province",
+    id: "patrol",
     category: "routine",
     duration_days: 30,
     skill: "command",
@@ -54,7 +54,7 @@ fn patrol_kept(ctx) {
 }
 
 define_assignment(#{
-    id: "lay-siege",
+    id: "besiege",
     category: "consequential",
     duration_days: 60,
     skill: "command",
@@ -83,7 +83,7 @@ define_assignment(#{
 });
 
 define_assignment(#{
-    id: "raid-the-province",
+    id: "raid",
     category: "consequential",
     duration_days: 25,
     skill: "command",
@@ -111,7 +111,7 @@ define_assignment(#{
 });
 
 define_assignment(#{
-    id: "blockade-the-port",
+    id: "blockade",
     category: "consequential",
     duration_days: 20,
     skill: "command",
@@ -131,7 +131,7 @@ define_assignment(#{
 
 // Standing orders start this when a defended holding is threatened.
 define_assignment(#{
-    id: "answer-the-alarm",
+    id: "respond",
     category: "consequential",
     duration_days: 3,
     skill: "command",
@@ -147,7 +147,7 @@ define_assignment(#{
 });
 
 define_assignment(#{
-    id: "negotiate-standdown",
+    id: "negotiate",
     category: "consequential",
     duration_days: 20,
     skill: "diplomacy",

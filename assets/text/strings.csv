@@ -106,94 +106,94 @@ event.whispers-at-court.title,Authored event 'whispers-at-court': title. Moved f
 event.work-delayed.log-text,Authored event 'work-delayed': log line. Moved from the content scripts.,[Word comes that the work is going slower than promised.]
 event.work-delayed.text,Authored event 'work-delayed': popup body. Moved from the content scripts.,[The work is going slower than promised.]
 event.work-delayed.title,Authored event 'work-delayed': title. Moved from the content scripts.,[The Work Drags]
-assignment.answer-the-alarm.summary,Authored assignment 'answer-the-alarm': one-line summary. Moved from the content scripts.,[March to relieve a threatened holding.]
-assignment.answer-the-alarm.title,Authored assignment 'answer-the-alarm': title. Moved from the content scripts.,[Answer the Alarm]
-assignment.blockade-the-port.success.log-text,Authored assignment 'blockade-the-port': log line. Moved from the content scripts.,[{target} is under blockade.]
-assignment.blockade-the-port.summary,Authored assignment 'blockade-the-port': one-line summary. Moved from the content scripts.,[Station a ship over a province and choke its trade.]
-assignment.blockade-the-port.title,Authored assignment 'blockade-the-port': title. Moved from the content scripts.,[Blockade]
-assignment.call-in-a-favour.critical-success.log-text,Authored assignment 'call-in-a-favour': log line. Moved from the content scripts.,[{target} honoured its debt to {leader} handsomely.]
-assignment.call-in-a-favour.disaster.log-text,Authored assignment 'call-in-a-favour': log line. Moved from the content scripts.,[{target} repudiated its debt to {leader}.]
-assignment.call-in-a-favour.disaster.popup-text,Authored assignment 'call-in-a-favour': popup body. Moved from the content scripts.,"[{target} denies owing {leader} anything at all, and says so publicly.]"
-assignment.call-in-a-favour.failure.log-text,Authored assignment 'call-in-a-favour': log line. Moved from the content scripts.,[{target} put {leader} off with promises.]
-assignment.call-in-a-favour.success.log-text,Authored assignment 'call-in-a-favour': log line. Moved from the content scripts.,[{target} made good on what it owed {leader}.]
-assignment.call-in-a-favour.summary,Authored assignment 'call-in-a-favour': one-line summary. Moved from the content scripts.,"[Ask a house that owes you to make good on it. Spends the debt, whatever they think of you.]"
-assignment.call-in-a-favour.title,Authored assignment 'call-in-a-favour': title. Moved from the content scripts.,[Call in a Favour]
-assignment.collect-imperial-tithes.success.log-text,Authored assignment 'collect-imperial-tithes': log line. Moved from the content scripts.,[{leader} levied the Imperial tithes.]
-assignment.collect-imperial-tithes.summary,Authored assignment 'collect-imperial-tithes': one-line summary. Moved from the content scripts.,[Exercise the Consul's authority to levy a tithe on every house of the planet.]
-assignment.collect-imperial-tithes.title,Authored assignment 'collect-imperial-tithes': title. Moved from the content scripts.,[Collect the Imperial Tithes]
-assignment.court-a-rival-house.critical-success.log-text,Authored assignment 'court-a-rival-house': log line. Moved from the content scripts.,[{leader} won unexpected goodwill from {target}.]
-assignment.court-a-rival-house.critical-success.popup-text,Authored assignment 'court-a-rival-house': popup body. Moved from the content scripts.,[{leader} returns from {target} with warm assurances and an open door.]
-assignment.court-a-rival-house.disaster.log-text,Authored assignment 'court-a-rival-house': log line. Moved from the content scripts.,[{leader} insulted {target}; relations sour.]
-assignment.court-a-rival-house.disaster.popup-text,Authored assignment 'court-a-rival-house': popup body. Moved from the content scripts.,[{leader} gave insult at the court of {target}; doors close across the region.]
-assignment.court-a-rival-house.success.log-text,Authored assignment 'court-a-rival-house': log line. Moved from the content scripts.,[{leader} improved relations with {target}.]
-assignment.court-a-rival-house.summary,Authored assignment 'court-a-rival-house': one-line summary. Moved from the content scripts.,[Send an envoy to soften another house's standing against you.]
-assignment.court-a-rival-house.title,Authored assignment 'court-a-rival-house': title. Moved from the content scripts.,[Court a Rival House]
-assignment.curry-favour-with-the-sanctora.critical-success.log-text,Authored assignment 'curry-favour-with-the-sanctora': log line. Moved from the content scripts.,[{leader} is spoken of warmly throughout the Spire.]
-assignment.curry-favour-with-the-sanctora.disaster.log-text,Authored assignment 'curry-favour-with-the-sanctora': log line. Moved from the content scripts.,[{leader} embarrassed themselves before the Sanctora.]
-assignment.curry-favour-with-the-sanctora.disaster.popup-text,Authored assignment 'curry-favour-with-the-sanctora': popup body. Moved from the content scripts.,[{leader} misjudged the Spire's etiquette badly. The adepts remember.]
-assignment.curry-favour-with-the-sanctora.success.log-text,Authored assignment 'curry-favour-with-the-sanctora': log line. Moved from the content scripts.,[{leader} made a good impression on the Sanctora.]
-assignment.curry-favour-with-the-sanctora.summary,Authored assignment 'curry-favour-with-the-sanctora': one-line summary. Moved from the content scripts.,"[Pay respects, tithes, and flattery aboard the Spire.]"
-assignment.curry-favour-with-the-sanctora.title,Authored assignment 'curry-favour-with-the-sanctora': title. Moved from the content scripts.,[Curry Favour with the Sanctora]
+assignment.respond.summary,Authored assignment 'respond': one-line summary. Moved from the content scripts.,[March to relieve a threatened holding.]
+assignment.respond.title,Authored assignment 'respond': title. Moved from the content scripts.,Respond
+assignment.blockade.success.log-text,Authored assignment 'blockade': log line. Moved from the content scripts.,[{target} is under blockade.]
+assignment.blockade.summary,Authored assignment 'blockade': one-line summary. Moved from the content scripts.,[Station a ship over a province and choke its trade.]
+assignment.blockade.title,Authored assignment 'blockade': title. Moved from the content scripts.,Blockade
+assignment.call-in-favour.critical-success.log-text,Authored assignment 'call-in-favour': log line. Moved from the content scripts.,[{target} honoured its debt to {leader} handsomely.]
+assignment.call-in-favour.disaster.log-text,Authored assignment 'call-in-favour': log line. Moved from the content scripts.,[{target} repudiated its debt to {leader}.]
+assignment.call-in-favour.disaster.popup-text,Authored assignment 'call-in-favour': popup body. Moved from the content scripts.,"[{target} denies owing {leader} anything at all, and says so publicly.]"
+assignment.call-in-favour.failure.log-text,Authored assignment 'call-in-favour': log line. Moved from the content scripts.,[{target} put {leader} off with promises.]
+assignment.call-in-favour.success.log-text,Authored assignment 'call-in-favour': log line. Moved from the content scripts.,[{target} made good on what it owed {leader}.]
+assignment.call-in-favour.summary,Authored assignment 'call-in-favour': one-line summary. Moved from the content scripts.,"[Ask a house that owes you to make good on it. Spends the debt, whatever they think of you.]"
+assignment.call-in-favour.title,Authored assignment 'call-in-favour': title. Moved from the content scripts.,Call In Favour
+assignment.collect-tithes.success.log-text,Authored assignment 'collect-tithes': log line. Moved from the content scripts.,[{leader} levied the Imperial tithes.]
+assignment.collect-tithes.summary,Authored assignment 'collect-tithes': one-line summary. Moved from the content scripts.,[Exercise the Consul's authority to levy a tithe on every house of the planet.]
+assignment.collect-tithes.title,Authored assignment 'collect-tithes': title. Moved from the content scripts.,Collect Tithes
+assignment.court.critical-success.log-text,Authored assignment 'court': log line. Moved from the content scripts.,[{leader} won unexpected goodwill from {target}.]
+assignment.court.critical-success.popup-text,Authored assignment 'court': popup body. Moved from the content scripts.,[{leader} returns from {target} with warm assurances and an open door.]
+assignment.court.disaster.log-text,Authored assignment 'court': log line. Moved from the content scripts.,[{leader} insulted {target}; relations sour.]
+assignment.court.disaster.popup-text,Authored assignment 'court': popup body. Moved from the content scripts.,[{leader} gave insult at the court of {target}; doors close across the region.]
+assignment.court.success.log-text,Authored assignment 'court': log line. Moved from the content scripts.,[{leader} improved relations with {target}.]
+assignment.court.summary,Authored assignment 'court': one-line summary. Moved from the content scripts.,[Send an envoy to soften another house's standing against you.]
+assignment.court.title,Authored assignment 'court': title. Moved from the content scripts.,Court
+assignment.curry-favour.critical-success.log-text,Authored assignment 'curry-favour': log line. Moved from the content scripts.,[{leader} is spoken of warmly throughout the Spire.]
+assignment.curry-favour.disaster.log-text,Authored assignment 'curry-favour': log line. Moved from the content scripts.,[{leader} embarrassed themselves before the Sanctora.]
+assignment.curry-favour.disaster.popup-text,Authored assignment 'curry-favour': popup body. Moved from the content scripts.,[{leader} misjudged the Spire's etiquette badly. The adepts remember.]
+assignment.curry-favour.success.log-text,Authored assignment 'curry-favour': log line. Moved from the content scripts.,[{leader} made a good impression on the Sanctora.]
+assignment.curry-favour.summary,Authored assignment 'curry-favour': one-line summary. Moved from the content scripts.,"[Pay respects, tithes, and flattery aboard the Spire.]"
+assignment.curry-favour.title,Authored assignment 'curry-favour': title. Moved from the content scripts.,Curry Favour
 assignment.hold-court.summary,Authored assignment 'hold-court': one-line summary. Moved from the content scripts.,[Hear petitions and settle disputes among your household; settles the province you sit in.]
-assignment.hold-court.title,Authored assignment 'hold-court': title. Moved from the content scripts.,[Hold Court]
-assignment.lay-siege.critical-success.log-text,Authored assignment 'lay-siege': log line. Moved from the content scripts.,[{target} fell swiftly to {leader}.]
-assignment.lay-siege.critical-success.popup-text,Authored assignment 'lay-siege': popup body. Moved from the content scripts.,"[{target} has fallen to {leader}, and quickly enough that the granaries are intact.]"
-assignment.lay-siege.disaster.log-text,Authored assignment 'lay-siege': log line. Moved from the content scripts.,[The siege of {target} ended in disaster.]
-assignment.lay-siege.disaster.popup-text,Authored assignment 'lay-siege': popup body. Moved from the content scripts.,[The siege of {target} collapsed in recrimination and blood.]
-assignment.lay-siege.failure.log-text,Authored assignment 'lay-siege': log line. Moved from the content scripts.,[The siege of {target} was broken.]
-assignment.lay-siege.success.log-text,Authored assignment 'lay-siege': log line. Moved from the content scripts.,[{target} fell to {leader} after a siege.]
-assignment.lay-siege.success.popup-text,Authored assignment 'lay-siege': popup body. Moved from the content scripts.,"[After a grinding investment, {target} has fallen to {leader}.]"
-assignment.lay-siege.summary,Authored assignment 'lay-siege': one-line summary. Moved from the content scripts.,[March on a province and take it. Its garrison must be beaten first.]
-assignment.lay-siege.title,Authored assignment 'lay-siege': title. Moved from the content scripts.,[Lay Siege]
+assignment.hold-court.title,Authored assignment 'hold-court': title. Moved from the content scripts.,Hold Court
+assignment.besiege.critical-success.log-text,Authored assignment 'besiege': log line. Moved from the content scripts.,[{target} fell swiftly to {leader}.]
+assignment.besiege.critical-success.popup-text,Authored assignment 'besiege': popup body. Moved from the content scripts.,"[{target} has fallen to {leader}, and quickly enough that the granaries are intact.]"
+assignment.besiege.disaster.log-text,Authored assignment 'besiege': log line. Moved from the content scripts.,[The siege of {target} ended in disaster.]
+assignment.besiege.disaster.popup-text,Authored assignment 'besiege': popup body. Moved from the content scripts.,[The siege of {target} collapsed in recrimination and blood.]
+assignment.besiege.failure.log-text,Authored assignment 'besiege': log line. Moved from the content scripts.,[The siege of {target} was broken.]
+assignment.besiege.success.log-text,Authored assignment 'besiege': log line. Moved from the content scripts.,[{target} fell to {leader} after a siege.]
+assignment.besiege.success.popup-text,Authored assignment 'besiege': popup body. Moved from the content scripts.,"[After a grinding investment, {target} has fallen to {leader}.]"
+assignment.besiege.summary,Authored assignment 'besiege': one-line summary. Moved from the content scripts.,[March on a province and take it. Its garrison must be beaten first.]
+assignment.besiege.title,Authored assignment 'besiege': title. Moved from the content scripts.,Besiege
 assignment.manage-estates.summary,Authored assignment 'manage-estates': one-line summary. Moved from the content scripts.,[Routine administration of the house's provincial holdings; steadies order everywhere you rule.]
-assignment.manage-estates.title,Authored assignment 'manage-estates': title. Moved from the content scripts.,[Manage the Estates]
-assignment.march-the-army.failure.log-text,Authored assignment 'march-the-army': log line. Moved from the content scripts.,[{leader}'s march on {target} dissolved in confusion.]
-assignment.march-the-army.summary,Authored assignment 'march-the-army': one-line summary. Moved from the content scripts.,[Move an army to another province. Marches take as long as the road demands.]
-assignment.march-the-army.title,Authored assignment 'march-the-army': title. Moved from the content scripts.,[March the Army]
-assignment.muster-the-levies.critical-success.log-text,Authored assignment 'muster-the-levies': log line. Moved from the content scripts.,[{leader} mustered an eager and well-found levy.]
-assignment.muster-the-levies.success.log-text,Authored assignment 'muster-the-levies': log line. Moved from the content scripts.,[{leader} mustered the levies.]
-assignment.muster-the-levies.summary,Authored assignment 'muster-the-levies': one-line summary. Moved from the content scripts.,"[Raise a standing army under a general, with manpower and supplies from the house pool.]"
-assignment.muster-the-levies.title,Authored assignment 'muster-the-levies': title. Moved from the content scripts.,[Muster the Levies]
-assignment.negotiate-standdown.disaster.log-text,Authored assignment 'negotiate-standdown': log line. Moved from the content scripts.,[{leader}'s overture to {target} was thrown back in their face.]
-assignment.negotiate-standdown.success.log-text,Authored assignment 'negotiate-standdown': log line. Moved from the content scripts.,[{leader} negotiated a stand-down with {target}.]
-assignment.negotiate-standdown.summary,Authored assignment 'negotiate-standdown': one-line summary. Moved from the content scripts.,[Talk a rival back from the brink before more blood is spilt.]
-assignment.negotiate-standdown.title,Authored assignment 'negotiate-standdown': title. Moved from the content scripts.,[Negotiate a Stand-Down]
-assignment.patrol-the-province.summary,Authored assignment 'patrol-the-province': one-line summary. Moved from the content scripts.,"[Stand guard where the army is; a visible deterrent to raiders, and a steadying presence.]"
-assignment.patrol-the-province.title,Authored assignment 'patrol-the-province': title. Moved from the content scripts.,[Patrol]
-assignment.petition-the-consul.disaster.log-text,Authored assignment 'petition-the-consul': log line. Moved from the content scripts.,[{leader}'s petition irritated the Consulate.]
-assignment.petition-the-consul.success.log-text,Authored assignment 'petition-the-consul': log line. Moved from the content scripts.,[The Consul received {leader}'s petition favourably.]
-assignment.petition-the-consul.summary,Authored assignment 'petition-the-consul': one-line summary. Moved from the content scripts.,[Seek the Consul's ear for your house's interests.]
-assignment.petition-the-consul.title,Authored assignment 'petition-the-consul': title. Moved from the content scripts.,[Petition the Consul]
-assignment.press-claim-to-the-paramountcy.critical-success.log-text,Authored assignment 'press-claim-to-the-paramountcy': log line. Moved from the content scripts.,[{leader} pressed a claim to the Paramountcy.]
-assignment.press-claim-to-the-paramountcy.critical-success.popup-text,Authored assignment 'press-claim-to-the-paramountcy': popup body. Moved from the content scripts.,[The assembled houses could find no rival to {leader}'s claim. The Paramountcy is yours.]
-assignment.press-claim-to-the-paramountcy.failure.log-text,Authored assignment 'press-claim-to-the-paramountcy': log line. Moved from the content scripts.,[{leader}'s claim to the Paramountcy went nowhere.]
-assignment.press-claim-to-the-paramountcy.success.log-text,Authored assignment 'press-claim-to-the-paramountcy': log line. Moved from the content scripts.,[{leader} pressed a claim to the Paramountcy.]
-assignment.press-claim-to-the-paramountcy.summary,Authored assignment 'press-claim-to-the-paramountcy': one-line summary. Moved from the content scripts.,[Advance your house's claim to the vacant planetary Paramountcy. Succeeds only if you hold more of the planet than any rival.]
-assignment.press-claim-to-the-paramountcy.title,Authored assignment 'press-claim-to-the-paramountcy': title. Moved from the content scripts.,[Press the Claim to the Paramountcy]
-assignment.raid-the-province.critical-success.log-text,Authored assignment 'raid-the-province': log line. Moved from the content scripts.,[{leader}'s raid on {target} came home heavy with plunder.]
-assignment.raid-the-province.disaster.log-text,Authored assignment 'raid-the-province': log line. Moved from the content scripts.,[{leader}'s raiders were cut apart at {target}.]
-assignment.raid-the-province.failure.log-text,Authored assignment 'raid-the-province': log line. Moved from the content scripts.,[{leader}'s raid on {target} was driven off.]
-assignment.raid-the-province.success.log-text,Authored assignment 'raid-the-province': log line. Moved from the content scripts.,[{leader} raided {target}.]
-assignment.raid-the-province.summary,Authored assignment 'raid-the-province': one-line summary. Moved from the content scripts.,[Strike a province for loot and be gone before the response forms.]
-assignment.raid-the-province.title,Authored assignment 'raid-the-province': title. Moved from the content scripts.,[Raid]
-assignment.resupply-the-army.summary,Authored assignment 'resupply-the-army': one-line summary. Moved from the content scripts.,[Refill an army's supply train from the house stores.]
-assignment.resupply-the-army.title,Authored assignment 'resupply-the-army': title. Moved from the content scripts.,[Resupply the Army]
-assignment.seek-consular-endorsement.critical-success.log-text,Authored assignment 'seek-consular-endorsement': log line. Moved from the content scripts.,[The Consul endorsed {leader}'s house.]
-assignment.seek-consular-endorsement.critical-success.popup-text,Authored assignment 'seek-consular-endorsement': popup body. Moved from the content scripts.,[The Consul receives {leader} warmly and lets it be known that the Spire looks kindly on the house.]
-assignment.seek-consular-endorsement.disaster.log-text,Authored assignment 'seek-consular-endorsement': log line. Moved from the content scripts.,[{leader}'s approach to the Consul was rebuffed and remembered.]
-assignment.seek-consular-endorsement.success.log-text,Authored assignment 'seek-consular-endorsement': log line. Moved from the content scripts.,[The Consul gave {leader} a guarded hearing.]
-assignment.seek-consular-endorsement.summary,Authored assignment 'seek-consular-endorsement': one-line summary. Moved from the content scripts.,"[Court the Consul's public backing for your house's ambitions. Helpful, but never decisive.]"
-assignment.seek-consular-endorsement.title,Authored assignment 'seek-consular-endorsement': title. Moved from the content scripts.,[Seek the Consul's Endorsement]
-assignment.spread-whispers.critical-success.log-text,Authored assignment 'spread-whispers': log line. Moved from the content scripts.,[Whispers against {target} take root everywhere at once.]
-assignment.spread-whispers.disaster.log-text,Authored assignment 'spread-whispers': log line. Moved from the content scripts.,[{leader} was caught spreading whispers against {target}.]
-assignment.spread-whispers.disaster.popup-text,Authored assignment 'spread-whispers': popup body. Moved from the content scripts.,[The whisper campaign is traced back to {leader}. {target} knows.]
-assignment.spread-whispers.summary,Authored assignment 'spread-whispers': one-line summary. Moved from the content scripts.,[Undermine a rival with rumour and insinuation.]
-assignment.spread-whispers.title,Authored assignment 'spread-whispers': title. Moved from the content scripts.,[Spread Whispers]
-assignment.tour-the-holdings.critical-success.log-text,Authored assignment 'tour-the-holdings': log line. Moved from the content scripts.,[{leader}'s tour of the holdings is met with genuine warmth.]
-assignment.tour-the-holdings.disaster.log-text,Authored assignment 'tour-the-holdings': log line. Moved from the content scripts.,[{leader}'s tour ended in an ugly accident.]
-assignment.tour-the-holdings.disaster.popup-text,Authored assignment 'tour-the-holdings': popup body. Moved from the content scripts.,"[An accident on the road; {leader} is hurt, and the tour is remembered badly.]"
-assignment.tour-the-holdings.summary,Authored assignment 'tour-the-holdings': one-line summary. Moved from the content scripts.,[Show the household's face across its provinces.]
-assignment.tour-the-holdings.title,Authored assignment 'tour-the-holdings': title. Moved from the content scripts.,[Tour the Holdings]
+assignment.manage-estates.title,Authored assignment 'manage-estates': title. Moved from the content scripts.,Manage Estates
+assignment.march.failure.log-text,Authored assignment 'march': log line. Moved from the content scripts.,[{leader}'s march on {target} dissolved in confusion.]
+assignment.march.summary,Authored assignment 'march': one-line summary. Moved from the content scripts.,[Move an army to another province. Marches take as long as the road demands.]
+assignment.march.title,Authored assignment 'march': title. Moved from the content scripts.,March
+assignment.muster.critical-success.log-text,Authored assignment 'muster': log line. Moved from the content scripts.,[{leader} mustered an eager and well-found levy.]
+assignment.muster.success.log-text,Authored assignment 'muster': log line. Moved from the content scripts.,[{leader} mustered the levies.]
+assignment.muster.summary,Authored assignment 'muster': one-line summary. Moved from the content scripts.,"[Raise a standing army under a general, with manpower and supplies from the house pool.]"
+assignment.muster.title,Authored assignment 'muster': title. Moved from the content scripts.,Muster
+assignment.negotiate.disaster.log-text,Authored assignment 'negotiate': log line. Moved from the content scripts.,[{leader}'s overture to {target} was thrown back in their face.]
+assignment.negotiate.success.log-text,Authored assignment 'negotiate': log line. Moved from the content scripts.,[{leader} negotiated a stand-down with {target}.]
+assignment.negotiate.summary,Authored assignment 'negotiate': one-line summary. Moved from the content scripts.,[Talk a rival back from the brink before more blood is spilt.]
+assignment.negotiate.title,Authored assignment 'negotiate': title. Moved from the content scripts.,Negotiate
+assignment.patrol.summary,Authored assignment 'patrol': one-line summary. Moved from the content scripts.,"[Stand guard where the army is; a visible deterrent to raiders, and a steadying presence.]"
+assignment.patrol.title,Authored assignment 'patrol': title. Moved from the content scripts.,Patrol
+assignment.petition.disaster.log-text,Authored assignment 'petition': log line. Moved from the content scripts.,[{leader}'s petition irritated the Consulate.]
+assignment.petition.success.log-text,Authored assignment 'petition': log line. Moved from the content scripts.,[The Consul received {leader}'s petition favourably.]
+assignment.petition.summary,Authored assignment 'petition': one-line summary. Moved from the content scripts.,[Seek the Consul's ear for your house's interests.]
+assignment.petition.title,Authored assignment 'petition': title. Moved from the content scripts.,Petition
+assignment.press-claim.critical-success.log-text,Authored assignment 'press-claim': log line. Moved from the content scripts.,[{leader} pressed a claim to the Paramountcy.]
+assignment.press-claim.critical-success.popup-text,Authored assignment 'press-claim': popup body. Moved from the content scripts.,[The assembled houses could find no rival to {leader}'s claim. The Paramountcy is yours.]
+assignment.press-claim.failure.log-text,Authored assignment 'press-claim': log line. Moved from the content scripts.,[{leader}'s claim to the Paramountcy went nowhere.]
+assignment.press-claim.success.log-text,Authored assignment 'press-claim': log line. Moved from the content scripts.,[{leader} pressed a claim to the Paramountcy.]
+assignment.press-claim.summary,Authored assignment 'press-claim': one-line summary. Moved from the content scripts.,[Advance your house's claim to the vacant planetary Paramountcy. Succeeds only if you hold more of the planet than any rival.]
+assignment.press-claim.title,Authored assignment 'press-claim': title. Moved from the content scripts.,Press Claim
+assignment.raid.critical-success.log-text,Authored assignment 'raid': log line. Moved from the content scripts.,[{leader}'s raid on {target} came home heavy with plunder.]
+assignment.raid.disaster.log-text,Authored assignment 'raid': log line. Moved from the content scripts.,[{leader}'s raiders were cut apart at {target}.]
+assignment.raid.failure.log-text,Authored assignment 'raid': log line. Moved from the content scripts.,[{leader}'s raid on {target} was driven off.]
+assignment.raid.success.log-text,Authored assignment 'raid': log line. Moved from the content scripts.,[{leader} raided {target}.]
+assignment.raid.summary,Authored assignment 'raid': one-line summary. Moved from the content scripts.,[Strike a province for loot and be gone before the response forms.]
+assignment.raid.title,Authored assignment 'raid': title. Moved from the content scripts.,Raid
+assignment.resupply.summary,Authored assignment 'resupply': one-line summary. Moved from the content scripts.,[Refill an army's supply train from the house stores.]
+assignment.resupply.title,Authored assignment 'resupply': title. Moved from the content scripts.,Resupply
+assignment.seek-endorsement.critical-success.log-text,Authored assignment 'seek-endorsement': log line. Moved from the content scripts.,[The Consul endorsed {leader}'s house.]
+assignment.seek-endorsement.critical-success.popup-text,Authored assignment 'seek-endorsement': popup body. Moved from the content scripts.,[The Consul receives {leader} warmly and lets it be known that the Spire looks kindly on the house.]
+assignment.seek-endorsement.disaster.log-text,Authored assignment 'seek-endorsement': log line. Moved from the content scripts.,[{leader}'s approach to the Consul was rebuffed and remembered.]
+assignment.seek-endorsement.success.log-text,Authored assignment 'seek-endorsement': log line. Moved from the content scripts.,[The Consul gave {leader} a guarded hearing.]
+assignment.seek-endorsement.summary,Authored assignment 'seek-endorsement': one-line summary. Moved from the content scripts.,"[Court the Consul's public backing for your house's ambitions. Helpful, but never decisive.]"
+assignment.seek-endorsement.title,Authored assignment 'seek-endorsement': title. Moved from the content scripts.,Seek Endorsement
+assignment.discredit.critical-success.log-text,Authored assignment 'discredit': log line. Moved from the content scripts.,[Whispers against {target} take root everywhere at once.]
+assignment.discredit.disaster.log-text,Authored assignment 'discredit': log line. Moved from the content scripts.,[{leader} was caught spreading whispers against {target}.]
+assignment.discredit.disaster.popup-text,Authored assignment 'discredit': popup body. Moved from the content scripts.,[The whisper campaign is traced back to {leader}. {target} knows.]
+assignment.discredit.summary,Authored assignment 'discredit': one-line summary. Moved from the content scripts.,[Undermine a rival with rumour and insinuation.]
+assignment.discredit.title,Authored assignment 'discredit': title. Moved from the content scripts.,Discredit
+assignment.tour-holdings.critical-success.log-text,Authored assignment 'tour-holdings': log line. Moved from the content scripts.,[{leader}'s tour of the holdings is met with genuine warmth.]
+assignment.tour-holdings.disaster.log-text,Authored assignment 'tour-holdings': log line. Moved from the content scripts.,[{leader}'s tour ended in an ugly accident.]
+assignment.tour-holdings.disaster.popup-text,Authored assignment 'tour-holdings': popup body. Moved from the content scripts.,"[An accident on the road; {leader} is hurt, and the tour is remembered badly.]"
+assignment.tour-holdings.summary,Authored assignment 'tour-holdings': one-line summary. Moved from the content scripts.,[Show the household's face across its provinces.]
+assignment.tour-holdings.title,Authored assignment 'tour-holdings': title. Moved from the content scripts.,Tour Holdings
 office.starbase-commander.name,Authored office 'starbase-commander': name. Moved from the content scripts.,[Commander of the Aurelian Spire]
 organisation.calder.name,Authored organisation 'calder': name. Moved from the content scripts.,[House Calder]
 organisation.calder.surname,Authored organisation 'calder': family surname. Moved from the content scripts.,[Calder]

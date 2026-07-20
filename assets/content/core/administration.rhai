@@ -38,7 +38,7 @@ fn court_settled(ctx) {
 }
 
 define_assignment(#{
-    id: "court-a-rival-house",
+    id: "court",
     ai_intent: "standing",
     category: "consequential",
     duration_days: 45,
@@ -80,7 +80,7 @@ fn courting_disaster(ctx) {
 }
 
 define_assignment(#{
-    id: "curry-favour-with-the-sanctora",
+    id: "curry-favour",
     ai_intent: "standing",
     category: "consequential",
     duration_days: 60,
@@ -118,7 +118,7 @@ fn sanctora_disaster(ctx) {
 }
 
 define_assignment(#{
-    id: "spread-whispers",
+    id: "discredit",
     category: "consequential",
     duration_days: 40,
     skill: "intrigue",
@@ -157,7 +157,7 @@ fn whispers_disaster(ctx) {
 }
 
 define_assignment(#{
-    id: "tour-the-holdings",
+    id: "tour-holdings",
     ai_intent: "order",
     category: "consequential",
     duration_days: 50,
@@ -188,7 +188,7 @@ fn tour_soured(ctx) {
 }
 
 define_assignment(#{
-    id: "petition-the-consul",
+    id: "petition",
     category: "consequential",
     duration_days: 30,
     influence_cost: 10,
@@ -218,7 +218,7 @@ fn petition_disaster(ctx) {
 }
 
 define_assignment(#{
-    id: "muster-the-levies",
+    id: "muster",
     ai_intent: "muster",
     category: "consequential",
     duration_days: 40,
@@ -252,7 +252,7 @@ fn muster_success(ctx) {
 // --- The planetary succession crisis ---
 
 define_assignment(#{
-    id: "press-claim-to-the-paramountcy",
+    id: "press-claim",
     ai_intent: "claim",
     category: "consequential",
     duration_days: 90,
@@ -279,7 +279,7 @@ fn press_claim(ctx) {
 }
 
 define_assignment(#{
-    id: "collect-imperial-tithes",
+    id: "collect-tithes",
     category: "consequential",
     duration_days: 60,
     skill: "stewardship",
@@ -299,7 +299,7 @@ fn levy_tithes(ctx) {
 }
 
 define_assignment(#{
-    id: "seek-consular-endorsement",
+    id: "seek-endorsement",
     ai_intent: "standing",
     category: "consequential",
     duration_days: 45,
@@ -339,7 +339,7 @@ fn endorsement_disaster(ctx) {
 }
 
 define_assignment(#{
-    id: "call-in-a-favour",
+    id: "call-in-favour",
     ai_intent: "obligation",
     category: "consequential",
     duration_days: 25,

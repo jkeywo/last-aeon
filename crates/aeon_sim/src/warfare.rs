@@ -43,7 +43,7 @@ pub enum StandingOrder {
 pub const BLOCKADE_ORDER_LOSS: i32 = 20;
 
 /// The content key of the reactive-defence assignment standing orders start.
-pub const REACTIVE_DEFENCE_JOB: &str = "answer-the-alarm";
+pub const REACTIVE_DEFENCE_JOB: &str = "respond";
 
 /// An army's fighting strength from strategic state.
 ///

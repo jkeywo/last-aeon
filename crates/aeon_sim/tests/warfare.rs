@@ -58,14 +58,14 @@ define_character(#{
 
 // Engine-op assignments with certain rolls so tests isolate op semantics.
 define_assignment(#{
-    id: "march-the-army", 
+    id: "march", 
     category: "consequential", duration_days: 2,
     skill: "command", difficulty: 0,
     target: "own-army-and-province", military_op: "move", ai_available: false,
     results: #{ success: #{ weight: 1000000 }, failure: #{ weight: 1 } },
 });
 define_assignment(#{
-    id: "lay-siege", 
+    id: "besiege", 
     category: "consequential", duration_days: 20,
     skill: "command", difficulty: 0,
     target: "own-army-and-province", military_op: "besiege", ai_available: false,
@@ -75,21 +75,21 @@ define_assignment(#{
     },
 });
 define_assignment(#{
-    id: "raid-the-province", 
+    id: "raid", 
     category: "consequential", duration_days: 3,
     skill: "command", difficulty: 0,
     target: "own-army-and-province", military_op: "raid", ai_available: false,
     results: #{ success: #{ weight: 1000000 }, failure: #{ weight: 1 } },
 });
 define_assignment(#{
-    id: "blockade-the-port", 
+    id: "blockade", 
     category: "consequential", duration_days: 2,
     skill: "command", difficulty: 0,
     target: "own-ship-and-province", military_op: "blockade", ai_available: false,
     results: #{ success: #{ weight: 1000000 }, failure: #{ weight: 1 } },
 });
 define_assignment(#{
-    id: "answer-the-alarm", 
+    id: "respond", 
     category: "consequential", duration_days: 2,
     skill: "command", difficulty: 0,
     target: "own-army-and-province", military_op: "move", ai_available: false,
@@ -104,9 +104,9 @@ define_assignment(#{
 fn strings() -> aeon_data::StringTable {
     let mut table = aeon_data::StringTable::blank();
     table.extend(&[
-        ("assignment.lay-siege.success.log-text", "{target} fell."),
+        ("assignment.besiege.success.log-text", "{target} fell."),
         (
-            "assignment.lay-siege.failure.log-text",
+            "assignment.besiege.failure.log-text",
             "The siege of {target} broke.",
         ),
     ]);
@@ -175,7 +175,7 @@ fn marches_move_armies_and_take_road_time() {
 
     let envelope = h
         .submit(PlayerCommand::StartAssignment {
-            assignment: key("march-the-army"),
+            assignment: key("march"),
             leader: aron,
             target: AssignmentTarget::ArmyToProvince(army, beta),
         })
@@ -208,7 +208,7 @@ fn sieges_take_provinces_after_beating_the_garrison() {
 
     assert_eq!(province_holder(h.world_mut(), beta), Some(birch));
     h.submit(PlayerCommand::StartAssignment {
-        assignment: key("lay-siege"),
+        assignment: key("besiege"),
         leader: aron,
         target: AssignmentTarget::ArmyToProvince(attacker, beta),
     })
@@ -240,7 +240,7 @@ fn a_strong_garrison_breaks_a_weak_siege() {
     let birch = org(&mut h, "birch");
 
     h.submit(PlayerCommand::StartAssignment {
-        assignment: key("lay-siege"),
+        assignment: key("besiege"),
         leader: aron,
         target: AssignmentTarget::ArmyToProvince(attacker, beta),
     })
@@ -277,7 +277,7 @@ fn raids_loot_wealth_from_the_holder() {
         )
     };
     h.submit(PlayerCommand::StartAssignment {
-        assignment: key("raid-the-province"),
+        assignment: key("raid"),
         leader: aron,
         target: AssignmentTarget::ArmyToProvince(army, beta),
     })
@@ -314,7 +314,7 @@ fn blockades_halve_wealth_output() {
     .unwrap();
     h.advance_days(2);
     h.submit(PlayerCommand::StartAssignment {
-        assignment: key("blockade-the-port"),
+        assignment: key("blockade"),
         leader: aron,
         target: AssignmentTarget::ShipToProvince(sloop, beta),
     })
@@ -390,7 +390,7 @@ fn standing_orders_answer_threats_and_yield_to_bespoke_assignments() {
 
     // A siege on Beta triggers the alarm; the defender marches.
     h.submit(PlayerCommand::StartAssignment {
-        assignment: key("lay-siege"),
+        assignment: key("besiege"),
         leader: aron,
         target: AssignmentTarget::ArmyToProvince(attacker, beta),
     })
@@ -404,7 +404,7 @@ fn standing_orders_answer_threats_and_yield_to_bespoke_assignments() {
             world
                 .get::<aeon_sim::ActiveAssignment>(*entity)
                 .is_some_and(|assignment| {
-                    assignment.def.as_str() == "answer-the-alarm"
+                    assignment.def.as_str() == "respond"
                         && matches!(assignment.target, AssignmentTarget::ArmyToProvince(a, p)
                             if a == defender && p == beta)
                 })
@@ -435,7 +435,7 @@ fn idle_armies_without_orders_do_not_react() {
 
     // No standing order set: HoldFast is the default.
     h.submit(PlayerCommand::StartAssignment {
-        assignment: key("lay-siege"),
+        assignment: key("besiege"),
         leader: aron,
         target: AssignmentTarget::ArmyToProvince(attacker, beta),
     })
@@ -447,7 +447,7 @@ fn idle_armies_without_orders_do_not_react() {
     let reactive = assignments_index.assignments.values().any(|entity| {
         world
             .get::<aeon_sim::ActiveAssignment>(*entity)
-            .is_some_and(|assignment| assignment.def.as_str() == "answer-the-alarm")
+            .is_some_and(|assignment| assignment.def.as_str() == "respond")
     });
     assert!(!reactive, "HoldFast armies do not answer alarms");
 }
@@ -469,7 +469,7 @@ fn warfare_is_deterministic_and_survives_snapshots() {
         }
         let beta = province(&mut h, "beta");
         h.submit(PlayerCommand::StartAssignment {
-            assignment: key("lay-siege"),
+            assignment: key("besiege"),
             leader: aron,
             target: AssignmentTarget::ArmyToProvince(attacker, beta),
         })
@@ -505,7 +505,7 @@ fn a_ship_is_ordered_by_its_captain_and_nobody_else() {
 
     // The fixture's sloop has no captain, so nobody can order it.
     let refused = h.submit(PlayerCommand::StartAssignment {
-        assignment: key("blockade-the-port"),
+        assignment: key("blockade"),
         leader: aron,
         target: AssignmentTarget::ShipToProvince(ship, beta),
     });
@@ -528,7 +528,7 @@ fn a_ship_is_ordered_by_its_captain_and_nobody_else() {
         assert_eq!(record.captain, Some(aron), "the command was taken up");
     }
     h.submit(PlayerCommand::StartAssignment {
-        assignment: key("blockade-the-port"),
+        assignment: key("blockade"),
         leader: aron,
         target: AssignmentTarget::ShipToProvince(ship, beta),
     })
