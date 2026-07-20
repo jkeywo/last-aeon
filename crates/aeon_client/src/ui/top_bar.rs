@@ -89,6 +89,17 @@ pub fn draw_top_bar(
                     if let Some(picked) = draw_mode_bar(ui, theme, strings, *mode) {
                         *mode = picked;
                     }
+                    ui.separator();
+                    // Named for what pressing it gives you, not for what
+                    // you are looking at now.
+                    let other = view.projection.toggled();
+                    if ui
+                        .button(strings.text(other.label_key()))
+                        .on_hover_text(strings.text("ui.projection.hover"))
+                        .clicked()
+                    {
+                        view.projection = other;
+                    }
                 }
             }
 

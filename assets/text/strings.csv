@@ -586,6 +586,9 @@ ui.resource.influence,"The influence reading in the resource bar, shown against 
 ui.resource.manpower.hover,Tooltip on the manpower reading in the resource bar.,"[Manpower — people to staff jobs, garrisons, and armies]"
 ui.resource.supplies.hover,Tooltip on the supplies reading in the resource bar.,"[Supplies — sustains armies, fleets, and expeditions]"
 ui.resource.wealth.hover,Tooltip on the wealth reading in the resource bar.,"[Wealth — funds jobs, personnel, and construction]"
+ui.projection.flat,Label on the button that switches the map to a flat projection.,Flat
+ui.projection.globe,Label on the button that switches the map back to a globe.,Globe
+ui.projection.hover,Tooltip on the map projection toggle.,"A globe is truthful about distance; a flat map shows both hemispheres at once."
 ui.result.critical-success,A job outcome: better than success.,[Critical success]
 ui.result.disaster,A job outcome: worse than failure.,[Disaster]
 ui.result.failure,A job outcome: the job did not achieve what it set out to.,[Failure]

@@ -13,7 +13,6 @@ use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
 use crate::map_modes::MapReadout;
-use crate::scene::GLOBE_RADIUS;
 use crate::ui::theme::UiTheme;
 use crate::view::{MapView, Selection, ViewState, geo_to_unit};
 
@@ -62,9 +61,9 @@ pub fn draw_map_overlay(
             continue;
         }
         let dir = geo_to_unit(geo.latitude_mdeg, geo.longitude_mdeg);
-        let world = dir * GLOBE_RADIUS;
-        // Cull provinces on the far side of the globe.
-        if (camera_pos - world).dot(dir) <= 0.0 {
+        let world = view.projection.place(dir);
+        // A globe hides half its surface; a flat map hides nothing.
+        if !view.projection.faces_camera(dir, camera_pos) {
             continue;
         }
         let Ok(screen) = camera.world_to_viewport(camera_transform, world) else {

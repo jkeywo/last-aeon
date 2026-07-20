@@ -17,10 +17,11 @@ use bevy::render::mesh::{Indices, PrimitiveTopology};
 use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 
 use crate::map_modes::MapReadout;
-use crate::view::{MapMode, MapView, Selection, ViewState, geo_to_unit};
+use crate::view::{
+    FLAT_HEIGHT, FLAT_WIDTH, GLOBE_RADIUS, MapMode, MapProjection, MapView, Selection, ViewState,
+    geo_to_unit,
+};
 
-/// Radius of a body-view globe in render units.
-pub const GLOBE_RADIUS: f32 = 2.5;
 /// Baked political-texture resolution.
 const TEX_W: usize = 768;
 const TEX_H: usize = 384;
@@ -126,6 +127,54 @@ fn build_globe_mesh(radius: f32, sectors: usize, stacks: usize) -> Mesh {
     mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
     mesh.insert_indices(Indices::U32(indices));
     mesh
+}
+
+/// Builds the flat map: one quad, because an equirectangular texture maps
+/// linearly across a plane.
+///
+/// The sphere needs a grid of vertices to curve between its UVs; a plane
+/// does not, so four corners carry the whole projection exactly.
+fn build_flat_mesh(width: f32, height: f32) -> Mesh {
+    let (hw, hh) = (width / 2.0, height / 2.0);
+    let positions = vec![
+        [-hw, -hh, 0.0],
+        [hw, -hh, 0.0],
+        [-hw, hh, 0.0],
+        [hw, hh, 0.0],
+    ];
+    // v runs from the north pole down, matching `texel_unit` and the
+    // sphere's own UVs, so one baked texture serves both meshes.
+    let uvs = vec![[0.0, 1.0], [1.0, 1.0], [0.0, 0.0], [1.0, 0.0]];
+    let normals = vec![[0.0, 0.0, 1.0]; 4];
+    let mut mesh = Mesh::new(
+        PrimitiveTopology::TriangleList,
+        RenderAssetUsages::RENDER_WORLD | RenderAssetUsages::MAIN_WORLD,
+    );
+    mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, positions);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_NORMAL, normals);
+    mesh.insert_attribute(Mesh::ATTRIBUTE_UV_0, uvs);
+    mesh.insert_indices(Indices::U32(vec![0, 1, 2, 2, 1, 3]));
+    mesh
+}
+
+/// The two meshes a body's surface can be drawn as, kept so switching
+/// projection swaps a handle rather than rebuilding geometry.
+#[derive(Resource)]
+pub struct SurfaceMeshes {
+    /// The sphere.
+    pub globe: Handle<Mesh>,
+    /// The plane.
+    pub flat: Handle<Mesh>,
+}
+
+impl SurfaceMeshes {
+    /// The mesh for a projection.
+    pub fn for_projection(&self, projection: MapProjection) -> Handle<Mesh> {
+        match projection {
+            MapProjection::Globe => self.globe.clone(),
+            MapProjection::Flat => self.flat.clone(),
+        }
+    }
 }
 
 /// The nearest province centroid to a unit direction, by great-circle
@@ -235,6 +284,11 @@ pub fn spawn_scene(
     ));
 
     let globe_mesh = meshes.add(build_globe_mesh(GLOBE_RADIUS, 96, 48));
+    let flat_mesh = meshes.add(build_flat_mesh(FLAT_WIDTH, FLAT_HEIGHT));
+    commands.insert_resource(SurfaceMeshes {
+        globe: globe_mesh.clone(),
+        flat: flat_mesh,
+    });
 
     // System-view body markers.
     for (record, name) in &bodies {
@@ -424,7 +478,7 @@ pub fn update_selection_pin(
     };
     match target {
         Some(dir) => {
-            transform.translation = dir * (GLOBE_RADIUS * 1.03);
+            transform.translation = view.projection.place(dir) + view.projection.pin_offset(dir);
             *visibility = Visibility::Inherited;
         }
         None => *visibility = Visibility::Hidden,
@@ -453,6 +507,29 @@ pub fn apply_selection_tint(
             .is_some_and(|m| m.base_color != target);
         if differs && let Some(mut material) = materials.get_mut(&handle.0) {
             material.base_color = target;
+        }
+    }
+}
+
+/// Swaps every body's surface mesh when the projection changes.
+///
+/// One entity per body either way: the material, the baked texture and the
+/// click observer all stay put, and only the geometry is exchanged.
+pub fn apply_projection(
+    view: Res<ViewState>,
+    surfaces: Option<Res<SurfaceMeshes>>,
+    mut globes: Query<&mut Mesh3d, With<GlobeVisual>>,
+) {
+    if !view.is_changed() {
+        return;
+    }
+    let Some(surfaces) = surfaces else {
+        return;
+    };
+    let wanted = surfaces.for_projection(view.projection);
+    for mut mesh in &mut globes {
+        if mesh.0 != wanted {
+            mesh.0 = wanted.clone();
         }
     }
 }

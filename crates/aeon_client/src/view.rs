@@ -4,7 +4,18 @@
 //! none of it appears in snapshots.
 
 use aeon_sim::{BodyId, CharacterId, OrgId, ProvinceId};
+use bevy::math::Vec3;
 use bevy::prelude::Resource;
+
+/// Radius of the globe in world units.
+pub const GLOBE_RADIUS: f32 = 2.5;
+
+/// Width of the flat map, chosen as the globe's equator unrolled so that
+/// switching projection does not change how much ground a degree covers.
+pub const FLAT_WIDTH: f32 = std::f32::consts::TAU * GLOBE_RADIUS;
+
+/// Height of the flat map. Equirectangular, so exactly half the width.
+pub const FLAT_HEIGHT: f32 = FLAT_WIDTH / 2.0;
 
 /// Which map the player is looking at.
 #[derive(Copy, Clone, PartialEq, Eq, Debug)]
@@ -13,6 +24,97 @@ pub enum MapView {
     System,
     /// A single body's strategic view (rotatable globe with provinces).
     Body(BodyId),
+}
+
+/// How a body's surface is laid out.
+///
+/// Every position on a body is held as a unit direction, never as a world
+/// point — so the projection is the only thing that knows where a place
+/// ends up on screen, and switching it moves the map, the labels, the
+/// selection pin and the click targets together.
+///
+/// The baked texture is projection-agnostic already: it is equirectangular
+/// in latitude and longitude, which is exactly what both the sphere's UVs
+/// and the flat quad's UVs ask for.
+#[derive(Copy, Clone, PartialEq, Eq, Debug, Default)]
+pub enum MapProjection {
+    /// A sphere. Truthful about a world, hides half of it.
+    #[default]
+    Globe,
+    /// Equirectangular. Distorts the poles, shows everything at once.
+    Flat,
+}
+
+impl MapProjection {
+    /// The other one.
+    pub fn toggled(self) -> Self {
+        match self {
+            MapProjection::Globe => MapProjection::Flat,
+            MapProjection::Flat => MapProjection::Globe,
+        }
+    }
+
+    /// A short label key for the toggle.
+    pub fn label_key(self) -> &'static str {
+        match self {
+            MapProjection::Globe => "ui.projection.globe",
+            MapProjection::Flat => "ui.projection.flat",
+        }
+    }
+
+    /// Where a surface direction sits in world space.
+    pub fn place(self, dir: Vec3) -> Vec3 {
+        match self {
+            MapProjection::Globe => dir * GLOBE_RADIUS,
+            MapProjection::Flat => {
+                let (lat, lon) = unit_to_radians(dir);
+                Vec3::new(
+                    lon / std::f32::consts::PI * (FLAT_WIDTH / 2.0),
+                    lat / std::f32::consts::FRAC_PI_2 * (FLAT_HEIGHT / 2.0),
+                    0.0,
+                )
+            }
+        }
+    }
+
+    /// The surface direction at a world point, the inverse of `place`,
+    /// used to turn a click into a place.
+    pub fn direction_at(self, world: Vec3) -> Vec3 {
+        match self {
+            MapProjection::Globe => world.normalize_or_zero(),
+            MapProjection::Flat => {
+                let lon = world.x / (FLAT_WIDTH / 2.0) * std::f32::consts::PI;
+                let lat = world.y / (FLAT_HEIGHT / 2.0) * std::f32::consts::FRAC_PI_2;
+                Vec3::new(lat.cos() * lon.cos(), lat.sin(), -(lat.cos() * lon.sin()))
+            }
+        }
+    }
+
+    /// Whether a place is on the side of the body facing the camera.
+    ///
+    /// A globe hides half its surface and its far side must not be drawn
+    /// over its near side; a flat map hides nothing, so the question does
+    /// not arise.
+    pub fn faces_camera(self, dir: Vec3, camera: Vec3) -> bool {
+        match self {
+            MapProjection::Globe => (camera - self.place(dir)).dot(dir) > 0.0,
+            MapProjection::Flat => true,
+        }
+    }
+
+    /// How far the selection pin stands off the surface.
+    pub fn pin_offset(self, dir: Vec3) -> Vec3 {
+        match self {
+            MapProjection::Globe => dir * (GLOBE_RADIUS * 0.03),
+            MapProjection::Flat => Vec3::Z * 0.12,
+        }
+    }
+}
+
+/// A unit direction as latitude and longitude in radians.
+fn unit_to_radians(dir: Vec3) -> (f32, f32) {
+    let dir = dir.normalize_or_zero();
+    (dir.y.clamp(-1.0, 1.0).asin(), (-dir.z).atan2(dir.x))
 }
 
 /// What the player has selected for inspection.
@@ -33,6 +135,8 @@ pub enum Selection {
 pub struct ViewState {
     /// The active map view.
     pub view: MapView,
+    /// How the focused body's surface is laid out.
+    pub projection: MapProjection,
     /// The current inspection selection, if any.
     pub selected: Option<Selection>,
 }
@@ -41,6 +145,7 @@ impl Default for ViewState {
     fn default() -> Self {
         Self {
             view: MapView::System,
+            projection: MapProjection::default(),
             selected: None,
         }
     }
@@ -166,6 +271,69 @@ mod tests {
                 "{mode:?} has no description row, so its button would hover blank"
             );
         }
+    }
+
+    /// Both projections must be able to answer "where is this" and "what
+    /// is here" consistently, or a click lands on a different province
+    /// from the one under the pointer.
+    #[test]
+    fn placing_a_direction_and_reading_it_back_returns_the_same_place() {
+        for projection in [MapProjection::Globe, MapProjection::Flat] {
+            for (lat, lon) in [
+                (0, 0),
+                (12_345, -67_890),
+                (-45_000, 179_000),
+                (60_000, 90_000),
+                (-80_000, -10_000),
+            ] {
+                let dir = geo_to_unit(lat, lon);
+                let world = projection.place(dir);
+                let back = projection.direction_at(world);
+                assert!(dir.distance(back) < 1e-4, "{projection:?} lost {lat},{lon}");
+            }
+        }
+    }
+
+    #[test]
+    fn the_flat_map_fills_exactly_its_declared_extent() {
+        // The quad is built to these dimensions and its texture stretched
+        // across them, so a projection placing a pole anywhere but the top
+        // edge would slide every label off the map it belongs to.
+        let north = MapProjection::Flat.place(geo_to_unit(90_000, 0));
+        let south = MapProjection::Flat.place(geo_to_unit(-90_000, 0));
+        assert!(
+            (north.y - FLAT_HEIGHT / 2.0).abs() < 1e-3,
+            "north pole on the top edge"
+        );
+        assert!(
+            (south.y + FLAT_HEIGHT / 2.0).abs() < 1e-3,
+            "south pole on the bottom edge"
+        );
+
+        let east = MapProjection::Flat.place(geo_to_unit(0, 180_000));
+        assert!(
+            (east.x.abs() - FLAT_WIDTH / 2.0).abs() < 1e-3,
+            "the date line is an edge"
+        );
+        assert!(north.z.abs() < 1e-6, "the flat map is flat");
+    }
+
+    #[test]
+    fn only_the_globe_hides_its_far_side() {
+        // Longitude zero is +X, so a camera out along +X sees it and not
+        // the date line behind the body.
+        let camera = Vec3::new(20.0, 0.0, 0.0);
+        let towards = geo_to_unit(0, 0);
+        let away = geo_to_unit(0, 180_000);
+
+        assert!(MapProjection::Globe.faces_camera(towards, camera));
+        assert!(
+            !MapProjection::Globe.faces_camera(away, camera),
+            "the far side of a globe must not draw over the near side"
+        );
+        // A flat map has no far side, so nothing is ever culled from it.
+        assert!(MapProjection::Flat.faces_camera(towards, camera));
+        assert!(MapProjection::Flat.faces_camera(away, camera));
     }
 
     #[test]

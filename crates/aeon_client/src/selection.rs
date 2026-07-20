@@ -52,12 +52,14 @@ fn on_globe_click(
     let Ok(globe) = globes.get(event.entity) else {
         return;
     };
-    // The globe sits at the origin with identity transform, so the world
-    // hit point is already the surface direction.
+    // The surface sits at the origin with an identity transform, so the
+    // world hit point needs only un-projecting to become a direction —
+    // which is the one thing that differs between a sphere and a plane.
     let Some(position) = event.hit.position else {
         return;
     };
-    if let Some(province) = nearest_province(position.normalize_or_zero(), &globe.centroids) {
+    let dir = view.projection.direction_at(position);
+    if let Some(province) = nearest_province(dir, &globe.centroids) {
         view.selected = Some(Selection::Province(province));
     }
 }
