@@ -637,3 +637,6 @@ ui.top-bar.pause,Top bar button that stops campaign time. Shown while time is ru
 ui.top-bar.resume,Top bar button that starts campaign time. Shown while paused.,[Resume]
 ui.top-bar.search-hint,Placeholder text inside the empty search box in the top bar.,[Search…]
 ui.window.title,"The game's name, shown in the title bar of the window and on the taskbar.",[The Last Aeons]
+sim.plan.adopted,"Log line when a house's head adopts a plan, giving the pressure behind it. {house} is the house, {plan} the plan's title, {reason} why.",[{house} has set its mind to '{plan}': {reason}.]
+sim.plan.completed,Log line when a plan is seen through to the end. {house} {plan},[{house} has seen '{plan}' through.]
+sim.plan.abandoned,Log line when a plan is given up. {house} {plan},[{house} has abandoned '{plan}'.]

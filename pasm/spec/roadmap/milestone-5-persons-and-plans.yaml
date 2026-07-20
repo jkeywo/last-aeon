@@ -108,8 +108,8 @@ entities:
 
   - milestone: m5-the-plan-runtime
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "M5.3: Heads Adopt and Pursue Plans"
       summary: >-
         Monthly, a head under heavy pressure with no active plan adopts
@@ -127,15 +127,35 @@ entities:
         - A plan step can do nothing its owner could not have ordered by hand.
         - A campaign snapshotted mid-plan restores and continues identically.
         - Abandonment is the whole failure policy — one legible safety valve, no hidden replanning.
-    # Paths join as the files land: crates/aeon_sim/src/plans.rs and its
-    # tests do not exist yet, and the validator rightly refuses to point
-    # at files that are not there.
     implementation:
       paths:
+        - crates/aeon_sim/src/plans.rs
         - crates/aeon_sim/src/agency.rs
         - crates/aeon_sim/src/assignments.rs
         - crates/aeon_sim/src/snapshot.rs
+      tests:
+        - crates/aeon_sim/tests/plans.rs
       status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/plans.rs
+        summary: >-
+          A head under sustained disorder adopts the peace plan and walks
+          its steps in order, including a step the reactive scorer may
+          not touch; a satisfied step is skipped rather than run; a step
+          that keeps failing abandons the plan and starts its cooldown; a
+          dead leader's plan does not outlive them; and a campaign
+          snapshotted with a plan in flight restores and continues
+          hash-identically.
+      - kind: manual-review
+        reference: crates/aeon_sim/tests/plans.rs
+        summary: >-
+          The first test fixture pressed a province into unrest daily to
+          hold the pressure, and the province revolted out from under the
+          test — a lost holding is nobody's pressure. The fixture now
+          holds order just below the plan threshold without crossing the
+          unrest line, which is also a truer picture of the occasions
+          plans are for.
 
   - milestone: m5-authored-plans
     core:

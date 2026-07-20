@@ -38,6 +38,7 @@ pub mod map;
 pub mod obligations;
 pub mod order;
 pub mod persistence;
+pub mod plans;
 pub mod politics;
 pub mod presence;
 pub mod snapshot;
@@ -100,6 +101,7 @@ impl Plugin for AeonSimPlugin {
         obligations::install(app);
         events::install(app);
         warfare::install(app);
+        plans::install(app);
     }
 }
 

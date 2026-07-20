@@ -46,6 +46,8 @@ const THRESHOLD: i64 = 20;
 /// One thing a house might do, and why.
 #[derive(Clone, Debug)]
 pub struct ScoredIntent {
+    /// The pressure this answers, for matching plans to occasions.
+    pub intent: AiIntent,
     /// The assignment it would start.
     pub assignment: ContentKey,
     /// What that assignment would act on.
@@ -140,6 +142,7 @@ pub fn score_intents(world: &World, actor: CharacterId, authority: OrgId) -> Vec
                 assignment_for(world, AiIntent::Muster, AssignmentTargetKind::None)
         {
             intents.push(ScoredIntent {
+                intent: AiIntent::Muster,
                 assignment,
                 target: AssignmentTarget::None,
                 score: score + 10,
@@ -151,6 +154,7 @@ pub fn score_intents(world: &World, actor: CharacterId, authority: OrgId) -> Vec
         if let Some(assignment) = assignment_for(world, AiIntent::Order, AssignmentTargetKind::None)
         {
             intents.push(ScoredIntent {
+                intent: AiIntent::Order,
                 assignment,
                 target: AssignmentTarget::None,
                 score,
@@ -190,6 +194,7 @@ pub fn score_intents(world: &World, actor: CharacterId, authority: OrgId) -> Vec
             )
         {
             intents.push(ScoredIntent {
+                intent: AiIntent::Obligation,
                 assignment,
                 target: AssignmentTarget::Org(debtor),
                 score: i64::from(weight) + 20,
@@ -212,6 +217,7 @@ pub fn score_intents(world: &World, actor: CharacterId, authority: OrgId) -> Vec
             .next()
         {
             intents.push(ScoredIntent {
+                intent: AiIntent::Standing,
                 assignment,
                 target: AssignmentTarget::Org(aggrieved),
                 score: i64::from(weight),
@@ -232,6 +238,7 @@ pub fn score_intents(world: &World, actor: CharacterId, authority: OrgId) -> Vec
                 assignment_for(world, AiIntent::Resources, AssignmentTargetKind::None)
         {
             intents.push(ScoredIntent {
+                intent: AiIntent::Resources,
                 assignment,
                 target: AssignmentTarget::None,
                 score: (100 - resources.wealth).max(0) / 2 + 20,
@@ -247,6 +254,7 @@ pub fn score_intents(world: &World, actor: CharacterId, authority: OrgId) -> Vec
                 assignment_for(world, AiIntent::Standing, AssignmentTargetKind::None)
         {
             intents.push(ScoredIntent {
+                intent: AiIntent::Standing,
                 assignment,
                 target: AssignmentTarget::None,
                 score: i64::from(50 - legitimacy) + 15,
@@ -271,6 +279,7 @@ pub fn score_intents(world: &World, actor: CharacterId, authority: OrgId) -> Vec
         && let Some(assignment) = assignment_for(world, AiIntent::Claim, AssignmentTargetKind::None)
     {
         intents.push(ScoredIntent {
+            intent: AiIntent::Claim,
             assignment,
             target: AssignmentTarget::None,
             score: 120,
@@ -283,6 +292,7 @@ pub fn score_intents(world: &World, actor: CharacterId, authority: OrgId) -> Vec
     // With nothing pressing, a house still attends to ordinary business.
     for assignment in assignments_for(world, AiIntent::Routine, AssignmentTargetKind::None) {
         intents.push(ScoredIntent {
+            intent: AiIntent::Routine,
             assignment,
             target: AssignmentTarget::None,
             score: THRESHOLD + 5,
@@ -355,6 +365,14 @@ pub fn characters_act(world: &mut World) {
         .collect();
 
     for (actor, authority) in actors {
+        // A head pursuing a plan has already decided what their months
+        // are for; the reactive pass leaves them to it.
+        if world
+            .get_resource::<crate::plans::Plans>()
+            .is_some_and(|plans| plans.active.contains_key(&actor))
+        {
+            continue;
+        }
         let month = date.days_since_epoch() as u64 / 30;
         // The stream belongs to the character, not the house: agency
         // moved from houses to their heads in M5.1, and the label moved
@@ -367,6 +385,11 @@ pub fn characters_act(world: &mut World) {
         }
 
         let intents = score_intents(world, actor, authority);
+        // A heavy enough pressure with an authored plan behind it becomes
+        // a campaign instead of a single act.
+        if crate::plans::try_adopt(world, actor, authority, &intents) {
+            continue;
+        }
         let shortlist: Vec<&ScoredIntent> = intents
             .iter()
             .filter(|intent| intent.score >= THRESHOLD)
@@ -532,6 +555,7 @@ mod tests {
 
     fn intent(assignment: &str, score: i64) -> ScoredIntent {
         ScoredIntent {
+            intent: AiIntent::Routine,
             assignment: ContentKey::new(assignment).expect("kebab-case"),
             target: AssignmentTarget::None,
             score,

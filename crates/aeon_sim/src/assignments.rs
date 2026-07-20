@@ -1459,6 +1459,9 @@ pub fn resolve_due_assignments(world: &mut World) {
                 .resource_mut::<AssignmentsIndex>()
                 .assignments
                 .remove(&assignment_id);
+            // A plan waiting on this assignment stops waiting; its own
+            // abandon checks answer for the missing leader.
+            crate::plans::note_dropped(world, assignment_id);
             continue;
         }
 
@@ -1604,6 +1607,8 @@ pub fn resolve_due_assignments(world: &mut World) {
                 .resource_mut::<AssignmentsIndex>()
                 .assignments
                 .remove(&assignment_id);
+            // A plan waiting on this assignment learns how it went.
+            crate::plans::note_resolution(world, assignment_id, outcome);
         }
     }
 }
@@ -1779,6 +1784,7 @@ pub fn init_assignments(world: &mut World) {
     world.insert_resource(MessageLog::default());
     world.insert_resource(PendingPopups::default());
     world.insert_resource(ScriptRuntime(ScriptHost::new()));
+    world.insert_resource(crate::plans::Plans::default());
 }
 
 pub(crate) fn install(app: &mut App) {
