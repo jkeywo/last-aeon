@@ -1,0 +1,170 @@
+# Post-MVP implementation plan — Milestone 5
+#
+# The AI to date is a priority system: once a month a house scores the
+# pressures it is under and answers the heaviest with a single
+# assignment. It has no memory and no reach — nothing it starts today is
+# for the sake of anything it will do tomorrow. This milestone gives the
+# simulation persons who plan: agency moves from houses to the
+# characters who wield their authority, and the special occasions — a
+# claim, a grievance — become authored multi-step plans pursued over
+# months, while everyday behaviour stays with the cheap reactive scorer.
+
+entities:
+  - system: milestone-5-implementation-plan
+    core:
+      status: accepted
+      confidence: confirmed
+      title: "Milestone 5: Persons and Plans"
+      summary: >-
+        The acting unit becomes the character: a house cannot take
+        independent action, so its business waits on the head who holds
+        its authority. Above the existing pressure scorer, heads adopt
+        authored hierarchical plans — a goal, alternative methods, and
+        ordered steps that are ordinary assignments — pursued daily
+        through the same validation gate the player uses, abandoned
+        legibly when they fail, and spoken about in the log so the
+        player can learn what a rival has set their mind to.
+      references:
+        - intent-driven-organisation-agency
+        - ai-agency-through-the-job-catalogue
+        - agency-intents-are-authored-on-jobs
+        - rng-stream-labels-are-identities-not-names
+        - households-act-within-their-own-means
+
+  - milestone: m5-characters-are-the-acting-unit
+    core:
+      status: accepted
+      confidence: confirmed
+      title: "M5.1: Agency Belongs to Characters"
+      summary: >-
+        The monthly agency pass is re-anchored on characters walked in
+        stable ID order: a character acts when they head a non-player
+        house that still stands, scoring the pressures of the authority
+        they wield. The RNG stream moves with the actor — the label
+        character-agency keyed by character and month — and the retired
+        org-keyed label agency-choice is frozen at its call-site record,
+        never to be reused.
+      references:
+        - intent-driven-organisation-agency
+        - rng-stream-labels-are-identities-not-names
+      goals:
+        - A house cannot take independent action; without a head, its business waits.
+        - Every costed assignment an autonomous house starts is led by the character with the authority to start it.
+        - The scorer distinguishes the actor from the authority, so what a person may weigh can depend on who they are — only a head weighs the paramountcy claim.
+    implementation:
+      paths:
+        - crates/aeon_sim/src/agency.rs
+        - crates/aeon_sim/src/assignments.rs
+      tests:
+        - crates/aeon_sim/tests/events.rs
+      status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/events.rs
+        summary: >-
+          A house whose head is removed sits on a disordered holding for
+          four hundred days and starts nothing, while the existing agency
+          tests keep passing with the scorer addressed through the head.
+
+  - milestone: m5-the-plan-vocabulary
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M5.2: Plans Are Authored Content"
+      summary: >-
+        A plan is data: a goal drawn from the existing pressure
+        vocabulary, alternative methods gated by declarative
+        requirements, and ordered steps that name ordinary assignments
+        or sub-plans. define_plan joins the content builders; loading
+        validates every step's key, target compatibility, and that
+        sub-plans compose acyclically to a shallow depth. The engine
+        ignores plans entirely at this stage.
+      references:
+        - agency-intents-are-authored-on-jobs
+      goals:
+        - A new plan is authored content, not an engine change.
+        - Conditions are data, never script, so they validate at load and replay identically.
+        - A malformed plan fails at load with a named error, not at runtime.
+    implementation:
+      paths:
+        - crates/aeon_data/src/model.rs
+        - crates/aeon_data/src/host/builders.rs
+        - crates/aeon_data/src/host/validate.rs
+      tests:
+        - crates/aeon_data/src/host/builders.rs
+      status: declared
+
+  - milestone: m5-the-plan-runtime
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M5.3: Heads Adopt and Pursue Plans"
+      summary: >-
+        Monthly, a head under heavy pressure with no active plan adopts
+        the authored plan that answers it, choosing among eligible
+        methods; otherwise the one-shot scorer acts as before. Daily,
+        plans advance: each step starts through the same validation gate
+        the player uses, failures retry within an authored budget, and a
+        plan that outlives its welcome is abandoned with its reason
+        logged. Plan state lives in one resource, serialised into the
+        snapshot like everything else.
+      references:
+        - ai-agency-through-the-job-catalogue
+        - rng-stream-labels-are-identities-not-names
+      goals:
+        - A plan step can do nothing its owner could not have ordered by hand.
+        - A campaign snapshotted mid-plan restores and continues identically.
+        - Abandonment is the whole failure policy — one legible safety valve, no hidden replanning.
+    # Paths join as the files land: crates/aeon_sim/src/plans.rs and its
+    # tests do not exist yet, and the validator rightly refuses to point
+    # at files that are not there.
+    implementation:
+      paths:
+        - crates/aeon_sim/src/agency.rs
+        - crates/aeon_sim/src/assignments.rs
+        - crates/aeon_sim/src/snapshot.rs
+      status: declared
+
+  - milestone: m5-authored-plans
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M5.4: The Claim and the Grievance Become Campaigns"
+      summary: >-
+        The first real plans: pressing the paramountcy claim becomes a
+        campaign of funding, mustering, endorsement and declaration
+        rather than a single act, and a house that has been wronged
+        answers the grievance over time, shoring up its own standing
+        first when it is weak. Military execution stays with standing
+        orders; the plan ends where the war begins.
+      references:
+        - agency-intents-are-authored-on-jobs
+        - standing-orders-are-priority-lists
+      goals:
+        - An autonomous house visibly pursues a claim across months, in order, for reasons it states.
+        - Plans may reference assignments the reactive scorer cannot, without widening what the scorer may touch.
+    implementation:
+      paths:
+        - assets/text/strings.csv
+      status: declared
+
+  - milestone: m5-plans-speak
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M5.5: Plans Speak"
+      summary: >-
+        Adoption, completion and abandonment reach the log with the
+        pressure that motivated them; when a plan is aimed at the player
+        a rumour line says so; and an AI head's inspector names what
+        they are pursuing. The spec records the milestone's decisions.
+      references:
+        - intent-driven-organisation-agency
+      goals:
+        - The player can learn what a rival intends before its effects arrive, without an espionage system.
+        - The reasons shown are the reasons used — the same scored pressure, not a narration invented for display.
+    implementation:
+      paths:
+        - crates/aeon_client/src/ui/inspector.rs
+        - assets/text/strings.csv
+      status: declared

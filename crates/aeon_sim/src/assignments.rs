@@ -1795,10 +1795,10 @@ pub(crate) fn install(app: &mut App) {
     app.add_systems(
         MonthlyPulse,
         (
-            crate::agency::ai_start_assignments.after(crate::politics::expire_opinion_modifiers),
-            // After whole houses have acted, so a head who has just been
-            // given work is not also counted as idle.
-            crate::agency::household_acts.after(crate::agency::ai_start_assignments),
+            crate::agency::characters_act.after(crate::politics::expire_opinion_modifiers),
+            // After heads have acted with their houses' authority, so a
+            // head who has just taken up work is not also counted as idle.
+            crate::agency::household_acts.after(crate::agency::characters_act),
         ),
     );
 }

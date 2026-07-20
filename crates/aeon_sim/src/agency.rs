@@ -1,21 +1,24 @@
-//! Intent-driven organisation agency.
+//! Intent-driven character agency.
 //!
-//! Autonomous houses choose from the same assignment catalogue the player uses.
-//! Rather than picking at random, each house scores a small set of
-//! concrete pressures it is actually under — holdings slipping or under
-//! occupation, political weakness, obligations outstanding, resources
-//! run down, and a claim worth pressing — and acts on one of the best.
+//! A house never acts; a person does. Every autonomous choice here is
+//! made by a character — in this module, the head of a house — spending
+//! the authority of the organisation they command. The head scores the
+//! small set of concrete pressures their house is actually under —
+//! holdings slipping or under occupation, political weakness,
+//! obligations outstanding, resources run down, and a claim worth
+//! pressing — and acts on one of the best, choosing from the same
+//! assignment catalogue the player uses.
 //!
 //! This is a priority system, not a separate AI action model: every
 //! choice still goes through [`crate::assignments::validate_start`] and
-//! [`crate::assignments::start_assignment`], so an autonomous house can do nothing the
-//! player could not, and is bound by the same eligibility rules.
+//! [`crate::assignments::start_assignment`], so an autonomous character can do nothing
+//! the player could not, and is bound by the same eligibility rules.
 //!
 //! Scoring is integer arithmetic over state the player can also see, and
 //! candidates are built in stable ID order, so agency replays identically.
-//! When a house acts on a pressure it says so in the log, which is how the
-//! player learns why — without exposing the roll that chose between
-//! near-equal options as though it were a certainty.
+//! When a character acts on a pressure the house says so in the log, which
+//! is how the player learns why — without exposing the roll that chose
+//! between near-equal options as though it were a certainty.
 
 use aeon_core::rng::DeterministicRng;
 use aeon_data::ContentKey;
@@ -28,7 +31,7 @@ use crate::assignments::{
 };
 use crate::clock::CampaignClock;
 use crate::economy::OrgResources;
-use crate::ids::{OrgId, ProvinceId};
+use crate::ids::{CharacterId, OrgId, ProvinceId};
 use crate::obligations::{ObligationKind, Obligations};
 use crate::order::{ORDER_START, held_provinces, province_order};
 use crate::politics::{CampaignOver, PlayerHouse};
@@ -96,17 +99,23 @@ fn resources(world: &World, org: OrgId) -> Option<OrgResources> {
         .copied()
 }
 
-/// Scores every pressure a house is under, best first.
+/// Scores every pressure a character feels through the organisation
+/// whose authority they wield, best first.
+///
+/// The pressures are the house's — its holdings, ledger, and standing —
+/// but the judgement is a person's: what the actor may act on depends on
+/// who they are, and today that means only the head may weigh the
+/// paramountcy claim.
 ///
 /// Deterministic throughout: holdings and organisations are visited in
 /// stable ID order, and every score is integer arithmetic over visible
 /// state.
-pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
+pub fn score_intents(world: &World, actor: CharacterId, authority: OrgId) -> Vec<ScoredIntent> {
     let strings = world.resource::<TextDb>();
     let mut intents: Vec<ScoredIntent> = Vec::new();
 
     // ---- Holdings that are slipping, or that someone is standing on ----
-    let holdings = held_provinces(world, org);
+    let holdings = held_provinces(world, authority);
     let mut worst: Option<(ProvinceId, i64, bool)> = None;
     for province in &holdings {
         let state = province_order(world, *province);
@@ -161,12 +170,12 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
             let heaviest = |current: Option<(OrgId, i32)>| {
                 current.is_none_or(|(_, weight)| entry.weight > weight)
             };
-            if entry.creditor == org
+            if entry.creditor == authority
                 && entry.kind == ObligationKind::Favour
                 && heaviest(best_favour)
             {
                 best_favour = Some((entry.debtor, entry.weight));
-            } else if entry.debtor == org
+            } else if entry.debtor == authority
                 && entry.kind == ObligationKind::Grievance
                 && heaviest(worst_grievance)
             {
@@ -217,7 +226,7 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
     }
 
     // ---- Resources run down ----
-    if let Some(resources) = resources(world, org) {
+    if let Some(resources) = resources(world, authority) {
         if resources.wealth < 100
             && let Some(assignment) =
                 assignment_for(world, AiIntent::Resources, AssignmentTargetKind::None)
@@ -227,12 +236,12 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
                 target: AssignmentTarget::None,
                 score: (100 - resources.wealth).max(0) / 2 + 20,
                 reason: strings.text("sim.intent.treasury-low").to_owned(),
-                subject: Some(LogSubject::Org(org)),
+                subject: Some(LogSubject::Org(authority)),
                 explains: true,
             });
         }
         // Political weakness: little standing to spend.
-        let legitimacy = crate::economy::effective_legitimacy(world, org);
+        let legitimacy = crate::economy::effective_legitimacy(world, authority);
         if legitimacy < 50
             && let Some(assignment) =
                 assignment_for(world, AiIntent::Standing, AssignmentTargetKind::None)
@@ -242,19 +251,23 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
                 target: AssignmentTarget::None,
                 score: i64::from(50 - legitimacy) + 15,
                 reason: strings.text("sim.intent.standing-thin").to_owned(),
-                subject: Some(LogSubject::Org(org)),
+                subject: Some(LogSubject::Org(authority)),
                 explains: true,
             });
         }
     }
 
     // ---- A claim worth pressing ----
-    if let Some(body) = world
-        .get_resource::<crate::map::MapIndex>()
-        .and_then(|index| index.provinces.values().next().copied())
-        .and_then(|entity| world.get::<crate::map::ProvinceRecord>(entity))
-        .map(|record| record.body)
-        && crate::crisis::dominant_claimant(world, body) == Some(org)
+    // A paramountcy claim is the house's, but only its head may weigh
+    // pressing it: anyone else acting here would commit the house to a
+    // crisis they have no standing to declare.
+    if crate::access::org_head(world, authority) == Some(actor)
+        && let Some(body) = world
+            .get_resource::<crate::map::MapIndex>()
+            .and_then(|index| index.provinces.values().next().copied())
+            .and_then(|entity| world.get::<crate::map::ProvinceRecord>(entity))
+            .map(|record| record.body)
+        && crate::crisis::dominant_claimant(world, body) == Some(authority)
         && let Some(assignment) = assignment_for(world, AiIntent::Claim, AssignmentTargetKind::None)
     {
         intents.push(ScoredIntent {
@@ -262,7 +275,7 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
             target: AssignmentTarget::None,
             score: 120,
             reason: strings.text("sim.intent.claim-ready").to_owned(),
-            subject: Some(LogSubject::Org(org)),
+            subject: Some(LogSubject::Org(authority)),
             explains: true,
         });
     }
@@ -274,7 +287,7 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
             target: AssignmentTarget::None,
             score: THRESHOLD + 5,
             reason: strings.text("sim.intent.routine").to_owned(),
-            subject: Some(LogSubject::Org(org)),
+            subject: Some(LogSubject::Org(authority)),
             explains: false,
         });
     }
@@ -315,8 +328,14 @@ pub fn pick_intent<'a>(
     Some(first)
 }
 
-/// Autonomous houses act on their most pressing business.
-pub fn ai_start_assignments(world: &mut World) {
+/// Autonomous characters act on their house's most pressing business.
+///
+/// The acting unit is the person, not the house: characters are walked
+/// in stable ID order, and a character acts here only when they head a
+/// non-player house that is still standing — a house cannot take
+/// independent action, so its business waits on the one person with the
+/// authority to conduct it.
+pub fn characters_act(world: &mut World) {
     if world.get_resource::<AssignmentsIndex>().is_none()
         || world.get_resource::<CampaignOver>().is_some()
     {
@@ -325,25 +344,29 @@ pub fn ai_start_assignments(world: &mut World) {
     let date = world.resource::<CampaignClock>().date;
     let player = world.get_resource::<PlayerHouse>().and_then(|p| p.0);
 
-    let orgs: Vec<OrgId> = crate::access::org_ids(world)
+    let actors: Vec<(CharacterId, OrgId)> = crate::access::living_character_ids(world)
         .into_iter()
-        .filter(|org| {
-            Some(*org) != player && crate::access::org(world, *org).is_some_and(|r| !r.defunct)
+        .filter_map(|who| crate::access::organisation_of(world, who).map(|org| (who, org)))
+        .filter(|(who, org)| {
+            Some(*org) != player
+                && crate::access::org(world, *org).is_some_and(|r| !r.defunct)
+                && crate::access::org_head(world, *org) == Some(*who)
         })
         .collect();
 
-    for org in orgs {
-        let Some(head) = crate::access::org_head(world, org) else {
-            continue;
-        };
+    for (actor, authority) in actors {
         let month = date.days_since_epoch() as u64 / 30;
-        let mut rng = crate::access::derived_rng(world, "agency-choice", &[org.raw(), month]);
-        // A house does not start something new every month.
+        // The stream belongs to the character, not the house: agency
+        // moved from houses to their heads in M5.1, and the label moved
+        // with it. "agency-choice" (subjects [org, month]) is retired —
+        // labels are identities, so it must never be reused.
+        let mut rng = crate::access::derived_rng(world, "character-agency", &[actor.raw(), month]);
+        // A character does not start something new every month.
         if !rng.check_permille(500) {
             continue;
         }
 
-        let intents = score_intents(world, org);
+        let intents = score_intents(world, actor, authority);
         let shortlist: Vec<&ScoredIntent> = intents
             .iter()
             .filter(|intent| intent.score >= THRESHOLD)
@@ -353,9 +376,9 @@ pub fn ai_start_assignments(world: &mut World) {
             continue;
         };
 
-        if validate_start(world, org, &chosen.assignment, head, chosen.target).is_ok() {
-            start_assignment(world, org, &chosen.assignment, head, chosen.target);
-            announce(world, org, &chosen);
+        if validate_start(world, authority, &chosen.assignment, actor, chosen.target).is_ok() {
+            start_assignment(world, authority, &chosen.assignment, actor, chosen.target);
+            announce(world, authority, &chosen);
         }
     }
 }
@@ -393,7 +416,7 @@ fn announce(world: &mut World, org: OrgId, intent: &ScoredIntent) {
     crate::access::log(world, entry);
 }
 
-/// Daily: members of a house with nothing to do find something.
+/// Monthly: members of a house with nothing to do find something.
 ///
 /// The leash is deliberate and narrow: a character acts only on
 /// assignments that cost the house nothing. Touring a holding, holding
@@ -407,8 +430,9 @@ fn announce(world: &mut World, org: OrgId, intent: &ScoredIntent) {
 /// the head could not have ordered by hand, and candidates are walked in
 /// stable ID order so this replays identically.
 ///
-/// This is the household acting within a house. Whole houses acting are
-/// [`ai_start_assignments`], which is a different level and untouched.
+/// This is the household acting within a house. Heads acting with the
+/// house's full authority are [`characters_act`], which is a different
+/// level and untouched.
 pub fn household_acts(world: &mut World) {
     if world.get_resource::<AssignmentsIndex>().is_none()
         || world.get_resource::<CampaignOver>().is_some()

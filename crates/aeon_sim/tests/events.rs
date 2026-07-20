@@ -434,15 +434,16 @@ fn houses_score_the_pressures_they_are_actually_under() {
 
     let mut h = host(11);
     let birch = org(&mut h, "birch");
+    let head = aeon_sim::access::org_head(h.world_mut(), birch).expect("birch has a head");
 
-    // With nothing wrong, Birch has only ordinary business in mind.
-    let calm = score_intents(h.world_mut(), birch);
+    // With nothing wrong, Birch's head has only ordinary business in mind.
+    let calm = score_intents(h.world_mut(), head, birch);
     let calm_top = calm.first().map(|intent| intent.score).unwrap_or(0);
 
     // Put its holding in disorder, and that pressure outranks everything.
     let beta = h.world_mut().resource::<MapIndex>().province_keys[&key("beta")];
     adjust_order(h.world_mut(), beta, -600);
-    let pressed = score_intents(h.world_mut(), birch);
+    let pressed = score_intents(h.world_mut(), head, birch);
     let top = pressed
         .first()
         .expect("a house under pressure wants something");
@@ -466,8 +467,9 @@ fn agency_notices_an_obligation_it_can_collect() {
     let mut h = host(12);
     let ash = org(&mut h, "ash");
     let birch = org(&mut h, "birch");
+    let head = aeon_sim::access::org_head(h.world_mut(), ash).expect("ash has a head");
     // Ash is owed a favour by Birch from the fixture's seeded ledger.
-    let intents = score_intents(h.world_mut(), ash);
+    let intents = score_intents(h.world_mut(), head, ash);
     let collecting = intents
         .iter()
         .find(|intent| intent.target == aeon_sim::AssignmentTarget::Org(birch));
@@ -475,6 +477,35 @@ fn agency_notices_an_obligation_it_can_collect() {
         collecting.is_some_and(|intent| intent.reason.contains("owes us")),
         "a house should notice a favour it can call in: {:?}",
         intents.iter().map(|i| &i.reason).collect::<Vec<_>>()
+    );
+}
+
+#[test]
+fn a_leaderless_house_presses_none_of_its_business() {
+    let mut h = host(14);
+    let birch = org(&mut h, "birch");
+    // Sharpen the pressure so inaction cannot be mistaken for calm.
+    let beta = h.world_mut().resource::<MapIndex>().province_keys[&key("beta")];
+    adjust_order(h.world_mut(), beta, -600);
+    // Remove the head: the house keeps its holdings and its troubles,
+    // but nobody left holds the authority to act on them.
+    let entity = aeon_sim::access::org_entity(h.world_mut(), birch).expect("birch exists");
+    h.world_mut()
+        .get_mut::<aeon_sim::politics::OrgRecord>(entity)
+        .expect("birch has a record")
+        .head = None;
+
+    h.advance_days(400);
+
+    let acted = h
+        .world_mut()
+        .resource::<MessageLog>()
+        .entries
+        .iter()
+        .any(|entry| entry.org == Some(birch) && entry.text.contains("began '"));
+    assert!(
+        !acted,
+        "a house cannot take independent action: without a head, its business waits"
     );
 }
 
