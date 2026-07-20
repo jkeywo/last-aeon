@@ -2,9 +2,9 @@
 //!
 //! The client attaches presentation — the 3D system and globe maps, orbit
 //! camera, picking, and 2D information panels — to the authoritative
-//! simulation from `aeon_sim`. It never owns gameplay rules. Until the
-//! authored scenario lands, it starts a fixed development campaign on the
-//! embedded content.
+//! simulation from `aeon_sim`. It never owns gameplay rules. It boots to
+//! a title screen; a campaign exists only once the player starts or
+//! continues one.
 
 mod assignment_ui;
 mod camera;
@@ -16,6 +16,7 @@ mod offer_view;
 mod scene;
 mod selection;
 mod sim_driver;
+mod title;
 mod ui;
 mod view;
 
@@ -61,15 +62,21 @@ fn main() {
         .init_resource::<ui::picker::PickerState>()
         .init_resource::<ui::assignment_popup::AssignmentPopup>()
         .init_resource::<ui::dock::DockState>()
+        .init_state::<title::Screen>()
+        .init_resource::<title::TitleState>()
+        // The client boots to the title screen; no campaign resource
+        // exists until the player steps through, and the scene has
+        // nothing to spawn a globe from until one does.
+        .add_systems(Startup, camera::spawn_camera)
+        .add_systems(OnEnter(title::Screen::Playing), scene::spawn_scene)
         .add_systems(
-            Startup,
-            (
-                sim_driver::begin_dev_campaign,
-                camera::spawn_camera,
-                scene::spawn_scene,
-            )
-                .chain(),
+            OnEnter(title::Screen::Title),
+            #[cfg(not(target_arch = "wasm32"))]
+            title::load_autosave,
+            #[cfg(target_arch = "wasm32")]
+            || {},
         )
+        .add_systems(Update, title::launch.run_if(in_state(title::Screen::Title)))
         .add_systems(
             Update,
             (
@@ -91,7 +98,8 @@ fn main() {
                 forecast_view::refresh_forecast,
                 // The bake must observe the readout computed this frame.
                 (map_modes::refresh_map_readout, scene::refresh_globe_texture).chain(),
-            ),
+            )
+                .run_if(in_state(title::Screen::Playing)),
         )
         .add_systems(
             EguiPrimaryContextPass,
@@ -101,13 +109,18 @@ fn main() {
                 #[cfg(not(target_arch = "wasm32"))]
                 ui::theme::reload_theme_from_disk,
                 ui::theme::apply_theme,
-                map_overlay::draw_map_overlay,
-                ui::shell::draw_panels,
-                // The picker floats above the panels that open it, so it is
-                // drawn after them and needs no place in the layout.
-                ui::assignment_popup::draw_assignment_popup,
-                ui::picker::draw_picker,
-                assignment_ui::draw_popups,
+                title::draw_title.run_if(in_state(title::Screen::Title)),
+                (
+                    map_overlay::draw_map_overlay,
+                    ui::shell::draw_panels,
+                    // The picker floats above the panels that open it, so
+                    // it is drawn after them and needs no place in the
+                    // layout.
+                    ui::assignment_popup::draw_assignment_popup,
+                    ui::picker::draw_picker,
+                    assignment_ui::draw_popups,
+                )
+                    .run_if(in_state(title::Screen::Playing)),
             )
                 .chain(),
         )

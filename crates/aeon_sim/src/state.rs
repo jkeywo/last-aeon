@@ -50,6 +50,20 @@ pub fn start_campaign(world: &mut World, config: CampaignConfig) {
     world.insert_resource(CommandLog::default());
 }
 
+/// Clears the player house: the campaign becomes a spectator's.
+///
+/// Call before the first day ever ticks. The scenario's protagonist
+/// becomes one more autonomous house among its rivals — its head plans
+/// and acts through the same agency pass as everyone else's — and the
+/// interface remains a window to watch through. The choice lives in the
+/// political state, so a spectator campaign snapshots, restores, and
+/// replays as itself.
+pub fn become_spectator(world: &mut World) {
+    if let Some(mut player) = world.get_resource_mut::<crate::politics::PlayerHouse>() {
+        player.0 = None;
+    }
+}
+
 /// Starts a fresh campaign running on authored content.
 ///
 /// Attaches the content database and spawns the map with stable IDs

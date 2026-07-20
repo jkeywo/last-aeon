@@ -672,3 +672,39 @@ fn an_ambition_the_house_already_has_in_hand_is_not_duplicated() {
         "one member already pursues it; a second ambition adds nothing but noise"
     );
 }
+
+#[test]
+fn a_spectator_campaign_leaves_no_house_idle() {
+    let mut h = host(32);
+    aeon_sim::state::become_spectator(h.world_mut());
+    let aron = h.world_mut().resource::<PoliticsIndex>().character_keys[&key("aron-ash")];
+    let alpha = h.world_mut().resource::<MapIndex>().province_keys[&key("alpha")];
+
+    // Ash is the fixture's player house; with no player, its head is one
+    // more autonomous character. The peace plan's first step costs the
+    // house wealth, so adopting it takes an authority no player-house
+    // head is ever offered by the agency pass.
+    for _ in 0..400 {
+        h.advance_days(1);
+        if h.world_mut().resource::<Plans>().active.contains_key(&aron) {
+            let plan = h.world_mut().resource::<Plans>().active[&aron].clone();
+            assert_eq!(plan.def.as_str(), "restore-the-peace");
+
+            // And spectatorship is campaign state, not session state.
+            let snapshot = h.snapshot();
+            let restored = SimHost::restore_with_content(snapshot, content()).unwrap();
+            let mut restored = restored;
+            assert_eq!(
+                restored.world_mut().resource::<aeon_sim::PlayerHouse>().0,
+                None,
+                "a spectator campaign restores as a spectator campaign"
+            );
+            return;
+        }
+        let current = aeon_sim::order::province_order(h.world_mut(), alpha).order;
+        if current > 250 {
+            adjust_order(h.world_mut(), alpha, 250 - current);
+        }
+    }
+    panic!("the erstwhile player house never acted on its own pressures");
+}

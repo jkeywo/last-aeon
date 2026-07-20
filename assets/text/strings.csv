@@ -653,3 +653,7 @@ plan.ready-the-levies.title,Plan title: answering occupied ground with an armed 
 plan.ready-the-levies.summary,One-line summary of the defence campaign.,[Raise a levy if none stands and point it at whatever ground is threatened.]
 plan.steady-the-shires.title,Plan title: a household ambition to settle restive holdings.,[Steady the Shires]
 plan.steady-the-shires.summary,One-line summary of the household ambition.,[Hold court and tour the holdings until the realm sits quieter.]
+ui.title.new-game,Title screen button: start the authored scenario afresh.,[New Game]
+ui.title.continue,Title screen button: restore the autosaved campaign. Native builds only.,[Continue]
+ui.title.spectator,Title screen tickbox: start with no player house and watch.,[Spectator mode]
+ui.title.spectator-note,Small print under the spectator tickbox explaining what it means.,"[No house is yours: every court acts on its own, and the whole interface is a window to watch through.]"
