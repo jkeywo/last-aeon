@@ -1256,3 +1256,130 @@ entities:
       references:
         - strategic-map-intelligence-modes
         - painter-drawn-ui-icons
+
+  - decision: rng-stream-labels-are-identities-not-names
+    core:
+      status: accepted
+      confidence: confirmed
+      title: A Random Stream's Purpose Label Is an Identity, Not a Name
+      summary: >-
+        Every derived random stream is keyed by the campaign seed, a short
+        purpose label, and the acting entity's stable id. The label is
+        hashed into the stream, so it identifies the stream rather than
+        describing it: changing one re-rolls every outcome it has ever
+        produced. Labels are therefore frozen once written, even when the
+        concept they refer to is renamed around them, and the call sites
+        and the RNG's own documentation say so.
+      rationale:
+        - Renaming the concept from Job to Assignment renamed the resolution stream's label with it, and 900 simulated days came out different — houses honoured debts they had previously repudiated. Nothing but a name had been touched.
+        - A label that reads like prose invites exactly this, so the reason is recorded where the temptation is rather than in a document nobody opens mid-refactor.
+        - "Nothing is lost by keeping an old spelling: the label is never shown to a player and its only job is to be stable."
+      references:
+        - deterministic-seed-and-command-replay
+        - hand-rolled-deterministic-rng
+
+  - decision: assignments-declare-who-they-may-target
+    core:
+      status: accepted
+      confidence: confirmed
+      title: An Assignment Declares Who It May Be Aimed At
+      summary: >-
+        Assignments carry an authored requirements block — whose the
+        province is, whether a hostile force is present, whose house the
+        target belongs to, what title they hold, whether they owe a favour,
+        whether the owner is under threat at all — in the same shape events
+        have used since M2.3. It is evaluated in exactly one place, so the
+        button, the forecast, an autonomous house and a standing order
+        cannot disagree about what is legal. Every field defaults to "do
+        not care", so an assignment that declares nothing keeps the reach
+        it had.
+      rationale:
+        - The previous check asked only whether the target existed, so a province was a legal raid target because it was a province — which is how raiding your own holdings and answering an alarm that was not sounding came to be on the menu.
+        - The only relational rule that did exist was a content key spelled out in the client with its own title check, which is precisely what agency-intents-are-authored-on-jobs forbids; making the rule authored deletes it.
+        - Defaulting to "do not care" is what allows the gate to be added without silently narrowing every piece of content nobody revisited.
+      references:
+        - agency-intents-are-authored-on-jobs
+        - single-source-leader-availability
+        - validated-declarative-game-data
+
+  - decision: orders-live-under-the-thing-ordered
+    core:
+      status: accepted
+      confidence: confirmed
+      title: An Order Is Offered Under the Thing Being Ordered
+      summary: >-
+        Armies and ships are selectable and have inspectors, and their
+        assignments are offered there. A province offers what can be done
+        to ground. A destination is a slot in the order rather than a
+        reason to file the order under geography.
+      rationale:
+        - Every force assignment was offered under the province, because forces were not selectable at all — so marching read as something done to a province rather than something told to an army.
+        - The rules that the old province-scoped plumbing carried — an army is commanded by its general, a ship by its captain, neither substitutable — outlived it and keep a home of their own where they remain testable.
+      references:
+        - context-sensitive-job-ui
+        - ship-captains-are-assigned-and-consequential
+
+  - decision: assignments-have-authored-phases
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Assignments Run Through Phases, and Some Cannot Be Called Off
+      summary: >-
+        An assignment authors an ordered list of phases, each with a length
+        and whether it can be interrupted, and what being called off during
+        it costs. An assignment that authors none gets a single
+        interruptible phase covering its duration, which is exactly how
+        assignments behaved before. Duration is checked against the sum of
+        the phases at load rather than believed. A cancellation asked for
+        during a committed phase is recorded and honoured when the phase
+        ends.
+      rationale:
+        - An assignment that could be cancelled at any moment with no cost made committing to one not a decision.
+        - Being turned back on the road is not the same as abandoning a siege, so what an interruption costs is authored per phase rather than once.
+        - Recording a cancellation rather than refusing it matters because a click that appears to do nothing is indistinguishable from one that was not registered.
+        - "The point of no return is on the definition so the interface can show it before the player commits: a deadline they cannot see is not a decision they get to make."
+      references:
+        - job-forecast-and-explanation-ui
+        - validated-declarative-game-data
+
+  - decision: standing-orders-are-priority-lists
+    core:
+      status: accepted
+      confidence: confirmed
+      title: A Standing Order Is an Ordered List of Assignments
+      summary: >-
+        A force holds an ordered list of assignments it may start on its
+        own; each day it starts the first whose authored requirements are
+        satisfied, through the same validation a player's order takes. The
+        interface offers the list by asking the content what that kind of
+        force can do, so neither the engine nor the client names an
+        assignment.
+      rationale:
+        - The previous form was two variants with the defending behaviour hardcoded down to the content key of the assignment it started — the last content key compiled into the simulation.
+        - "Sharing the authored requirements is the guarantee worth having: a force can never do unbidden what its owner could not have ordered by hand."
+        - New behaviour becomes authored rather than compiled, and the order a force reaches for things in becomes a decision the player can make.
+      references:
+        - assignments-declare-who-they-may-target
+        - agency-intents-are-authored-on-jobs
+        - job-based-operational-warfare
+
+  - decision: households-act-within-their-own-means
+    core:
+      status: accepted
+      confidence: confirmed
+      title: An Idle Household Member Acts, but Never Spends
+      summary: >-
+        A member of a house with no assignment picks one up unbidden,
+        provided it costs the house nothing in wealth, manpower, supplies
+        or influence. Anything that spends waits for the person whose
+        stores they are. Every such start goes through the same validation
+        a player's order takes, and candidates are walked in stable id
+        order. Assignments carry a coarse three-level urgency, read only by
+        what may be picked up and what may interrupt what.
+      rationale:
+        - A household that stood still until told was the larger fault, but a household that quietly drains the treasury while the player is looking elsewhere is worse; costing nothing is the narrowest leash that fixes the first without causing the second.
+        - Urgency is deliberately coarse because a finer scale would invite tuning that no player could perceive.
+        - This is the household acting within a house, a different level from whole houses acting through intent-driven agency, which it leaves untouched.
+      references:
+        - intent-driven-organisation-agency
+        - single-source-leader-availability

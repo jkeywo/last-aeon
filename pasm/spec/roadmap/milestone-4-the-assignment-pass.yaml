@@ -1,0 +1,196 @@
+# Post-MVP implementation plan — Milestone 4
+#
+# Jobs were the game's verb and had grown by accretion since M5: targets
+# added for warfare, forecasts for M2.1, availability for M3.1. What had
+# never been revised was where they were offered, when they were offered,
+# and what happened while one was running. This milestone revises all
+# three, adds phases, standing orders and household autonomy, and renames
+# the concept.
+
+entities:
+  - system: milestone-4-implementation-plan
+    core:
+      status: accepted
+      confidence: confirmed
+      title: "Milestone 4: The Assignment Pass"
+      summary: >-
+        Jobs become Assignments; they are offered under the thing being
+        ordered rather than under whatever ground it stands on; they
+        declare who they may be aimed at instead of being offered against
+        anything that exists; composing one moves from an expander inside
+        a narrow panel into a window; they run through authored phases,
+        some of which cannot be called off; standing orders become
+        editable priority lists; and an idle household finds its own work
+        within its own means.
+      references:
+        - assignments-declare-who-they-may-target
+        - orders-live-under-the-thing-ordered
+        - assignments-have-authored-phases
+        - standing-orders-are-priority-lists
+        - households-act-within-their-own-means
+        - rng-stream-labels-are-identities-not-names
+        - single-source-leader-availability
+        - agency-intents-are-authored-on-jobs
+
+  - milestone: m4-the-rename
+    core:
+      status: accepted
+      confidence: confirmed
+      title: "M4.1: Jobs Become Assignments"
+      summary: >-
+        A mechanical rename across roughly 1060 sites, the Rhai builder and
+        141 rows of the string table, done first so that everything after
+        it is written in the new vocabulary rather than translated into it
+        at the end.
+      references:
+        - rng-stream-labels-are-identities-not-names
+      goals:
+        - The concept is called Assignment in code, content, the string table and the interface.
+        - The rename changes names and nothing the simulation does, and that is checked rather than asserted.
+        - Strings follow their definitions automatically, because display keys are derived from a definition's own id.
+    implementation:
+      paths:
+        - crates/aeon_sim/src/assignments.rs
+        - crates/aeon_client/src/assignment_ui.rs
+        - crates/aeon_client/src/ui/assignments_panel.rs
+        - crates/aeon_core/src/rng.rs
+        - assets/text/strings.csv
+      tests:
+        - crates/aeon_sim/tests/assignments.rs
+      status: declared
+
+    evidence:
+      - kind: manual-review
+        reference: crates/aeon_sim/src/assignments.rs
+        summary: >-
+          Both trees were run 900 days from the same seed, the old state had
+          the rename applied to its field names, and the two RON dumps
+          compared byte for byte — identical. The state hash necessarily
+          changes, because hash_state serialises to RON and RON carries
+          field names, so equivalence had to be established a different way.
+      - kind: manual-review
+        reference: crates/aeon_core/src/rng.rs
+        summary: >-
+          That comparison caught the sweep renaming a DeterministicRng
+          purpose label, which is hashed into the stream: 900 days came out
+          different, with houses honouring debts they had previously
+          repudiated. Labels are now frozen at their original spelling with
+          the reason recorded at the call sites and in the RNG's own docs.
+
+  - milestone: m4-placement-and-context
+    core:
+      status: accepted
+      confidence: confirmed
+      title: "M4.2: Where Assignments Live, and When They Are Offered"
+      summary: >-
+        Armies and ships become selectable so their orders live under them.
+        Assignments declare who they may be aimed at, checked in one place.
+        Composing one moves into a window. Names become direct.
+      references:
+        - assignments-declare-who-they-may-target
+        - orders-live-under-the-thing-ordered
+      goals:
+        - An assignment is offered under the thing being ordered, and a destination is a slot in the order rather than a reason to file it under geography.
+        - What may be aimed at what is authored on the assignment and evaluated in exactly one place, so the button, the forecast, an autonomous house and a standing order cannot disagree.
+        - No client source names a content key.
+        - An assignment that declares no requirements keeps exactly the reach it had, so the gate cannot silently narrow content nobody revisited.
+    implementation:
+      paths:
+        - crates/aeon_data/src/model.rs
+        - crates/aeon_data/src/host/builders.rs
+        - crates/aeon_sim/src/assignments.rs
+        - crates/aeon_client/src/offer_view.rs
+        - crates/aeon_client/src/ui/assignment_popup.rs
+        - crates/aeon_client/src/ui/inspector.rs
+        - assets/content/core/warfare.rhai
+        - assets/content/core/administration.rhai
+      tests:
+        - crates/aeon_sim/tests/assignments.rs
+        - crates/aeon_client/tests/strings.rs
+      status: declared
+
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/assignments.rs
+        summary: >-
+          One test per gate, each stated as the player would: you cannot
+          raid your own holding, an alarm needs something to answer, only
+          the Consul can be petitioned, a favour can only be called in from
+          someone who owes one, whispers are about other people's people.
+          Plus one that an assignment declaring nothing keeps its reach.
+      - kind: manual-review
+        reference: crates/aeon_client/src/ui/actions.rs
+        summary: >-
+          The client had "petition-the-consul" spelled out in its own source
+          with its own Consul-title check, which is the coupling
+          agency-intents-are-authored-on-jobs forbids. It is deleted; the
+          requirement is authored and the interface asks rather than knows.
+      - kind: manual-review
+        reference: assets/text/strings.csv
+        summary: >-
+          Renaming the ids was verified not to move the simulation: 900 days
+          from the same seed with old ids mapped forward, and all 96
+          differing lines are displayed titles. This mattered because the
+          AI picks the first assignment alphabetically within an intent, so
+          a careless rename would have changed what autonomous houses do.
+
+  - milestone: m4-phases-orders-and-autonomy
+    core:
+      status: accepted
+      confidence: confirmed
+      title: "M4.3: Phases, Standing Orders, and a Household That Acts"
+      summary: >-
+        Assignments run through authored phases, some of which cannot be
+        called off. Standing orders become editable priority lists, which
+        removes the last content key compiled into the engine. An idle
+        household member finds work that costs the house nothing.
+      references:
+        - assignments-have-authored-phases
+        - standing-orders-are-priority-lists
+        - households-act-within-their-own-means
+      goals:
+        - Committing to an assignment is a decision the player can weigh, because how long it stays theirs to call off is shown before they commit and while it runs.
+        - An assignment that authors no phases behaves exactly as it did before phases existed.
+        - A cancellation asked for during a committed phase is recorded and honoured when the phase ends, rather than refused.
+        - A standing order can never start something its owner could not have ordered by hand, because the same authored requirements gate both.
+        - Nothing is started unbidden that spends the house's stores.
+    implementation:
+      paths:
+        - crates/aeon_data/src/model.rs
+        - crates/aeon_sim/src/assignments.rs
+        - crates/aeon_sim/src/warfare.rs
+        - crates/aeon_sim/src/agency.rs
+        - crates/aeon_sim/src/forecast.rs
+        - crates/aeon_client/src/ui/assignments_panel.rs
+        - assets/content/core/warfare.rhai
+      tests:
+        - crates/aeon_sim/tests/assignments.rs
+        - crates/aeon_sim/tests/warfare.rs
+      status: declared
+
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/assignments.rs
+        summary: >-
+          Phases: the no-phase default still cancels instantly, an
+          interruptible phase ends at once, a committed phase records the
+          request and honours it when the phase ends, and a late tick
+          saturates on the last phase rather than indexing past it.
+          Household: an idle member takes up free work, and nothing with a
+          cost is ever picked up unbidden.
+      - kind: test
+        reference: crates/aeon_sim/tests/warfare.rs
+        summary: >-
+          The old reactive defence, expressed as the priority list
+          [Respond], reproduces the behaviour the hardcoded version had:
+          an idle army with standing orders marches to meet a siege on its
+          own ground, and the log names which standing order fired.
+      - kind: manual-review
+        reference: crates/aeon_sim/src/warfare.rs
+        summary: >-
+          Wiring standing orders surfaced an inconsistency introduced in
+          M4.2: owner_threatened meant "a hostile army is standing in our
+          province", but an alarm should sound for a siege whose army is
+          still on the road. One threatened_holdings now serves both the
+          requirement that gates an alarm-answering assignment and the
+          standing order that starts one.
