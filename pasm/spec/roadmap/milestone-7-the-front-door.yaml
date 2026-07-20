@@ -1,0 +1,102 @@
+# Post-MVP implementation plan — Milestone 7
+#
+# The client has booted straight into a fixed development campaign since
+# M1: same seed, same house, no way back in. This milestone gives the
+# game a front door — a title screen offering a new campaign or the one
+# already in progress — and, behind a tickbox, a way to open the door
+# without stepping through it: spectator mode, where no house is the
+# player's, the simulation runs itself, and the whole interface remains
+# a window to watch it through.
+
+entities:
+  - system: milestone-7-implementation-plan
+    core:
+      status: proposed
+      confidence: provisional
+      title: "Milestone 7: The Front Door"
+      summary: >-
+        A title screen replaces the boot-straight-in development flow: New
+        Game starts the authored scenario on a fresh seed, Continue picks
+        up the autosaved campaign, and a spectator tickbox starts either
+        without a player house — every house autonomous, the interface
+        fully usable for observation. The simulation stays authoritative
+        and unchanged but for one deliberate seam: clearing the player
+        house is a sim-side act, recorded in the political state, so a
+        spectator campaign snapshots, restores, and replays as itself.
+      references:
+        - player-organisation
+        - mvp-player-identity
+        - characters-are-the-acting-unit
+        - organisation-agency-model
+
+  - milestone: m7-title-and-new-game
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M7.1: A Title Screen, and a New Game Behind It"
+      summary: >-
+        The client gains a screen state: it boots to a title rather than
+        into a campaign, and nothing simulation-shaped runs until the
+        player steps through. New Game starts the authored scenario with
+        a seed drawn from when the button was pressed — a choice the
+        presentation layer is entitled to make, since the seed is
+        campaign configuration, and one that finally makes two campaigns
+        differ. The scene spawns on entry, not at boot, because there is
+        nothing to spawn a globe from until a campaign exists.
+      goals:
+        - Booting the client shows a title, and no campaign resource exists until a choice is made.
+        - Two new games differ; the same save continues identically.
+        - Every string on the title screen lives in the string table like every other string.
+    implementation:
+      paths:
+        - crates/aeon_client/src/title.rs
+        - crates/aeon_client/src/main.rs
+        - crates/aeon_client/src/sim_driver.rs
+        - assets/text/strings.csv
+      status: declared
+
+  - milestone: m7-spectator-mode
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M7.2: Spectator Mode"
+      summary: >-
+        A tickbox on the title screen starts the campaign with no player
+        house: the scenario's protagonist becomes one more autonomous
+        house among its rivals, every head plans and acts, and the player
+        watches through the same panels, maps, and logs. Clearing the
+        player house is a sim-side function called before the first day
+        ever ticks, and the choice lives in the political state, so a
+        spectator campaign is spectator in its snapshots too.
+      goals:
+        - With no player house, every authored house acts autonomously, the erstwhile protagonist included.
+        - The interface stays fully usable for observation, and offers no action that would need an authority the spectator does not hold.
+        - Spectator is a property of the campaign, not of the session; it survives save and restore.
+    implementation:
+      paths:
+        - crates/aeon_sim/src/state.rs
+        - crates/aeon_client/src/title.rs
+      tests:
+        - crates/aeon_sim/tests/plans.rs
+      status: declared
+
+  - milestone: m7-continue
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M7.3: Continue"
+      summary: >-
+        The campaign autosaves as it runs — a monthly write of the same
+        versioned, hash-verified snapshot every other embedding uses —
+        and the title screen's Continue offers it back, enabled only when
+        the file is present, verifies, and matches the embedded content.
+        Native only, deliberately, like every other file the client
+        touches; the web build simply does not offer it.
+      goals:
+        - Continue restores exactly the campaign the autosave captured, through the same verify-and-restore path the headless host uses.
+        - A missing, corrupt, or content-mismatched autosave disables Continue rather than failing after the click.
+    implementation:
+      paths:
+        - crates/aeon_client/src/sim_driver.rs
+        - crates/aeon_client/src/title.rs
+      status: declared
