@@ -18,10 +18,10 @@ use rhai::{Engine, Map};
 
 use crate::key::ContentKey;
 use crate::model::{
-    AiIntent, ArmyDef, BodyDef, BodyKind, CharacterDef, EventChoiceDef, EventDef, EventFamily,
-    EventRequires, Gender, GoverningSkill, HouseTier, JobCategory, JobDef, JobResultDef,
-    JobResultKind, JobTargetKind, MilitaryOp, NamePoolDef, ObligationDef, ObligationKind,
-    OfficeDef, OrgDef, OrgKind, PopupChoiceDef, ProvinceDef, RiskTag, ScenarioDef, ScriptFnRef,
+    AiIntent, ArmyDef, AssignmentCategory, AssignmentDef, AssignmentTargetKind, BodyDef, BodyKind,
+    CharacterDef, EventChoiceDef, EventDef, EventFamily, EventRequires, Gender, GoverningSkill,
+    HouseTier, MilitaryOp, NamePoolDef, ObligationDef, ObligationKind, OfficeDef, OrgDef, OrgKind,
+    OutcomeDef, OutcomeKind, PopupChoiceDef, ProvinceDef, RiskTag, ScenarioDef, ScriptFnRef,
     ShipClass, ShipDef, SkillsDef, TitleDef, TitleHolderDef, TitleKindDef, TraitDef,
 };
 use crate::report::{ContentReport, Severity};
@@ -31,7 +31,7 @@ use crate::report::{ContentReport, Severity};
 pub(super) struct BuilderState {
     pub(super) current_path: String,
     pub(super) report: ContentReport,
-    pub(super) jobs: BTreeMap<ContentKey, JobDef>,
+    pub(super) assignments: BTreeMap<ContentKey, AssignmentDef>,
     pub(super) bodies: BTreeMap<ContentKey, BodyDef>,
     pub(super) provinces: BTreeMap<ContentKey, ProvinceDef>,
     pub(super) traits: BTreeMap<ContentKey, TraitDef>,
@@ -58,7 +58,7 @@ impl BuilderState {
         BuilderState {
             current_path: std::mem::take(&mut self.current_path),
             report: std::mem::take(&mut self.report),
-            jobs: std::mem::take(&mut self.jobs),
+            assignments: std::mem::take(&mut self.assignments),
             bodies: std::mem::take(&mut self.bodies),
             provinces: std::mem::take(&mut self.provinces),
             traits: std::mem::take(&mut self.traits),
@@ -82,13 +82,13 @@ impl BuilderState {
 //
 // The free helpers below validate one field against one map. Builders use
 // them through `Fields`, which additionally tracks what was read; nested
-// maps (job results, choices, skills) use them directly with an explicit
+// maps (assignment results, choices, skills) use them directly with an explicit
 // allow-list because they live inside a single field of the parent.
 
 /// Reports a display-text field a nested map still carries.
 ///
-/// The `Fields` reader has [`Fields::from_table`] for the same job;
-/// nested maps — job-result choices, event choices — read their fields
+/// The `Fields` reader has [`Fields::from_table`] for the same assignment;
+/// nested maps — assignment-result choices, event choices — read their fields
 /// directly and use this instead. The key such a choice fills is only
 /// known to the pass that fills it, so this names the field rather than
 /// the row.
@@ -522,17 +522,17 @@ impl<'s> Fields<'s> {
 // Definitions
 // ---------------------------------------------------------------------------
 
-fn define_job(state: &mut BuilderState, map: Map) {
+fn define_assignment(state: &mut BuilderState, map: Map) {
     let Some(mut f) = Fields::begin(state, map) else {
         return;
     };
-    let title = f.moved_to_table("title", "job");
-    let summary = f.moved_to_table("summary", "job");
+    let title = f.moved_to_table("title", "assignment");
+    let summary = f.moved_to_table("summary", "assignment");
     let Some(category) = f.req_enum(
         "category",
         &[
-            ("routine", JobCategory::Routine),
-            ("consequential", JobCategory::Consequential),
+            ("routine", AssignmentCategory::Routine),
+            ("consequential", AssignmentCategory::Consequential),
         ],
     ) else {
         return;
@@ -567,15 +567,21 @@ fn define_job(state: &mut BuilderState, map: Map) {
     let Some(target) = f.opt_enum(
         "target",
         &[
-            ("none", JobTargetKind::None),
-            ("character", JobTargetKind::Character),
-            ("organisation", JobTargetKind::Organisation),
-            ("province", JobTargetKind::Province),
-            ("own-army", JobTargetKind::OwnArmy),
-            ("own-army-and-province", JobTargetKind::OwnArmyAndProvince),
-            ("own-ship-and-province", JobTargetKind::OwnShipAndProvince),
+            ("none", AssignmentTargetKind::None),
+            ("character", AssignmentTargetKind::Character),
+            ("organisation", AssignmentTargetKind::Organisation),
+            ("province", AssignmentTargetKind::Province),
+            ("own-army", AssignmentTargetKind::OwnArmy),
+            (
+                "own-army-and-province",
+                AssignmentTargetKind::OwnArmyAndProvince,
+            ),
+            (
+                "own-ship-and-province",
+                AssignmentTargetKind::OwnShipAndProvince,
+            ),
         ],
-        JobTargetKind::None,
+        AssignmentTargetKind::None,
     ) else {
         return;
     };
@@ -617,11 +623,11 @@ fn define_job(state: &mut BuilderState, map: Map) {
     };
     let op_target_ok = match military_op {
         None => true,
-        Some(MilitaryOp::Resupply | MilitaryOp::Patrol) => target == JobTargetKind::OwnArmy,
+        Some(MilitaryOp::Resupply | MilitaryOp::Patrol) => target == AssignmentTargetKind::OwnArmy,
         Some(MilitaryOp::Move | MilitaryOp::Besiege | MilitaryOp::Raid) => {
-            target == JobTargetKind::OwnArmyAndProvince
+            target == AssignmentTargetKind::OwnArmyAndProvince
         }
-        Some(MilitaryOp::Blockade) => target == JobTargetKind::OwnShipAndProvince,
+        Some(MilitaryOp::Blockade) => target == AssignmentTargetKind::OwnShipAndProvince,
     };
     if !op_target_ok {
         f.error("military_op and target kind do not match");
@@ -663,17 +669,17 @@ fn define_job(state: &mut BuilderState, map: Map) {
         return;
     };
     let (state, key) = f.finish();
-    let Some(results) = job_results(state, &key, &results_map) else {
+    let Some(results) = assignment_results(state, &key, &results_map) else {
         return;
     };
 
-    if state.jobs.contains_key(&key) {
-        state.error(Some(key.as_str()), "duplicate job id");
+    if state.assignments.contains_key(&key) {
+        state.error(Some(key.as_str()), "duplicate assignment id");
         return;
     }
-    state.jobs.insert(
+    state.assignments.insert(
         key.clone(),
-        JobDef {
+        AssignmentDef {
             key,
             title,
             summary,
@@ -695,19 +701,19 @@ fn define_job(state: &mut BuilderState, map: Map) {
     );
 }
 
-/// Reads a job's graded results, each an optional nested map.
-fn job_results(
+/// Reads a assignment's graded results, each an optional nested map.
+fn assignment_results(
     state: &mut BuilderState,
     key: &ContentKey,
     results_map: &Map,
-) -> Option<BTreeMap<JobResultKind, JobResultDef>> {
+) -> Option<BTreeMap<OutcomeKind, OutcomeDef>> {
     let mut results = BTreeMap::new();
     let mut ok = true;
     for (result_name, kind) in [
-        ("critical_success", JobResultKind::CriticalSuccess),
-        ("success", JobResultKind::Success),
-        ("failure", JobResultKind::Failure),
-        ("disaster", JobResultKind::Disaster),
+        ("critical_success", OutcomeKind::CriticalSuccess),
+        ("success", OutcomeKind::Success),
+        ("failure", OutcomeKind::Failure),
+        ("disaster", OutcomeKind::Disaster),
     ] {
         let Some(entry) = results_map.get(result_name) else {
             continue;
@@ -827,7 +833,7 @@ fn job_results(
         }
         results.insert(
             kind,
-            JobResultDef {
+            OutcomeDef {
                 weight: weight as u32,
                 popup,
                 popup_text,
@@ -1391,7 +1397,7 @@ fn define_event(state: &mut BuilderState, map: Map) {
             ("province", EventFamily::Province),
             ("political", EventFamily::Political),
             ("travel", EventFamily::Travel),
-            ("job", EventFamily::Job),
+            ("assignment", EventFamily::Assignment),
         ],
         EventFamily::Province,
     ) else {
@@ -1689,7 +1695,7 @@ pub(super) fn loading_engine(state: Arc<Mutex<BuilderState>>) -> Engine {
             });
         };
     }
-    register!("define_job", define_job);
+    register!("define_assignment", define_assignment);
     register!("define_body", define_body);
     register!("define_province", define_province);
     register!("define_scenario", define_scenario);

@@ -195,7 +195,7 @@ pub fn capture_map(world: &World) -> MapState {
 /// # Panics
 /// Panics if a binding references a key missing from the content; the
 /// caller has already verified the content hash, so that would mean the
-/// snapshot's own state hash check failed to do its job.
+/// snapshot's own state hash check failed to do its assignment.
 pub fn restore_map(world: &mut World, state: &MapState, content: &ContentSet) {
     let mut index = MapIndex::default();
 

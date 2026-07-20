@@ -1,4 +1,4 @@
-//! Job-system guarantees: command-driven initiation, delegation rules,
+//! Assignment-system guarantees: command-driven initiation, delegation rules,
 //! skill-shifted graded results, routine retries, script effects, popups
 //! with choices, personal risks, the notable-result log, AI agency, and
 //! snapshot fidelity.
@@ -6,13 +6,13 @@
 use std::sync::Arc;
 
 use aeon_core::calendar::CalendarDate;
-use aeon_data::model::{JobResultKind, RiskTag};
+use aeon_data::model::{OutcomeKind, RiskTag};
 use aeon_data::{ContentKey, ContentSource, load_content};
-use aeon_sim::jobs::{CharacterCondition, apply_risk};
+use aeon_sim::assignments::{CharacterCondition, apply_risk};
 use aeon_sim::politics::process_death;
 use aeon_sim::{
-    CampaignConfig, CharacterId, CommandRejection, JobTarget, JobsIndex, MessageLog, PendingPopups,
-    PlayerCommand, PoliticsIndex, SimHost, opinion_between,
+    AssignmentTarget, AssignmentsIndex, CampaignConfig, CharacterId, CommandRejection, MessageLog,
+    PendingPopups, PlayerCommand, PoliticsIndex, SimHost, opinion_between,
 };
 
 const FIXTURE: &str = r#"
@@ -54,7 +54,7 @@ define_character(#{
 });
 
 // Always succeeds for a competent leader; carries a courting effect.
-define_job(#{
+define_assignment(#{
     id: "sure-court", 
     category: "consequential", duration_days: 10,
     skill: "diplomacy", difficulty: 0, target: "organisation",
@@ -73,7 +73,7 @@ fn court_win(ctx) {
 }
 
 // Practically always fails; routine, so it retries.
-define_job(#{
+define_assignment(#{
     id: "doomed-chore", 
     category: "routine", duration_days: 5,
     skill: "stewardship", difficulty: 40, ai_available: false,
@@ -84,7 +84,7 @@ define_job(#{
 });
 
 // Popup with two choices on success.
-define_job(#{
+define_assignment(#{
     id: "momentous-find", 
     category: "consequential", duration_days: 7,
     skill: "stewardship", difficulty: 0, ai_available: false,
@@ -100,14 +100,14 @@ define_job(#{
     },
 });
 fn share_find(ctx) {
-    [#{ kind: "log", message_key: "job.momentous-find.shared.log" }]
+    [#{ kind: "log", message_key: "assignment.momentous-find.shared.log" }]
 }
 
 // A spread of outcomes, each logged distinctly, so a forecast can be
 // checked against what actually happens. Difficulty matches Cera's
 // stewardship, so effectiveness is zero and the authored weights apply
 // unshifted: 100 / 300 / 400 / 200 permille.
-define_job(#{
+define_assignment(#{
     id: "even-gamble", 
     category: "consequential", duration_days: 5,
     skill: "stewardship", difficulty: 8, ai_available: false,
@@ -120,8 +120,8 @@ define_job(#{
     },
 });
 
-// AI-available job so autonomous organisations act.
-define_job(#{
+// AI-available assignment so autonomous organisations act.
+define_assignment(#{
     id: "ai-errand", 
     category: "consequential", duration_days: 15,
     skill: "diplomacy", difficulty: 5, ai_available: true,
@@ -152,35 +152,50 @@ fn strings() -> aeon_data::StringTable {
         ("province.alpha.name", "Alpha"),
         ("province.beta.name", "Beta"),
         ("scenario.fixture.name", "Fixture"),
-        ("job.sure-court.title", "Court a Rival"),
-        ("job.sure-court.summary", "Send an envoy."),
+        ("assignment.sure-court.title", "Court a Rival"),
+        ("assignment.sure-court.summary", "Send an envoy."),
         (
-            "job.sure-court.success.log-text",
+            "assignment.sure-court.success.log-text",
             "{leader} charmed {target}.",
         ),
-        ("job.doomed-chore.title", "A Doomed Chore"),
-        ("job.doomed-chore.summary", "It will not go well."),
-        ("job.momentous-find.title", "A Momentous Find"),
-        ("job.momentous-find.summary", "Something turned up."),
+        ("assignment.doomed-chore.title", "A Doomed Chore"),
+        ("assignment.doomed-chore.summary", "It will not go well."),
+        ("assignment.momentous-find.title", "A Momentous Find"),
+        ("assignment.momentous-find.summary", "Something turned up."),
         (
-            "job.momentous-find.success.popup-text",
+            "assignment.momentous-find.success.popup-text",
             "{leader} found it. Cera Ash was there.",
         ),
-        ("job.momentous-find.success.choice.keep-quiet", "Keep quiet"),
-        ("job.momentous-find.success.choice.share-it", "Share it"),
         (
-            "job.momentous-find.shared.log",
+            "assignment.momentous-find.success.choice.keep-quiet",
+            "Keep quiet",
+        ),
+        (
+            "assignment.momentous-find.success.choice.share-it",
+            "Share it",
+        ),
+        (
+            "assignment.momentous-find.shared.log",
             "The find was shared with the court.",
         ),
-        ("job.even-gamble.title", "An Even Gamble"),
-        ("job.even-gamble.summary", "Could go either way."),
-        ("job.even-gamble.critical-success.log-text", "OUTCOME-CRIT"),
-        ("job.even-gamble.success.log-text", "OUTCOME-SUCCESS"),
-        ("job.even-gamble.failure.log-text", "OUTCOME-FAILURE"),
-        ("job.even-gamble.disaster.log-text", "OUTCOME-DISASTER"),
-        ("job.ai-errand.title", "An AI errand"),
-        ("job.ai-errand.summary", "Ordinary business."),
-        ("job.ai-errand.success.log-text", "the errand was run"),
+        ("assignment.even-gamble.title", "An Even Gamble"),
+        ("assignment.even-gamble.summary", "Could go either way."),
+        (
+            "assignment.even-gamble.critical-success.log-text",
+            "OUTCOME-CRIT",
+        ),
+        ("assignment.even-gamble.success.log-text", "OUTCOME-SUCCESS"),
+        ("assignment.even-gamble.failure.log-text", "OUTCOME-FAILURE"),
+        (
+            "assignment.even-gamble.disaster.log-text",
+            "OUTCOME-DISASTER",
+        ),
+        ("assignment.ai-errand.title", "An AI errand"),
+        ("assignment.ai-errand.summary", "Ordinary business."),
+        (
+            "assignment.ai-errand.success.log-text",
+            "the errand was run",
+        ),
     ]);
     table
 }
@@ -200,7 +215,7 @@ fn content() -> Arc<aeon_data::ContentSet> {
 fn host(seed: u64) -> SimHost {
     let mut host = SimHost::new_with_content(
         CampaignConfig {
-            name: "Jobs Trial".to_owned(),
+            name: "Assignments Trial".to_owned(),
             seed,
             start_date: CalendarDate {
                 year: 411,
@@ -236,23 +251,23 @@ fn key(text: &str) -> ContentKey {
 }
 
 #[test]
-fn jobs_resolve_with_effects_and_logs() {
+fn assignments_resolve_with_effects_and_logs() {
     let mut h = host(1);
     let aron = char_id(&mut h, "aron-ash");
     let bela = char_id(&mut h, "bela-birch");
     let birch = org_id(&mut h, "birch");
 
     let before = opinion_between(h.world_mut(), bela, aron);
-    h.submit(PlayerCommand::StartJob {
-        job: key("sure-court"),
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("sure-court"),
         leader: aron,
-        target: JobTarget::Org(birch),
+        target: AssignmentTarget::Org(birch),
     })
     .unwrap();
     h.advance_days(12);
 
     let world = h.world_mut();
-    assert!(world.resource::<JobsIndex>().jobs.is_empty());
+    assert!(world.resource::<AssignmentsIndex>().assignments.is_empty());
     let after = opinion_between(world, bela, aron);
     assert_eq!(after, before + 20, "courting effect applies");
     let log = world.resource::<MessageLog>();
@@ -264,74 +279,84 @@ fn jobs_resolve_with_effects_and_logs() {
 }
 
 #[test]
-fn one_character_leads_one_job_and_delegation_works() {
+fn one_character_leads_one_assignment_and_delegation_works() {
     let mut h = host(2);
     let aron = char_id(&mut h, "aron-ash");
     let cera = char_id(&mut h, "cera-ash");
     let bela = char_id(&mut h, "bela-birch");
     let birch = org_id(&mut h, "birch");
 
-    h.submit(PlayerCommand::StartJob {
-        job: key("sure-court"),
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("sure-court"),
         leader: aron,
-        target: JobTarget::Org(birch),
+        target: AssignmentTarget::Org(birch),
     })
     .unwrap();
     h.advance_days(1);
 
     // The head is now busy.
-    let refused = h.submit(PlayerCommand::StartJob {
-        job: key("doomed-chore"),
+    let refused = h.submit(PlayerCommand::StartAssignment {
+        assignment: key("doomed-chore"),
         leader: aron,
-        target: JobTarget::None,
+        target: AssignmentTarget::None,
     });
-    assert!(matches!(refused, Err(CommandRejection::Job(_))));
+    assert!(matches!(refused, Err(CommandRejection::Assignment(_))));
 
     // Delegation to another member works.
-    h.submit(PlayerCommand::StartJob {
-        job: key("doomed-chore"),
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("doomed-chore"),
         leader: cera,
-        target: JobTarget::None,
+        target: AssignmentTarget::None,
     })
     .unwrap();
     h.advance_days(1);
-    assert_eq!(h.world_mut().resource::<JobsIndex>().jobs.len(), 2);
+    assert_eq!(
+        h.world_mut()
+            .resource::<AssignmentsIndex>()
+            .assignments
+            .len(),
+        2
+    );
 
     // A character from another organisation cannot lead for the player.
-    let refused = h.submit(PlayerCommand::StartJob {
-        job: key("sure-court"),
+    let refused = h.submit(PlayerCommand::StartAssignment {
+        assignment: key("sure-court"),
         leader: bela,
-        target: JobTarget::Org(birch),
+        target: AssignmentTarget::Org(birch),
     });
-    assert!(matches!(refused, Err(CommandRejection::Job(_))));
+    assert!(matches!(refused, Err(CommandRejection::Assignment(_))));
 }
 
 #[test]
 fn routine_failures_retry_automatically() {
     let mut h = host(3);
     let cera = char_id(&mut h, "cera-ash");
-    h.submit(PlayerCommand::StartJob {
-        job: key("doomed-chore"),
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("doomed-chore"),
         leader: cera,
-        target: JobTarget::None,
+        target: AssignmentTarget::None,
     })
     .unwrap();
 
-    // Across several failure cycles the job keeps restarting.
+    // Across several failure cycles the assignment keeps restarting.
     h.advance_days(23);
     let world = h.world_mut();
-    let index = world.resource::<JobsIndex>();
-    assert_eq!(index.jobs.len(), 1, "routine job restarted after failure");
+    let index = world.resource::<AssignmentsIndex>();
+    assert_eq!(
+        index.assignments.len(),
+        1,
+        "routine assignment restarted after failure"
+    );
 }
 
 #[test]
 fn popups_open_for_the_player_and_choices_apply() {
     let mut h = host(4);
     let cera = char_id(&mut h, "cera-ash");
-    h.submit(PlayerCommand::StartJob {
-        job: key("momentous-find"),
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("momentous-find"),
         leader: cera,
-        target: JobTarget::None,
+        target: AssignmentTarget::None,
     })
     .unwrap();
     h.advance_days(9);
@@ -350,7 +375,7 @@ fn popups_open_for_the_player_and_choices_apply() {
         popup: popup_id,
         choice: key("no-such-choice"),
     });
-    assert!(matches!(refused, Err(CommandRejection::Job(_))));
+    assert!(matches!(refused, Err(CommandRejection::Assignment(_))));
 
     h.submit(PlayerCommand::AnswerPopup {
         popup: popup_id,
@@ -383,13 +408,13 @@ fn risks_have_their_stated_consequences() {
     assert!(condition.injured_until.is_some());
     assert!(!condition.can_lead(date));
 
-    // An injured character cannot take a job.
-    let refused = h.submit(PlayerCommand::StartJob {
-        job: key("doomed-chore"),
+    // An injured character cannot take a assignment.
+    let refused = h.submit(PlayerCommand::StartAssignment {
+        assignment: key("doomed-chore"),
         leader: cera,
-        target: JobTarget::None,
+        target: AssignmentTarget::None,
     });
-    assert!(matches!(refused, Err(CommandRejection::Job(_))));
+    assert!(matches!(refused, Err(CommandRejection::Assignment(_))));
 
     // Death through risk flows into succession machinery.
     let aron = char_id(&mut h, "aron-ash");
@@ -406,14 +431,14 @@ fn risks_have_their_stated_consequences() {
 }
 
 #[test]
-fn dead_leaders_abandon_their_jobs() {
+fn dead_leaders_abandon_their_assignments() {
     let mut h = host(6);
     let cera = char_id(&mut h, "cera-ash");
     let birch = org_id(&mut h, "birch");
-    h.submit(PlayerCommand::StartJob {
-        job: key("sure-court"),
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("sure-court"),
         leader: cera,
-        target: JobTarget::Org(birch),
+        target: AssignmentTarget::Org(birch),
     })
     .unwrap();
     h.advance_days(2);
@@ -423,7 +448,7 @@ fn dead_leaders_abandon_their_jobs() {
     h.advance_days(10);
 
     let world = h.world_mut();
-    assert!(world.resource::<JobsIndex>().jobs.is_empty());
+    assert!(world.resource::<AssignmentsIndex>().assignments.is_empty());
     assert!(
         world
             .resource::<MessageLog>()
@@ -445,21 +470,21 @@ fn ai_organisations_act_and_their_results_reach_the_log() {
         log.entries
             .iter()
             .any(|e| e.org == Some(birch) && e.text.contains("errand")),
-        "AI-run jobs should reach the shared log: {:?}",
+        "AI-run assignments should reach the shared log: {:?}",
         log.entries
     );
 }
 
 #[test]
-fn job_world_is_deterministic_and_survives_snapshots() {
+fn assignment_world_is_deterministic_and_survives_snapshots() {
     let run = |seed: u64| {
         let mut h = host(seed);
         let aron = char_id(&mut h, "aron-ash");
         let birch = org_id(&mut h, "birch");
-        h.submit(PlayerCommand::StartJob {
-            job: key("sure-court"),
+        h.submit(PlayerCommand::StartAssignment {
+            assignment: key("sure-court"),
             leader: aron,
-            target: JobTarget::Org(birch),
+            target: AssignmentTarget::Org(birch),
         })
         .unwrap();
         h.advance_days(200);
@@ -503,10 +528,10 @@ fn sample_outcomes(trials: u64) -> [u32; 4] {
             Arc::clone(&shared),
         );
         let cera = char_id(&mut h, "cera-ash");
-        h.submit(PlayerCommand::StartJob {
-            job: key("even-gamble"),
+        h.submit(PlayerCommand::StartAssignment {
+            assignment: key("even-gamble"),
             leader: cera,
-            target: JobTarget::None,
+            target: AssignmentTarget::None,
         })
         .unwrap();
         h.advance_days(12);
@@ -537,15 +562,15 @@ fn a_forecast_reports_the_odds_that_actually_resolve() {
         ash,
         &key("even-gamble"),
         cera,
-        JobTarget::None,
+        AssignmentTarget::None,
     )
-    .expect("job is defined");
+    .expect("assignment is defined");
 
     // Difficulty equals the leader's skill, so the authored weights stand.
     assert_eq!(forecast.effectiveness, 0);
     assert_eq!(forecast.skill_value, 8);
     assert_eq!(forecast.difficulty, 8);
-    let chance = |kind: JobResultKind| -> u32 {
+    let chance = |kind: OutcomeKind| -> u32 {
         forecast
             .results
             .iter()
@@ -553,10 +578,10 @@ fn a_forecast_reports_the_odds_that_actually_resolve() {
             .map(|r| r.chance)
             .expect("kind present")
     };
-    assert_eq!(chance(JobResultKind::CriticalSuccess), 100);
-    assert_eq!(chance(JobResultKind::Success), 300);
-    assert_eq!(chance(JobResultKind::Failure), 400);
-    assert_eq!(chance(JobResultKind::Disaster), 200);
+    assert_eq!(chance(OutcomeKind::CriticalSuccess), 100);
+    assert_eq!(chance(OutcomeKind::Success), 300);
+    assert_eq!(chance(OutcomeKind::Failure), 400);
+    assert_eq!(chance(OutcomeKind::Disaster), 200);
     assert_eq!(forecast.success_chance(), 400);
 
     // What the player was promised is what the simulation delivers. The
@@ -568,7 +593,7 @@ fn a_forecast_reports_the_odds_that_actually_resolve() {
         .iter()
         .map(|count| (u64::from(*count) * 1000 / TRIALS) as u32)
         .collect();
-    for (index, kind) in JobResultKind::ALL.iter().enumerate() {
+    for (index, kind) in OutcomeKind::ALL.iter().enumerate() {
         let forecast_chance = chance(*kind);
         let seen = observed[index];
         let drift = forecast_chance.abs_diff(seen);
@@ -589,9 +614,9 @@ fn a_forecast_quotes_costs_duration_delay_and_risks() {
         ash,
         &key("even-gamble"),
         cera,
-        JobTarget::None,
+        AssignmentTarget::None,
     )
-    .expect("job is defined");
+    .expect("assignment is defined");
 
     assert_eq!(forecast.duration_days, 5, "authored duration is quoted");
     assert!(
@@ -608,20 +633,20 @@ fn a_forecast_quotes_costs_duration_delay_and_risks() {
     );
     assert!(
         forecast.military_op.is_none(),
-        "a civil job has no conditional field contest"
+        "a civil assignment has no conditional field contest"
     );
 }
 
 #[test]
-fn a_forecast_explains_why_a_job_cannot_be_started() {
+fn a_forecast_explains_why_a_assignment_cannot_be_started() {
     let mut h = host(4);
     let cera = char_id(&mut h, "cera-ash");
     let ash = org_id(&mut h, "ash");
-    // Put Cera to work, then forecast a second job for her.
-    h.submit(PlayerCommand::StartJob {
-        job: key("even-gamble"),
+    // Put Cera to work, then forecast a second assignment for her.
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("even-gamble"),
         leader: cera,
-        target: JobTarget::None,
+        target: AssignmentTarget::None,
     })
     .unwrap();
     h.advance_days(1);
@@ -631,15 +656,18 @@ fn a_forecast_explains_why_a_job_cannot_be_started() {
         ash,
         &key("even-gamble"),
         cera,
-        JobTarget::None,
+        AssignmentTarget::None,
     )
-    .expect("job is defined");
-    assert!(!forecast.startable(), "a busy leader cannot start a job");
+    .expect("assignment is defined");
+    assert!(
+        !forecast.startable(),
+        "a busy leader cannot start a assignment"
+    );
     assert_eq!(
         forecast.blocked,
-        Some(aeon_sim::jobs::JobRejection::LeaderBusy)
+        Some(aeon_sim::assignments::AssignmentRejection::LeaderBusy)
     );
-    // The forecast still describes the job, so the player can plan ahead.
+    // The forecast still describes the assignment, so the player can plan ahead.
     assert_eq!(forecast.duration_days, 5);
     assert_eq!(forecast.success_chance(), 400);
 }
@@ -650,7 +678,7 @@ fn a_forecast_explains_why_a_job_cannot_be_started() {
 
 #[test]
 fn availability_names_the_specific_reason_a_character_cannot_lead() {
-    use aeon_sim::{Assignment, LeaderAvailability, leader_availability};
+    use aeon_sim::{LeaderAvailability, Post, leader_availability};
 
     let mut h = host(21);
     let aron = char_id(&mut h, "aron-ash");
@@ -676,11 +704,11 @@ fn availability_names_the_specific_reason_a_character_cannot_lead() {
         LeaderAvailability::Ineligible(_)
     ));
 
-    // Busy names the job and when it ends, not merely "unavailable".
-    h.submit(PlayerCommand::StartJob {
-        job: key("sure-court"),
+    // Busy names the assignment and when it ends, not merely "unavailable".
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("sure-court"),
         leader: aron,
-        target: JobTarget::Org(birch),
+        target: AssignmentTarget::Org(birch),
     })
     .unwrap();
     h.advance_days(1);
@@ -696,7 +724,7 @@ fn availability_names_the_specific_reason_a_character_cannot_lead() {
     };
     let army = aeon_sim::forces::form_army(h.world_mut(), ash, cera, 500, 100, alpha);
     match leader_availability(h.world_mut(), ash, cera, date) {
-        LeaderAvailability::Assigned(Assignment::General { army: id, .. }) => {
+        LeaderAvailability::Posted(Post::General { army: id, .. }) => {
             assert_eq!(id, army)
         }
         other => panic!("expected Assigned, got {other:?}"),
@@ -723,9 +751,9 @@ fn indisposition_reports_when_it_clears() {
 
 #[test]
 fn a_standing_command_bars_a_second_one_but_not_ordinary_work() {
-    use aeon_sim::{Assignment, JobRejection, LeaderAvailability};
+    use aeon_sim::{AssignmentRejection, LeaderAvailability, Post};
 
-    let commanding = LeaderAvailability::Assigned(Assignment::General {
+    let commanding = LeaderAvailability::Posted(Post::General {
         army: aeon_sim::ArmyId::from_raw(7).unwrap(),
         name: "First Levy".to_owned(),
     });
@@ -733,19 +761,22 @@ fn a_standing_command_bars_a_second_one_but_not_ordinary_work() {
     let own_army = aeon_sim::ArmyId::from_raw(7).unwrap();
 
     // A general may still court, scheme, and administer.
-    assert_eq!(commanding.blocks_job(JobTarget::None), None);
+    assert_eq!(commanding.blocks_assignment(AssignmentTarget::None), None);
     assert_eq!(
-        commanding.blocks_job(JobTarget::Org(aeon_sim::OrgId::from_raw(3).unwrap())),
+        commanding.blocks_assignment(AssignmentTarget::Org(aeon_sim::OrgId::from_raw(3).unwrap())),
         None
     );
 
     // And may order the force they actually command.
-    assert_eq!(commanding.blocks_job(JobTarget::OwnArmy(own_army)), None);
+    assert_eq!(
+        commanding.blocks_assignment(AssignmentTarget::OwnArmy(own_army)),
+        None
+    );
 
     // But not somebody else's.
     assert_eq!(
-        commanding.blocks_job(JobTarget::OwnArmy(other_army)),
-        Some(JobRejection::AlreadyAssigned)
+        commanding.blocks_assignment(AssignmentTarget::OwnArmy(other_army)),
+        Some(AssignmentRejection::AlreadyAssigned)
     );
 }
 
@@ -762,10 +793,10 @@ fn the_simulation_and_its_availability_report_never_disagree() {
     let aron = char_id(&mut h, "aron-ash");
 
     // Put one character to work so the busy path is covered too.
-    h.submit(PlayerCommand::StartJob {
-        job: key("sure-court"),
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("sure-court"),
         leader: aron,
-        target: JobTarget::Org(birch),
+        target: AssignmentTarget::Org(birch),
     })
     .unwrap();
     h.advance_days(1);
@@ -780,14 +811,14 @@ fn the_simulation_and_its_availability_report_never_disagree() {
         .collect();
 
     for character in everyone {
-        for target in [JobTarget::None, JobTarget::Org(birch)] {
+        for target in [AssignmentTarget::None, AssignmentTarget::Org(birch)] {
             let reported = leader_availability(h.world_mut(), ash, character, date)
-                .blocks_job(target)
+                .blocks_assignment(target)
                 .is_none();
             let accepted = aeon_sim::command::validate_command(
                 h.world_mut(),
-                &PlayerCommand::StartJob {
-                    job: key("sure-court"),
+                &PlayerCommand::StartAssignment {
+                    assignment: key("sure-court"),
                     leader: character,
                     target,
                 },

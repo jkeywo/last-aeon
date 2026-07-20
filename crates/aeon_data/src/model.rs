@@ -24,37 +24,37 @@ pub struct ScriptFnRef {
     pub name: String,
 }
 
-/// How a job behaves when it fails, and how much attention it demands.
+/// How a assignment behaves when it fails, and how much attention it demands.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum JobCategory {
+pub enum AssignmentCategory {
     /// Fails cheaply and automatically retries; only time is lost.
     Routine,
     /// Failure creates a setback, disaster creates a new problem.
     Consequential,
 }
 
-/// The four graded outcomes of a job.
+/// The four graded outcomes of a assignment.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum JobResultKind {
+pub enum OutcomeKind {
     /// Better than intended.
     CriticalSuccess,
-    /// The job achieves its objective.
+    /// The assignment achieves its objective.
     Success,
-    /// A setback (or a retry, for routine jobs).
+    /// A setback (or a retry, for routine assignments).
     Failure,
     /// A severe failure creating a new problem.
     Disaster,
 }
 
-impl JobResultKind {
+impl OutcomeKind {
     /// All kinds, in canonical order.
-    pub const ALL: [JobResultKind; 4] = [
-        JobResultKind::CriticalSuccess,
-        JobResultKind::Success,
-        JobResultKind::Failure,
-        JobResultKind::Disaster,
+    pub const ALL: [OutcomeKind; 4] = [
+        OutcomeKind::CriticalSuccess,
+        OutcomeKind::Success,
+        OutcomeKind::Failure,
+        OutcomeKind::Disaster,
     ];
 }
 
@@ -69,14 +69,14 @@ pub struct PopupChoiceDef {
     pub effect_fn: Option<ScriptFnRef>,
 }
 
-/// One possible result of a job.
+/// One possible result of a assignment.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct JobResultDef {
+pub struct OutcomeDef {
     /// Relative weight of this outcome before modifiers.
     pub weight: u32,
     /// Whether this result opens a player-facing popup.
     pub popup: bool,
-    /// Popup body text; templated with {leader}, {target}, {job}.
+    /// Popup body text; templated with {leader}, {target}, {assignment}.
     pub popup_text: Option<String>,
     /// Choices offered by the popup; empty means a lone acknowledgement.
     pub choices: Vec<PopupChoiceDef>,
@@ -88,7 +88,7 @@ pub struct JobResultDef {
     pub effect_fn: Option<ScriptFnRef>,
 }
 
-/// The personal risks a job can expose its leader to.
+/// The personal risks a assignment can expose its leader to.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum RiskTag {
@@ -121,11 +121,11 @@ impl RiskTag {
     }
 }
 
-/// What kind of target a job requires.
+/// What kind of target a assignment requires.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
-pub enum JobTargetKind {
-    /// No target; the job acts on the owner organisation itself.
+pub enum AssignmentTargetKind {
+    /// No target; the assignment acts on the owner organisation itself.
     #[default]
     None,
     /// Targets a character.
@@ -142,7 +142,7 @@ pub enum JobTargetKind {
     OwnShipAndProvince,
 }
 
-/// An engine-owned military operation a job performs on success.
+/// An engine-owned military operation a assignment performs on success.
 ///
 /// Content declares pacing, costs, and flavour; the simulation owns the
 /// operational semantics (movement, engagements, conquest, loot,
@@ -178,7 +178,7 @@ impl MilitaryOp {
     }
 }
 
-/// The skill that governs a job's outcome.
+/// The skill that governs a assignment's outcome.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum GoverningSkill {
@@ -204,43 +204,43 @@ impl GoverningSkill {
     }
 }
 
-/// An authored job definition.
+/// An authored assignment definition.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct JobDef {
-    /// The job's stable content key.
+pub struct AssignmentDef {
+    /// The assignment's stable content key.
     pub key: ContentKey,
     /// Short player-facing title.
     pub title: String,
     /// One-sentence player-facing summary.
     pub summary: String,
     /// Routine or consequential.
-    pub category: JobCategory,
+    pub category: AssignmentCategory,
     /// Base duration in days.
     pub duration_days: u32,
     /// The skill that governs the outcome.
     pub skill: GoverningSkill,
     /// Difficulty on the same scale as skills (roughly 0..=20).
     pub difficulty: i32,
-    /// What kind of target the job requires.
-    pub target: JobTargetKind,
+    /// What kind of target the assignment requires.
+    pub target: AssignmentTargetKind,
     /// Personal risks the leader is exposed to on failure or disaster.
     pub risks: Vec<RiskTag>,
-    /// The engine-owned military operation this job performs, if any.
+    /// The engine-owned military operation this assignment performs, if any.
     pub military_op: Option<MilitaryOp>,
-    /// Whether autonomous organisations may start this job.
+    /// Whether autonomous organisations may start this assignment.
     pub ai_available: bool,
-    /// Which pressure an autonomous house starts this job to answer.
+    /// Which pressure an autonomous house starts this assignment to answer.
     pub ai_intent: AiIntent,
-    /// Wealth deducted when the job starts.
+    /// Wealth deducted when the assignment starts.
     pub wealth_cost: i64,
-    /// Manpower committed when the job starts.
+    /// Manpower committed when the assignment starts.
     pub manpower_cost: i64,
-    /// Supplies consumed when the job starts.
+    /// Supplies consumed when the assignment starts.
     pub supplies_cost: i64,
-    /// Influence spent when the job starts.
+    /// Influence spent when the assignment starts.
     pub influence_cost: i64,
     /// Possible outcomes, keyed by kind. Success and failure are mandatory.
-    pub results: BTreeMap<JobResultKind, JobResultDef>,
+    pub results: BTreeMap<OutcomeKind, OutcomeDef>,
 }
 
 /// What kind of celestial body a map body is.
@@ -317,8 +317,8 @@ pub struct ScenarioDef {
 /// Definitions are behaviour-free data; the retained per-file ASTs hold the
 /// named script functions definitions may reference.
 pub struct ContentSet {
-    /// Job definitions by key.
-    pub jobs: BTreeMap<ContentKey, JobDef>,
+    /// Assignment definitions by key.
+    pub assignments: BTreeMap<ContentKey, AssignmentDef>,
     /// Celestial bodies by key.
     pub bodies: BTreeMap<ContentKey, BodyDef>,
     /// Provinces by key.
@@ -355,7 +355,7 @@ impl ContentSet {
     /// Structural equality over the authored data (ASTs excluded; the
     /// content hash covers source identity).
     pub fn data_eq(&self, other: &ContentSet) -> bool {
-        self.jobs == other.jobs
+        self.assignments == other.assignments
             && self.bodies == other.bodies
             && self.provinces == other.provinces
             && self.traits == other.traits
@@ -383,7 +383,7 @@ pub struct NamePoolDef {
 }
 
 /// A character trait: personality facts that drive opinion and, later,
-/// job effectiveness.
+/// assignment effectiveness.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TraitDef {
     /// The trait's stable content key.
@@ -400,7 +400,7 @@ pub struct TraitDef {
     pub opposites: Vec<ContentKey>,
 }
 
-/// The four practical skills characters bring to jobs and rule.
+/// The four practical skills characters bring to assignments and rule.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SkillsDef {
     /// Military leadership.
@@ -594,9 +594,9 @@ pub struct ArmyDef {
     pub supplies: i64,
 }
 
-/// The pressure an autonomous house would start a job to answer.
+/// The pressure an autonomous house would start a assignment to answer.
 ///
-/// Authored on the job rather than hardcoded in the simulation, so the
+/// Authored on the assignment rather than hardcoded in the simulation, so the
 /// AI's repertoire grows with the content instead of with the engine.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
@@ -629,8 +629,8 @@ pub enum EventFamily {
     Political,
     /// Something on the road.
     Travel,
-    /// A complication in a job under way.
-    Job,
+    /// A complication in a assignment under way.
+    Assignment,
 }
 
 /// Declarative conditions an event needs before it may fire.

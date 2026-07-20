@@ -13,7 +13,7 @@ define_id_kind!(pub CharacterIdKind => "character");
 define_id_kind!(pub OrgIdKind => "org");
 define_id_kind!(pub TitleIdKind => "title");
 define_id_kind!(pub OfficeIdKind => "office");
-define_id_kind!(pub JobIdKind => "job");
+define_id_kind!(pub AssignmentIdKind => "assignment");
 define_id_kind!(pub ShipIdKind => "ship");
 define_id_kind!(pub ArmyIdKind => "army");
 
@@ -29,8 +29,8 @@ pub type OrgId = Id<OrgIdKind>;
 pub type TitleId = Id<TitleIdKind>;
 /// Stable ID of an office.
 pub type OfficeId = Id<OfficeIdKind>;
-/// Stable ID of an active job.
-pub type JobId = Id<JobIdKind>;
+/// Stable ID of an active assignment.
+pub type AssignmentId = Id<AssignmentIdKind>;
 /// Stable ID of a ship.
 pub type ShipId = Id<ShipIdKind>;
 /// Stable ID of an army.

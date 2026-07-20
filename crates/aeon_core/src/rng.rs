@@ -68,6 +68,11 @@ impl DeterministicRng {
     /// Derives the stream for one purpose acting on specific subjects.
     ///
     /// `purpose` is a short stable label such as `"job-resolution"`.
+    ///
+    /// It is hashed into the stream, so it is an *identity*, not a name:
+    /// renaming one silently re-rolls every outcome it has ever produced.
+    /// Labels are frozen once written, even when the concept they refer to
+    /// is renamed around them.
     /// `subjects` are the stable numeric identities involved — typically an
     /// entity's raw ID and the current day — folded in order.
     pub fn derive(campaign_seed: u64, purpose: &str, subjects: &[u64]) -> Self {

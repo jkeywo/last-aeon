@@ -2,12 +2,12 @@
 //! built from them.
 
 pub mod actions;
+pub mod assignments_panel;
 pub mod data;
 pub mod dock;
 pub mod forecast;
 pub mod icons;
 pub mod inspector;
-pub mod jobs_panel;
 pub mod ledger_panel;
 pub mod listing;
 pub mod log_panel;

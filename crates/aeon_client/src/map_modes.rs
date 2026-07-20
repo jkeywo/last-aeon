@@ -395,7 +395,7 @@ fn readout_for(
             // A province's weight in the paramountcy race is its holder's
             // share of the body. The simulation's own dominance test says
             // who is leading; with the counts tied nobody is — exactly as
-            // the claim job would refuse a tied claimant.
+            // the claim assignment would refuse a tied claimant.
             let counts = province_counts_on(world, record.body);
             let leader = dominant_claimant(world, record.body);
             let best = counts.values().copied().max().unwrap_or(0);

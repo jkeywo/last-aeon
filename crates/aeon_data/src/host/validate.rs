@@ -1,7 +1,7 @@
 //! Cross-reference validation, run once every file has been loaded.
 //!
 //! Builders validate each definition in isolation; this pass validates the
-//! references *between* them — a job's effect functions exist in its own
+//! references *between* them — a assignment's effect functions exist in its own
 //! file, a moon's parent is a defined planet, a vassal's liege is a great
 //! house, a ship's captain belongs to its owner. Findings accumulate so a
 //! single load reports every broken reference in a content set.
@@ -9,7 +9,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 
 use crate::key::ContentKey;
-use crate::model::{BodyKind, HouseTier, JobDef, JobResultKind, OrgKind, ShipClass, TitleKindDef};
+use crate::model::{
+    AssignmentDef, BodyKind, HouseTier, OrgKind, OutcomeKind, ShipClass, TitleKindDef,
+};
 
 use super::builders::BuilderState;
 
@@ -18,19 +20,19 @@ pub(super) fn validate_cross_references(
     builder: &mut BuilderState,
     fn_names: &BTreeMap<String, BTreeSet<String>>,
 ) {
-    // Jobs: mandatory results, effect functions must exist in their file.
+    // Assignments: mandatory results, effect functions must exist in their file.
     let mut findings: Vec<(String, Option<String>, String)> = Vec::new();
-    for (key, job) in &builder.jobs {
-        for required in [JobResultKind::Success, JobResultKind::Failure] {
-            if !job.results.contains_key(&required) {
+    for (key, assignment) in &builder.assignments {
+        for required in [OutcomeKind::Success, OutcomeKind::Failure] {
+            if !assignment.results.contains_key(&required) {
                 findings.push((
-                    fn_ref_path(job),
+                    fn_ref_path(assignment),
                     Some(key.to_string()),
-                    format!("jobs must define a {required:?} result"),
+                    format!("assignments must define a {required:?} result"),
                 ));
             }
         }
-        for result in job.results.values() {
+        for result in assignment.results.values() {
             let fn_refs = result
                 .effect_fn
                 .iter()
@@ -56,7 +58,7 @@ pub(super) fn validate_cross_references(
         }
     }
 
-    // Events: effect functions are file-local, like a job's.
+    // Events: effect functions are file-local, like a assignment's.
     for (key, event) in &builder.events {
         let fn_refs = event
             .effect_fn
@@ -402,8 +404,9 @@ fn validate_political_references(
     }
 }
 
-fn fn_ref_path(job: &JobDef) -> String {
-    job.results
+fn fn_ref_path(assignment: &AssignmentDef) -> String {
+    assignment
+        .results
         .values()
         .find_map(|r| r.effect_fn.as_ref().map(|f| f.path.clone()))
         .unwrap_or_default()

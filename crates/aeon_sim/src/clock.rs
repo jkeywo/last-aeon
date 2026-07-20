@@ -31,7 +31,7 @@ pub struct YearlyPulse;
 pub enum TickSet {
     /// Apply due player commands.
     Commands,
-    /// Advance the world: travel, jobs, economy, politics.
+    /// Advance the world: travel, assignments, economy, politics.
     Simulation,
     /// Derive consequences: results, popups, log entries.
     Events,

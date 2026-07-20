@@ -23,6 +23,7 @@
 
 pub mod access;
 pub mod agency;
+pub mod assignments;
 pub mod clock;
 pub mod command;
 pub mod config;
@@ -33,7 +34,6 @@ pub mod forces;
 pub mod forecast;
 pub mod host;
 pub mod ids;
-pub mod jobs;
 pub mod map;
 pub mod obligations;
 pub mod order;
@@ -47,18 +47,20 @@ pub mod warfare;
 
 use bevy::app::{App, Plugin};
 
+pub use assignments::{
+    ActiveAssignment, AssignmentRejection, AssignmentTarget, AssignmentsIndex, LeaderAvailability,
+    LogChannel, LogEntry, LogSubject, MessageLog, PendingPopups, Post, leader_availability,
+};
 pub use clock::{CampaignClock, DailyTick, MonthlyPulse, TickSet, YearlyPulse, advance_one_day};
 pub use command::{CommandEnvelope, CommandRejection, PlayerCommand};
 pub use config::CampaignConfig;
 pub use economy::OrgResources;
 pub use events::{EventOccurrence, EventState, EventSubject};
 pub use forces::{ArmyRecord, ForcesIndex, ShipRecord};
-pub use forecast::{ForecastResult, ForecastRisk, JobForecast, Permille};
+pub use forecast::{AssignmentForecast, ForecastResult, ForecastRisk, Permille};
 pub use host::SimHost;
-pub use ids::{ArmyId, BodyId, CharacterId, JobId, OfficeId, OrgId, ProvinceId, ShipId, TitleId};
-pub use jobs::{
-    ActiveJob, Assignment, JobRejection, JobTarget, JobsIndex, LeaderAvailability, LogChannel,
-    LogEntry, LogSubject, MessageLog, PendingPopups, leader_availability,
+pub use ids::{
+    ArmyId, AssignmentId, BodyId, CharacterId, OfficeId, OrgId, ProvinceId, ShipId, TitleId,
 };
 pub use map::{BodyRecord, DisplayName, GeoPosition, MapIndex, ProvinceRecord};
 pub use obligations::{ObligationKind, ObligationRecord, ObligationStatus, Obligations};
@@ -89,7 +91,7 @@ impl Plugin for AeonSimPlugin {
         clock::install(app);
         command::install(app);
         politics::install(app);
-        jobs::install(app);
+        assignments::install(app);
         economy::install(app);
         presence::install(app);
         forces::install(app);

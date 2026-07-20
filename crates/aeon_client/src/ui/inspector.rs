@@ -14,7 +14,7 @@ use aeon_sim::presence::Location;
 use aeon_sim::{PlayerCommand, TitleHolder};
 use bevy_egui::egui;
 
-use crate::ui::actions::{JobScope, draw_context_jobs};
+use crate::ui::actions::{AssignmentScope, draw_context_assignments};
 use crate::ui::data::CharacterParts;
 use crate::ui::panel::{PanelCtx, PanelOut};
 use crate::ui::theme::TargetState;
@@ -224,9 +224,9 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                 }
 
                 if let Some(org) = ctx.player_org {
-                    draw_context_jobs(
+                    draw_context_assignments(
                         ui,
-                        JobScope::Province(id),
+                        AssignmentScope::Province(id),
                         ctx.content,
                         ctx.politics,
                         org,
@@ -550,11 +550,11 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                     && let Some(org) = ctx.player_org
                 {
                     let scope = if record.organisation == Some(org) {
-                        JobScope::OwnCharacter(id)
+                        AssignmentScope::OwnCharacter(id)
                     } else {
-                        JobScope::OutsideCharacter(id)
+                        AssignmentScope::OutsideCharacter(id)
                     };
-                    draw_context_jobs(
+                    draw_context_assignments(
                         ui,
                         scope,
                         ctx.content,

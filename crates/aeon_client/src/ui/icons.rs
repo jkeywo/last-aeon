@@ -183,7 +183,7 @@ pub fn draw_panel_icon(
             line(at(0.1, 0.78), at(0.82, 0.78));
         }
         // A clock: work with time left to run.
-        PanelKind::Jobs => {
+        PanelKind::Assignments => {
             painter.circle_stroke(r.center(), r.width() * 0.4, stroke);
             line(r.center(), at(0.5, 0.2));
             line(r.center(), at(0.75, 0.6));

@@ -4,7 +4,7 @@
 //! token set rather than being scattered through the panels as literals.
 //! That makes the appearance something a designer can specify — a palette,
 //! a type scale, a spacing grid, how a button behaves under the pointer —
-//! and the code's job merely to apply it.
+//! and the code's assignment merely to apply it.
 //!
 //! The tokens are deliberately shaped like egui rather than like CSS.
 //! egui's style is keyed by widget *state* (inactive, hovered, active,
@@ -371,7 +371,7 @@ pub struct Semantics {
     /// Not part of this interaction.
     pub not_interactable: Rgba,
 
-    /// A job's four graded outcomes.
+    /// A assignment's four graded outcomes.
     pub critical_success: Rgba,
     /// A plain success.
     pub success: Rgba,
@@ -423,9 +423,9 @@ impl Semantics {
         .into()
     }
 
-    /// The colour for one of a job's graded outcomes.
-    pub fn outcome(&self, kind: aeon_data::model::JobResultKind) -> egui::Color32 {
-        use aeon_data::model::JobResultKind as K;
+    /// The colour for one of a assignment's graded outcomes.
+    pub fn outcome(&self, kind: aeon_data::model::OutcomeKind) -> egui::Color32 {
+        use aeon_data::model::OutcomeKind as K;
         match kind {
             K::CriticalSuccess => self.critical_success,
             K::Success => self.success,
@@ -1123,11 +1123,11 @@ mod tests {
     }
 
     #[test]
-    fn every_job_outcome_has_its_own_colour() {
-        use aeon_data::model::JobResultKind;
+    fn every_assignment_outcome_has_its_own_colour() {
+        use aeon_data::model::OutcomeKind;
 
         let semantics = UiTheme::embedded().semantics;
-        let colours: Vec<_> = JobResultKind::ALL
+        let colours: Vec<_> = OutcomeKind::ALL
             .iter()
             .map(|kind| semantics.outcome(*kind))
             .collect();

@@ -1,11 +1,11 @@
-// Core jobs available to every house.
+// Core assignments available to every house.
 //
 // Authoring notes: definitions are data via define_* calls; behaviour is
 // named functions in this same file, referenced by effect_fn. Functions
 // receive a read-only context map and return an array of effect maps.
-// Text templates may use {leader}, {target}, and {job}.
+// Text templates may use {leader}, {target}, and {assignment}.
 
-define_job(#{
+define_assignment(#{
     id: "manage-estates",
     ai_intent: "resources",
     category: "routine",
@@ -21,7 +21,7 @@ fn estates_kept(ctx) {
     [#{ kind: "order", scope: "all-held", amount: 25 }]
 }
 
-define_job(#{
+define_assignment(#{
     id: "hold-court",
     ai_intent: "order",
     category: "routine",
@@ -37,7 +37,7 @@ fn court_settled(ctx) {
     [#{ kind: "order", scope: "target-province", amount: 60 }]
 }
 
-define_job(#{
+define_assignment(#{
     id: "court-a-rival-house",
     ai_intent: "standing",
     category: "consequential",
@@ -79,7 +79,7 @@ fn courting_disaster(ctx) {
      #{ kind: "opinion", from: "target-head", toward: "owner-head", amount: -15, days: 1800, reason: "insulted-house" }]
 }
 
-define_job(#{
+define_assignment(#{
     id: "curry-favour-with-the-sanctora",
     ai_intent: "standing",
     category: "consequential",
@@ -117,7 +117,7 @@ fn sanctora_disaster(ctx) {
     [#{ kind: "opinion", from: "sanctora", toward: "leader", amount: -15, days: 1800, reason: "gaffe" }]
 }
 
-define_job(#{
+define_assignment(#{
     id: "spread-whispers",
     category: "consequential",
     duration_days: 40,
@@ -155,7 +155,7 @@ fn whispers_disaster(ctx) {
     [#{ kind: "opinion", from: "target", toward: "leader", amount: -30, days: 1800, reason: "exposed-whispers" }]
 }
 
-define_job(#{
+define_assignment(#{
     id: "tour-the-holdings",
     ai_intent: "order",
     category: "consequential",
@@ -186,7 +186,7 @@ fn tour_soured(ctx) {
     [#{ kind: "order", scope: "all-held", amount: -40 }]
 }
 
-define_job(#{
+define_assignment(#{
     id: "petition-the-consul",
     category: "consequential",
     duration_days: 30,
@@ -215,7 +215,7 @@ fn petition_disaster(ctx) {
     [#{ kind: "opinion", from: "consul", toward: "owner-head", amount: -10, days: 1080, reason: "petition" }]
 }
 
-define_job(#{
+define_assignment(#{
     id: "muster-the-levies",
     ai_intent: "muster",
     category: "consequential",
@@ -249,7 +249,7 @@ fn muster_success(ctx) {
 
 // --- The planetary succession crisis ---
 
-define_job(#{
+define_assignment(#{
     id: "press-claim-to-the-paramountcy",
     ai_intent: "claim",
     category: "consequential",
@@ -276,7 +276,7 @@ fn press_claim(ctx) {
     [#{ kind: "claim-paramountcy" }]
 }
 
-define_job(#{
+define_assignment(#{
     id: "collect-imperial-tithes",
     category: "consequential",
     duration_days: 60,
@@ -296,7 +296,7 @@ fn levy_tithes(ctx) {
     [#{ kind: "collect-tithes" }]
 }
 
-define_job(#{
+define_assignment(#{
     id: "seek-consular-endorsement",
     ai_intent: "standing",
     category: "consequential",
@@ -336,7 +336,7 @@ fn endorsement_disaster(ctx) {
     [#{ kind: "opinion", from: "consul", toward: "owner-head", amount: -15, days: 1440, reason: "rebuffed" }]
 }
 
-define_job(#{
+define_assignment(#{
     id: "call-in-a-favour",
     ai_intent: "obligation",
     category: "consequential",

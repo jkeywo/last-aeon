@@ -1,8 +1,8 @@
 //! Client-side forecast plumbing.
 //!
 //! The client never computes odds, costs, or durations itself: an
-//! exclusive system asks the simulation for a [`JobForecast`] for whatever
-//! job the inspector currently has expanded, plus the same forecast for
+//! exclusive system asks the simulation for a [`AssignmentForecast`] for whatever
+//! assignment the inspector currently has expanded, plus the same forecast for
 //! every leader who could take it on. Panels only render what the
 //! simulation reported, so what the player is shown cannot drift from what
 //! the simulation will do.
@@ -11,29 +11,29 @@ use std::collections::BTreeMap;
 
 use aeon_core::calendar::GameDate;
 use aeon_data::ContentKey;
-use aeon_sim::forecast::{JobForecast, Permille, forecast};
+use aeon_sim::forecast::{AssignmentForecast, Permille, forecast};
 use aeon_sim::{
-    CampaignClock, CharacterId, CharacterRecord, JobTarget, LeaderAvailability, PlayerHouse,
+    AssignmentTarget, CampaignClock, CharacterId, CharacterRecord, LeaderAvailability, PlayerHouse,
     PoliticsIndex, leader_availability,
 };
 use bevy::prelude::*;
 
-use crate::jobs_ui::JobForm;
+use crate::assignment_ui::AssignmentForm;
 
-/// One candidate leader for the expanded job.
+/// One candidate leader for the expanded assignment.
 #[derive(Clone, Debug)]
 pub struct LeaderOption {
     /// The candidate.
     pub id: CharacterId,
     /// Their name.
     pub name: String,
-    /// What the simulation says this job would do in their hands.
+    /// What the simulation says this assignment would do in their hands.
     ///
     /// The whole forecast is kept, not a summary of it, so the breakdown
     /// shown when comparing candidates is the very object that would
-    /// resolve the job — there is no second, simpler calculation that
+    /// resolve the assignment — there is no second, simpler calculation that
     /// could drift away from the real one.
-    pub forecast: JobForecast,
+    pub forecast: AssignmentForecast,
     /// What they are committed to, in the simulation's own words. Every
     /// candidate carries this, available or not, so the interface can say
     /// where someone is rather than silently omitting them.
@@ -43,7 +43,7 @@ pub struct LeaderOption {
 }
 
 impl LeaderOption {
-    /// Their value in the job's governing skill.
+    /// Their value in the assignment's governing skill.
     pub fn skill_value(&self) -> i32 {
         self.forecast.skill_value
     }
@@ -53,7 +53,7 @@ impl LeaderOption {
         self.forecast.success_chance()
     }
 
-    /// Why they cannot take this job on now, if they cannot.
+    /// Why they cannot take this assignment on now, if they cannot.
     pub fn blocked(&self) -> Option<String> {
         self.forecast.blocked.as_ref().map(|r| r.to_string())
     }
@@ -63,17 +63,22 @@ impl LeaderOption {
 /// about it. Recomputed only when the choice or the campaign day changes.
 #[derive(Resource, Default)]
 pub struct ForecastCache {
-    key: Option<(ContentKey, Option<CharacterId>, Option<JobTarget>, GameDate)>,
+    key: Option<(
+        ContentKey,
+        Option<CharacterId>,
+        Option<AssignmentTarget>,
+        GameDate,
+    )>,
     /// The forecast for the chosen leader, once one is chosen.
-    pub forecast: Option<JobForecast>,
-    /// Every house member who could lead this job, best chance first.
+    pub forecast: Option<AssignmentForecast>,
+    /// Every house member who could lead this assignment, best chance first.
     pub leaders: Vec<LeaderOption>,
 }
 
 /// What every member of the player's house is committed to today.
 ///
 /// Kept as its own resource because the question — "where is this person,
-/// and can they act" — is asked in several places that have no job
+/// and can they act" — is asked in several places that have no assignment
 /// expanded: the inspector's action list, and the character picker. One
 /// exclusive system answers it once a day from the simulation, so no part
 /// of the interface has to work it out for itself.
@@ -131,10 +136,13 @@ pub fn refresh_availability(world: &mut World) {
     view.entries = entries;
 }
 
-/// Recomputes the cached forecast when the expanded job, its chosen leader
+/// Recomputes the cached forecast when the expanded assignment, its chosen leader
 /// or target, or the campaign day changes.
 pub fn refresh_forecast(world: &mut World) {
-    let Some(job) = world.get_resource::<JobForm>().and_then(|f| f.job.clone()) else {
+    let Some(assignment) = world
+        .get_resource::<AssignmentForm>()
+        .and_then(|f| f.assignment.clone())
+    else {
         // Nothing expanded; drop any stale forecast.
         if let Some(mut cache) = world.get_resource_mut::<ForecastCache>()
             && cache.key.is_some()
@@ -144,7 +152,7 @@ pub fn refresh_forecast(world: &mut World) {
         return;
     };
     let (leader, target) = {
-        let form = world.resource::<JobForm>();
+        let form = world.resource::<AssignmentForm>();
         (form.leader, form.target)
     };
     let Some(date) = world.get_resource::<CampaignClock>().map(|c| c.date) else {
@@ -154,7 +162,7 @@ pub fn refresh_forecast(world: &mut World) {
         return;
     };
 
-    let key = (job.clone(), leader, target, date);
+    let key = (assignment.clone(), leader, target, date);
     if world
         .get_resource::<ForecastCache>()
         .is_some_and(|cache| cache.key.as_ref() == Some(&key))
@@ -187,14 +195,14 @@ pub fn refresh_forecast(world: &mut World) {
     // act: the interface shows them with the reason rather than leaving
     // the player wondering where half their household went.
     let mut leaders: Vec<LeaderOption> = Vec::new();
-    if let Some(job_target) = target {
+    if let Some(assignment_target) = target {
         for candidate in candidates {
-            let Some(view) = forecast(world, org, &job, candidate, job_target) else {
+            let Some(view) = forecast(world, org, &assignment, candidate, assignment_target) else {
                 continue;
             };
             let availability = leader_availability(world, org, candidate, date);
             let assignment = match &availability {
-                LeaderAvailability::Assigned(assignment) => {
+                LeaderAvailability::Posted(assignment) => {
                     Some(assignment.describe(world.resource::<aeon_sim::TextDb>()))
                 }
                 _ => None,
@@ -220,7 +228,7 @@ pub fn refresh_forecast(world: &mut World) {
     }
 
     let current = match (leader, target) {
-        (Some(leader), Some(target)) => forecast(world, org, &job, leader, target),
+        (Some(leader), Some(target)) => forecast(world, org, &assignment, leader, target),
         _ => None,
     };
 

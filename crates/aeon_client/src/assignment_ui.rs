@@ -1,9 +1,9 @@
-//! Job UI plumbing: the in-progress action form, the log filter, result
+//! Assignment UI plumbing: the in-progress action form, the log filter, result
 //! popups, and the queue that carries UI intents into the authoritative
 //! command pipeline.
 //!
-//! Jobs are *started* from context buttons in the inspector, and the log
-//! and jobs listings are dockable panels of their own. What is left here
+//! Assignments are *started* from context buttons in the inspector, and the log
+//! and assignments listings are dockable panels of their own. What is left here
 //! is the shared state those surfaces read and write.
 
 use std::collections::BTreeSet;
@@ -11,8 +11,8 @@ use std::collections::BTreeSet;
 use aeon_data::ContentKey;
 use aeon_sim::command::submit_command;
 use aeon_sim::{
-    ArmyId, CharacterId, JobTarget, LogChannel, LogEntry, OrgId, PendingPopups, PlayerCommand,
-    ShipId,
+    ArmyId, AssignmentTarget, CharacterId, LogChannel, LogEntry, OrgId, PendingPopups,
+    PlayerCommand, ShipId,
 };
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
@@ -24,16 +24,16 @@ use crate::sim_driver::TimeControl;
 #[derive(Resource, Default)]
 pub struct UiCommandQueue(pub Vec<PlayerCommand>);
 
-/// The inspector's in-progress job choice, expanded by a context button
+/// The inspector's in-progress assignment choice, expanded by a context button
 /// and filled in by inline pickers before it is confirmed.
 #[derive(Resource, Default)]
-pub struct JobForm {
-    /// The job whose inline picker is currently expanded, if any.
-    pub job: Option<ContentKey>,
+pub struct AssignmentForm {
+    /// The assignment whose inline picker is currently expanded, if any.
+    pub assignment: Option<ContentKey>,
     /// Chosen leader.
     pub leader: Option<CharacterId>,
     /// Chosen target.
-    pub target: Option<JobTarget>,
+    pub target: Option<AssignmentTarget>,
     /// Chosen army, for military targets.
     pub army: Option<ArmyId>,
     /// Chosen ship, for blockade targets.
@@ -47,10 +47,10 @@ pub struct JobForm {
     pub notice: Option<String>,
 }
 
-impl JobForm {
+impl AssignmentForm {
     /// Clears the in-progress choice after a command is queued.
     pub fn reset(&mut self) {
-        self.job = None;
+        self.assignment = None;
         self.leader = None;
         self.target = None;
         self.army = None;
@@ -100,7 +100,7 @@ pub fn flush_ui_commands(world: &mut World) {
     let queued: Vec<PlayerCommand> = std::mem::take(&mut world.resource_mut::<UiCommandQueue>().0);
     for command in queued {
         if let Err(rejection) = submit_command(world, command) {
-            world.resource_mut::<JobForm>().notice = Some(rejection.to_string());
+            world.resource_mut::<AssignmentForm>().notice = Some(rejection.to_string());
         }
     }
 }
@@ -192,10 +192,10 @@ mod tests {
             ..Default::default()
         };
         let player = OrgId::from_raw(1);
-        assert!(filter.admits(&entry(LogChannel::Jobs, "ours", Some(1)), player));
-        assert!(!filter.admits(&entry(LogChannel::Jobs, "theirs", Some(2)), player));
+        assert!(filter.admits(&entry(LogChannel::Assignments, "ours", Some(1)), player));
+        assert!(!filter.admits(&entry(LogChannel::Assignments, "theirs", Some(2)), player));
         assert!(
-            !filter.admits(&entry(LogChannel::Jobs, "ours", Some(1)), None),
+            !filter.admits(&entry(LogChannel::Assignments, "ours", Some(1)), None),
             "with no player house, mine-only admits nothing"
         );
     }
@@ -207,11 +207,11 @@ mod tests {
             ..Default::default()
         };
         assert!(filter.admits(
-            &entry(LogChannel::Jobs, "House harrow marches", Some(1)),
+            &entry(LogChannel::Assignments, "House harrow marches", Some(1)),
             None
         ));
         assert!(!filter.admits(
-            &entry(LogChannel::Jobs, "House Veyrin marches", Some(1)),
+            &entry(LogChannel::Assignments, "House Veyrin marches", Some(1)),
             None
         ));
     }

@@ -250,9 +250,9 @@ fn validate_content(args: ValidateContentArgs) -> Result<ExitCode, String> {
     }
 
     println!(
-        "files: {}  jobs: {}  bodies: {}  provinces: {}  scenario: {}",
+        "files: {}  assignments: {}  bodies: {}  provinces: {}  scenario: {}",
         sources.len(),
-        set.as_ref().map_or(0, |s| s.jobs.len()),
+        set.as_ref().map_or(0, |s| s.assignments.len()),
         set.as_ref().map_or(0, |s| s.bodies.len()),
         set.as_ref().map_or(0, |s| s.provinces.len()),
         set.as_ref()

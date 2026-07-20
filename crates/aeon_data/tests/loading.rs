@@ -1,7 +1,7 @@
 //! Content-pipeline guarantees: loading, validation, sandboxing,
 //! determinism, and the effect boundary.
 
-use aeon_data::model::{BodyKind, JobCategory, JobResultKind};
+use aeon_data::model::{AssignmentCategory, BodyKind, OutcomeKind};
 use aeon_data::{ContentSource, ScriptEffect, ScriptHost, Severity, load_content};
 
 fn source(path: &str, text: &str) -> ContentSource {
@@ -12,7 +12,7 @@ fn source(path: &str, text: &str) -> ContentSource {
 }
 
 const GOOD_JOBS: &str = r#"
-define_job(#{
+define_assignment(#{
     id: "manage-estates",
     category: "routine",
     duration_days: 30,
@@ -24,7 +24,7 @@ define_job(#{
     },
 });
 
-define_job(#{
+define_assignment(#{
     id: "court-a-rival",
     category: "consequential",
     duration_days: 45,
@@ -46,7 +46,7 @@ define_job(#{
 });
 
 fn courting_disaster(ctx) {
-    [#{ kind: "log", message_key: "job.court-a-rival.disaster.log" }]
+    [#{ kind: "log", message_key: "assignment.court-a-rival.disaster.log" }]
 }
 "#;
 
@@ -68,7 +68,7 @@ define_province(#{
 fn loads_a_valid_content_set() {
     let (set, report) = load_content(
         &[
-            source("core/jobs.rhai", GOOD_JOBS),
+            source("core/assignments.rhai", GOOD_JOBS),
             source("system/bodies.rhai", GOOD_SYSTEM),
         ],
         &aeon_data::StringTable::blank(),
@@ -80,16 +80,16 @@ fn loads_a_valid_content_set() {
     );
     let set = set.expect("valid content loads");
 
-    assert_eq!(set.jobs.len(), 2);
-    let estates = set.jobs.values().next().unwrap();
+    assert_eq!(set.assignments.len(), 2);
+    let estates = set.assignments.values().next().unwrap();
     assert_eq!(estates.key.as_str(), "court-a-rival");
     assert_eq!(set.bodies.len(), 2);
     assert_eq!(set.provinces.len(), 1);
 
-    let rival = &set.jobs[&aeon_data::ContentKey::new("court-a-rival").unwrap()];
-    assert_eq!(rival.category, JobCategory::Consequential);
+    let rival = &set.assignments[&aeon_data::ContentKey::new("court-a-rival").unwrap()];
+    assert_eq!(rival.category, AssignmentCategory::Consequential);
     assert_eq!(rival.results.len(), 4);
-    assert!(rival.results[&JobResultKind::Disaster].effect_fn.is_some());
+    assert!(rival.results[&OutcomeKind::Disaster].effect_fn.is_some());
 
     let moon = &set.bodies[&aeon_data::ContentKey::new("the-moon").unwrap()];
     assert_eq!(moon.kind, BodyKind::Moon);
@@ -99,12 +99,12 @@ fn loads_a_valid_content_set() {
 #[test]
 fn loading_is_deterministic_across_runs_and_input_order() {
     let forward = [
-        source("core/jobs.rhai", GOOD_JOBS),
+        source("core/assignments.rhai", GOOD_JOBS),
         source("system/bodies.rhai", GOOD_SYSTEM),
     ];
     let reversed = [
         source("system/bodies.rhai", GOOD_SYSTEM),
-        source("core/jobs.rhai", GOOD_JOBS),
+        source("core/assignments.rhai", GOOD_JOBS),
     ];
     let (a, _) = load_content(&forward, &aeon_data::StringTable::blank());
     let (b, _) = load_content(&forward, &aeon_data::StringTable::blank());
@@ -120,7 +120,7 @@ fn loading_is_deterministic_across_runs_and_input_order() {
 fn effect_functions_run_against_read_context() {
     let (set, _) = load_content(
         &[
-            source("core/jobs.rhai", GOOD_JOBS),
+            source("core/assignments.rhai", GOOD_JOBS),
             source("system/bodies.rhai", GOOD_SYSTEM),
         ],
         &aeon_data::StringTable::blank(),
@@ -128,8 +128,8 @@ fn effect_functions_run_against_read_context() {
     let set = set.unwrap();
     let host = ScriptHost::new();
 
-    let disaster = set.jobs[&aeon_data::ContentKey::new("court-a-rival").unwrap()].results
-        [&JobResultKind::Disaster]
+    let disaster = set.assignments[&aeon_data::ContentKey::new("court-a-rival").unwrap()].results
+        [&OutcomeKind::Disaster]
         .effect_fn
         .clone()
         .unwrap();
@@ -145,7 +145,7 @@ fn effect_functions_run_against_read_context() {
     assert_eq!(
         effects,
         vec![ScriptEffect::Log {
-            message_key: "job.court-a-rival.disaster.log".to_owned()
+            message_key: "assignment.court-a-rival.disaster.log".to_owned()
         }]
     );
 }
@@ -153,7 +153,7 @@ fn effect_functions_run_against_read_context() {
 #[test]
 fn missing_mandatory_results_are_errors() {
     let bad = r#"
-define_job(#{
+define_assignment(#{
     id: "half-defined", 
     category: "routine", duration_days: 10,
     skill: "stewardship", difficulty: 5,
@@ -179,7 +179,7 @@ define_province(#{
     id: "lost", body: "nowhere",
     latitude_mdeg: 0, longitude_mdeg: 0,
 });
-define_job(#{
+define_assignment(#{
     id: "ghost-effect", 
     category: "routine", duration_days: 1,
     skill: "intrigue", difficulty: 5,
@@ -411,8 +411,8 @@ fn a_ships_captain_must_belong_to_its_owner() {
 #[test]
 fn mistyped_vocabulary_fields_spell_out_the_options() {
     let script = r#"
-define_job(#{
-    id: "odd-job", category: "sometimes",
+define_assignment(#{
+    id: "odd-assignment", category: "sometimes",
     duration_days: 10, skill: "stewardship", difficulty: 5,
     results: #{ success: #{ weight: 800 }, failure: #{ weight: 200 } },
 });

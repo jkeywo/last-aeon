@@ -16,11 +16,11 @@ use aeon_sim::state::ContentDb;
 use aeon_sim::{CharacterId, MessageLog, OrgId, PoliticsIndex, TextDb};
 use bevy_egui::egui;
 
-use crate::jobs_ui::{JobForm, LogFilter, UiCommandQueue};
+use crate::assignment_ui::{AssignmentForm, LogFilter, UiCommandQueue};
+use crate::ui::assignments_panel::draw_assignments_panel;
 use crate::ui::data::PanelData;
 use crate::ui::dock::{DockSide, PanelKind};
 use crate::ui::inspector::draw_inspector;
-use crate::ui::jobs_panel::draw_jobs_panel;
 use crate::ui::ledger_panel::draw_ledger_panel;
 use crate::ui::listing::draw_listing;
 use crate::ui::log_panel::draw_log_panel;
@@ -61,7 +61,7 @@ pub struct PanelOut<'a> {
     /// What is selected and which map is showing.
     pub view: &'a mut ViewState,
     /// The action being composed.
-    pub form: &'a mut JobForm,
+    pub form: &'a mut AssignmentForm,
     /// Commands bound for the simulation.
     pub queue: &'a mut UiCommandQueue,
     /// Whether the character picker is up.
@@ -138,13 +138,13 @@ pub fn draw_panel_body(ui: &mut egui::Ui, kind: PanelKind, ctx: &PanelCtx, out: 
         }
         PanelKind::Listing => draw_listing(ui, ctx, out),
         PanelKind::Log => draw_log_panel(ui, ctx, out),
-        PanelKind::Jobs => draw_jobs_panel(
+        PanelKind::Assignments => draw_assignments_panel(
             ui,
             ctx.lookup,
             ctx.content_db,
             ctx.player_org,
             ctx.date,
-            &ctx.data.active_jobs,
+            &ctx.data.active_assignments,
             out.queue,
         ),
         #[cfg(not(target_arch = "wasm32"))]

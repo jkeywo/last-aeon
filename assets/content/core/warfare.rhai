@@ -1,8 +1,8 @@
-// Military operations: army- and ship-led jobs whose operational
+// Military operations: army- and ship-led assignments whose operational
 // semantics (movement, engagements, conquest, loot, blockade) are
 // engine-owned. Content declares pacing, costs, risks, and flavour.
 
-define_job(#{
+define_assignment(#{
     id: "march-the-army",
     category: "consequential",
     duration_days: 5,
@@ -19,7 +19,7 @@ define_job(#{
     },
 });
 
-define_job(#{
+define_assignment(#{
     id: "resupply-the-army",
     category: "consequential",
     duration_days: 15,
@@ -34,7 +34,7 @@ define_job(#{
     },
 });
 
-define_job(#{
+define_assignment(#{
     id: "patrol-the-province",
     category: "routine",
     duration_days: 30,
@@ -52,7 +52,7 @@ fn patrol_kept(ctx) {
     [#{ kind: "order", scope: "target-province", amount: 80 }]
 }
 
-define_job(#{
+define_assignment(#{
     id: "lay-siege",
     category: "consequential",
     duration_days: 60,
@@ -80,7 +80,7 @@ define_job(#{
     },
 });
 
-define_job(#{
+define_assignment(#{
     id: "raid-the-province",
     category: "consequential",
     duration_days: 25,
@@ -107,7 +107,7 @@ define_job(#{
     },
 });
 
-define_job(#{
+define_assignment(#{
     id: "blockade-the-port",
     category: "consequential",
     duration_days: 20,
@@ -126,7 +126,7 @@ define_job(#{
 });
 
 // Standing orders start this when a defended holding is threatened.
-define_job(#{
+define_assignment(#{
     id: "answer-the-alarm",
     category: "consequential",
     duration_days: 3,
@@ -141,7 +141,7 @@ define_job(#{
     },
 });
 
-define_job(#{
+define_assignment(#{
     id: "negotiate-standdown",
     category: "consequential",
     duration_days: 20,

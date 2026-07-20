@@ -1,7 +1,7 @@
 //! Authored-content pipeline for The Last Aeons.
 //!
 //! Owns the sandboxed Rhai script host and the definitions of authored
-//! content: jobs, celestial bodies, provinces, and scenarios, growing with
+//! content: assignments, celestial bodies, provinces, and scenarios, growing with
 //! each milestone. Content files declare data through `define_*` builder
 //! functions and provide behaviour as named file-local functions; the
 //! simulation calls those functions with read-only context and applies the

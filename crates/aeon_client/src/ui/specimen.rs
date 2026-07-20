@@ -141,7 +141,7 @@ fn target_colours(theme: &UiTheme) -> Vec<(String, egui::Color32)> {
 }
 
 fn outcome_colours(theme: &UiTheme) -> Vec<(String, egui::Color32)> {
-    aeon_data::model::JobResultKind::ALL
+    aeon_data::model::OutcomeKind::ALL
         .iter()
         .map(|kind| {
             (

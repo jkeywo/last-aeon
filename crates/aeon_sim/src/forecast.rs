@@ -1,9 +1,9 @@
-//! Pure, simulation-owned job forecasting.
+//! Pure, simulation-owned assignment forecasting.
 //!
-//! Everything the player is told about a job before committing to it is
+//! Everything the player is told about a assignment before committing to it is
 //! derived here, by the same code that later resolves it: [`result_weights`]
 //! is the single source of truth for outcome weighting, and
-//! [`job_duration_days`] for how long a job takes. A forecast therefore
+//! [`assignment_duration_days`] for how long a assignment takes. A forecast therefore
 //! cannot drift from the simulation that fulfils it.
 //!
 //! Forecasts report the distribution *at order time*. Where an outcome is
@@ -12,21 +12,21 @@
 //! the model does not actually possess.
 
 use aeon_data::ContentKey;
-use aeon_data::model::{GoverningSkill, JobDef, JobResultKind, MilitaryOp, RiskTag};
+use aeon_data::model::{AssignmentDef, GoverningSkill, MilitaryOp, OutcomeKind, RiskTag};
 use bevy::prelude::*;
 
-use crate::jobs::{JobRejection, JobTarget};
+use crate::assignments::{AssignmentRejection, AssignmentTarget};
 use crate::politics::{CharacterSkills, PoliticsIndex};
 use crate::{CharacterId, OrgId};
 
 /// A probability in parts per thousand.
 pub type Permille = u32;
 
-/// One possible result of a job with its exact current chance.
+/// One possible result of a assignment with its exact current chance.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ForecastResult {
     /// Which graded outcome this is.
-    pub kind: JobResultKind,
+    pub kind: OutcomeKind,
     /// Chance this outcome is rolled, in permille.
     pub chance: Permille,
     /// The authored description of what this outcome does, if any.
@@ -46,11 +46,11 @@ pub struct ForecastRisk {
     pub on_disaster: Permille,
 }
 
-/// Everything known about a job before it is ordered.
+/// Everything known about a assignment before it is ordered.
 #[derive(Clone, Debug)]
-pub struct JobForecast {
-    /// The job definition forecast.
-    pub job: ContentKey,
+pub struct AssignmentForecast {
+    /// The assignment definition forecast.
+    pub assignment: ContentKey,
     /// Display title.
     pub title: String,
     /// Authored one-line summary.
@@ -69,11 +69,11 @@ pub struct JobForecast {
     pub supplies_cost: i64,
     /// Immediate cost in influence.
     pub influence_cost: i64,
-    /// The skill that governs this job.
+    /// The skill that governs this assignment.
     pub skill: GoverningSkill,
     /// The leader's value in that skill.
     pub skill_value: i32,
-    /// The job's authored difficulty.
+    /// The assignment's authored difficulty.
     pub difficulty: i32,
     /// Skill minus difficulty; drives the weight shift.
     pub effectiveness: i32,
@@ -83,26 +83,21 @@ pub struct JobForecast {
     pub risks: Vec<ForecastRisk>,
     /// A conditional field contest settled *after* a successful roll, if any.
     pub military_op: Option<MilitaryOp>,
-    /// Why this job cannot be started now, if it cannot.
-    pub blocked: Option<JobRejection>,
+    /// Why this assignment cannot be started now, if it cannot.
+    pub blocked: Option<AssignmentRejection>,
 }
 
-impl JobForecast {
+impl AssignmentForecast {
     /// The combined chance of a success or better.
     pub fn success_chance(&self) -> Permille {
         self.results
             .iter()
-            .filter(|r| {
-                matches!(
-                    r.kind,
-                    JobResultKind::Success | JobResultKind::CriticalSuccess
-                )
-            })
+            .filter(|r| matches!(r.kind, OutcomeKind::Success | OutcomeKind::CriticalSuccess))
             .map(|r| r.chance)
             .sum()
     }
 
-    /// Whether the job can be ordered as forecast.
+    /// Whether the assignment can be ordered as forecast.
     pub fn startable(&self) -> bool {
         self.blocked.is_none()
     }
@@ -112,22 +107,22 @@ impl JobForecast {
 ///
 /// Positive outcomes scale up with effectiveness, negative outcomes scale
 /// down, both floored at a fifth of the authored weight.
-pub fn shifted_weight(base: u32, kind: JobResultKind, effectiveness: i32) -> u64 {
+pub fn shifted_weight(base: u32, kind: OutcomeKind, effectiveness: i32) -> u64 {
     let swing = 40i64 * i64::from(effectiveness);
     let factor = match kind {
-        JobResultKind::CriticalSuccess | JobResultKind::Success => 1000 + swing,
-        JobResultKind::Failure | JobResultKind::Disaster => 1000 - swing,
+        OutcomeKind::CriticalSuccess | OutcomeKind::Success => 1000 + swing,
+        OutcomeKind::Failure | OutcomeKind::Disaster => 1000 - swing,
     }
     .max(200);
     (u64::from(base) * factor as u64) / 1000
 }
 
-/// The weighted outcome table for a job at a given effectiveness.
+/// The weighted outcome table for a assignment at a given effectiveness.
 ///
-/// This is the single source of truth: job resolution rolls against exactly
+/// This is the single source of truth: assignment resolution rolls against exactly
 /// this table, so a forecast can never disagree with the outcome.
-pub fn result_weights(def: &JobDef, effectiveness: i32) -> Vec<(JobResultKind, u64)> {
-    JobResultKind::ALL
+pub fn result_weights(def: &AssignmentDef, effectiveness: i32) -> Vec<(OutcomeKind, u64)> {
+    OutcomeKind::ALL
         .iter()
         .filter_map(|kind| {
             def.results
@@ -139,22 +134,22 @@ pub fn result_weights(def: &JobDef, effectiveness: i32) -> Vec<(JobResultKind, u
 
 /// Draws one outcome from the same weighted table the forecast reports.
 ///
-/// This is the only sampler job resolution has: it consumes exactly one
+/// This is the only sampler assignment resolution has: it consumes exactly one
 /// roll against [`result_weights`], so the odds shown to the player are
 /// the odds the roll obeys — by construction, not by two call sites
 /// agreeing to stay in step.
 pub fn resolve_outcome(
-    def: &JobDef,
+    def: &AssignmentDef,
     effectiveness: i32,
     rng: &mut aeon_core::rng::DeterministicRng,
-) -> JobResultKind {
+) -> OutcomeKind {
     let weights = result_weights(def, effectiveness);
     let total: u64 = weights.iter().map(|(_, w)| w).sum();
     let mut roll = rng.roll(total.max(1));
     let mut outcome = weights
         .last()
         .map(|(k, _)| *k)
-        .unwrap_or(JobResultKind::Failure);
+        .unwrap_or(OutcomeKind::Failure);
     for (kind, weight) in &weights {
         if roll < *weight {
             outcome = *kind;
@@ -169,7 +164,7 @@ pub fn resolve_outcome(
 ///
 /// Uses largest-remainder apportionment so the reported chances are exact
 /// integers with no drift, and remains pure integer arithmetic.
-pub fn result_odds(def: &JobDef, effectiveness: i32) -> Vec<(JobResultKind, Permille)> {
+pub fn result_odds(def: &AssignmentDef, effectiveness: i32) -> Vec<(OutcomeKind, Permille)> {
     let weights = result_weights(def, effectiveness);
     let total: u64 = weights.iter().map(|(_, w)| *w).sum();
     if total == 0 {
@@ -177,8 +172,8 @@ pub fn result_odds(def: &JobDef, effectiveness: i32) -> Vec<(JobResultKind, Perm
     }
 
     // Floor each share, then hand out the remaining units to the largest
-    // remainders (ties broken by the fixed JobResultKind order).
-    let mut shares: Vec<(JobResultKind, u64, u64)> = weights
+    // remainders (ties broken by the fixed OutcomeKind order).
+    let mut shares: Vec<(OutcomeKind, u64, u64)> = weights
         .iter()
         .map(|(kind, weight)| {
             let scaled = weight * 1000;
@@ -209,8 +204,8 @@ pub fn result_odds(def: &JobDef, effectiveness: i32) -> Vec<(JobResultKind, Perm
         .collect()
 }
 
-/// The leader's effectiveness on a job: governing skill minus difficulty.
-pub fn effectiveness(world: &World, leader: CharacterId, def: &JobDef) -> i32 {
+/// The leader's effectiveness on a assignment: governing skill minus difficulty.
+pub fn effectiveness(world: &World, leader: CharacterId, def: &AssignmentDef) -> i32 {
     governing_skill(world, leader, def.skill) - def.difficulty
 }
 
@@ -234,15 +229,19 @@ pub fn governing_skill(world: &World, leader: CharacterId, skill: GoverningSkill
     }
 }
 
-/// How long a job will take, including a march's travel time.
+/// How long a assignment will take, including a march's travel time.
 ///
-/// Shared by [`crate::jobs::start_job`] and the forecast so the quoted
+/// Shared by [`crate::assignments::start_assignment`] and the forecast so the quoted
 /// duration is the duration actually used.
-pub fn job_duration_days(world: &World, def: &JobDef, target: JobTarget) -> i64 {
+pub fn assignment_duration_days(
+    world: &World,
+    def: &AssignmentDef,
+    target: AssignmentTarget,
+) -> i64 {
     let base = i64::from(def.duration_days);
     // Marches take at least the army's round travel time to the objective.
     let march_days = match target {
-        JobTarget::ArmyToProvince(army, destination) => world
+        AssignmentTarget::ArmyToProvince(army, destination) => world
             .get_resource::<crate::forces::ForcesIndex>()
             .and_then(|forces| forces.armies.get(&army).copied())
             .and_then(|entity| world.get::<crate::forces::ArmyRecord>(entity))
@@ -264,20 +263,20 @@ pub fn risk_permille(tag: RiskTag, disaster: bool) -> Permille {
     if disaster { base * 2 } else { base }
 }
 
-/// Builds the full forecast for a prospective job.
+/// Builds the full forecast for a prospective assignment.
 ///
-/// Returns `None` only when the job definition is unknown; an otherwise
-/// illegal start is reported through [`JobForecast::blocked`] so the player
-/// still sees what the job would cost and do.
+/// Returns `None` only when the assignment definition is unknown; an otherwise
+/// illegal start is reported through [`AssignmentForecast::blocked`] so the player
+/// still sees what the assignment would cost and do.
 pub fn forecast(
     world: &World,
     org: OrgId,
     def_key: &ContentKey,
     leader: CharacterId,
-    target: JobTarget,
-) -> Option<JobForecast> {
+    target: AssignmentTarget,
+) -> Option<AssignmentForecast> {
     let content = world.get_resource::<crate::state::ContentDb>()?;
-    let def = content.0.jobs.get(def_key)?.clone();
+    let def = content.0.assignments.get(def_key)?.clone();
 
     let effectiveness = effectiveness(world, leader, &def);
     let odds = result_odds(&def, effectiveness);
@@ -304,12 +303,12 @@ pub fn forecast(
         })
         .collect();
 
-    Some(JobForecast {
-        job: def_key.clone(),
+    Some(AssignmentForecast {
+        assignment: def_key.clone(),
         title: def.title.clone(),
         summary: def.summary.clone(),
         leader,
-        duration_days: job_duration_days(world, &def, target),
+        duration_days: assignment_duration_days(world, &def, target),
         order_delay_days: crate::presence::order_delay(world, Some(leader)),
         wealth_cost: def.wealth_cost,
         manpower_cost: def.manpower_cost,
@@ -322,22 +321,22 @@ pub fn forecast(
         results,
         risks,
         military_op: def.military_op,
-        blocked: crate::jobs::validate_start(world, org, def_key, leader, target).err(),
+        blocked: crate::assignments::validate_start(world, org, def_key, leader, target).err(),
     })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aeon_data::model::{JobCategory, JobResultDef, JobTargetKind};
+    use aeon_data::model::{AssignmentCategory, AssignmentTargetKind, OutcomeDef};
     use std::collections::BTreeMap;
 
-    fn def_with(weights: &[(JobResultKind, u32)]) -> JobDef {
+    fn def_with(weights: &[(OutcomeKind, u32)]) -> AssignmentDef {
         let mut results = BTreeMap::new();
         for (kind, weight) in weights {
             results.insert(
                 *kind,
-                JobResultDef {
+                OutcomeDef {
                     weight: *weight,
                     popup: false,
                     popup_text: None,
@@ -348,15 +347,15 @@ mod tests {
                 },
             );
         }
-        JobDef {
-            key: ContentKey::new("test-job").expect("kebab-case"),
-            title: "Test Job".to_owned(),
+        AssignmentDef {
+            key: ContentKey::new("test-assignment").expect("kebab-case"),
+            title: "Test Assignment".to_owned(),
             summary: String::new(),
-            category: JobCategory::Routine,
+            category: AssignmentCategory::Routine,
             duration_days: 30,
             skill: GoverningSkill::Stewardship,
             difficulty: 0,
-            target: JobTargetKind::None,
+            target: AssignmentTargetKind::None,
             risks: Vec::new(),
             military_op: None,
             ai_available: false,
@@ -372,10 +371,10 @@ mod tests {
     #[test]
     fn odds_always_sum_to_one_thousand() {
         let def = def_with(&[
-            (JobResultKind::CriticalSuccess, 1),
-            (JobResultKind::Success, 7),
-            (JobResultKind::Failure, 3),
-            (JobResultKind::Disaster, 2),
+            (OutcomeKind::CriticalSuccess, 1),
+            (OutcomeKind::Success, 7),
+            (OutcomeKind::Failure, 3),
+            (OutcomeKind::Disaster, 2),
         ]);
         for effectiveness in -12..=12 {
             let odds = result_odds(&def, effectiveness);
@@ -386,11 +385,11 @@ mod tests {
 
     #[test]
     fn skill_advantage_moves_probability_toward_success() {
-        let def = def_with(&[(JobResultKind::Success, 5), (JobResultKind::Failure, 5)]);
+        let def = def_with(&[(OutcomeKind::Success, 5), (OutcomeKind::Failure, 5)]);
         let success = |eff: i32| -> Permille {
             result_odds(&def, eff)
                 .into_iter()
-                .find(|(k, _)| *k == JobResultKind::Success)
+                .find(|(k, _)| *k == OutcomeKind::Success)
                 .map(|(_, p)| p)
                 .unwrap()
         };
@@ -403,7 +402,7 @@ mod tests {
     fn weights_floor_rather_than_vanish() {
         // A hopeless leader still has a floor chance, and an expert still
         // runs some risk: neither tail collapses to zero.
-        let def = def_with(&[(JobResultKind::Success, 5), (JobResultKind::Failure, 5)]);
+        let def = def_with(&[(OutcomeKind::Success, 5), (OutcomeKind::Failure, 5)]);
         for effectiveness in [-100, 100] {
             for (_, chance) in result_odds(&def, effectiveness) {
                 assert!(chance > 0, "a tail vanished at {effectiveness}");
@@ -418,14 +417,14 @@ mod tests {
         // sampler across many derived streams and compare the empirical
         // frequencies against result_odds.
         let def = def_with(&[
-            (JobResultKind::CriticalSuccess, 1),
-            (JobResultKind::Success, 7),
-            (JobResultKind::Failure, 3),
-            (JobResultKind::Disaster, 2),
+            (OutcomeKind::CriticalSuccess, 1),
+            (OutcomeKind::Success, 7),
+            (OutcomeKind::Failure, 3),
+            (OutcomeKind::Disaster, 2),
         ]);
         for effectiveness in [-6, 0, 6] {
             let odds = result_odds(&def, effectiveness);
-            let mut counts: BTreeMap<JobResultKind, u64> = BTreeMap::new();
+            let mut counts: BTreeMap<OutcomeKind, u64> = BTreeMap::new();
             const SAMPLES: u64 = 100_000;
             for seed in 0..SAMPLES {
                 let mut rng =
@@ -449,9 +448,9 @@ mod tests {
     #[test]
     fn odds_are_stable_for_the_same_inputs() {
         let def = def_with(&[
-            (JobResultKind::CriticalSuccess, 2),
-            (JobResultKind::Success, 6),
-            (JobResultKind::Failure, 4),
+            (OutcomeKind::CriticalSuccess, 2),
+            (OutcomeKind::Success, 6),
+            (OutcomeKind::Failure, 4),
         ]);
         assert_eq!(result_odds(&def, 3), result_odds(&def, 3));
     }

@@ -63,9 +63,9 @@ define_obligation(#{
     origin: "an old border quarrel",
 });
 
-// Jobs an autonomous house can reach for, each declaring the pressure it
+// Assignments an autonomous house can reach for, each declaring the pressure it
 // answers, so agency is driven by content rather than by hardcoded keys.
-define_job(#{
+define_assignment(#{
     id: "settle-the-shire", 
     ai_intent: "order", category: "consequential", duration_days: 20,
     skill: "diplomacy", difficulty: 5, ai_available: true,
@@ -77,7 +77,7 @@ define_job(#{
 fn settled(ctx) {
     [#{ kind: "order", scope: "all-held", amount: 40 }]
 }
-define_job(#{
+define_assignment(#{
     id: "collect-what-is-owed", 
     ai_intent: "obligation", category: "consequential", duration_days: 20,
     skill: "diplomacy", difficulty: 5, target: "organisation", ai_available: true,
@@ -86,7 +86,7 @@ define_job(#{
         failure: #{ weight: 200 },
     },
 });
-define_job(#{
+define_assignment(#{
     id: "ordinary-business", 
     category: "consequential", duration_days: 30,
     skill: "stewardship", difficulty: 5, ai_available: true,
@@ -334,7 +334,7 @@ fn a_weighty_event_asks_and_its_answer_takes_effect() {
         }
     }
     let popup = popup.expect("the unrest event should have asked eventually");
-    assert_eq!(popup.job, key("unrest-choice"));
+    assert_eq!(popup.assignment, key("unrest-choice"));
     assert_eq!(popup.choices.len(), 2, "both answers are offered");
 
     let before = aeon_sim::order::province_order(h.world_mut(), alpha).order;
@@ -470,7 +470,7 @@ fn agency_notices_an_obligation_it_can_collect() {
     let intents = score_intents(h.world_mut(), ash);
     let collecting = intents
         .iter()
-        .find(|intent| intent.target == aeon_sim::JobTarget::Org(birch));
+        .find(|intent| intent.target == aeon_sim::AssignmentTarget::Org(birch));
     assert!(
         collecting.is_some_and(|intent| intent.reason.contains("owes us")),
         "a house should notice a favour it can call in: {:?}",

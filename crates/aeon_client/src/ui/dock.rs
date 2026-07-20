@@ -12,7 +12,7 @@
 //!
 //! Bottom is a real side rather than a special case for the log. A wide,
 //! short panel is the right shape for a message list and for a list of
-//! jobs in progress, and the wrong shape for an inspector — so the choice
+//! assignments in progress, and the wrong shape for an inspector — so the choice
 //! belongs to the player, and the layout has to be able to express it.
 
 use std::collections::BTreeMap;
@@ -56,8 +56,8 @@ pub enum PanelKind {
     Listing,
     /// The message log.
     Log,
-    /// Jobs currently under way.
-    Jobs,
+    /// Assignments currently under way.
+    Assignments,
     /// What the map's colours mean.
     Ledger,
     /// Every design token, drawn in context.
@@ -79,7 +79,7 @@ impl PanelKind {
         PanelKind::Inspector,
         PanelKind::Listing,
         PanelKind::Log,
-        PanelKind::Jobs,
+        PanelKind::Assignments,
         PanelKind::Ledger,
         PanelKind::Specimen,
     ];
@@ -90,7 +90,7 @@ impl PanelKind {
         PanelKind::Inspector,
         PanelKind::Listing,
         PanelKind::Log,
-        PanelKind::Jobs,
+        PanelKind::Assignments,
         PanelKind::Ledger,
     ];
 
@@ -100,7 +100,7 @@ impl PanelKind {
             PanelKind::Inspector => "ui.panel.inspector.title",
             PanelKind::Listing => "ui.panel.listing.title",
             PanelKind::Log => "ui.panel.log.title",
-            PanelKind::Jobs => "ui.panel.jobs.title",
+            PanelKind::Assignments => "ui.panel.assignments.title",
             PanelKind::Ledger => "ui.panel.ledger.title",
             #[cfg(not(target_arch = "wasm32"))]
             PanelKind::Specimen => "ui.panel.specimen.title",
@@ -113,7 +113,7 @@ impl PanelKind {
             PanelKind::Inspector => "ui.panel.inspector.description",
             PanelKind::Listing => "ui.panel.listing.description",
             PanelKind::Log => "ui.panel.log.description",
-            PanelKind::Jobs => "ui.panel.jobs.description",
+            PanelKind::Assignments => "ui.panel.assignments.description",
             PanelKind::Ledger => "ui.panel.ledger.description",
             #[cfg(not(target_arch = "wasm32"))]
             PanelKind::Specimen => "ui.panel.specimen.description",
@@ -135,7 +135,7 @@ pub struct DockState {
 
 impl Default for DockState {
     /// The layout the game has always opened with: the inspector on the
-    /// left, the listing on the right, and the log and jobs sharing the
+    /// left, the listing on the right, and the log and assignments sharing the
     /// bottom.
     fn default() -> Self {
         let mut dock = Self {
@@ -149,7 +149,7 @@ impl Default for DockState {
         dock.dock(PanelKind::Inspector, DockSide::Left);
         dock.dock(PanelKind::Listing, DockSide::Right);
         dock.dock(PanelKind::Log, DockSide::Bottom);
-        dock.dock(PanelKind::Jobs, DockSide::Bottom);
+        dock.dock(PanelKind::Assignments, DockSide::Bottom);
         dock
     }
 }
@@ -215,8 +215,8 @@ mod tests {
         assert_eq!(dock.side_of(PanelKind::Listing), Some(DockSide::Right));
         assert_eq!(
             dock.panels_on(DockSide::Bottom),
-            &[PanelKind::Log, PanelKind::Jobs],
-            "the log and jobs share the bottom, log first"
+            &[PanelKind::Log, PanelKind::Assignments],
+            "the log and assignments share the bottom, log first"
         );
         assert_eq!(
             dock.side_of(PanelKind::Ledger),
@@ -270,10 +270,10 @@ mod tests {
         dock.dock(PanelKind::Ledger, DockSide::Bottom);
         assert_eq!(
             dock.panels_on(DockSide::Bottom),
-            &[PanelKind::Log, PanelKind::Jobs, PanelKind::Ledger],
+            &[PanelKind::Log, PanelKind::Assignments, PanelKind::Ledger],
             "a new panel joins the end rather than displacing what is there"
         );
-        dock.close(PanelKind::Jobs);
+        dock.close(PanelKind::Assignments);
         assert_eq!(
             dock.panels_on(DockSide::Bottom),
             &[PanelKind::Log, PanelKind::Ledger],

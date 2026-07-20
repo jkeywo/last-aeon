@@ -22,7 +22,7 @@ pub const PARAMOUNT_LEGITIMACY_BONUS: i32 = 20;
 pub struct OrgResources {
     /// Fungible economic capacity.
     pub wealth: i64,
-    /// People available to staff jobs, armies, and holdings.
+    /// People available to staff assignments, armies, and holdings.
     pub manpower: i64,
     /// Material support for sustained operations.
     pub supplies: i64,

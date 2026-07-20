@@ -7,7 +7,7 @@
 //! restored from a save has it for the same reason a fresh one does.
 //!
 //! Sim-side log lines resolve as they are written, which keeps
-//! [`crate::jobs::LogEntry`] a plain `String` and leaves the snapshot
+//! [`crate::assignments::LogEntry`] a plain `String` and leaves the snapshot
 //! format, state hashing, and the client's log filter untouched.
 
 use std::sync::Arc;

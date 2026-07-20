@@ -1,8 +1,8 @@
-//! The character-led job system: the universal unit of strategic action.
+//! The character-led assignment system: the universal unit of strategic action.
 //!
-//! Jobs are started by commands (player) or agency (AI organisations),
+//! Assignments are started by commands (player) or agency (AI organisations),
 //! take calendar days, and resolve into graded results whose weights are
-//! shifted by the leader's governing skill against the job's difficulty.
+//! shifted by the leader's governing skill against the assignment's difficulty.
 //! Results can log to the notable-result message log, open player popups
 //! with choices, expose the leader to declared personal risks, and apply
 //! authored script effects through the sandboxed effect boundary.
@@ -10,22 +10,24 @@
 use std::collections::BTreeMap;
 
 use aeon_core::calendar::GameDate;
-use aeon_data::model::{JobCategory, JobDef, JobResultKind, JobTargetKind, RiskTag};
+use aeon_data::model::{
+    AssignmentCategory, AssignmentDef, AssignmentTargetKind, OutcomeKind, RiskTag,
+};
 use aeon_data::{ContentKey, EffectRole, ScriptEffect, ScriptHost};
 use bevy::app::App;
 use bevy::prelude::{Component, Entity, IntoScheduleConfigs, Resource, World};
 use serde::{Deserialize, Serialize};
 
 use crate::clock::{CampaignClock, DailyTick, MonthlyPulse, TickSet};
-use crate::ids::{ArmyId, CharacterId, JobId, OrgId, ProvinceId, ShipId};
+use crate::ids::{ArmyId, AssignmentId, CharacterId, OrgId, ProvinceId, ShipId};
 use crate::politics::{CampaignOver, OpinionEntry, OpinionLedger, PlayerHouse, process_death};
 use crate::state::{CampaignIds, ContentDb};
 use crate::text::TextDb;
 
-/// What a job acts on.
+/// What a assignment acts on.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub enum JobTarget {
-    /// The job acts on its owner organisation.
+pub enum AssignmentTarget {
+    /// The assignment acts on its owner organisation.
     None,
     /// A character.
     Character(CharacterId),
@@ -41,26 +43,26 @@ pub enum JobTarget {
     ShipToProvince(ShipId, ProvinceId),
 }
 
-/// A running job.
+/// A running assignment.
 #[derive(Component, Clone, Debug)]
-pub struct ActiveJob {
+pub struct ActiveAssignment {
     /// Stable ID.
-    pub id: JobId,
-    /// The job definition's content key.
+    pub id: AssignmentId,
+    /// The assignment definition's content key.
     pub def: ContentKey,
-    /// The organisation this job serves.
+    /// The organisation this assignment serves.
     pub owner: OrgId,
     /// The character leading it.
     pub leader: CharacterId,
     /// What it acts on.
-    pub target: JobTarget,
+    pub target: AssignmentTarget,
     /// The day it (re)started.
     pub started: GameDate,
     /// The day it resolves.
     pub completes: GameDate,
 }
 
-/// Temporary states that keep a character from leading new jobs.
+/// Temporary states that keep a character from leading new assignments.
 #[derive(Component, Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CharacterCondition {
     /// Hurt; recovering until this day.
@@ -81,11 +83,11 @@ impl CharacterCondition {
     }
 }
 
-/// Lookup from job IDs to entities.
+/// Lookup from assignment IDs to entities.
 #[derive(Resource, Clone, Debug, Default)]
-pub struct JobsIndex {
-    /// Jobs by stable ID.
-    pub jobs: BTreeMap<JobId, Entity>,
+pub struct AssignmentsIndex {
+    /// Assignments by stable ID.
+    pub assignments: BTreeMap<AssignmentId, Entity>,
 }
 
 /// What a log entry is chiefly about, so a reader can navigate to it.
@@ -102,9 +104,9 @@ pub enum LogSubject {
 /// Which stream an entry belongs to, so the log can be filtered.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum LogChannel {
-    /// Job starts, results, and abandonment.
+    /// Assignment starts, results, and abandonment.
     #[default]
-    Jobs,
+    Assignments,
     /// Titles, succession, offices, and standing.
     Politics,
     /// Operations, engagements, and conquest.
@@ -118,7 +120,7 @@ pub enum LogChannel {
 impl LogChannel {
     /// Every channel, in a stable display order.
     pub const ALL: [LogChannel; 5] = [
-        LogChannel::Jobs,
+        LogChannel::Assignments,
         LogChannel::Politics,
         LogChannel::Military,
         LogChannel::Economy,
@@ -128,7 +130,7 @@ impl LogChannel {
     /// The key of a short player-facing label.
     pub fn label_key(self) -> &'static str {
         match self {
-            LogChannel::Jobs => "ui.log.channel.jobs",
+            LogChannel::Assignments => "ui.log.channel.assignments",
             LogChannel::Politics => "ui.log.channel.politics",
             LogChannel::Military => "ui.log.channel.military",
             LogChannel::Economy => "ui.log.channel.economy",
@@ -200,16 +202,16 @@ pub struct PendingPopup {
     pub id: u64,
     /// The day it opened.
     pub date: GameDate,
-    /// The job definition involved.
-    pub job: ContentKey,
+    /// The assignment definition involved.
+    pub assignment: ContentKey,
     /// The result that opened it.
-    pub result: JobResultKind,
+    pub result: OutcomeKind,
     /// Rendered situation text.
     pub text: String,
     /// Choice ids and labels; always at least one.
     pub choices: Vec<(ContentKey, String)>,
     /// Roles resolved at resolution time, for choice effects.
-    pub roles: JobRoles,
+    pub roles: AssignmentRoles,
 }
 
 /// Popups awaiting player answers.
@@ -225,9 +227,9 @@ pub struct PendingPopups {
 #[derive(Resource)]
 pub struct ScriptRuntime(pub ScriptHost);
 
-/// The characters standing behind each script-effect role for one job.
+/// The characters standing behind each script-effect role for one assignment.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct JobRoles {
+pub struct AssignmentRoles {
     /// `leader`.
     pub leader: Option<CharacterId>,
     /// `target` (a character target, or the target org's head).
@@ -242,18 +244,18 @@ pub struct JobRoles {
     pub consul: Option<CharacterId>,
     /// `sanctora`: every living Sanctora member.
     pub sanctora: Vec<CharacterId>,
-    /// The province the job acted on, for province-scoped effects.
+    /// The province the assignment acted on, for province-scoped effects.
     #[serde(default)]
     pub province: Option<ProvinceId>,
 }
 
 /// What a role resolution starts from.
 ///
-/// Whoever fires effects — job resolution, a popup answer, an event —
+/// Whoever fires effects — assignment resolution, a popup answer, an event —
 /// names the acting organisation and character, an explicit character
 /// target, and where it happened. Everything else (owner-head,
 /// liege-head, consul, sanctora, the leader fallback) is resolved the
-/// same way for all of them by [`JobRoles::resolve`], so the role
+/// same way for all of them by [`AssignmentRoles::resolve`], so the role
 /// vocabulary cannot quietly mean different things in different systems.
 #[derive(Clone, Copy, Debug, Default)]
 pub struct RoleSeed {
@@ -269,9 +271,9 @@ pub struct RoleSeed {
     pub province: Option<ProvinceId>,
 }
 
-impl JobRoles {
+impl AssignmentRoles {
     /// The one resolver behind the effect-role vocabulary.
-    pub fn resolve(world: &World, seed: RoleSeed) -> JobRoles {
+    pub fn resolve(world: &World, seed: RoleSeed) -> AssignmentRoles {
         let owner_record = seed.owner.and_then(|org| crate::access::org(world, org));
         let owner_head = owner_record.and_then(|record| record.head);
         let sanctora = match crate::access::sanctora_org(world) {
@@ -281,7 +283,7 @@ impl JobRoles {
                 .collect(),
             None => Vec::new(),
         };
-        JobRoles {
+        AssignmentRoles {
             leader: seed.leader.or(owner_head),
             target: seed.target,
             target_head: seed.target_head,
@@ -312,23 +314,23 @@ impl JobRoles {
     }
 }
 
-/// Why a job could not be started or answered.
+/// Why a assignment could not be started or answered.
 #[derive(Clone, Debug, PartialEq, Eq, thiserror::Error)]
-pub enum JobRejection {
+pub enum AssignmentRejection {
     /// The campaign has ended.
     #[error("the campaign is over")]
     CampaignOver,
-    /// No such job definition.
-    #[error("unknown job definition '{0}'")]
-    UnknownJob(ContentKey),
+    /// No such assignment definition.
+    #[error("unknown assignment definition '{0}'")]
+    UnknownAssignment(ContentKey),
     /// The player has no house to act through.
     #[error("no player organisation")]
     NoPlayerOrg,
     /// The leader is not a living adult member of the organisation.
-    #[error("that character cannot lead jobs for this organisation")]
+    #[error("that character cannot lead assignments for this organisation")]
     IneligibleLeader,
-    /// The leader is already leading a job.
-    #[error("that character is already leading a job")]
+    /// The leader is already leading a assignment.
+    #[error("that character is already leading a assignment")]
     LeaderBusy,
     /// The leader already holds a standing command over another force.
     #[error("that character already commands another force")]
@@ -337,20 +339,20 @@ pub enum JobRejection {
     #[error("that character is in no state to lead")]
     LeaderIndisposed,
     /// The target does not match the definition's target kind.
-    #[error("the job's target is missing or of the wrong kind")]
+    #[error("the assignment's target is missing or of the wrong kind")]
     BadTarget,
     /// No such popup or choice.
     #[error("no such popup or choice")]
     BadPopupAnswer,
-    /// No such active job, or it is not the player's to cancel.
-    #[error("no such active job for your organisation")]
-    BadJob,
-    /// The organisation cannot pay the job's costs.
-    #[error("the organisation cannot afford this job")]
+    /// No such active assignment, or it is not the player's to cancel.
+    #[error("no such active assignment for your organisation")]
+    BadAssignment,
+    /// The organisation cannot pay the assignment's costs.
+    #[error("the organisation cannot afford this assignment")]
     CannotAfford,
 }
 
-impl JobRejection {
+impl AssignmentRejection {
     /// The key of the player-facing sentence for this refusal.
     ///
     /// Separate from [`Display`], which stays the developer-facing
@@ -360,17 +362,17 @@ impl JobRejection {
     /// [`Display`]: core::fmt::Display
     pub fn label_key(&self) -> &'static str {
         match self {
-            JobRejection::CampaignOver => "sim.refusal.campaign-over",
-            JobRejection::UnknownJob(_) => "sim.refusal.unknown-job",
-            JobRejection::NoPlayerOrg => "sim.refusal.no-player-org",
-            JobRejection::IneligibleLeader => "sim.refusal.ineligible-leader",
-            JobRejection::LeaderBusy => "sim.refusal.leader-busy",
-            JobRejection::AlreadyAssigned => "sim.refusal.already-assigned",
-            JobRejection::LeaderIndisposed => "sim.refusal.leader-indisposed",
-            JobRejection::BadTarget => "sim.refusal.bad-target",
-            JobRejection::BadPopupAnswer => "sim.refusal.bad-popup-answer",
-            JobRejection::BadJob => "sim.refusal.bad-job",
-            JobRejection::CannotAfford => "sim.refusal.cannot-afford",
+            AssignmentRejection::CampaignOver => "sim.refusal.campaign-over",
+            AssignmentRejection::UnknownAssignment(_) => "sim.refusal.unknown-assignment",
+            AssignmentRejection::NoPlayerOrg => "sim.refusal.no-player-org",
+            AssignmentRejection::IneligibleLeader => "sim.refusal.ineligible-leader",
+            AssignmentRejection::LeaderBusy => "sim.refusal.leader-busy",
+            AssignmentRejection::AlreadyAssigned => "sim.refusal.already-assigned",
+            AssignmentRejection::LeaderIndisposed => "sim.refusal.leader-indisposed",
+            AssignmentRejection::BadTarget => "sim.refusal.bad-target",
+            AssignmentRejection::BadPopupAnswer => "sim.refusal.bad-popup-answer",
+            AssignmentRejection::BadAssignment => "sim.refusal.bad-assignment",
+            AssignmentRejection::CannotAfford => "sim.refusal.cannot-afford",
         }
     }
 }
@@ -381,7 +383,7 @@ impl JobRejection {
 
 /// A standing command a character already holds.
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Assignment {
+pub enum Post {
     /// They command an army.
     General {
         /// The army.
@@ -398,14 +400,14 @@ pub enum Assignment {
     },
 }
 
-impl Assignment {
+impl Post {
     /// A short phrase naming the command, for the interface.
     pub fn describe(&self, strings: &TextDb) -> String {
         match self {
-            Assignment::General { name, .. } => {
+            Post::General { name, .. } => {
                 strings.format("sim.assignment.general", &[("force", name)])
             }
-            Assignment::Captain { name, .. } => {
+            Post::Captain { name, .. } => {
                 strings.format("sim.assignment.captain", &[("force", name)])
             }
         }
@@ -423,10 +425,10 @@ impl Assignment {
 pub enum LeaderAvailability {
     /// Free to take on new work.
     Available,
-    /// Already leading a job.
+    /// Already leading a assignment.
     Busy {
-        /// The job they are leading.
-        job: JobId,
+        /// The assignment they are leading.
+        assignment: AssignmentId,
         /// Its definition, for naming it.
         def: ContentKey,
         /// When they will be free.
@@ -438,11 +440,11 @@ pub enum LeaderAvailability {
         until: Option<GameDate>,
     },
     /// Holding a standing command. Not a blocker in itself — a general may
-    /// still lead a diplomatic job — but it bars a *second* command.
-    Assigned(Assignment),
+    /// still lead a diplomatic assignment — but it bars a *second* command.
+    Posted(Post),
     /// Cannot lead for this organisation at all: dead, not a member, or
     /// not yet of age.
-    Ineligible(JobRejection),
+    Ineligible(AssignmentRejection),
 }
 
 impl LeaderAvailability {
@@ -451,33 +453,35 @@ impl LeaderAvailability {
         matches!(self, LeaderAvailability::Available)
     }
 
-    /// Why this character cannot lead *this* job, if they cannot.
+    /// Why this character cannot lead *this* assignment, if they cannot.
     ///
     /// A standing command only bars taking on another one; it does not
     /// stop its holder doing something else entirely.
-    pub fn blocks_job(&self, target: JobTarget) -> Option<JobRejection> {
+    pub fn blocks_assignment(&self, target: AssignmentTarget) -> Option<AssignmentRejection> {
         match self {
             LeaderAvailability::Available => None,
-            LeaderAvailability::Busy { .. } => Some(JobRejection::LeaderBusy),
-            LeaderAvailability::Indisposed { .. } => Some(JobRejection::LeaderIndisposed),
+            LeaderAvailability::Busy { .. } => Some(AssignmentRejection::LeaderBusy),
+            LeaderAvailability::Indisposed { .. } => Some(AssignmentRejection::LeaderIndisposed),
             LeaderAvailability::Ineligible(rejection) => Some(rejection.clone()),
-            LeaderAvailability::Assigned(assignment) => match (assignment, target) {
+            LeaderAvailability::Posted(assignment) => match (assignment, target) {
                 // Ordering the force they already command is the point.
-                (Assignment::General { army, .. }, JobTarget::OwnArmy(ordered))
-                | (Assignment::General { army, .. }, JobTarget::ArmyToProvince(ordered, _))
+                (Post::General { army, .. }, AssignmentTarget::OwnArmy(ordered))
+                | (Post::General { army, .. }, AssignmentTarget::ArmyToProvince(ordered, _))
                     if *army == ordered =>
                 {
                     None
                 }
-                (Assignment::Captain { ship, .. }, JobTarget::ShipToProvince(ordered, _))
+                (Post::Captain { ship, .. }, AssignmentTarget::ShipToProvince(ordered, _))
                     if *ship == ordered =>
                 {
                     None
                 }
                 // Commanding one force does not let you command another.
-                (_, JobTarget::OwnArmy(_))
-                | (_, JobTarget::ArmyToProvince(_, _))
-                | (_, JobTarget::ShipToProvince(_, _)) => Some(JobRejection::AlreadyAssigned),
+                (_, AssignmentTarget::OwnArmy(_))
+                | (_, AssignmentTarget::ArmyToProvince(_, _))
+                | (_, AssignmentTarget::ShipToProvince(_, _)) => {
+                    Some(AssignmentRejection::AlreadyAssigned)
+                }
                 // Anything else is ordinary work they are free to do.
                 _ => None,
             },
@@ -485,12 +489,19 @@ impl LeaderAvailability {
     }
 
     /// A short player-facing phrase, for showing beside a name.
-    pub fn describe(&self, strings: &TextDb, job_title: impl Fn(&ContentKey) -> String) -> String {
+    pub fn describe(
+        &self,
+        strings: &TextDb,
+        assignment_title: impl Fn(&ContentKey) -> String,
+    ) -> String {
         match self {
             LeaderAvailability::Available => strings.text("sim.leader.available").to_owned(),
             LeaderAvailability::Busy { def, completes, .. } => strings.format(
                 "sim.leader.busy",
-                &[("job", &job_title(def)), ("date", &completes.to_string())],
+                &[
+                    ("assignment", &assignment_title(def)),
+                    ("date", &completes.to_string()),
+                ],
             ),
             LeaderAvailability::Indisposed { until: Some(until) } => strings.format(
                 "sim.leader.indisposed-until",
@@ -499,7 +510,7 @@ impl LeaderAvailability {
             LeaderAvailability::Indisposed { until: None } => {
                 strings.text("sim.leader.indisposed").to_owned()
             }
-            LeaderAvailability::Assigned(assignment) => assignment.describe(strings),
+            LeaderAvailability::Posted(assignment) => assignment.describe(strings),
             LeaderAvailability::Ineligible(rejection) => {
                 strings.text(rejection.label_key()).to_owned()
             }
@@ -510,7 +521,7 @@ impl LeaderAvailability {
 /// What a character is currently committed to, for `org`'s purposes.
 ///
 /// Reports the most limiting commitment: ineligibility first, then
-/// indisposition, then an active job, then a standing command.
+/// indisposition, then an active assignment, then a standing command.
 pub fn leader_availability(
     world: &World,
     org: OrgId,
@@ -518,13 +529,13 @@ pub fn leader_availability(
     date: GameDate,
 ) -> LeaderAvailability {
     let Some(record) = crate::access::character(world, leader) else {
-        return LeaderAvailability::Ineligible(JobRejection::IneligibleLeader);
+        return LeaderAvailability::Ineligible(AssignmentRejection::IneligibleLeader);
     };
     if !record.alive()
         || record.organisation != Some(org)
         || record.age_years(date) < crate::politics::ADULT_AGE
     {
-        return LeaderAvailability::Ineligible(JobRejection::IneligibleLeader);
+        return LeaderAvailability::Ineligible(AssignmentRejection::IneligibleLeader);
     }
 
     let condition = crate::access::on_character::<CharacterCondition>(world, leader)
@@ -544,16 +555,16 @@ pub fn leader_availability(
         return LeaderAvailability::Indisposed { until };
     }
 
-    if let Some(jobs) = world.get_resource::<JobsIndex>() {
-        // Stable-ID order, so the reported job never depends on iteration.
-        for entity in jobs.jobs.values() {
-            if let Some(job) = world.get::<ActiveJob>(*entity)
-                && job.leader == leader
+    if let Some(assignments) = world.get_resource::<AssignmentsIndex>() {
+        // Stable-ID order, so the reported assignment never depends on iteration.
+        for entity in assignments.assignments.values() {
+            if let Some(assignment) = world.get::<ActiveAssignment>(*entity)
+                && assignment.leader == leader
             {
                 return LeaderAvailability::Busy {
-                    job: job.id,
-                    def: job.def.clone(),
-                    completes: job.completes,
+                    assignment: assignment.id,
+                    def: assignment.def.clone(),
+                    completes: assignment.completes,
                 };
             }
         }
@@ -564,7 +575,7 @@ pub fn leader_availability(
             if let Some(army) = world.get::<crate::forces::ArmyRecord>(*entity)
                 && army.general == leader
             {
-                return LeaderAvailability::Assigned(Assignment::General {
+                return LeaderAvailability::Posted(Post::General {
                     army: army.id,
                     name: army.name.clone(),
                 });
@@ -574,7 +585,7 @@ pub fn leader_availability(
             if let Some(ship) = world.get::<crate::forces::ShipRecord>(*entity)
                 && ship.captain == Some(leader)
             {
-                return LeaderAvailability::Assigned(Assignment::Captain {
+                return LeaderAvailability::Posted(Post::Captain {
                     ship: ship.id,
                     name: ship.name.clone(),
                 });
@@ -590,9 +601,9 @@ fn leader_eligible(
     org: OrgId,
     leader: CharacterId,
     date: GameDate,
-    target: JobTarget,
-) -> Result<(), JobRejection> {
-    match leader_availability(world, org, leader, date).blocks_job(target) {
+    target: AssignmentTarget,
+) -> Result<(), AssignmentRejection> {
+    match leader_availability(world, org, leader, date).blocks_assignment(target) {
         Some(rejection) => Err(rejection),
         None => Ok(()),
     }
@@ -602,22 +613,33 @@ fn owned_army(world: &World, owner: OrgId, army: ArmyId) -> bool {
     crate::access::army(world, army).is_some_and(|record| record.owner == owner)
 }
 
-fn target_valid(world: &World, def: &JobDef, owner: OrgId, target: JobTarget) -> bool {
+fn target_valid(
+    world: &World,
+    def: &AssignmentDef,
+    owner: OrgId,
+    target: AssignmentTarget,
+) -> bool {
     let province_known = |id: ProvinceId| crate::access::province_entity(world, id).is_some();
     match (def.target, target) {
-        (JobTargetKind::None, JobTarget::None) => true,
-        (JobTargetKind::Character, JobTarget::Character(id)) => {
+        (AssignmentTargetKind::None, AssignmentTarget::None) => true,
+        (AssignmentTargetKind::Character, AssignmentTarget::Character(id)) => {
             crate::access::character(world, id).is_some_and(|r| r.alive())
         }
-        (JobTargetKind::Organisation, JobTarget::Org(id)) => {
+        (AssignmentTargetKind::Organisation, AssignmentTarget::Org(id)) => {
             id != owner && crate::access::org_entity(world, id).is_some()
         }
-        (JobTargetKind::Province, JobTarget::Province(id)) => province_known(id),
-        (JobTargetKind::OwnArmy, JobTarget::OwnArmy(army)) => owned_army(world, owner, army),
-        (JobTargetKind::OwnArmyAndProvince, JobTarget::ArmyToProvince(army, province)) => {
-            owned_army(world, owner, army) && province_known(province)
+        (AssignmentTargetKind::Province, AssignmentTarget::Province(id)) => province_known(id),
+        (AssignmentTargetKind::OwnArmy, AssignmentTarget::OwnArmy(army)) => {
+            owned_army(world, owner, army)
         }
-        (JobTargetKind::OwnShipAndProvince, JobTarget::ShipToProvince(ship, province)) => {
+        (
+            AssignmentTargetKind::OwnArmyAndProvince,
+            AssignmentTarget::ArmyToProvince(army, province),
+        ) => owned_army(world, owner, army) && province_known(province),
+        (
+            AssignmentTargetKind::OwnShipAndProvince,
+            AssignmentTarget::ShipToProvince(ship, province),
+        ) => {
             province_known(province)
                 && crate::access::ship(world, ship).is_some_and(|record| record.owner == owner)
         }
@@ -625,39 +647,39 @@ fn target_valid(world: &World, def: &JobDef, owner: OrgId, target: JobTarget) ->
     }
 }
 
-/// Validates a start-job request for an organisation.
+/// Validates a start-assignment request for an organisation.
 pub fn validate_start(
     world: &World,
     org: OrgId,
     def_key: &ContentKey,
     leader: CharacterId,
-    target: JobTarget,
-) -> Result<(), JobRejection> {
+    target: AssignmentTarget,
+) -> Result<(), AssignmentRejection> {
     if world.get_resource::<CampaignOver>().is_some() {
-        return Err(JobRejection::CampaignOver);
+        return Err(AssignmentRejection::CampaignOver);
     }
     let content = world.resource::<ContentDb>().0.clone();
-    let Some(def) = content.jobs.get(def_key) else {
-        return Err(JobRejection::UnknownJob(def_key.clone()));
+    let Some(def) = content.assignments.get(def_key) else {
+        return Err(AssignmentRejection::UnknownAssignment(def_key.clone()));
     };
     let date = world.resource::<CampaignClock>().date;
     leader_eligible(world, org, leader, date, target)?;
     if !target_valid(world, def, org, target) {
-        return Err(JobRejection::BadTarget);
+        return Err(AssignmentRejection::BadTarget);
     }
     // A ship is ordered by its captain, nobody else — the same rule
     // armies have always had for their general.
-    if let JobTarget::ShipToProvince(ship, _) = target {
+    if let AssignmentTarget::ShipToProvince(ship, _) = target {
         let captain = crate::access::ship(world, ship).and_then(|record| record.captain);
         if captain != Some(leader) {
-            return Err(JobRejection::IneligibleLeader);
+            return Err(AssignmentRejection::IneligibleLeader);
         }
     }
     // Army operations are led by the army's general, nobody else.
-    if let JobTarget::OwnArmy(army) | JobTarget::ArmyToProvince(army, _) = target {
+    if let AssignmentTarget::OwnArmy(army) | AssignmentTarget::ArmyToProvince(army, _) = target {
         let general = crate::access::army(world, army).map(|record| record.general);
         if general != Some(leader) {
-            return Err(JobRejection::IneligibleLeader);
+            return Err(AssignmentRejection::IneligibleLeader);
         }
     }
     let affordable = crate::access::org_entity(world, org)
@@ -671,25 +693,25 @@ pub fn validate_start(
             )
         });
     if !affordable {
-        return Err(JobRejection::CannotAfford);
+        return Err(AssignmentRejection::CannotAfford);
     }
     Ok(())
 }
 
-/// Starts a job for an organisation. Callers must have validated.
-pub fn start_job(
+/// Starts a assignment for an organisation. Callers must have validated.
+pub fn start_assignment(
     world: &mut World,
     org: OrgId,
     def_key: &ContentKey,
     leader: CharacterId,
-    target: JobTarget,
-) -> JobId {
+    target: AssignmentTarget,
+) -> AssignmentId {
     let date = world.resource::<CampaignClock>().date;
     let (duration, costs) = {
         let content = world.resource::<ContentDb>().0.clone();
-        let def = &content.jobs[def_key];
+        let def = &content.assignments[def_key];
         (
-            crate::forecast::job_duration_days(world, def, target),
+            crate::forecast::assignment_duration_days(world, def, target),
             (
                 def.wealth_cost,
                 def.manpower_cost,
@@ -704,9 +726,9 @@ pub fn start_job(
             resources.spend(costs.0, costs.1, costs.2, costs.3);
         }
     }
-    let id: JobId = world.resource_mut::<CampaignIds>().0.allocate();
+    let id: AssignmentId = world.resource_mut::<CampaignIds>().0.allocate();
     let entity = world
-        .spawn(ActiveJob {
+        .spawn(ActiveAssignment {
             id,
             def: def_key.clone(),
             owner: org,
@@ -716,7 +738,10 @@ pub fn start_job(
             completes: date.add_days(duration),
         })
         .id();
-    world.resource_mut::<JobsIndex>().jobs.insert(id, entity);
+    world
+        .resource_mut::<AssignmentsIndex>()
+        .assignments
+        .insert(id, entity);
     id
 }
 
@@ -725,39 +750,41 @@ pub fn start_job(
 // ---------------------------------------------------------------------------
 
 // Outcome weighting, sampling, duration, and risk chances live in
-// `forecast`, so the numbers quoted to the player before a job are the
+// `forecast`, so the numbers quoted to the player before a assignment are the
 // numbers used to resolve it.
 use crate::forecast::risk_permille;
 
-/// The character standing behind each effect role for a job.
-fn resolve_roles(world: &World, job: &ActiveJob) -> JobRoles {
-    let (target, target_head) = match job.target {
-        JobTarget::Character(id) => (Some(id), None),
-        JobTarget::Org(org) => {
+/// The character standing behind each effect role for a assignment.
+fn resolve_roles(world: &World, assignment: &ActiveAssignment) -> AssignmentRoles {
+    let (target, target_head) = match assignment.target {
+        AssignmentTarget::Character(id) => (Some(id), None),
+        AssignmentTarget::Org(org) => {
             let head = crate::access::org_head(world, org);
             (head, head)
         }
         _ => (None, None),
     };
 
-    // Where the job acted: an explicit province target, the province an
+    // Where the assignment acted: an explicit province target, the province an
     // ordered force stands in, or failing both the leader's own location.
-    let province = match job.target {
-        JobTarget::Province(province)
-        | JobTarget::ArmyToProvince(_, province)
-        | JobTarget::ShipToProvince(_, province) => Some(province),
-        JobTarget::OwnArmy(army) => crate::access::army(world, army).map(|record| record.location),
-        _ => match crate::presence::character_location(world, job.leader) {
+    let province = match assignment.target {
+        AssignmentTarget::Province(province)
+        | AssignmentTarget::ArmyToProvince(_, province)
+        | AssignmentTarget::ShipToProvince(_, province) => Some(province),
+        AssignmentTarget::OwnArmy(army) => {
+            crate::access::army(world, army).map(|record| record.location)
+        }
+        _ => match crate::presence::character_location(world, assignment.leader) {
             Some(crate::presence::Location::Province(province)) => Some(province),
             _ => None,
         },
     };
 
-    JobRoles::resolve(
+    AssignmentRoles::resolve(
         world,
         RoleSeed {
-            owner: Some(job.owner),
-            leader: Some(job.leader),
+            owner: Some(assignment.owner),
+            leader: Some(assignment.leader),
             target,
             target_head,
             province,
@@ -767,10 +794,10 @@ fn resolve_roles(world: &World, job: &ActiveJob) -> JobRoles {
 
 /// The read-only context map every effect function receives.
 ///
-/// One schema for every invocation — job results, popup choices, event
+/// One schema for every invocation — assignment results, popup choices, event
 /// firings, and event answers — so an authored function can rely on the
 /// same fields wherever it is called from:
-/// - `source`: the job or event definition key
+/// - `source`: the assignment or event definition key
 /// - `result`: the result kind or the chosen option, as text
 /// - `leader`: the leading character's display name, possibly empty
 /// - `target`: what the action acted on, as a display label, possibly empty
@@ -795,33 +822,34 @@ pub(crate) fn effect_context(
     ctx
 }
 
-fn target_name(world: &World, target: JobTarget) -> String {
+fn target_name(world: &World, target: AssignmentTarget) -> String {
     match target {
-        JobTarget::None => String::new(),
-        JobTarget::Character(id) => crate::access::character_name(world, id),
-        JobTarget::Org(org) => crate::access::org_name(world, org),
-        JobTarget::Province(id) => crate::access::province_name(world, id),
-        JobTarget::OwnArmy(army) => crate::access::army(world, army)
+        AssignmentTarget::None => String::new(),
+        AssignmentTarget::Character(id) => crate::access::character_name(world, id),
+        AssignmentTarget::Org(org) => crate::access::org_name(world, org),
+        AssignmentTarget::Province(id) => crate::access::province_name(world, id),
+        AssignmentTarget::OwnArmy(army) => crate::access::army(world, army)
             .map(|record| record.name.clone())
             .unwrap_or_default(),
-        JobTarget::ArmyToProvince(_, province) | JobTarget::ShipToProvince(_, province) => {
+        AssignmentTarget::ArmyToProvince(_, province)
+        | AssignmentTarget::ShipToProvince(_, province) => {
             crate::access::province_name(world, province)
         }
     }
 }
 
-fn render_template(template: &str, leader: &str, target: &str, job_title: &str) -> String {
+fn render_template(template: &str, leader: &str, target: &str, assignment_title: &str) -> String {
     template
         .replace("{leader}", leader)
         .replace("{target}", target)
-        .replace("{job}", job_title)
+        .replace("{assignment}", assignment_title)
 }
 
 /// Applies parsed script effects against resolved roles.
 pub fn apply_effects(
     world: &mut World,
     effects: &[ScriptEffect],
-    roles: &JobRoles,
+    roles: &AssignmentRoles,
     owner: Option<OrgId>,
 ) {
     let date = world.resource::<CampaignClock>().date;
@@ -841,7 +869,10 @@ pub fn apply_effects(
                     .unwrap_or_default();
                 let template = world.resource::<TextDb>().text(message_key).to_owned();
                 let line = render_template(&template, &leader, &target, "");
-                crate::access::log(world, LogEntry::line(line, LogChannel::Jobs).by(owner));
+                crate::access::log(
+                    world,
+                    LogEntry::line(line, LogChannel::Assignments).by(owner),
+                );
             }
             ScriptEffect::FormArmy { manpower, supplies } => {
                 let Some(owner) = owner else {
@@ -986,7 +1017,7 @@ pub fn apply_effects(
 }
 
 /// Applies one personal-risk consequence to a character. Public so event
-/// systems (and tests) can reuse the exact job-risk semantics.
+/// systems (and tests) can reuse the exact assignment-risk semantics.
 pub fn apply_risk(world: &mut World, leader: CharacterId, tag: RiskTag, date: GameDate) {
     let entity = crate::access::character_entity(world, leader).expect("indexed");
     match tag {
@@ -1033,97 +1064,111 @@ pub fn apply_risk(world: &mut World, leader: CharacterId, tag: RiskTag, date: Ga
     }
 }
 
-/// Daily: resolves every job due today, in stable-ID order.
-pub fn resolve_due_jobs(world: &mut World) {
-    if world.get_resource::<JobsIndex>().is_none() {
+/// Daily: resolves every assignment due today, in stable-ID order.
+pub fn resolve_due_assignments(world: &mut World) {
+    if world.get_resource::<AssignmentsIndex>().is_none() {
         return;
     }
     let date = world.resource::<CampaignClock>().date;
     let player = world.get_resource::<PlayerHouse>().and_then(|p| p.0);
 
-    let due: Vec<(JobId, Entity)> = world
-        .resource::<JobsIndex>()
-        .jobs
+    let due: Vec<(AssignmentId, Entity)> = world
+        .resource::<AssignmentsIndex>()
+        .assignments
         .iter()
         .filter(|(_, entity)| {
             world
-                .get::<ActiveJob>(**entity)
-                .is_some_and(|job| job.completes <= date)
+                .get::<ActiveAssignment>(**entity)
+                .is_some_and(|assignment| assignment.completes <= date)
         })
         .map(|(id, entity)| (*id, *entity))
         .collect();
 
-    for (job_id, entity) in due {
-        let job = world.get::<ActiveJob>(entity).expect("indexed").clone();
+    for (assignment_id, entity) in due {
+        let assignment = world
+            .get::<ActiveAssignment>(entity)
+            .expect("indexed")
+            .clone();
         let content = world.resource::<ContentDb>().0.clone();
-        let def = content.jobs[&job.def].clone();
+        let def = content.assignments[&assignment.def].clone();
 
-        // A dead or removed leader abandons the job.
-        let leader_alive = crate::access::character(world, job.leader).is_some_and(|r| r.alive());
+        // A dead or removed leader abandons the assignment.
+        let leader_alive =
+            crate::access::character(world, assignment.leader).is_some_and(|r| r.alive());
         if !leader_alive {
             crate::access::log(
                 world,
                 LogEntry::line(
                     format!("'{}' was abandoned; its leader is gone.", def.title),
-                    LogChannel::Jobs,
+                    LogChannel::Assignments,
                 )
-                .by(Some(job.owner))
-                .about(LogSubject::Character(job.leader)),
+                .by(Some(assignment.owner))
+                .about(LogSubject::Character(assignment.leader)),
             );
             world.despawn(entity);
-            world.resource_mut::<JobsIndex>().jobs.remove(&job_id);
+            world
+                .resource_mut::<AssignmentsIndex>()
+                .assignments
+                .remove(&assignment_id);
             continue;
         }
 
         // Outcome, drawn by the same sampler the forecast describes.
-        let effectiveness = crate::forecast::effectiveness(world, job.leader, &def);
+        let effectiveness = crate::forecast::effectiveness(world, assignment.leader, &def);
+        // The purpose label is a stream identity, not a name. It is
+        // hashed into the seed, so changing it re-rolls every outcome in
+        // every campaign ever played. It stays spelled the way it was
+        // first written, and survives the rename deliberately.
         let mut rng = crate::access::derived_rng(
             world,
             "job-resolution",
-            &[job_id.raw(), date.days_since_epoch() as u64],
+            &[assignment_id.raw(), date.days_since_epoch() as u64],
         );
         let mut outcome = crate::forecast::resolve_outcome(&def, effectiveness, &mut rng);
-        if matches!(
-            outcome,
-            JobResultKind::Success | JobResultKind::CriticalSuccess
-        ) && let Some(op) = def.military_op
-            && !crate::warfare::apply_military_op(world, op, &job)
+        if matches!(outcome, OutcomeKind::Success | OutcomeKind::CriticalSuccess)
+            && let Some(op) = def.military_op
+            && !crate::warfare::apply_military_op(world, op, &assignment)
         {
             // The operation was defeated in the field.
-            outcome = JobResultKind::Failure;
+            outcome = OutcomeKind::Failure;
         }
         let result = def
             .results
             .get(&outcome)
             .cloned()
-            .unwrap_or_else(|| def.results[&JobResultKind::Failure].clone());
+            .unwrap_or_else(|| def.results[&OutcomeKind::Failure].clone());
 
         // Personal risks on bad outcomes.
-        if matches!(outcome, JobResultKind::Failure | JobResultKind::Disaster) {
-            let disaster = outcome == JobResultKind::Disaster;
+        if matches!(outcome, OutcomeKind::Failure | OutcomeKind::Disaster) {
+            let disaster = outcome == OutcomeKind::Disaster;
             for (index, tag) in def.risks.iter().enumerate() {
+                // Frozen for the same reason as the resolution stream.
                 let mut risk_rng = crate::access::derived_rng(
                     world,
                     "job-risk",
-                    &[job_id.raw(), date.days_since_epoch() as u64, index as u64],
+                    &[
+                        assignment_id.raw(),
+                        date.days_since_epoch() as u64,
+                        index as u64,
+                    ],
                 );
                 if risk_rng.check_permille(risk_permille(*tag, disaster)) {
-                    apply_risk(world, job.leader, *tag, date);
+                    apply_risk(world, assignment.leader, *tag, date);
                 }
             }
         }
 
-        let roles = resolve_roles(world, &job);
-        let leader_name = crate::access::character_name(world, job.leader);
-        let target_label = target_name(world, job.target);
+        let roles = resolve_roles(world, &assignment);
+        let leader_name = crate::access::character_name(world, assignment.leader);
+        let target_label = target_name(world, assignment.target);
 
         // Authored result effects.
         if let Some(fn_ref) = &result.effect_fn {
             let ctx = effect_context(
                 world,
-                &job.def,
+                &assignment.def,
                 &format!("{outcome:?}"),
-                Some(job.leader),
+                Some(assignment.leader),
                 &target_label,
             );
             let effects = {
@@ -1131,15 +1176,15 @@ pub fn resolve_due_jobs(world: &mut World) {
                 runtime.0.call_effect_fn(&content, fn_ref, ctx)
             };
             match effects {
-                Ok(effects) => apply_effects(world, &effects, &roles, Some(job.owner)),
+                Ok(effects) => apply_effects(world, &effects, &roles, Some(assignment.owner)),
                 Err(err) => {
                     crate::access::log(
                         world,
                         LogEntry::line(
                             format!("script error resolving '{}': {err}", def.title),
-                            LogChannel::Jobs,
+                            LogChannel::Assignments,
                         )
-                        .by(Some(job.owner)),
+                        .by(Some(assignment.owner)),
                     );
                 }
             }
@@ -1156,14 +1201,14 @@ pub fn resolve_due_jobs(world: &mut World) {
                 });
             crate::access::log(
                 world,
-                LogEntry::line(text, LogChannel::Jobs)
-                    .by(Some(job.owner))
-                    .about(LogSubject::Character(job.leader)),
+                LogEntry::line(text, LogChannel::Assignments)
+                    .by(Some(assignment.owner))
+                    .about(LogSubject::Character(assignment.leader)),
             );
         }
 
         // Player popups.
-        if result.popup && player == Some(job.owner) {
+        if result.popup && player == Some(assignment.owner) {
             let text = result
                 .popup_text
                 .as_deref()
@@ -1187,7 +1232,7 @@ pub fn resolve_due_jobs(world: &mut World) {
             popups.popups.push(PendingPopup {
                 id,
                 date,
-                job: job.def.clone(),
+                assignment: assignment.def.clone(),
                 result: outcome,
                 text,
                 choices,
@@ -1196,17 +1241,20 @@ pub fn resolve_due_jobs(world: &mut World) {
         }
 
         // Routine failures restart; everything else completes.
-        let restart = def.category == JobCategory::Routine
-            && outcome == JobResultKind::Failure
+        let restart = def.category == AssignmentCategory::Routine
+            && outcome == OutcomeKind::Failure
             && world.get_resource::<CampaignOver>().is_none();
         if restart {
             let duration = i64::from(def.duration_days);
-            let mut active = world.get_mut::<ActiveJob>(entity).expect("indexed");
+            let mut active = world.get_mut::<ActiveAssignment>(entity).expect("indexed");
             active.started = date;
             active.completes = date.add_days(duration);
         } else {
             world.despawn(entity);
-            world.resource_mut::<JobsIndex>().jobs.remove(&job_id);
+            world
+                .resource_mut::<AssignmentsIndex>()
+                .assignments
+                .remove(&assignment_id);
         }
     }
 }
@@ -1216,7 +1264,7 @@ pub fn answer_popup(
     world: &mut World,
     popup_id: u64,
     choice: &ContentKey,
-) -> Result<(), JobRejection> {
+) -> Result<(), AssignmentRejection> {
     let popup = {
         let popups = world.resource::<PendingPopups>();
         popups
@@ -1224,17 +1272,17 @@ pub fn answer_popup(
             .iter()
             .find(|p| p.id == popup_id)
             .cloned()
-            .ok_or(JobRejection::BadPopupAnswer)?
+            .ok_or(AssignmentRejection::BadPopupAnswer)?
     };
     if !popup.choices.iter().any(|(id, _)| id == choice) {
-        return Err(JobRejection::BadPopupAnswer);
+        return Err(AssignmentRejection::BadPopupAnswer);
     }
 
     let content = world.resource::<ContentDb>().0.clone();
     // A popup raised by a contextual event carries the event's key where a
-    // job popup carries the job's; the event runtime settles those.
-    if content.events.contains_key(&popup.job) {
-        crate::events::answer_event(world, &popup.job, choice, &popup.roles);
+    // assignment popup carries the assignment's; the event runtime settles those.
+    if content.events.contains_key(&popup.assignment) {
+        crate::events::answer_event(world, &popup.assignment, choice, &popup.roles);
         world
             .resource_mut::<PendingPopups>()
             .popups
@@ -1242,8 +1290,8 @@ pub fn answer_popup(
         return Ok(());
     }
     let effect_fn = content
-        .jobs
-        .get(&popup.job)
+        .assignments
+        .get(&popup.assignment)
         .and_then(|def| def.results.get(&popup.result))
         .and_then(|result| {
             result
@@ -1260,7 +1308,7 @@ pub fn answer_popup(
             .unwrap_or_default();
         let ctx = effect_context(
             world,
-            &popup.job,
+            &popup.assignment,
             choice.as_str(),
             popup.roles.leader,
             &target_label,
@@ -1290,11 +1338,11 @@ pub fn answer_popup(
 // Snapshot state
 // ---------------------------------------------------------------------------
 
-/// Serialised active job.
+/// Serialised active assignment.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct JobState {
+pub struct AssignmentState {
     /// Stable ID.
-    pub id: JobId,
+    pub id: AssignmentId,
     /// Definition key.
     pub def: ContentKey,
     /// Owning organisation.
@@ -1302,43 +1350,43 @@ pub struct JobState {
     /// Leader.
     pub leader: CharacterId,
     /// Target.
-    pub target: JobTarget,
+    pub target: AssignmentTarget,
     /// Start day.
     pub started: GameDate,
     /// Resolution day.
     pub completes: GameDate,
 }
 
-/// The complete serialised job world.
+/// The complete serialised assignment world.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub struct JobsState {
-    /// Active jobs in ID order.
-    pub jobs: Vec<JobState>,
+pub struct AssignmentsState {
+    /// Active assignments in ID order.
+    pub assignments: Vec<AssignmentState>,
     /// The notable-result message log.
     pub message_log: MessageLog,
     /// Popups awaiting answers.
     pub popups: PendingPopups,
 }
 
-/// Captures the job world for a snapshot.
-pub fn capture_jobs(world: &World) -> JobsState {
-    let Some(index) = world.get_resource::<JobsIndex>() else {
-        return JobsState::default();
+/// Captures the assignment world for a snapshot.
+pub fn capture_assignments(world: &World) -> AssignmentsState {
+    let Some(index) = world.get_resource::<AssignmentsIndex>() else {
+        return AssignmentsState::default();
     };
-    JobsState {
-        jobs: index
-            .jobs
+    AssignmentsState {
+        assignments: index
+            .assignments
             .values()
             .map(|entity| {
-                let job = world.get::<ActiveJob>(*entity).expect("indexed");
-                JobState {
-                    id: job.id,
-                    def: job.def.clone(),
-                    owner: job.owner,
-                    leader: job.leader,
-                    target: job.target,
-                    started: job.started,
-                    completes: job.completes,
+                let assignment = world.get::<ActiveAssignment>(*entity).expect("indexed");
+                AssignmentState {
+                    id: assignment.id,
+                    def: assignment.def.clone(),
+                    owner: assignment.owner,
+                    leader: assignment.leader,
+                    target: assignment.target,
+                    started: assignment.started,
+                    completes: assignment.completes,
                 }
             })
             .collect(),
@@ -1353,49 +1401,49 @@ pub fn capture_jobs(world: &World) -> JobsState {
     }
 }
 
-/// Respawns the job world from a snapshot.
-pub fn restore_jobs(world: &mut World, state: &JobsState) {
-    let mut index = JobsIndex::default();
-    for job in &state.jobs {
+/// Respawns the assignment world from a snapshot.
+pub fn restore_assignments(world: &mut World, state: &AssignmentsState) {
+    let mut index = AssignmentsIndex::default();
+    for assignment in &state.assignments {
         let entity = world
-            .spawn(ActiveJob {
-                id: job.id,
-                def: job.def.clone(),
-                owner: job.owner,
-                leader: job.leader,
-                target: job.target,
-                started: job.started,
-                completes: job.completes,
+            .spawn(ActiveAssignment {
+                id: assignment.id,
+                def: assignment.def.clone(),
+                owner: assignment.owner,
+                leader: assignment.leader,
+                target: assignment.target,
+                started: assignment.started,
+                completes: assignment.completes,
             })
             .id();
-        index.jobs.insert(job.id, entity);
+        index.assignments.insert(assignment.id, entity);
     }
     world.insert_resource(index);
     world.insert_resource(state.message_log.clone());
     world.insert_resource(state.popups.clone());
 }
 
-/// Installs job resources for a fresh campaign.
-pub fn init_jobs(world: &mut World) {
-    world.insert_resource(JobsIndex::default());
+/// Installs assignment resources for a fresh campaign.
+pub fn init_assignments(world: &mut World) {
+    world.insert_resource(AssignmentsIndex::default());
     world.insert_resource(MessageLog::default());
     world.insert_resource(PendingPopups::default());
     world.insert_resource(ScriptRuntime(ScriptHost::new()));
 }
 
 pub(crate) fn install(app: &mut App) {
-    // Explicit cross-module ordering: job resolutions land before the
+    // Explicit cross-module ordering: assignment resolutions land before the
     // day's appointment reactions, and monthly AI planning follows the
     // opinion cleanup. Insertion order would give the same result today;
     // stating it keeps determinism independent of plugin build order.
     app.add_systems(
         DailyTick,
-        resolve_due_jobs
+        resolve_due_assignments
             .in_set(TickSet::Simulation)
             .before(crate::politics::daily_appointments),
     );
     app.add_systems(
         MonthlyPulse,
-        crate::agency::ai_start_jobs.after(crate::politics::expire_opinion_modifiers),
+        crate::agency::ai_start_assignments.after(crate::politics::expire_opinion_modifiers),
     );
 }

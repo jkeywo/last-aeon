@@ -61,7 +61,7 @@ entities:
         - The bottom bar holds its height, and the active jobs listing inside it is visible.
     implementation:
       paths:
-        - crates/aeon_sim/src/jobs.rs
+        - crates/aeon_sim/src/assignments.rs
         - crates/aeon_sim/src/command.rs
         - crates/aeon_sim/src/warfare.rs
         - crates/aeon_sim/src/politics.rs
@@ -71,17 +71,17 @@ entities:
         - crates/aeon_client/src/map_modes.rs
         - crates/aeon_client/src/view.rs
         - crates/aeon_client/src/forecast_view.rs
-        - crates/aeon_client/src/jobs_ui.rs
+        - crates/aeon_client/src/assignment_ui.rs
         - assets/content/scenario/ashkarr-succession.rhai
       tests:
-        - crates/aeon_sim/tests/jobs.rs
+        - crates/aeon_sim/tests/assignments.rs
         - crates/aeon_sim/tests/politics.rs
         - crates/aeon_sim/tests/forces.rs
       status: declared
 
     evidence:
       - kind: test
-        reference: crates/aeon_sim/tests/jobs.rs
+        reference: crates/aeon_sim/tests/assignments.rs
         summary: Each cause of unavailability reports its own variant rather than a single message, and leader_eligible never disagrees with leader_availability across the whole scenario cast, which is what stops the three implementations drifting apart again.
       - kind: test
         reference: crates/aeon_sim/tests/forces.rs
@@ -90,7 +90,7 @@ entities:
         reference: crates/aeon_sim/tests/politics.rs
         summary: Hop distance through the liege chain is counted against the real scenario, including the case of a vassal house whose liege is itself a vassal of the player.
       - kind: manual-review
-        reference: crates/aeon_client/src/jobs_ui.rs
+        reference: crates/aeon_client/src/assignment_ui.rs
         summary: Verified in the native client that the bottom bar holds its declared height with the message log and active jobs side by side inside it, and that the globe reads evenly at grazing angles with province borders still separating regions.
 
   - milestone: m3-design-token-layer

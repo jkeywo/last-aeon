@@ -1,4 +1,4 @@
-//! Rendering for a single [`JobForecast`].
+//! Rendering for a single [`AssignmentForecast`].
 //!
 //! The simulation's forecast is shown in two places — expanded under an
 //! action in the inspector, and under the cursor when comparing candidates
@@ -8,9 +8,9 @@
 //!
 //! Nothing here computes anything: every number arrives in the forecast.
 
-use aeon_data::model::JobResultKind;
+use aeon_data::model::OutcomeKind;
 use aeon_sim::TextDb;
-use aeon_sim::forecast::{JobForecast, Permille};
+use aeon_sim::forecast::{AssignmentForecast, Permille};
 use bevy_egui::egui;
 
 use crate::ui::theme::{TargetState, UiTheme};
@@ -21,12 +21,12 @@ pub fn permille_text(value: Permille) -> String {
 }
 
 /// The name of a graded outcome; its colour comes from the theme.
-pub fn result_label_key(kind: JobResultKind) -> &'static str {
+pub fn result_label_key(kind: OutcomeKind) -> &'static str {
     match kind {
-        JobResultKind::CriticalSuccess => "ui.result.critical-success",
-        JobResultKind::Success => "ui.result.success",
-        JobResultKind::Failure => "ui.result.failure",
-        JobResultKind::Disaster => "ui.result.disaster",
+        OutcomeKind::CriticalSuccess => "ui.result.critical-success",
+        OutcomeKind::Success => "ui.result.success",
+        OutcomeKind::Failure => "ui.result.failure",
+        OutcomeKind::Disaster => "ui.result.disaster",
     }
 }
 
@@ -39,7 +39,7 @@ pub fn draw_forecast_body(
     ui: &mut egui::Ui,
     theme: &UiTheme,
     strings: &TextDb,
-    view: &JobForecast,
+    view: &AssignmentForecast,
 ) {
     // Timing.
     ui.horizontal_wrapped(|ui| {

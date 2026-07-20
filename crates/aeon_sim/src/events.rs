@@ -23,11 +23,11 @@ use bevy::app::App;
 use bevy::prelude::{IntoScheduleConfigs, Resource, World};
 use serde::{Deserialize, Serialize};
 
-use crate::clock::{CampaignClock, DailyTick, TickSet};
-use crate::ids::{CharacterId, JobId, OrgId, ProvinceId};
-use crate::jobs::{
-    JobRoles, LogChannel, LogEntry, LogSubject, PendingPopup, PendingPopups, ScriptRuntime,
+use crate::assignments::{
+    AssignmentRoles, LogChannel, LogEntry, LogSubject, PendingPopup, PendingPopups, ScriptRuntime,
 };
+use crate::clock::{CampaignClock, DailyTick, TickSet};
+use crate::ids::{AssignmentId, CharacterId, OrgId, ProvinceId};
 use crate::obligations::Obligations;
 use crate::order::province_order;
 use crate::politics::{PlayerHouse, PoliticsIndex};
@@ -53,8 +53,8 @@ pub enum EventSubject {
     Org(OrgId),
     /// A character, typically travelling.
     Character(CharacterId),
-    /// A job in progress.
-    Job(JobId),
+    /// A assignment in progress.
+    Assignment(AssignmentId),
 }
 
 impl EventSubject {
@@ -64,7 +64,7 @@ impl EventSubject {
             EventSubject::Province(id) => id.raw(),
             EventSubject::Org(id) => id.raw(),
             EventSubject::Character(id) => id.raw(),
-            EventSubject::Job(id) => id.raw(),
+            EventSubject::Assignment(id) => id.raw(),
         }
     }
 }
@@ -114,7 +114,9 @@ fn eligible(world: &World, def: &EventDef, subject: EventSubject) -> bool {
         EventSubject::Province(province) => crate::warfare::province_holder(world, province),
         EventSubject::Org(org) => Some(org),
         EventSubject::Character(character) => crate::access::organisation_of(world, character),
-        EventSubject::Job(job) => crate::access::job(world, job).map(|record| record.owner),
+        EventSubject::Assignment(assignment) => {
+            crate::access::assignment(world, assignment).map(|record| record.owner)
+        }
     };
 
     if requires.player_only && owner != player {
@@ -194,9 +196,15 @@ fn subjects_for(world: &World, family: EventFamily) -> Vec<EventSubject> {
                     .collect()
             })
             .unwrap_or_default(),
-        EventFamily::Job => world
-            .get_resource::<crate::jobs::JobsIndex>()
-            .map(|index| index.jobs.keys().map(|id| EventSubject::Job(*id)).collect())
+        EventFamily::Assignment => world
+            .get_resource::<crate::assignments::AssignmentsIndex>()
+            .map(|index| {
+                index
+                    .assignments
+                    .keys()
+                    .map(|id| EventSubject::Assignment(*id))
+                    .collect()
+            })
             .unwrap_or_default(),
     }
 }
@@ -253,10 +261,10 @@ fn pick(
 
 /// The characters standing behind an event's roles.
 ///
-/// Events resolve through the same [`JobRoles::resolve`] the job system
+/// Events resolve through the same [`AssignmentRoles::resolve`] the assignment system
 /// uses, so an event effect addressing `consul` or `liege-head` means
-/// exactly what it means on a job.
-fn roles_for(world: &World, subject: EventSubject) -> JobRoles {
+/// exactly what it means on a assignment.
+fn roles_for(world: &World, subject: EventSubject) -> AssignmentRoles {
     let (owner, leader, province) = match subject {
         EventSubject::Province(province) => (
             crate::warfare::province_holder(world, province),
@@ -269,14 +277,16 @@ fn roles_for(world: &World, subject: EventSubject) -> JobRoles {
             Some(character),
             None,
         ),
-        EventSubject::Job(job) => match crate::access::job(world, job) {
-            Some(record) => (Some(record.owner), Some(record.leader), None),
-            None => (None, None, None),
-        },
+        EventSubject::Assignment(assignment) => {
+            match crate::access::assignment(world, assignment) {
+                Some(record) => (Some(record.owner), Some(record.leader), None),
+                None => (None, None, None),
+            }
+        }
     };
-    JobRoles::resolve(
+    AssignmentRoles::resolve(
         world,
-        crate::jobs::RoleSeed {
+        crate::assignments::RoleSeed {
             owner,
             leader,
             target: None,
@@ -297,7 +307,7 @@ fn subject_name(world: &World, subject: EventSubject) -> String {
         EventSubject::Character(character) => crate::access::character(world, character)
             .map(|record| record.name.clone())
             .unwrap_or_default(),
-        EventSubject::Job(_) => String::new(),
+        EventSubject::Assignment(_) => String::new(),
     }
 }
 
@@ -336,7 +346,7 @@ fn fire(world: &mut World, key: &ContentKey, subject: EventSubject) {
         EventSubject::Province(province) => Some(LogSubject::Province(province)),
         EventSubject::Org(org) => Some(LogSubject::Org(org)),
         EventSubject::Character(character) => Some(LogSubject::Character(character)),
-        EventSubject::Job(_) => roles.leader.map(LogSubject::Character),
+        EventSubject::Assignment(_) => roles.leader.map(LogSubject::Character),
     };
 
     if def.weighty && !def.choices.is_empty() {
@@ -347,8 +357,8 @@ fn fire(world: &mut World, key: &ContentKey, subject: EventSubject) {
         popups.popups.push(PendingPopup {
             id,
             date,
-            job: key.clone(),
-            result: aeon_data::model::JobResultKind::Success,
+            assignment: key.clone(),
+            result: aeon_data::model::OutcomeKind::Success,
             text: text.clone(),
             choices: def
                 .choices
@@ -372,13 +382,13 @@ fn fire(world: &mut World, key: &ContentKey, subject: EventSubject) {
     if !def.weighty
         && let Some(effect_fn) = &def.effect_fn
     {
-        let ctx = crate::jobs::effect_context(world, key, "", roles.leader, &name);
+        let ctx = crate::assignments::effect_context(world, key, "", roles.leader, &name);
         let effects = {
             let runtime = world.resource::<ScriptRuntime>();
             runtime.0.call_effect_fn(&content, effect_fn, ctx)
         };
         if let Ok(effects) = effects {
-            crate::jobs::apply_effects(world, &effects, &roles, owner);
+            crate::assignments::apply_effects(world, &effects, &roles, owner);
         }
     }
 }
@@ -421,13 +431,13 @@ pub fn tick_events(world: &mut World) {
 
 /// Applies the chosen answer to a weighty event popup.
 ///
-/// Returns whether the popup belonged to an event; job popups are handled
-/// by the job system.
+/// Returns whether the popup belonged to an event; assignment popups are handled
+/// by the assignment system.
 pub fn answer_event(
     world: &mut World,
     event: &ContentKey,
     choice: &ContentKey,
-    roles: &JobRoles,
+    roles: &AssignmentRoles,
 ) -> bool {
     let content = world.resource::<ContentDb>().0.clone();
     let Some(def) = content.events.get(event) else {
@@ -457,14 +467,19 @@ pub fn answer_event(
             .target
             .map(|id| crate::access::character_name(world, id))
             .unwrap_or_default();
-        let ctx =
-            crate::jobs::effect_context(world, event, choice.as_str(), roles.leader, &target_label);
+        let ctx = crate::assignments::effect_context(
+            world,
+            event,
+            choice.as_str(),
+            roles.leader,
+            &target_label,
+        );
         let effects = {
             let runtime = world.resource::<ScriptRuntime>();
             runtime.0.call_effect_fn(&content, effect_fn, ctx)
         };
         if let Ok(effects) = effects {
-            crate::jobs::apply_effects(world, &effects, roles, owner);
+            crate::assignments::apply_effects(world, &effects, roles, owner);
         }
     }
     true

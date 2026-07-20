@@ -23,7 +23,7 @@ use crate::state::{CampaignIds, CampaignMeta, CampaignSeed, ContentDb};
 /// Bump on any change to [`CampaignState`]'s serialised shape, and provide a
 /// migration for every version a release has ever written. No release has
 /// shipped yet, so pre-release bumps carry no migrations.
-pub const SNAPSHOT_FORMAT_VERSION: u32 = 8;
+pub const SNAPSHOT_FORMAT_VERSION: u32 = 9;
 
 /// The complete authoritative campaign state.
 ///
@@ -48,8 +48,8 @@ pub struct CampaignState {
     pub map: crate::map::MapState,
     /// The political world.
     pub politics: crate::politics::PoliticsState,
-    /// The job world.
-    pub jobs: crate::jobs::JobsState,
+    /// The assignment world.
+    pub assignments: crate::assignments::AssignmentsState,
     /// Ships and armies.
     pub forces: crate::forces::ForcesState,
     /// The political obligation ledger.
@@ -147,7 +147,7 @@ pub fn capture_state(world: &World) -> CampaignState {
         id_allocator: world.resource::<CampaignIds>().0.clone(),
         map: crate::map::capture_map(world),
         politics: crate::politics::capture_politics(world),
-        jobs: crate::jobs::capture_jobs(world),
+        assignments: crate::assignments::capture_assignments(world),
         forces: crate::forces::capture_forces(world),
         obligations: crate::obligations::capture(world),
         events: crate::events::capture(world),
@@ -216,7 +216,7 @@ pub fn restore_state(world: &mut World, state: CampaignState) {
 }
 
 /// Respawns the content-bound half of a restore against hash-verified
-/// content: the map, the political world, forces, and the job world,
+/// content: the map, the political world, forces, and the assignment world,
 /// then the script runtime and the content database — the same sections
 /// [`crate::state::start_campaign_with_content`] creates on a fresh
 /// campaign, in the same order.
@@ -228,7 +228,9 @@ pub fn restore_content_state(world: &mut World, state: &CampaignState, content: 
     crate::map::restore_map(world, &state.map, &content);
     crate::politics::restore_politics(world, &state.politics, &content);
     crate::forces::restore_forces(world, &state.forces, &content);
-    crate::jobs::restore_jobs(world, &state.jobs);
-    world.insert_resource(crate::jobs::ScriptRuntime(aeon_data::ScriptHost::new()));
+    crate::assignments::restore_assignments(world, &state.assignments);
+    world.insert_resource(crate::assignments::ScriptRuntime(
+        aeon_data::ScriptHost::new(),
+    ));
     world.insert_resource(ContentDb(content));
 }

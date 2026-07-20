@@ -304,7 +304,7 @@ pub fn spawn_from_content(world: &mut World, content: &ContentSet) {
                     spouse: def.spouse.as_ref().map(|s| index.character_keys[s]),
                 },
                 OpinionLedger::default(),
-                crate::jobs::CharacterCondition::default(),
+                crate::assignments::CharacterCondition::default(),
             ))
             .id();
         index.characters.insert(id, entity);
@@ -507,7 +507,7 @@ pub struct CharacterState {
     pub opinions: Vec<OpinionEntry>,
     /// Temporary incapacitating conditions.
     #[serde(default)]
-    pub condition: crate::jobs::CharacterCondition,
+    pub condition: crate::assignments::CharacterCondition,
     /// Physical location, if tracked.
     #[serde(default)]
     pub location: Option<crate::presence::Location>,
@@ -598,7 +598,7 @@ pub fn capture_politics(world: &World) -> PoliticsState {
         let lineage = world.get::<Lineage>(*entity).expect("indexed");
         let opinions = world.get::<OpinionLedger>(*entity).expect("indexed");
         let condition = world
-            .get::<crate::jobs::CharacterCondition>(*entity)
+            .get::<crate::assignments::CharacterCondition>(*entity)
             .copied()
             .unwrap_or_default();
         let location = world
@@ -1039,7 +1039,8 @@ pub fn process_death(world: &mut World, id: CharacterId, date: GameDate) {
             .format("sim.politics.ship-without-captain", &[("ship", &name)]);
         crate::access::log(
             world,
-            crate::jobs::LogEntry::line(line, crate::jobs::LogChannel::Military).by(Some(owner)),
+            crate::assignments::LogEntry::line(line, crate::assignments::LogChannel::Military)
+                .by(Some(owner)),
         );
     }
 
@@ -1227,7 +1228,7 @@ fn consul_candidates(world: &World) -> Vec<CharacterId> {
 }
 
 /// A candidate's standing in the Consular contest. Opinion terms let
-/// political jobs move the outcome.
+/// political assignments move the outcome.
 fn consul_score(world: &World, candidate: CharacterId, jitter: i64) -> i64 {
     let skills = crate::access::on_character::<CharacterSkills>(world, candidate)
         .expect("indexed")
@@ -1563,7 +1564,7 @@ fn spawn_child(
                 spouse: None,
             },
             OpinionLedger::default(),
-            crate::jobs::CharacterCondition::default(),
+            crate::assignments::CharacterCondition::default(),
         ))
         .id();
     let mother_home =

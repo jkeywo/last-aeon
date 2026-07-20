@@ -6,10 +6,10 @@
 //! authored scenario lands, it starts a fixed development campaign on the
 //! embedded content.
 
+mod assignment_ui;
 mod camera;
 mod content;
 mod forecast_view;
-mod jobs_ui;
 mod map_modes;
 mod map_overlay;
 mod scene;
@@ -46,14 +46,14 @@ fn main() {
         .init_resource::<sim_driver::TimeControl>()
         .init_resource::<view::ViewState>()
         .init_resource::<camera::OrbitCamera>()
-        .init_resource::<jobs_ui::UiCommandQueue>()
-        .init_resource::<jobs_ui::JobForm>()
+        .init_resource::<assignment_ui::UiCommandQueue>()
+        .init_resource::<assignment_ui::AssignmentForm>()
         .init_resource::<view::SearchState>()
         .init_resource::<view::MapMode>()
         .init_resource::<scene::GlobeBake>()
         .init_resource::<forecast_view::ForecastCache>()
         .init_resource::<forecast_view::AvailabilityView>()
-        .init_resource::<jobs_ui::LogFilter>()
+        .init_resource::<assignment_ui::LogFilter>()
         .init_resource::<map_modes::MapReadout>()
         .init_resource::<ui::theme::UiTheme>()
         .init_resource::<ui::picker::PickerState>()
@@ -81,8 +81,8 @@ fn main() {
                 scene::apply_selection_tint,
                 camera::retarget_on_view_change,
                 camera::drive_camera,
-                jobs_ui::auto_pause_on_popups,
-                jobs_ui::flush_ui_commands,
+                assignment_ui::auto_pause_on_popups,
+                assignment_ui::flush_ui_commands,
                 forecast_view::refresh_availability,
                 forecast_view::refresh_forecast,
                 // The bake must observe the readout computed this frame.
@@ -102,7 +102,7 @@ fn main() {
                 // The picker floats above the panels that open it, so it is
                 // drawn after them and needs no place in the layout.
                 ui::picker::draw_picker,
-                jobs_ui::draw_popups,
+                assignment_ui::draw_popups,
             )
                 .chain(),
         )

@@ -16,11 +16,11 @@ use bevy::app::App;
 use bevy::prelude::{Component, IntoScheduleConfigs, World};
 use serde::{Deserialize, Serialize};
 
+use crate::assignments::{LogChannel, LogEntry, LogSubject};
 use crate::clock::{DailyTick, TickSet};
 use crate::economy::OrgResources;
 use crate::forces::{ArmyRecord, ForcesIndex, ShipRecord};
 use crate::ids::{OrgId, ProvinceId};
-use crate::jobs::{LogChannel, LogEntry, LogSubject};
 use crate::map::MapIndex;
 use crate::politics::{CharacterRecord, PoliticsIndex, TitleHolder, TitleRecord};
 use crate::presence::{CharacterLocation, Location};

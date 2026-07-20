@@ -2,7 +2,7 @@
 //!
 //! Ships spawn from authored content, dock at provinces, and travel
 //! between them; capital ships have simulated captains. Armies are
-//! created during play by army-formation jobs that commit a general,
+//! created during play by army-formation assignments that commit a general,
 //! manpower, and supplies, and persist until disbanded or destroyed.
 
 use std::collections::BTreeMap;
@@ -446,6 +446,6 @@ pub(crate) fn install(app: &mut App) {
         crate::clock::DailyTick,
         dock_arrivals
             .in_set(crate::clock::TickSet::Simulation)
-            .before(crate::jobs::resolve_due_jobs),
+            .before(crate::assignments::resolve_due_assignments),
     );
 }

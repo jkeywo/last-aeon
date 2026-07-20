@@ -24,7 +24,7 @@ pub enum ScriptEffect {
         /// unlike a definition's prose, this key is authored.
         message_key: String,
     },
-    /// Add a directional opinion modifier between job-context roles.
+    /// Add a directional opinion modifier between assignment-context roles.
     Opinion {
         /// Role whose opinion changes.
         from: EffectRole,
@@ -37,7 +37,7 @@ pub enum ScriptEffect {
         /// Stable reason tag.
         reason: String,
     },
-    /// Form a persistent army at the job leader's location, spending the
+    /// Form a persistent army at the assignment leader's location, spending the
     /// stated manpower and supplies from the owning organisation.
     FormArmy {
         /// Soldiers drawn from the organisation's manpower pool.
@@ -53,7 +53,7 @@ pub enum ScriptEffect {
     /// wealth to the owner. Valid only for the Sanctora Imperim.
     CollectTithes,
     /// Create or settle a political obligation between the houses behind
-    /// two job-context roles.
+    /// two assignment-context roles.
     Obligation {
         /// What to do to the ledger.
         action: ObligationAction,
@@ -70,7 +70,7 @@ pub enum ScriptEffect {
         /// Where it came from, in plain words.
         origin: String,
     },
-    /// Change provincial order, either where the job acted or across
+    /// Change provincial order, either where the assignment acted or across
     /// every province the owner holds.
     Order {
         /// Which provinces the change reaches.
@@ -80,7 +80,7 @@ pub enum ScriptEffect {
     },
 }
 
-/// A job-context role an authored effect may address.
+/// A assignment-context role an authored effect may address.
 ///
 /// These seven names are the whole vocabulary scripts have for naming
 /// characters; the simulation resolves who actually stands behind each
@@ -89,13 +89,13 @@ pub enum ScriptEffect {
 /// addresses nobody.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum EffectRole {
-    /// The character leading the job.
+    /// The character leading the assignment.
     Leader,
     /// The character targeted, or the targeted organisation's head.
     Target,
     /// The head of the targeted organisation.
     TargetHead,
-    /// The head of the organisation the job serves.
+    /// The head of the organisation the assignment serves.
     OwnerHead,
     /// The head of the owner's liege organisation.
     LiegeHead,
@@ -135,7 +135,7 @@ pub enum ObligationAction {
 /// Which provinces an [`ScriptEffect::Order`] applies to.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum OrderScope {
-    /// The province the job targeted, or the leader's own location.
+    /// The province the assignment targeted, or the leader's own location.
     TargetProvince,
     /// Every province the owning organisation holds.
     AllHeld,

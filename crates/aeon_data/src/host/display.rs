@@ -21,7 +21,7 @@
 use std::collections::BTreeSet;
 
 use crate::key::ContentKey;
-use crate::model::{ContentSet, JobResultKind};
+use crate::model::{ContentSet, OutcomeKind};
 use crate::report::ContentReport;
 use crate::text::StringTable;
 
@@ -37,11 +37,11 @@ pub(super) fn fill_display_text(builder: &mut BuilderState, strings: &StringTabl
         path,
     };
 
-    for (key, def) in &mut builder.jobs {
-        def.title = fill.req("job", key, "title");
-        def.summary = fill.req("job", key, "summary");
+    for (key, def) in &mut builder.assignments {
+        def.title = fill.req("assignment", key, "title");
+        def.summary = fill.req("assignment", key, "summary");
         for (kind, result) in &mut def.results {
-            let stem = format!("job.{key}.{}", result_stem(*kind));
+            let stem = format!("assignment.{key}.{}", result_stem(*kind));
             result.popup_text = fill.opt(&format!("{stem}.popup-text"));
             result.log_text = fill.opt(&format!("{stem}.log-text"));
             for choice in &mut result.choices {
@@ -105,11 +105,11 @@ pub fn text_keys(set: &ContentSet) -> BTreeSet<String> {
         keys.insert(key);
     };
 
-    for (key, def) in &set.jobs {
-        add(format!("job.{key}.title"));
-        add(format!("job.{key}.summary"));
+    for (key, def) in &set.assignments {
+        add(format!("assignment.{key}.title"));
+        add(format!("assignment.{key}.summary"));
         for (kind, result) in &def.results {
-            let stem = format!("job.{key}.{}", result_stem(*kind));
+            let stem = format!("assignment.{key}.{}", result_stem(*kind));
             if result.popup_text.is_some() {
                 add(format!("{stem}.popup-text"));
             }
@@ -203,12 +203,12 @@ impl Filler<'_> {
     }
 }
 
-/// The key segment naming a job result, which has no ID of its own.
-fn result_stem(kind: JobResultKind) -> &'static str {
+/// The key segment naming a assignment result, which has no ID of its own.
+fn result_stem(kind: OutcomeKind) -> &'static str {
     match kind {
-        JobResultKind::CriticalSuccess => "critical-success",
-        JobResultKind::Success => "success",
-        JobResultKind::Failure => "failure",
-        JobResultKind::Disaster => "disaster",
+        OutcomeKind::CriticalSuccess => "critical-success",
+        OutcomeKind::Success => "success",
+        OutcomeKind::Failure => "failure",
+        OutcomeKind::Disaster => "disaster",
     }
 }

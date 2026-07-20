@@ -40,7 +40,7 @@ use validate::validate_cross_references;
 /// One authored source file, path-relative to the content root.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ContentSource {
-    /// Content-relative path with forward slashes, e.g. `core/jobs.rhai`.
+    /// Content-relative path with forward slashes, e.g. `core/assignments.rhai`.
     pub path: String,
     /// The Rhai source text.
     pub source: String,
@@ -161,7 +161,7 @@ pub fn load_content(
     }
 
     let set = ContentSet {
-        jobs: builder.jobs,
+        assignments: builder.assignments,
         bodies: builder.bodies,
         provinces: builder.provinces,
         traits: builder.traits,
@@ -229,8 +229,8 @@ impl ScriptHost {
     /// its validated effects.
     ///
     /// The simulation supplies one context schema for every invocation —
-    /// job results, popup choices, event firings, and event answers:
-    /// `source` (the job or event key), `result` (the result kind or
+    /// assignment results, popup choices, event firings, and event answers:
+    /// `source` (the assignment or event key), `result` (the result kind or
     /// chosen option, as text), `leader` (the leading character's display
     /// name, possibly empty), and `target` (a display label for what the
     /// action acted on, possibly empty).

@@ -12,9 +12,9 @@ use bevy::app::App;
 use bevy::prelude::{IntoScheduleConfigs, Resource, World};
 use serde::{Deserialize, Serialize};
 
+use crate::assignments::{self, AssignmentRejection, AssignmentTarget};
 use crate::clock::{CampaignClock, DailyTick, TickSet};
-use crate::ids::{ArmyId, CharacterId, JobId, ProvinceId, ShipId};
-use crate::jobs::{self, JobRejection, JobTarget};
+use crate::ids::{ArmyId, AssignmentId, CharacterId, ProvinceId, ShipId};
 use crate::politics::PlayerHouse;
 use crate::presence::{self, Location};
 use crate::state::CampaignMeta;
@@ -33,19 +33,19 @@ pub enum PlayerCommand {
         /// The new player-facing campaign name.
         name: String,
     },
-    /// Starts a job for the player's organisation.
-    StartJob {
-        /// The job definition.
-        job: ContentKey,
+    /// Starts a assignment for the player's organisation.
+    StartAssignment {
+        /// The assignment definition.
+        assignment: ContentKey,
         /// The character who will lead it.
         leader: CharacterId,
-        /// What the job acts on.
-        target: JobTarget,
+        /// What the assignment acts on.
+        target: AssignmentTarget,
     },
-    /// Cancels one of the player's active jobs.
-    CancelJob {
-        /// The job to cancel.
-        job: JobId,
+    /// Cancels one of the player's active assignments.
+    CancelAssignment {
+        /// The assignment to cancel.
+        assignment: AssignmentId,
     },
     /// Answers a pending result popup.
     AnswerPopup {
@@ -110,9 +110,9 @@ pub enum CommandRejection {
         /// Length of the rejected name in characters.
         length: usize,
     },
-    /// A job-related command was refused.
+    /// A assignment-related command was refused.
     #[error(transparent)]
-    Job(#[from] JobRejection),
+    Assignment(#[from] AssignmentRejection),
 }
 
 /// Commands accepted but not yet applied, sorted by `(day, seq)`.
@@ -172,33 +172,34 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
                 Err(CommandRejection::InvalidCampaignName { length })
             }
         }
-        PlayerCommand::StartJob {
-            job,
+        PlayerCommand::StartAssignment {
+            assignment,
             leader,
             target,
         } => {
             let org = world
                 .get_resource::<PlayerHouse>()
                 .and_then(|p| p.0)
-                .ok_or(JobRejection::NoPlayerOrg)?;
-            jobs::validate_start(world, org, job, *leader, *target)?;
+                .ok_or(AssignmentRejection::NoPlayerOrg)?;
+            assignments::validate_start(world, org, assignment, *leader, *target)?;
             Ok(())
         }
-        PlayerCommand::CancelJob { job } => {
+        PlayerCommand::CancelAssignment { assignment } => {
             let org = world
                 .get_resource::<PlayerHouse>()
                 .and_then(|p| p.0)
-                .ok_or(JobRejection::NoPlayerOrg)?;
-            let owned = crate::access::job(world, *job).is_some_and(|active| active.owner == org);
+                .ok_or(AssignmentRejection::NoPlayerOrg)?;
+            let owned = crate::access::assignment(world, *assignment)
+                .is_some_and(|active| active.owner == org);
             if owned {
                 Ok(())
             } else {
-                Err(JobRejection::BadJob.into())
+                Err(AssignmentRejection::BadAssignment.into())
             }
         }
         PlayerCommand::AnswerPopup { popup, choice } => {
             let valid = world
-                .get_resource::<crate::jobs::PendingPopups>()
+                .get_resource::<crate::assignments::PendingPopups>()
                 .is_some_and(|popups| {
                     popups
                         .popups
@@ -208,7 +209,7 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
             if valid {
                 Ok(())
             } else {
-                Err(JobRejection::BadPopupAnswer.into())
+                Err(AssignmentRejection::BadPopupAnswer.into())
             }
         }
         PlayerCommand::Travel {
@@ -218,11 +219,11 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
             let org = world
                 .get_resource::<PlayerHouse>()
                 .and_then(|p| p.0)
-                .ok_or(JobRejection::NoPlayerOrg)?;
+                .ok_or(AssignmentRejection::NoPlayerOrg)?;
             let member = crate::access::character(world, *character)
                 .is_some_and(|r| r.alive() && r.organisation == Some(org));
             if !member {
-                return Err(JobRejection::IneligibleLeader.into());
+                return Err(AssignmentRejection::IneligibleLeader.into());
             }
             match presence::character_location(world, *character) {
                 Some(Location::Province(at)) if at != *destination => {
@@ -230,17 +231,17 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
                     if known {
                         Ok(())
                     } else {
-                        Err(JobRejection::BadTarget.into())
+                        Err(AssignmentRejection::BadTarget.into())
                     }
                 }
-                _ => Err(JobRejection::BadTarget.into()),
+                _ => Err(AssignmentRejection::BadTarget.into()),
             }
         }
         PlayerCommand::MoveShip { ship, destination } => {
             let org = world
                 .get_resource::<PlayerHouse>()
                 .and_then(|p| p.0)
-                .ok_or(JobRejection::NoPlayerOrg)?;
+                .ok_or(AssignmentRejection::NoPlayerOrg)?;
             let ok = crate::access::ship(world, *ship).is_some_and(|s| {
                 s.owner == org
                     && matches!(
@@ -251,62 +252,66 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
             if ok {
                 Ok(())
             } else {
-                Err(JobRejection::BadTarget.into())
+                Err(AssignmentRejection::BadTarget.into())
             }
         }
         PlayerCommand::DisbandArmy { army } => {
             let org = world
                 .get_resource::<PlayerHouse>()
                 .and_then(|p| p.0)
-                .ok_or(JobRejection::NoPlayerOrg)?;
+                .ok_or(AssignmentRejection::NoPlayerOrg)?;
             let owned = crate::access::army(world, *army).is_some_and(|a| a.owner == org);
             if owned {
                 Ok(())
             } else {
-                Err(JobRejection::BadJob.into())
+                Err(AssignmentRejection::BadAssignment.into())
             }
         }
         PlayerCommand::SetShipCaptain { ship, captain } => {
             let org = world
                 .get_resource::<PlayerHouse>()
                 .and_then(|p| p.0)
-                .ok_or(JobRejection::NoPlayerOrg)?;
+                .ok_or(AssignmentRejection::NoPlayerOrg)?;
             let owned = crate::access::ship(world, *ship).is_some_and(|s| s.owner == org);
             if !owned {
-                return Err(JobRejection::BadTarget.into());
+                return Err(AssignmentRejection::BadTarget.into());
             }
             // Relinquishing command is always allowed. Taking it requires
             // an officer free to hold it: a standing command elsewhere, an
-            // active job, or indisposition all bar it.
+            // active assignment, or indisposition all bar it.
             let Some(captain) = captain else {
                 return Ok(());
             };
             let date = world.resource::<CampaignClock>().date;
-            match jobs::leader_availability(world, org, *captain, date) {
-                jobs::LeaderAvailability::Available => Ok(()),
+            match assignments::leader_availability(world, org, *captain, date) {
+                assignments::LeaderAvailability::Available => Ok(()),
                 // Already this ship's captain: a harmless no-op.
-                jobs::LeaderAvailability::Assigned(jobs::Assignment::Captain {
+                assignments::LeaderAvailability::Posted(assignments::Post::Captain {
                     ship: held,
                     ..
                 }) if held == *ship => Ok(()),
-                jobs::LeaderAvailability::Assigned(_) => Err(JobRejection::AlreadyAssigned.into()),
-                jobs::LeaderAvailability::Busy { .. } => Err(JobRejection::LeaderBusy.into()),
-                jobs::LeaderAvailability::Indisposed { .. } => {
-                    Err(JobRejection::LeaderIndisposed.into())
+                assignments::LeaderAvailability::Posted(_) => {
+                    Err(AssignmentRejection::AlreadyAssigned.into())
                 }
-                jobs::LeaderAvailability::Ineligible(rejection) => Err(rejection.into()),
+                assignments::LeaderAvailability::Busy { .. } => {
+                    Err(AssignmentRejection::LeaderBusy.into())
+                }
+                assignments::LeaderAvailability::Indisposed { .. } => {
+                    Err(AssignmentRejection::LeaderIndisposed.into())
+                }
+                assignments::LeaderAvailability::Ineligible(rejection) => Err(rejection.into()),
             }
         }
         PlayerCommand::SetStandingOrder { army, .. } => {
             let org = world
                 .get_resource::<PlayerHouse>()
                 .and_then(|p| p.0)
-                .ok_or(JobRejection::NoPlayerOrg)?;
+                .ok_or(AssignmentRejection::NoPlayerOrg)?;
             let owned = crate::access::army(world, *army).is_some_and(|a| a.owner == org);
             if owned {
                 Ok(())
             } else {
-                Err(JobRejection::BadJob.into())
+                Err(AssignmentRejection::BadAssignment.into())
             }
         }
     }
@@ -319,8 +324,8 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
         PlayerCommand::RenameCampaign { name } => {
             world.resource_mut::<CampaignMeta>().name = name.clone();
         }
-        PlayerCommand::StartJob {
-            job,
+        PlayerCommand::StartAssignment {
+            assignment,
             leader,
             target,
         } => {
@@ -328,23 +333,23 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
             // and drop silently if the start is no longer legal (the
             // command log still records the attempt deterministically).
             if let Some(org) = world.get_resource::<PlayerHouse>().and_then(|p| p.0)
-                && jobs::validate_start(world, org, job, *leader, *target).is_ok()
+                && assignments::validate_start(world, org, assignment, *leader, *target).is_ok()
             {
-                jobs::start_job(world, org, job, *leader, *target);
+                assignments::start_assignment(world, org, assignment, *leader, *target);
             }
         }
-        PlayerCommand::CancelJob { job } => {
-            let entity = crate::access::job_entity(world, *job);
+        PlayerCommand::CancelAssignment { assignment } => {
+            let entity = crate::access::assignment_entity(world, *assignment);
             if let Some(entity) = entity {
                 world.despawn(entity);
                 world
-                    .resource_mut::<crate::jobs::JobsIndex>()
-                    .jobs
-                    .remove(job);
+                    .resource_mut::<crate::assignments::AssignmentsIndex>()
+                    .assignments
+                    .remove(assignment);
             }
         }
         PlayerCommand::AnswerPopup { popup, choice } => {
-            let _ = jobs::answer_popup(world, *popup, choice);
+            let _ = assignments::answer_popup(world, *popup, choice);
         }
         PlayerCommand::Travel {
             character,
@@ -406,7 +411,7 @@ pub fn submit_command(
 ) -> Result<CommandEnvelope, CommandRejection> {
     validate_command(world, &command)?;
     let actor = match &command {
-        PlayerCommand::StartJob { leader, .. } => Some(*leader),
+        PlayerCommand::StartAssignment { leader, .. } => Some(*leader),
         PlayerCommand::Travel { character, .. } => Some(*character),
         _ => None,
     };

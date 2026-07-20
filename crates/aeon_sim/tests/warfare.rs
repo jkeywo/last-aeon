@@ -9,8 +9,8 @@ use aeon_sim::economy::OrgResources;
 use aeon_sim::forces::{ArmyRecord, ForcesIndex, ShipRecord, form_army};
 use aeon_sim::warfare::{StandingOrder, province_holder};
 use aeon_sim::{
-    ArmyId, CampaignConfig, CharacterId, JobTarget, MessageLog, PlayerCommand, PoliticsIndex,
-    ProvinceId, SimHost,
+    ArmyId, AssignmentTarget, CampaignConfig, CharacterId, MessageLog, PlayerCommand,
+    PoliticsIndex, ProvinceId, SimHost,
 };
 
 const FIXTURE: &str = r#"
@@ -56,15 +56,15 @@ define_character(#{
     skills: #{ command: 4, diplomacy: 9, intrigue: 8, stewardship: 5 },
 });
 
-// Engine-op jobs with certain rolls so tests isolate op semantics.
-define_job(#{
+// Engine-op assignments with certain rolls so tests isolate op semantics.
+define_assignment(#{
     id: "march-the-army", 
     category: "consequential", duration_days: 2,
     skill: "command", difficulty: 0,
     target: "own-army-and-province", military_op: "move", ai_available: false,
     results: #{ success: #{ weight: 1000000 }, failure: #{ weight: 1 } },
 });
-define_job(#{
+define_assignment(#{
     id: "lay-siege", 
     category: "consequential", duration_days: 20,
     skill: "command", difficulty: 0,
@@ -74,21 +74,21 @@ define_job(#{
         failure: #{ weight: 1, log: true, },
     },
 });
-define_job(#{
+define_assignment(#{
     id: "raid-the-province", 
     category: "consequential", duration_days: 3,
     skill: "command", difficulty: 0,
     target: "own-army-and-province", military_op: "raid", ai_available: false,
     results: #{ success: #{ weight: 1000000 }, failure: #{ weight: 1 } },
 });
-define_job(#{
+define_assignment(#{
     id: "blockade-the-port", 
     category: "consequential", duration_days: 2,
     skill: "command", difficulty: 0,
     target: "own-ship-and-province", military_op: "blockade", ai_available: false,
     results: #{ success: #{ weight: 1000000 }, failure: #{ weight: 1 } },
 });
-define_job(#{
+define_assignment(#{
     id: "answer-the-alarm", 
     category: "consequential", duration_days: 2,
     skill: "command", difficulty: 0,
@@ -104,9 +104,9 @@ define_job(#{
 fn strings() -> aeon_data::StringTable {
     let mut table = aeon_data::StringTable::blank();
     table.extend(&[
-        ("job.lay-siege.success.log-text", "{target} fell."),
+        ("assignment.lay-siege.success.log-text", "{target} fell."),
         (
-            "job.lay-siege.failure.log-text",
+            "assignment.lay-siege.failure.log-text",
             "The siege of {target} broke.",
         ),
     ]);
@@ -158,7 +158,7 @@ fn org(h: &mut SimHost, name: &str) -> aeon_sim::OrgId {
     h.world_mut().resource::<PoliticsIndex>().org_keys[&key(name)]
 }
 
-/// Directly musters an army for a side (bypassing the muster job).
+/// Directly musters an army for a side (bypassing the muster assignment).
 fn muster(h: &mut SimHost, owner: &str, general: &str, men: i64, at: &str) -> ArmyId {
     let owner = org(h, owner);
     let general = char_id(h, general);
@@ -174,10 +174,10 @@ fn marches_move_armies_and_take_road_time() {
     let beta = province(&mut h, "beta");
 
     let envelope = h
-        .submit(PlayerCommand::StartJob {
-            job: key("march-the-army"),
+        .submit(PlayerCommand::StartAssignment {
+            assignment: key("march-the-army"),
             leader: aron,
-            target: JobTarget::ArmyToProvince(army, beta),
+            target: AssignmentTarget::ArmyToProvince(army, beta),
         })
         .unwrap();
     // March duration is at least twice the liner time (3 days locally).
@@ -207,10 +207,10 @@ fn sieges_take_provinces_after_beating_the_garrison() {
     let birch = org(&mut h, "birch");
 
     assert_eq!(province_holder(h.world_mut(), beta), Some(birch));
-    h.submit(PlayerCommand::StartJob {
-        job: key("lay-siege"),
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("lay-siege"),
         leader: aron,
-        target: JobTarget::ArmyToProvince(attacker, beta),
+        target: AssignmentTarget::ArmyToProvince(attacker, beta),
     })
     .unwrap();
     h.advance_days(25);
@@ -239,10 +239,10 @@ fn a_strong_garrison_breaks_a_weak_siege() {
     let beta = province(&mut h, "beta");
     let birch = org(&mut h, "birch");
 
-    h.submit(PlayerCommand::StartJob {
-        job: key("lay-siege"),
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("lay-siege"),
         leader: aron,
-        target: JobTarget::ArmyToProvince(attacker, beta),
+        target: AssignmentTarget::ArmyToProvince(attacker, beta),
     })
     .unwrap();
     h.advance_days(25);
@@ -276,10 +276,10 @@ fn raids_loot_wealth_from_the_holder() {
                 .wealth,
         )
     };
-    h.submit(PlayerCommand::StartJob {
-        job: key("raid-the-province"),
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("raid-the-province"),
         leader: aron,
-        target: JobTarget::ArmyToProvince(army, beta),
+        target: AssignmentTarget::ArmyToProvince(army, beta),
     })
     .unwrap();
     h.advance_days(10);
@@ -313,10 +313,10 @@ fn blockades_halve_wealth_output() {
     })
     .unwrap();
     h.advance_days(2);
-    h.submit(PlayerCommand::StartJob {
-        job: key("blockade-the-port"),
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("blockade-the-port"),
         leader: aron,
-        target: JobTarget::ShipToProvince(sloop, beta),
+        target: AssignmentTarget::ShipToProvince(sloop, beta),
     })
     .unwrap();
     h.advance_days(4);
@@ -371,7 +371,7 @@ fn blockades_halve_wealth_output() {
 }
 
 #[test]
-fn standing_orders_answer_threats_and_yield_to_bespoke_jobs() {
+fn standing_orders_answer_threats_and_yield_to_bespoke_assignments() {
     let mut h = host(6);
     let aron = char_id(&mut h, "aron-ash");
     let attacker = muster(&mut h, "ash", "aron-ash", 1000, "alpha");
@@ -389,27 +389,27 @@ fn standing_orders_answer_threats_and_yield_to_bespoke_jobs() {
     }
 
     // A siege on Beta triggers the alarm; the defender marches.
-    h.submit(PlayerCommand::StartJob {
-        job: key("lay-siege"),
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("lay-siege"),
         leader: aron,
-        target: JobTarget::ArmyToProvince(attacker, beta),
+        target: AssignmentTarget::ArmyToProvince(attacker, beta),
     })
     .unwrap();
     h.advance_days(3);
 
     {
         let world = h.world_mut();
-        let jobs_index = world.resource::<aeon_sim::JobsIndex>();
-        let reactive = jobs_index.jobs.values().any(|entity| {
+        let assignments_index = world.resource::<aeon_sim::AssignmentsIndex>();
+        let reactive = assignments_index.assignments.values().any(|entity| {
             world
-                .get::<aeon_sim::ActiveJob>(*entity)
-                .is_some_and(|job| {
-                    job.def.as_str() == "answer-the-alarm"
-                        && matches!(job.target, JobTarget::ArmyToProvince(a, p)
+                .get::<aeon_sim::ActiveAssignment>(*entity)
+                .is_some_and(|assignment| {
+                    assignment.def.as_str() == "answer-the-alarm"
+                        && matches!(assignment.target, AssignmentTarget::ArmyToProvince(a, p)
                             if a == defender && p == beta)
                 })
         });
-        assert!(reactive, "standing order created a reactive job");
+        assert!(reactive, "standing order created a reactive assignment");
         let log = world.resource::<MessageLog>();
         assert!(log.entries.iter().any(|e| e.text.contains("alarm")));
     }
@@ -434,20 +434,20 @@ fn idle_armies_without_orders_do_not_react() {
     let beta = province(&mut h, "beta");
 
     // No standing order set: HoldFast is the default.
-    h.submit(PlayerCommand::StartJob {
-        job: key("lay-siege"),
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("lay-siege"),
         leader: aron,
-        target: JobTarget::ArmyToProvince(attacker, beta),
+        target: AssignmentTarget::ArmyToProvince(attacker, beta),
     })
     .unwrap();
     h.advance_days(3);
 
     let world = h.world_mut();
-    let jobs_index = world.resource::<aeon_sim::JobsIndex>();
-    let reactive = jobs_index.jobs.values().any(|entity| {
+    let assignments_index = world.resource::<aeon_sim::AssignmentsIndex>();
+    let reactive = assignments_index.assignments.values().any(|entity| {
         world
-            .get::<aeon_sim::ActiveJob>(*entity)
-            .is_some_and(|job| job.def.as_str() == "answer-the-alarm")
+            .get::<aeon_sim::ActiveAssignment>(*entity)
+            .is_some_and(|assignment| assignment.def.as_str() == "answer-the-alarm")
     });
     assert!(!reactive, "HoldFast armies do not answer alarms");
 }
@@ -468,10 +468,10 @@ fn warfare_is_deterministic_and_survives_snapshots() {
                 .standing_order = StandingOrder::DefendHoldings;
         }
         let beta = province(&mut h, "beta");
-        h.submit(PlayerCommand::StartJob {
-            job: key("lay-siege"),
+        h.submit(PlayerCommand::StartAssignment {
+            assignment: key("lay-siege"),
             leader: aron,
-            target: JobTarget::ArmyToProvince(attacker, beta),
+            target: AssignmentTarget::ArmyToProvince(attacker, beta),
         })
         .unwrap();
         h.advance_days(60);
@@ -504,10 +504,10 @@ fn a_ship_is_ordered_by_its_captain_and_nobody_else() {
     };
 
     // The fixture's sloop has no captain, so nobody can order it.
-    let refused = h.submit(PlayerCommand::StartJob {
-        job: key("blockade-the-port"),
+    let refused = h.submit(PlayerCommand::StartAssignment {
+        assignment: key("blockade-the-port"),
         leader: aron,
-        target: JobTarget::ShipToProvince(ship, beta),
+        target: AssignmentTarget::ShipToProvince(ship, beta),
     });
     assert!(
         refused.is_err(),
@@ -527,10 +527,10 @@ fn a_ship_is_ordered_by_its_captain_and_nobody_else() {
         let record = world.get::<ShipRecord>(forces.ships[&ship]).unwrap();
         assert_eq!(record.captain, Some(aron), "the command was taken up");
     }
-    h.submit(PlayerCommand::StartJob {
-        job: key("blockade-the-port"),
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("blockade-the-port"),
         leader: aron,
-        target: JobTarget::ShipToProvince(ship, beta),
+        target: AssignmentTarget::ShipToProvince(ship, beta),
     })
     .expect("the captain may order their own ship");
 }

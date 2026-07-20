@@ -7,7 +7,7 @@ use serde::{Deserialize, Deserializer, Serialize, Serializer};
 /// A validated authored-content ID: lowercase kebab-case, like PASM entity
 /// IDs.
 ///
-/// Content keys name definitions (jobs, bodies, provinces, scenarios) and
+/// Content keys name definitions (assignments, bodies, provinces, scenarios) and
 /// authored scenario entities. They are the durable names in authored files
 /// and cross-references; the simulation interns them to compact handles at
 /// load.
@@ -142,7 +142,7 @@ mod tests {
             "ui.inspector.heading",
             "province.karvessa.name",
             "ui.map-mode.holder.hint.vassal.one",
-            "job.hold-court.success.log-text",
+            "assignment.hold-court.success.log-text",
         ] {
             assert!(TextKey::new(valid).is_ok(), "{valid} should be valid");
         }

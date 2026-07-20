@@ -10,8 +10,8 @@ use aeon_core::calendar::CalendarDate;
 use aeon_data::{ContentKey, ContentSet, load_content};
 use aeon_sim::persistence;
 use aeon_sim::{
-    CampaignConfig, CharacterId, JobTarget, OrgId, PendingPopups, PlayerCommand, PoliticsIndex,
-    SimHost,
+    AssignmentTarget, CampaignConfig, CharacterId, OrgId, PendingPopups, PlayerCommand,
+    PoliticsIndex, SimHost,
 };
 
 fn repository_content() -> Arc<ContentSet> {
@@ -64,33 +64,33 @@ fn scripted_playthrough(content: Arc<ContentSet>, seed: u64) -> SimHost {
     let veyrin = org_id(&mut h, "veyrin"); // liege great house
 
     // The head courts the liege while the spouse manages the estates.
-    h.submit(PlayerCommand::StartJob {
-        job: key("court-a-rival-house"),
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("court-a-rival-house"),
         leader: edrun,
-        target: JobTarget::Org(veyrin),
+        target: AssignmentTarget::Org(veyrin),
     })
     .unwrap();
-    h.submit(PlayerCommand::StartJob {
-        job: key("manage-estates"),
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("manage-estates"),
         leader: kessarin,
-        target: JobTarget::None,
+        target: AssignmentTarget::None,
     })
     .unwrap();
     h.advance_days(120);
 
     // The head curries Sanctora favour, then musters a levy.
-    h.submit(PlayerCommand::StartJob {
-        job: key("curry-favour-with-the-sanctora"),
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("curry-favour-with-the-sanctora"),
         leader: edrun,
-        target: JobTarget::None,
+        target: AssignmentTarget::None,
     })
     .unwrap();
     h.advance_days(120);
 
-    h.submit(PlayerCommand::StartJob {
-        job: key("muster-the-levies"),
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("muster-the-levies"),
         leader: edrun,
-        target: JobTarget::None,
+        target: AssignmentTarget::None,
     })
     .unwrap();
     h.advance_days(200);
@@ -126,10 +126,10 @@ fn a_scripted_campaign_replays_from_a_snapshot_through_its_log() {
     let veyrin = org_id(&mut original, "veyrin");
 
     original
-        .submit(PlayerCommand::StartJob {
-            job: key("court-a-rival-house"),
+        .submit(PlayerCommand::StartAssignment {
+            assignment: key("court-a-rival-house"),
             leader: edrun,
-            target: JobTarget::Org(veyrin),
+            target: AssignmentTarget::Org(veyrin),
         })
         .unwrap();
     original.advance_days(300);
@@ -139,18 +139,18 @@ fn a_scripted_campaign_replays_from_a_snapshot_through_its_log() {
     let snapshot_date = original.date();
 
     original
-        .submit(PlayerCommand::StartJob {
-            job: key("muster-the-levies"),
+        .submit(PlayerCommand::StartAssignment {
+            assignment: key("muster-the-levies"),
             leader: edrun,
-            target: JobTarget::None,
+            target: AssignmentTarget::None,
         })
         .unwrap();
     original.advance_days(150);
     original
-        .submit(PlayerCommand::StartJob {
-            job: key("curry-favour-with-the-sanctora"),
+        .submit(PlayerCommand::StartAssignment {
+            assignment: key("curry-favour-with-the-sanctora"),
             leader: edrun,
-            target: JobTarget::None,
+            target: AssignmentTarget::None,
         })
         .unwrap();
     original.advance_days(300);
@@ -200,10 +200,10 @@ fn the_enhanced_campaign_replays_from_a_mid_campaign_snapshot() {
 
     // Year one: the head courts the liege while the realm settles.
     original
-        .submit(PlayerCommand::StartJob {
-            job: key("court-a-rival-house"),
+        .submit(PlayerCommand::StartAssignment {
+            assignment: key("court-a-rival-house"),
             leader: edrun,
-            target: JobTarget::Org(veyrin),
+            target: AssignmentTarget::Org(veyrin),
         })
         .unwrap();
     original.advance_days(200);

@@ -4,7 +4,7 @@
 //! kept separate from character opinion. A house can dislike you and still
 //! owe you a favour; it can like you and still nurse a grievance. Opinion
 //! says how someone feels, the ledger says what they are bound by, and the
-//! two are read independently by events, jobs, and autonomous agency.
+//! two are read independently by events, assignments, and autonomous agency.
 //!
 //! Every entry names its parties, where it came from, what it is worth,
 //! and how it ends — by fulfilment, by being broken, or by expiry — so the
@@ -16,9 +16,9 @@ use serde::{Deserialize, Serialize};
 
 use aeon_core::calendar::GameDate;
 
+use crate::assignments::{LogChannel, LogEntry, LogSubject};
 use crate::clock::{CampaignClock, DailyTick, TickSet};
 use crate::ids::OrgId;
-use crate::jobs::{LogChannel, LogEntry, LogSubject};
 use crate::text::TextDb;
 
 /// The obligation vocabulary is owned by the content model and parsed

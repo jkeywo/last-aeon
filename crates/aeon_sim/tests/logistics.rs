@@ -1,5 +1,5 @@
 //! Economy, presence, travel, ships, and armies: production and influence
-//! recharge, job costs, army formation, transit and order delay, upkeep,
+//! recharge, assignment costs, army formation, transit and order delay, upkeep,
 //! and snapshot fidelity.
 
 use std::sync::Arc;
@@ -11,7 +11,8 @@ use aeon_sim::forces::{ArmyRecord, ForcesIndex, ShipLocation, ShipRecord};
 use aeon_sim::politics::{TitleHolder, TitleRecord};
 use aeon_sim::presence::{Location, character_location, travel_days};
 use aeon_sim::{
-    CampaignConfig, CharacterId, CommandRejection, JobTarget, PlayerCommand, PoliticsIndex, SimHost,
+    AssignmentTarget, CampaignConfig, CharacterId, CommandRejection, PlayerCommand, PoliticsIndex,
+    SimHost,
 };
 
 const FIXTURE: &str = r#"
@@ -67,7 +68,7 @@ define_character(#{
     skills: #{ command: 6, diplomacy: 9, intrigue: 8, stewardship: 5 },
 });
 
-define_job(#{
+define_assignment(#{
     id: "sure-muster", 
     category: "consequential", duration_days: 10,
     skill: "command", difficulty: 0,
@@ -81,7 +82,7 @@ fn muster(ctx) {
     [#{ kind: "form-army", manpower: 800, supplies: 120 }]
 }
 
-define_job(#{
+define_assignment(#{
     id: "pricey-rite", 
     category: "consequential", duration_days: 5,
     skill: "stewardship", difficulty: 0,
@@ -114,10 +115,10 @@ fn strings() -> aeon_data::StringTable {
         ("character.aron-ash.name", "Aron Ash"),
         ("character.bela-birch.name", "Bela Birch"),
         ("character.cera-ash.name", "Cera Ash"),
-        ("job.pricey-rite.title", "A Pricey Rite"),
-        ("job.pricey-rite.summary", "It costs."),
-        ("job.sure-muster.title", "Muster the Levies"),
-        ("job.sure-muster.summary", "Raise an army."),
+        ("assignment.pricey-rite.title", "A Pricey Rite"),
+        ("assignment.pricey-rite.summary", "It costs."),
+        ("assignment.sure-muster.title", "Muster the Levies"),
+        ("assignment.sure-muster.summary", "Raise an army."),
     ]);
     table
 }
@@ -242,22 +243,22 @@ fn paramount_title_raises_effective_legitimacy() {
 }
 
 #[test]
-fn jobs_cost_resources_and_reject_the_unaffordable() {
+fn assignments_cost_resources_and_reject_the_unaffordable() {
     let mut h = host(3);
     let aron = char_id(&mut h, "aron-ash");
 
-    let refused = h.submit(PlayerCommand::StartJob {
-        job: key("pricey-rite"),
+    let refused = h.submit(PlayerCommand::StartAssignment {
+        assignment: key("pricey-rite"),
         leader: aron,
-        target: JobTarget::None,
+        target: AssignmentTarget::None,
     });
-    assert!(matches!(refused, Err(CommandRejection::Job(_))));
+    assert!(matches!(refused, Err(CommandRejection::Assignment(_))));
 
     let before = ash_resources(&mut h);
-    h.submit(PlayerCommand::StartJob {
-        job: key("sure-muster"),
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("sure-muster"),
         leader: aron,
-        target: JobTarget::None,
+        target: AssignmentTarget::None,
     })
     .unwrap();
     h.advance_days(1);
@@ -267,13 +268,13 @@ fn jobs_cost_resources_and_reject_the_unaffordable() {
 }
 
 #[test]
-fn muster_jobs_form_armies_at_the_generals_province() {
+fn muster_assignments_form_armies_at_the_generals_province() {
     let mut h = host(4);
     let aron = char_id(&mut h, "aron-ash");
-    h.submit(PlayerCommand::StartJob {
-        job: key("sure-muster"),
+    h.submit(PlayerCommand::StartAssignment {
+        assignment: key("sure-muster"),
         leader: aron,
-        target: JobTarget::None,
+        target: AssignmentTarget::None,
     })
     .unwrap();
     let manpower_before = ash_resources(&mut h).manpower;
@@ -361,20 +362,20 @@ fn orders_across_distance_and_in_transit_are_delayed() {
     .unwrap();
     h.advance_days(15);
 
-    // A job led by Cera (on the moon) is delayed; one led by Aron
+    // A assignment led by Cera (on the moon) is delayed; one led by Aron
     // (co-located with himself) is not.
     let near = h
-        .submit(PlayerCommand::StartJob {
-            job: key("sure-muster"),
+        .submit(PlayerCommand::StartAssignment {
+            assignment: key("sure-muster"),
             leader: aron,
-            target: JobTarget::None,
+            target: AssignmentTarget::None,
         })
         .unwrap();
     let far = h
-        .submit(PlayerCommand::StartJob {
-            job: key("sure-muster"),
+        .submit(PlayerCommand::StartAssignment {
+            assignment: key("sure-muster"),
             leader: cera,
-            target: JobTarget::None,
+            target: AssignmentTarget::None,
         })
         .unwrap();
     assert_eq!(h.date().days_until(near.day), 1);
@@ -382,7 +383,7 @@ fn orders_across_distance_and_in_transit_are_delayed() {
     assert!(lag > 1, "cross-body orders lag, got {lag}");
 
     // With the head himself in transit, everything is delayed.
-    h.advance_days(30); // let the earlier jobs resolve
+    h.advance_days(30); // let the earlier assignments resolve
     h.submit(PlayerCommand::Travel {
         character: aron,
         destination: luna,
@@ -433,10 +434,10 @@ fn logistics_survive_snapshots_and_stay_deterministic() {
     let run = |seed: u64| {
         let mut h = host(seed);
         let aron = char_id(&mut h, "aron-ash");
-        h.submit(PlayerCommand::StartJob {
-            job: key("sure-muster"),
+        h.submit(PlayerCommand::StartAssignment {
+            assignment: key("sure-muster"),
             leader: aron,
-            target: JobTarget::None,
+            target: AssignmentTarget::None,
         })
         .unwrap();
         h.advance_days(120);

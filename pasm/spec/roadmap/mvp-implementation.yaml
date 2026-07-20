@@ -174,15 +174,15 @@ entities:
         - explicit-personal-risk-tags
     implementation:
       paths:
-        - crates/aeon_sim/src/jobs.rs
-        - crates/aeon_client/src/jobs_ui.rs
+        - crates/aeon_sim/src/assignments.rs
+        - crates/aeon_client/src/assignment_ui.rs
         - assets/content/core/administration.rhai
       tests:
-        - crates/aeon_sim/tests/jobs.rs
+        - crates/aeon_sim/tests/assignments.rs
       status: declared
     evidence:
       - kind: test
-        reference: crates/aeon_sim/tests/jobs.rs
+        reference: crates/aeon_sim/tests/assignments.rs
         summary: Tests verify command-driven job initiation and cancellation, the one-job-per-character rule with delegation to members and rejection of outsiders, routine failures restarting automatically, skill-shifted graded outcomes, authored script effects applying opinion changes through job roles, popups with authored choices whose effects apply on answer, risk consequences including death flowing into succession, dead leaders abandoning jobs, AI organisations acting through the catalogue with results in the shared log, and full determinism plus snapshot fidelity.
 
   - milestone: mvp-economy-and-local-travel

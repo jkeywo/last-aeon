@@ -1,14 +1,14 @@
 //! Intent-driven organisation agency.
 //!
-//! Autonomous houses choose from the same job catalogue the player uses.
+//! Autonomous houses choose from the same assignment catalogue the player uses.
 //! Rather than picking at random, each house scores a small set of
 //! concrete pressures it is actually under — holdings slipping or under
 //! occupation, political weakness, obligations outstanding, resources
 //! run down, and a claim worth pressing — and acts on one of the best.
 //!
 //! This is a priority system, not a separate AI action model: every
-//! choice still goes through [`crate::jobs::validate_start`] and
-//! [`crate::jobs::start_job`], so an autonomous house can do nothing the
+//! choice still goes through [`crate::assignments::validate_start`] and
+//! [`crate::assignments::start_assignment`], so an autonomous house can do nothing the
 //! player could not, and is bound by the same eligibility rules.
 //!
 //! Scoring is integer arithmetic over state the player can also see, and
@@ -19,15 +19,16 @@
 
 use aeon_core::rng::DeterministicRng;
 use aeon_data::ContentKey;
-use aeon_data::model::{AiIntent, JobTargetKind};
+use aeon_data::model::{AiIntent, AssignmentTargetKind};
 use bevy::prelude::World;
 
+use crate::assignments::{
+    AssignmentTarget, AssignmentsIndex, LogChannel, LogEntry, LogSubject, start_assignment,
+    validate_start,
+};
 use crate::clock::CampaignClock;
 use crate::economy::OrgResources;
 use crate::ids::{OrgId, ProvinceId};
-use crate::jobs::{
-    JobTarget, JobsIndex, LogChannel, LogEntry, LogSubject, start_job, validate_start,
-};
 use crate::obligations::{ObligationKind, Obligations};
 use crate::order::{ORDER_START, held_provinces, province_order};
 use crate::politics::{CampaignOver, PlayerHouse};
@@ -42,10 +43,10 @@ const THRESHOLD: i64 = 20;
 /// One thing a house might do, and why.
 #[derive(Clone, Debug)]
 pub struct ScoredIntent {
-    /// The job it would start.
-    pub job: ContentKey,
-    /// What that job would act on.
-    pub target: JobTarget,
+    /// The assignment it would start.
+    pub assignment: ContentKey,
+    /// What that assignment would act on.
+    pub target: AssignmentTarget,
     /// How badly it wants to.
     pub score: i64,
     /// The pressure behind it, in words, for the log.
@@ -57,27 +58,35 @@ pub struct ScoredIntent {
     pub explains: bool,
 }
 
-/// The AI-available jobs that answer a pressure, in content-key order.
+/// The AI-available assignments that answer a pressure, in content-key order.
 ///
-/// The mapping from pressure to job is authored on the job itself, so the
-/// simulation never names a piece of content: a new job that declares an
+/// The mapping from pressure to assignment is authored on the assignment itself, so the
+/// simulation never names a piece of content: a new assignment that declares an
 /// intent joins the AI's repertoire with no engine change.
-fn jobs_for(world: &World, intent: AiIntent, expected: JobTargetKind) -> Vec<ContentKey> {
+fn assignments_for(
+    world: &World,
+    intent: AiIntent,
+    expected: AssignmentTargetKind,
+) -> Vec<ContentKey> {
     let Some(content) = world.get_resource::<ContentDb>() else {
         return Vec::new();
     };
     content
         .0
-        .jobs
+        .assignments
         .values()
         .filter(|def| def.ai_available && def.ai_intent == intent && def.target == expected)
         .map(|def| def.key.clone())
         .collect()
 }
 
-/// The first job answering a pressure, if content offers one.
-fn job_for(world: &World, intent: AiIntent, expected: JobTargetKind) -> Option<ContentKey> {
-    jobs_for(world, intent, expected).into_iter().next()
+/// The first assignment answering a pressure, if content offers one.
+fn assignment_for(
+    world: &World,
+    intent: AiIntent,
+    expected: AssignmentTargetKind,
+) -> Option<ContentKey> {
+    assignments_for(world, intent, expected).into_iter().next()
 }
 
 /// A house's resource position.
@@ -117,20 +126,24 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
     if let Some((province, score, occupied)) = worst {
         let name = crate::access::province_name(world, province);
         // Troops answer an occupation; administration answers disorder.
-        if occupied && let Some(job) = job_for(world, AiIntent::Muster, JobTargetKind::None) {
+        if occupied
+            && let Some(assignment) =
+                assignment_for(world, AiIntent::Muster, AssignmentTargetKind::None)
+        {
             intents.push(ScoredIntent {
-                job,
-                target: JobTarget::None,
+                assignment,
+                target: AssignmentTarget::None,
                 score: score + 10,
                 reason: strings.format("sim.intent.occupied", &[("province", &name)]),
                 subject: Some(LogSubject::Province(province)),
                 explains: true,
             });
         }
-        if let Some(job) = job_for(world, AiIntent::Order, JobTargetKind::None) {
+        if let Some(assignment) = assignment_for(world, AiIntent::Order, AssignmentTargetKind::None)
+        {
             intents.push(ScoredIntent {
-                job,
-                target: JobTarget::None,
+                assignment,
+                target: AssignmentTarget::None,
                 score,
                 reason: strings.format("sim.intent.restive", &[("province", &name)]),
                 subject: Some(LogSubject::Province(province)),
@@ -161,11 +174,15 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
             }
         }
         if let Some((debtor, weight)) = best_favour
-            && let Some(job) = job_for(world, AiIntent::Obligation, JobTargetKind::Organisation)
+            && let Some(assignment) = assignment_for(
+                world,
+                AiIntent::Obligation,
+                AssignmentTargetKind::Organisation,
+            )
         {
             intents.push(ScoredIntent {
-                job,
-                target: JobTarget::Org(debtor),
+                assignment,
+                target: AssignmentTarget::Org(debtor),
                 score: i64::from(weight) + 20,
                 reason: strings.format(
                     "sim.intent.favour-owed",
@@ -177,13 +194,17 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
         }
         // A house we have wronged is worth courting before it acts.
         if let Some((aggrieved, weight)) = worst_grievance
-            && let Some(job) = jobs_for(world, AiIntent::Standing, JobTargetKind::Organisation)
-                .into_iter()
-                .next()
+            && let Some(assignment) = assignments_for(
+                world,
+                AiIntent::Standing,
+                AssignmentTargetKind::Organisation,
+            )
+            .into_iter()
+            .next()
         {
             intents.push(ScoredIntent {
-                job,
-                target: JobTarget::Org(aggrieved),
+                assignment,
+                target: AssignmentTarget::Org(aggrieved),
                 score: i64::from(weight),
                 reason: strings.format(
                     "sim.intent.grievance-held",
@@ -198,11 +219,12 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
     // ---- Resources run down ----
     if let Some(resources) = resources(world, org) {
         if resources.wealth < 100
-            && let Some(job) = job_for(world, AiIntent::Resources, JobTargetKind::None)
+            && let Some(assignment) =
+                assignment_for(world, AiIntent::Resources, AssignmentTargetKind::None)
         {
             intents.push(ScoredIntent {
-                job,
-                target: JobTarget::None,
+                assignment,
+                target: AssignmentTarget::None,
                 score: (100 - resources.wealth).max(0) / 2 + 20,
                 reason: strings.text("sim.intent.treasury-low").to_owned(),
                 subject: Some(LogSubject::Org(org)),
@@ -212,11 +234,12 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
         // Political weakness: little standing to spend.
         let legitimacy = crate::economy::effective_legitimacy(world, org);
         if legitimacy < 50
-            && let Some(job) = job_for(world, AiIntent::Standing, JobTargetKind::None)
+            && let Some(assignment) =
+                assignment_for(world, AiIntent::Standing, AssignmentTargetKind::None)
         {
             intents.push(ScoredIntent {
-                job,
-                target: JobTarget::None,
+                assignment,
+                target: AssignmentTarget::None,
                 score: i64::from(50 - legitimacy) + 15,
                 reason: strings.text("sim.intent.standing-thin").to_owned(),
                 subject: Some(LogSubject::Org(org)),
@@ -232,11 +255,11 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
         .and_then(|entity| world.get::<crate::map::ProvinceRecord>(entity))
         .map(|record| record.body)
         && crate::crisis::dominant_claimant(world, body) == Some(org)
-        && let Some(job) = job_for(world, AiIntent::Claim, JobTargetKind::None)
+        && let Some(assignment) = assignment_for(world, AiIntent::Claim, AssignmentTargetKind::None)
     {
         intents.push(ScoredIntent {
-            job,
-            target: JobTarget::None,
+            assignment,
+            target: AssignmentTarget::None,
             score: 120,
             reason: strings.text("sim.intent.claim-ready").to_owned(),
             subject: Some(LogSubject::Org(org)),
@@ -245,10 +268,10 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
     }
 
     // With nothing pressing, a house still attends to ordinary business.
-    for job in jobs_for(world, AiIntent::Routine, JobTargetKind::None) {
+    for assignment in assignments_for(world, AiIntent::Routine, AssignmentTargetKind::None) {
         intents.push(ScoredIntent {
-            job,
-            target: JobTarget::None,
+            assignment,
+            target: AssignmentTarget::None,
             score: THRESHOLD + 5,
             reason: strings.text("sim.intent.routine").to_owned(),
             subject: Some(LogSubject::Org(org)),
@@ -256,8 +279,12 @@ pub fn score_intents(world: &World, org: OrgId) -> Vec<ScoredIntent> {
         });
     }
 
-    // Best first; ties broken by job key so the order never wobbles.
-    intents.sort_by(|a, b| b.score.cmp(&a.score).then_with(|| a.job.cmp(&b.job)));
+    // Best first; ties broken by assignment key so the order never wobbles.
+    intents.sort_by(|a, b| {
+        b.score
+            .cmp(&a.score)
+            .then_with(|| a.assignment.cmp(&b.assignment))
+    });
     intents
 }
 
@@ -289,8 +316,9 @@ pub fn pick_intent<'a>(
 }
 
 /// Autonomous houses act on their most pressing business.
-pub fn ai_start_jobs(world: &mut World) {
-    if world.get_resource::<JobsIndex>().is_none() || world.get_resource::<CampaignOver>().is_some()
+pub fn ai_start_assignments(world: &mut World) {
+    if world.get_resource::<AssignmentsIndex>().is_none()
+        || world.get_resource::<CampaignOver>().is_some()
     {
         return;
     }
@@ -325,8 +353,8 @@ pub fn ai_start_jobs(world: &mut World) {
             continue;
         };
 
-        if validate_start(world, org, &chosen.job, head, chosen.target).is_ok() {
-            start_job(world, org, &chosen.job, head, chosen.target);
+        if validate_start(world, org, &chosen.assignment, head, chosen.target).is_ok() {
+            start_assignment(world, org, &chosen.assignment, head, chosen.target);
             announce(world, org, &chosen);
         }
     }
@@ -342,8 +370,8 @@ fn announce(world: &mut World, org: OrgId, intent: &ScoredIntent) {
     }
     let content = world.resource::<ContentDb>().0.clone();
     let title = content
-        .jobs
-        .get(&intent.job)
+        .assignments
+        .get(&intent.assignment)
         .map(|def| def.title.clone())
         .unwrap_or_default();
     let name = crate::access::org_name(world, org);
@@ -352,7 +380,7 @@ fn announce(world: &mut World, org: OrgId, intent: &ScoredIntent) {
             "sim.agency.began",
             &[
                 ("house", &name),
-                ("job", &title),
+                ("assignment", &title),
                 ("reason", &intent.reason),
             ],
         ),
@@ -369,10 +397,10 @@ fn announce(world: &mut World, org: OrgId, intent: &ScoredIntent) {
 mod tests {
     use super::*;
 
-    fn intent(job: &str, score: i64) -> ScoredIntent {
+    fn intent(assignment: &str, score: i64) -> ScoredIntent {
         ScoredIntent {
-            job: ContentKey::new(job).expect("kebab-case"),
-            target: JobTarget::None,
+            assignment: ContentKey::new(assignment).expect("kebab-case"),
+            target: AssignmentTarget::None,
             score,
             reason: String::new(),
             subject: None,
@@ -396,7 +424,7 @@ mod tests {
         for seed in 0..200 {
             let mut rng = DeterministicRng::from_seed(seed);
             let picked = pick_intent(&shortlist, &mut rng).expect("non-empty");
-            assert!(shortlist.iter().any(|i| i.job == picked.job));
+            assert!(shortlist.iter().any(|i| i.assignment == picked.assignment));
         }
     }
 
@@ -408,7 +436,11 @@ mod tests {
         let mut heavy_picks = 0;
         for seed in 0..1000 {
             let mut rng = DeterministicRng::from_seed(seed);
-            if pick_intent(&shortlist, &mut rng).expect("non-empty").job == heavy.job {
+            if pick_intent(&shortlist, &mut rng)
+                .expect("non-empty")
+                .assignment
+                == heavy.assignment
+            {
                 heavy_picks += 1;
             }
         }

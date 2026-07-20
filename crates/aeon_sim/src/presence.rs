@@ -150,6 +150,6 @@ pub(crate) fn install(app: &mut App) {
         DailyTick,
         land_arrivals
             .in_set(TickSet::Simulation)
-            .before(crate::jobs::resolve_due_jobs),
+            .before(crate::assignments::resolve_due_assignments),
     );
 }

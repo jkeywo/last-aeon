@@ -1,39 +1,39 @@
-//! Context-sensitive actions: the job buttons under a selection, the
+//! Context-sensitive actions: the assignment buttons under a selection, the
 //! forecast they expand into, and the slot pickers that fill in whatever
 //! the context does not already supply.
 //!
 //! Issuing stays on the authoritative path throughout: every action ends
-//! as a queued `PlayerCommand::StartJob`, and nothing here decides whether
-//! a job is allowed — it renders what the simulation's forecast reports.
+//! as a queued `PlayerCommand::StartAssignment`, and nothing here decides whether
+//! a assignment is allowed — it renders what the simulation's forecast reports.
 
 use aeon_data::ContentSet;
-use aeon_data::model::{JobDef, JobTargetKind};
+use aeon_data::model::{AssignmentDef, AssignmentTargetKind};
 use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
 use aeon_sim::{
-    CharacterId, JobTarget, LeaderAvailability, OrgId, PlayerCommand, PoliticsIndex, ProvinceId,
-    TextDb, TitleHolder, TitleKind,
+    AssignmentTarget, CharacterId, LeaderAvailability, OrgId, PlayerCommand, PoliticsIndex,
+    ProvinceId, TextDb, TitleHolder, TitleKind,
 };
 use bevy_egui::egui;
 
+use crate::assignment_ui::{AssignmentForm, UiCommandQueue};
 use crate::forecast_view::ForecastCache;
-use crate::jobs_ui::{JobForm, UiCommandQueue};
 use crate::ui::data::PanelData;
 use crate::ui::forecast::{draw_forecast_body, permille_text};
 use crate::ui::picker::PickerState;
 use crate::ui::theme::{TargetState, UiTheme};
 
-/// What the inspector's context-job section is anchored to.
-pub enum JobScope {
-    /// A living adult member of the player's house, who leads the job.
+/// What the inspector's context-assignment section is anchored to.
+pub enum AssignmentScope {
+    /// A living adult member of the player's house, who leads the assignment.
     OwnCharacter(CharacterId),
-    /// A character outside the player's house, targeted by the job.
+    /// A character outside the player's house, targeted by the assignment.
     OutsideCharacter(CharacterId),
-    /// A province, targeted by military jobs.
+    /// A province, targeted by military assignments.
     Province(ProvinceId),
 }
 
-/// A tooltip summarising a job's effect, costs, and risks.
-fn job_hover(strings: &TextDb, def: &JobDef) -> String {
+/// A tooltip summarising a assignment's effect, costs, and risks.
+fn assignment_hover(strings: &TextDb, def: &AssignmentDef) -> String {
     let mut text = def.summary.clone();
     let mut costs = Vec::new();
     for (amount, key) in [
@@ -48,7 +48,7 @@ fn job_hover(strings: &TextDb, def: &JobDef) -> String {
     }
     if !costs.is_empty() {
         text.push('\n');
-        text.push_str(&strings.format("ui.job.costs", &[("costs", &costs.join(", "))]));
+        text.push_str(&strings.format("ui.assignment.costs", &[("costs", &costs.join(", "))]));
     }
     if !def.risks.is_empty() {
         let risks: Vec<&str> = def
@@ -57,26 +57,26 @@ fn job_hover(strings: &TextDb, def: &JobDef) -> String {
             .map(|risk| strings.text(risk.label_key()))
             .collect();
         text.push('\n');
-        text.push_str(&strings.format("ui.job.risks", &[("risks", &risks.join(", "))]));
+        text.push_str(&strings.format("ui.assignment.risks", &[("risks", &risks.join(", "))]));
     }
     text
 }
 
-/// Draws context-sensitive job buttons for the current selection, with an
+/// Draws context-sensitive assignment buttons for the current selection, with an
 /// inline picker for any slot the context does not already supply. Issuing
 /// stays on the authoritative path: every action becomes a queued
-/// [`PlayerCommand::StartJob`].
+/// [`PlayerCommand::StartAssignment`].
 #[allow(clippy::too_many_arguments)]
-pub fn draw_context_jobs(
+pub fn draw_context_assignments(
     ui: &mut egui::Ui,
-    scope: JobScope,
+    scope: AssignmentScope,
     content: &ContentSet,
     politics: &PoliticsIndex,
     player_org: OrgId,
     player_head: Option<CharacterId>,
     data: &PanelData,
     cache: &ForecastCache,
-    form: &mut JobForm,
+    form: &mut AssignmentForm,
     queue: &mut UiCommandQueue,
     picker: &mut PickerState,
 ) {
@@ -87,20 +87,21 @@ pub fn draw_context_jobs(
         data.availability.of(id).is_some_and(|state| {
             matches!(
                 state,
-                LeaderAvailability::Available | LeaderAvailability::Assigned(_)
+                LeaderAvailability::Available | LeaderAvailability::Posted(_)
             )
         })
     };
-    let jobs_of = |kinds: &[JobTargetKind]| -> Vec<(aeon_data::ContentKey, JobDef)> {
-        let mut jobs: Vec<(aeon_data::ContentKey, JobDef)> = content
-            .jobs
-            .iter()
-            .filter(|(_, d)| kinds.contains(&d.target))
-            .map(|(k, d)| (k.clone(), d.clone()))
-            .collect();
-        jobs.sort_by(|a, b| a.1.title.cmp(&b.1.title));
-        jobs
-    };
+    let assignments_of =
+        |kinds: &[AssignmentTargetKind]| -> Vec<(aeon_data::ContentKey, AssignmentDef)> {
+            let mut assignments: Vec<(aeon_data::ContentKey, AssignmentDef)> = content
+                .assignments
+                .iter()
+                .filter(|(_, d)| kinds.contains(&d.target))
+                .map(|(k, d)| (k.clone(), d.clone()))
+                .collect();
+            assignments.sort_by(|a, b| a.1.title.cmp(&b.1.title));
+            assignments
+        };
 
     let strings = data.strings.as_deref().expect("a campaign is running");
     ui.separator();
@@ -109,7 +110,7 @@ pub fn draw_context_jobs(
     // Every action expands to a forecast before it can be confirmed, so
     // nothing is ever committed to unseen.
     match scope {
-        JobScope::OwnCharacter(leader) => {
+        AssignmentScope::OwnCharacter(leader) => {
             if !leader_ok(leader) {
                 // Say which of the several possible reasons applies.
                 ui.weak(
@@ -118,7 +119,7 @@ pub fn draw_context_jobs(
                         .map(|state| {
                             state.describe(strings, |key| {
                                 content
-                                    .jobs
+                                    .assignments
                                     .get(key)
                                     .map(|def| def.title.clone())
                                     .unwrap_or_else(|| key.to_string())
@@ -127,33 +128,34 @@ pub fn draw_context_jobs(
                         .unwrap_or_else(|| strings.text("ui.actions.unavailable").to_owned()),
                 );
             } else {
-                let jobs = jobs_of(&[
-                    JobTargetKind::None,
-                    JobTargetKind::Organisation,
-                    JobTargetKind::Character,
-                    JobTargetKind::Province,
+                let assignments = assignments_of(&[
+                    AssignmentTargetKind::None,
+                    AssignmentTargetKind::Organisation,
+                    AssignmentTargetKind::Character,
+                    AssignmentTargetKind::Province,
                 ]);
-                for (key, def) in &jobs {
+                for (key, def) in &assignments {
                     if ui
                         .button(&def.title)
-                        .on_hover_text(job_hover(strings, def))
+                        .on_hover_text(assignment_hover(strings, def))
                         .clicked()
                     {
                         form.reset();
-                        form.job = Some(key.clone());
+                        form.assignment = Some(key.clone());
                         form.leader = Some(leader);
                         form.about = Some(leader);
-                        if def.target == JobTargetKind::None {
-                            form.target = Some(JobTarget::None);
+                        if def.target == AssignmentTargetKind::None {
+                            form.target = Some(AssignmentTarget::None);
                         }
                     }
                     // Anchored to the character whose panel this is, not to
                     // the leader chosen: picking someone else to lead must
                     // not collapse the panel it was picked in.
-                    let expanded = form.job.as_ref() == Some(key) && form.about == Some(leader);
+                    let expanded =
+                        form.assignment.as_ref() == Some(key) && form.about == Some(leader);
                     if expanded {
                         ui.indent(key.to_string(), |ui| {
-                            if def.target != JobTargetKind::None {
+                            if def.target != AssignmentTargetKind::None {
                                 pick_target(
                                     ui, strings, def.target, content, politics, player_org, data,
                                     form,
@@ -168,22 +170,22 @@ pub fn draw_context_jobs(
                                 picker,
                                 LeaderChoice::Free,
                             );
-                            confirm_job(ui, strings, key, cache, form, queue);
+                            confirm_assignment(ui, strings, key, cache, form, queue);
                         });
                     }
                 }
             }
         }
-        JobScope::OutsideCharacter(target_char) => {
-            let mut offered: Vec<(aeon_data::ContentKey, JobDef)> =
-                jobs_of(&[JobTargetKind::Character]);
+        AssignmentScope::OutsideCharacter(target_char) => {
+            let mut offered: Vec<(aeon_data::ContentKey, AssignmentDef)> =
+                assignments_of(&[AssignmentTargetKind::Character]);
             // If this character holds the Consul title, the head can petition.
             let is_consul = data.titles.iter().any(|t| {
                 t.kind == TitleKind::Consul && t.holder == TitleHolder::Character(target_char)
             });
             if is_consul
                 && let Some((key, def)) = content
-                    .jobs
+                    .assignments
                     .iter()
                     .find(|(k, _)| k.as_str() == "petition-the-consul")
             {
@@ -191,23 +193,24 @@ pub fn draw_context_jobs(
             }
 
             for (key, def) in &offered {
-                let targets_them = def.target == JobTargetKind::Character;
+                let targets_them = def.target == AssignmentTargetKind::Character;
                 if ui
                     .button(&def.title)
-                    .on_hover_text(job_hover(strings, def))
+                    .on_hover_text(assignment_hover(strings, def))
                     .clicked()
                 {
                     form.reset();
-                    form.job = Some(key.clone());
+                    form.assignment = Some(key.clone());
                     form.target = Some(if targets_them {
-                        JobTarget::Character(target_char)
+                        AssignmentTarget::Character(target_char)
                     } else {
-                        JobTarget::None
+                        AssignmentTarget::None
                     });
                     form.leader = player_head.filter(|h| leader_ok(*h));
                     form.about = Some(target_char);
                 }
-                let expanded = form.job.as_ref() == Some(key) && form.about == Some(target_char);
+                let expanded =
+                    form.assignment.as_ref() == Some(key) && form.about == Some(target_char);
                 if expanded {
                     ui.indent(key.to_string(), |ui| {
                         draw_forecast(
@@ -219,31 +222,32 @@ pub fn draw_context_jobs(
                             picker,
                             LeaderChoice::Free,
                         );
-                        confirm_job(ui, strings, key, cache, form, queue);
+                        confirm_assignment(ui, strings, key, cache, form, queue);
                     });
                 }
             }
         }
-        JobScope::Province(province) => {
-            let jobs = jobs_of(&[
-                JobTargetKind::OwnArmy,
-                JobTargetKind::OwnArmyAndProvince,
-                JobTargetKind::OwnShipAndProvince,
+        AssignmentScope::Province(province) => {
+            let assignments = assignments_of(&[
+                AssignmentTargetKind::OwnArmy,
+                AssignmentTargetKind::OwnArmyAndProvince,
+                AssignmentTargetKind::OwnShipAndProvince,
             ]);
-            for (key, def) in &jobs {
+            for (key, def) in &assignments {
                 if ui
                     .button(&def.title)
-                    .on_hover_text(job_hover(strings, def))
+                    .on_hover_text(assignment_hover(strings, def))
                     .clicked()
                 {
                     form.reset();
-                    form.job = Some(key.clone());
+                    form.assignment = Some(key.clone());
                     form.province = Some(province);
                 }
-                let expanded = form.job.as_ref() == Some(key) && form.province == Some(province);
+                let expanded =
+                    form.assignment.as_ref() == Some(key) && form.province == Some(province);
                 if expanded {
                     ui.indent(key.to_string(), |ui| {
-                        if def.target == JobTargetKind::OwnShipAndProvince {
+                        if def.target == AssignmentTargetKind::OwnShipAndProvince {
                             pick_ship(ui, strings, player_org, data, form);
                         } else {
                             pick_army(ui, strings, player_org, data, form);
@@ -276,7 +280,7 @@ pub fn draw_context_jobs(
                             picker,
                             LeaderChoice::Fixed("ui.actions.leader-fixed"),
                         );
-                        confirm_job(ui, strings, key, cache, form, queue);
+                        confirm_assignment(ui, strings, key, cache, form, queue);
                     });
                 }
             }
@@ -293,12 +297,12 @@ pub fn draw_context_jobs(
 
 /// A permille chance as a player-facing percentage.
 /// The Confirm button for an expanded action.
-fn confirm_job(
+fn confirm_assignment(
     ui: &mut egui::Ui,
     strings: &TextDb,
     key: &aeon_data::ContentKey,
     cache: &ForecastCache,
-    form: &mut JobForm,
+    form: &mut AssignmentForm,
     queue: &mut UiCommandQueue,
 ) {
     // The forecast already knows whether this can be ordered; Confirm must
@@ -314,8 +318,8 @@ fn confirm_job(
         .clicked()
         && let (Some(leader), Some(target)) = (form.leader, form.target)
     {
-        queue.0.push(PlayerCommand::StartJob {
-            job: key.clone(),
+        queue.0.push(PlayerCommand::StartAssignment {
+            assignment: key.clone(),
             leader,
             target,
         });
@@ -348,7 +352,7 @@ fn draw_forecast(
     theme: &UiTheme,
     strings: &TextDb,
     cache: &ForecastCache,
-    form: &mut JobForm,
+    form: &mut AssignmentForm,
     picker: &mut PickerState,
     choice: LeaderChoice,
 ) {
@@ -374,7 +378,7 @@ fn draw_leader_slot(
     theme: &UiTheme,
     strings: &TextDb,
     cache: &ForecastCache,
-    form: &mut JobForm,
+    form: &mut AssignmentForm,
     picker: &mut PickerState,
     choice: LeaderChoice,
 ) {
@@ -439,7 +443,7 @@ fn draw_leader_slot(
 /// silently substituting the head of the house and failing later.
 #[derive(Debug, PartialEq, Eq)]
 struct ProvinceAction {
-    target: Option<JobTarget>,
+    target: Option<AssignmentTarget>,
     leader: Option<CharacterId>,
     /// Why this cannot be ordered yet, for showing at the slot.
     obstacle: Option<Obstacle>,
@@ -470,22 +474,24 @@ impl Obstacle {
 /// Pure over the chosen force's records, so what the interface offers —
 /// and refuses — is testable without a world or a frame.
 fn province_action(
-    kind: JobTargetKind,
+    kind: AssignmentTargetKind,
     province: ProvinceId,
     army: Option<&ArmyRecord>,
     ship: Option<&ShipRecord>,
 ) -> ProvinceAction {
     match kind {
-        JobTargetKind::OwnArmy | JobTargetKind::OwnArmyAndProvince => ProvinceAction {
-            target: army.map(|a| match kind {
-                JobTargetKind::OwnArmy => JobTarget::OwnArmy(a.id),
-                _ => JobTarget::ArmyToProvince(a.id, province),
-            }),
-            leader: army.map(|a| a.general),
-            obstacle: None,
-        },
-        JobTargetKind::OwnShipAndProvince => ProvinceAction {
-            target: ship.map(|s| JobTarget::ShipToProvince(s.id, province)),
+        AssignmentTargetKind::OwnArmy | AssignmentTargetKind::OwnArmyAndProvince => {
+            ProvinceAction {
+                target: army.map(|a| match kind {
+                    AssignmentTargetKind::OwnArmy => AssignmentTarget::OwnArmy(a.id),
+                    _ => AssignmentTarget::ArmyToProvince(a.id, province),
+                }),
+                leader: army.map(|a| a.general),
+                obstacle: None,
+            }
+        }
+        AssignmentTargetKind::OwnShipAndProvince => ProvinceAction {
+            target: ship.map(|s| AssignmentTarget::ShipToProvince(s.id, province)),
             leader: ship.and_then(|s| s.captain),
             obstacle: match ship {
                 Some(ship) if ship.captain.is_none() => Some(Obstacle::ShipHasNoCaptain),
@@ -504,17 +510,17 @@ fn province_action(
 fn pick_target(
     ui: &mut egui::Ui,
     strings: &TextDb,
-    kind: JobTargetKind,
+    kind: AssignmentTargetKind,
     content: &ContentSet,
     politics: &PoliticsIndex,
     player_org: OrgId,
     data: &PanelData,
-    form: &mut JobForm,
+    form: &mut AssignmentForm,
 ) {
     match kind {
-        JobTargetKind::Organisation => {
+        AssignmentTargetKind::Organisation => {
             let label = match form.target {
-                Some(JobTarget::Org(org)) => politics
+                Some(AssignmentTarget::Org(org)) => politics
                     .orgs
                     .get(&org)
                     .and_then(|e| data.orgs.get(*e).ok())
@@ -537,17 +543,20 @@ fn pick_target(
                             continue;
                         };
                         if ui
-                            .selectable_label(form.target == Some(JobTarget::Org(*id)), &def.name)
+                            .selectable_label(
+                                form.target == Some(AssignmentTarget::Org(*id)),
+                                &def.name,
+                            )
                             .clicked()
                         {
-                            form.target = Some(JobTarget::Org(*id));
+                            form.target = Some(AssignmentTarget::Org(*id));
                         }
                     }
                 });
         }
-        JobTargetKind::Character => {
+        AssignmentTargetKind::Character => {
             let label = match form.target {
-                Some(JobTarget::Character(id)) => politics
+                Some(AssignmentTarget::Character(id)) => politics
                     .characters
                     .get(&id)
                     .and_then(|e| data.characters.get(*e).ok())
@@ -570,17 +579,20 @@ fn pick_target(
                     people.sort_by(|a, b| a.1.cmp(&b.1));
                     for (id, name) in people {
                         if ui
-                            .selectable_label(form.target == Some(JobTarget::Character(id)), &name)
+                            .selectable_label(
+                                form.target == Some(AssignmentTarget::Character(id)),
+                                &name,
+                            )
                             .clicked()
                         {
-                            form.target = Some(JobTarget::Character(id));
+                            form.target = Some(AssignmentTarget::Character(id));
                         }
                     }
                 });
         }
-        JobTargetKind::Province => {
+        AssignmentTargetKind::Province => {
             let label = match form.target {
-                Some(JobTarget::Province(id)) => data
+                Some(AssignmentTarget::Province(id)) => data
                     .provinces
                     .iter()
                     .find(|(r, _, _)| r.id == id)
@@ -596,12 +608,12 @@ fn pick_target(
                     for (record, name, _) in sorted {
                         if ui
                             .selectable_label(
-                                form.target == Some(JobTarget::Province(record.id)),
+                                form.target == Some(AssignmentTarget::Province(record.id)),
                                 &name.0,
                             )
                             .clicked()
                         {
-                            form.target = Some(JobTarget::Province(record.id));
+                            form.target = Some(AssignmentTarget::Province(record.id));
                         }
                     }
                 });
@@ -615,7 +627,7 @@ fn pick_army(
     strings: &TextDb,
     player_org: OrgId,
     data: &PanelData,
-    form: &mut JobForm,
+    form: &mut AssignmentForm,
 ) {
     let mut armies: Vec<&ArmyRecord> = data
         .armies
@@ -651,7 +663,7 @@ fn pick_ship(
     strings: &TextDb,
     player_org: OrgId,
     data: &PanelData,
-    form: &mut JobForm,
+    form: &mut AssignmentForm,
 ) {
     let mut ships: Vec<&ShipRecord> = data
         .ships
@@ -722,14 +734,14 @@ mod tests {
     fn a_march_is_led_by_the_armys_general() {
         let army = army(42);
         let action = province_action(
-            JobTargetKind::OwnArmyAndProvince,
+            AssignmentTargetKind::OwnArmyAndProvince,
             province(),
             Some(&army),
             None,
         );
         assert_eq!(
             action.target,
-            Some(JobTarget::ArmyToProvince(army.id, province()))
+            Some(AssignmentTarget::ArmyToProvince(army.id, province()))
         );
         assert_eq!(action.leader, Some(army.general));
         assert_eq!(action.obstacle, None);
@@ -739,7 +751,7 @@ mod tests {
     fn a_ship_without_a_captain_has_no_order_to_give() {
         let ship = ship(None);
         let action = province_action(
-            JobTargetKind::OwnShipAndProvince,
+            AssignmentTargetKind::OwnShipAndProvince,
             province(),
             None,
             Some(&ship),
@@ -756,14 +768,14 @@ mod tests {
     fn a_captained_ship_is_ordered_by_its_captain() {
         let ship = ship(Some(9));
         let action = province_action(
-            JobTargetKind::OwnShipAndProvince,
+            AssignmentTargetKind::OwnShipAndProvince,
             province(),
             None,
             Some(&ship),
         );
         assert_eq!(
             action.target,
-            Some(JobTarget::ShipToProvince(ship.id, province()))
+            Some(AssignmentTarget::ShipToProvince(ship.id, province()))
         );
         assert_eq!(action.leader, ship.captain);
         assert_eq!(action.obstacle, None);
@@ -771,7 +783,7 @@ mod tests {
 
     #[test]
     fn no_chosen_force_means_nothing_to_confirm() {
-        let action = province_action(JobTargetKind::OwnArmy, province(), None, None);
+        let action = province_action(AssignmentTargetKind::OwnArmy, province(), None, None);
         assert_eq!(action.target, None);
         assert_eq!(action.leader, None);
     }

@@ -685,9 +685,9 @@ entities:
       authority: authoritative
     implementation:
       paths:
-        - crates/aeon_sim/src/jobs.rs
+        - crates/aeon_sim/src/assignments.rs
       tests:
-        - crates/aeon_sim/tests/jobs.rs
+        - crates/aeon_sim/tests/assignments.rs
       status: declared
 
   - decision: character-led-jobs-are-primary-actions
@@ -1057,9 +1057,9 @@ entities:
       authority: authoritative
     implementation:
       paths:
-        - crates/aeon_sim/src/jobs.rs
+        - crates/aeon_sim/src/assignments.rs
       tests:
-        - crates/aeon_sim/tests/jobs.rs
+        - crates/aeon_sim/tests/assignments.rs
       status: declared
 
   - decision: result-level-popups
@@ -1085,10 +1085,10 @@ entities:
       authority: derived
     implementation:
       paths:
-        - crates/aeon_sim/src/jobs.rs
-        - crates/aeon_client/src/jobs_ui.rs
+        - crates/aeon_sim/src/assignments.rs
+        - crates/aeon_client/src/assignment_ui.rs
       tests:
-        - crates/aeon_sim/tests/jobs.rs
+        - crates/aeon_sim/tests/assignments.rs
       status: declared
 
   - decision: notable-results-are-logged

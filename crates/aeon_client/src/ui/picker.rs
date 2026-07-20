@@ -7,7 +7,7 @@
 //! choice and leaves the window standing.
 //!
 //! Every adult of the house appears, including those who cannot take the
-//! job on. They are listed below a divider rather than mixed in among those
+//! assignment on. They are listed below a divider rather than mixed in among those
 //! who can, each with the simulation's own account of where they are and
 //! when they will be free — a household member who is merely busy should
 //! never look like one who does not exist.
@@ -20,14 +20,14 @@ use aeon_sim::state::ContentDb;
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
+use crate::assignment_ui::AssignmentForm;
 use crate::forecast_view::{ForecastCache, LeaderOption};
-use crate::jobs_ui::JobForm;
 use crate::ui::forecast::{draw_forecast_body, permille_text};
 use crate::ui::theme::{TargetState, UiTheme};
 
 /// Whether the picker is up.
 ///
-/// A resource rather than a flag inside [`JobForm`] because the window
+/// A resource rather than a flag inside [`AssignmentForm`] because the window
 /// outlives any single expanded action: closing an action should not leave
 /// a stale window open, but changing which action is expanded while the
 /// picker is up should just re-list the candidates for the new one.
@@ -48,7 +48,7 @@ impl PickerState {
 pub fn draw_picker(
     mut contexts: EguiContexts,
     mut picker: ResMut<PickerState>,
-    mut form: ResMut<JobForm>,
+    mut form: ResMut<AssignmentForm>,
     cache: Res<ForecastCache>,
     content: Option<Res<ContentDb>>,
     theme: Res<UiTheme>,
@@ -63,7 +63,7 @@ pub fn draw_picker(
     // The picker is about an expanded action; with none expanded it has
     // nothing to be about, so it closes itself rather than showing an
     // empty frame.
-    if form.job.is_none() {
+    if form.assignment.is_none() {
         picker.open = false;
         return;
     }
@@ -75,7 +75,7 @@ pub fn draw_picker(
     let title = cache
         .forecast
         .as_ref()
-        .map(|view| strings.format("ui.picker.title", &[("job", &view.title)]))
+        .map(|view| strings.format("ui.picker.title", &[("assignment", &view.title)]))
         .unwrap_or_else(|| strings.text("ui.picker.title.generic").to_owned());
 
     let mut open = true;
@@ -88,10 +88,10 @@ pub fn draw_picker(
             let (free, committed): (Vec<&LeaderOption>, Vec<&LeaderOption>) =
                 cache.leaders.iter().partition(|o| o.blocked().is_none());
 
-            let job_title = |key: &aeon_data::ContentKey| -> String {
+            let assignment_title = |key: &aeon_data::ContentKey| -> String {
                 content
                     .0
-                    .jobs
+                    .assignments
                     .get(key)
                     .map(|def| def.title.clone())
                     .unwrap_or_else(|| key.to_string())
@@ -111,7 +111,7 @@ pub fn draw_picker(
                         ui.separator();
                         ui.weak(strings.text("ui.picker.committed"));
                         for option in &committed {
-                            draw_committed(ui, &theme, strings, option, &job_title);
+                            draw_committed(ui, &theme, strings, option, &assignment_title);
                         }
                     }
                 });
@@ -121,12 +121,12 @@ pub fn draw_picker(
     }
 }
 
-/// One candidate who could take the job on now.
+/// One candidate who could take the assignment on now.
 fn draw_candidate(
     ui: &mut egui::Ui,
     theme: &UiTheme,
     strings: &TextDb,
-    form: &mut JobForm,
+    form: &mut AssignmentForm,
     option: &LeaderOption,
 ) {
     let chosen = form.leader == Some(option.id);
@@ -153,7 +153,7 @@ fn draw_candidate(
     let response = ui
         .selectable_label(chosen, text)
         // The full breakdown is one hover away from the summary, and is the
-        // same calculation the job will resolve with.
+        // same calculation the assignment will resolve with.
         .on_hover_ui(|ui| {
             ui.set_max_width(f32::from(theme.components.picker_hover_width));
             ui.strong(&option.name);
@@ -170,17 +170,17 @@ fn draw_candidate(
     }
 }
 
-/// One household member who cannot take this job on.
+/// One household member who cannot take this assignment on.
 fn draw_committed(
     ui: &mut egui::Ui,
     theme: &UiTheme,
     strings: &TextDb,
     option: &LeaderOption,
-    job_title: &impl Fn(&aeon_data::ContentKey) -> String,
+    assignment_title: &impl Fn(&aeon_data::ContentKey) -> String,
 ) {
-    // The simulation's own account of where they are, which names the job
+    // The simulation's own account of where they are, which names the assignment
     // and when it ends rather than saying only that they are unavailable.
-    let reason = option.availability.describe(strings, job_title);
+    let reason = option.availability.describe(strings, assignment_title);
     // A refusal the player can lift reads differently from one they cannot.
     let state = match option.availability {
         aeon_sim::LeaderAvailability::Ineligible(_) => TargetState::StructurallyIneligible,

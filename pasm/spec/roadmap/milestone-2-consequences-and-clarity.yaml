@@ -55,17 +55,17 @@ entities:
     implementation:
       paths:
         - crates/aeon_sim/src/forecast.rs
-        - crates/aeon_sim/src/jobs.rs
+        - crates/aeon_sim/src/assignments.rs
         - crates/aeon_client/src/forecast_view.rs
-        - crates/aeon_client/src/jobs_ui.rs
+        - crates/aeon_client/src/assignment_ui.rs
         - crates/aeon_client/src/ui/actions.rs
       tests:
-        - crates/aeon_sim/tests/jobs.rs
+        - crates/aeon_sim/tests/assignments.rs
       status: declared
 
     evidence:
       - kind: test
-        reference: crates/aeon_sim/tests/jobs.rs
+        reference: crates/aeon_sim/tests/assignments.rs
         summary: Over fifteen hundred seeded runs the outcomes of a job land within tolerance of the odds its forecast quoted, alongside exact assertions on permille apportionment, skill shifting, tail floors, costs, order delay, risks, and blocked reasons.
       - kind: manual-review
         reference: crates/aeon_sim/src/forecast.rs
@@ -180,7 +180,7 @@ entities:
     implementation:
       paths:
         - crates/aeon_sim/src/agency.rs
-        - crates/aeon_sim/src/jobs.rs
+        - crates/aeon_sim/src/assignments.rs
         - crates/aeon_data/src/model.rs
         - crates/aeon_tools/src/main.rs
         - crates/aeon_sim/tests/acceptance.rs

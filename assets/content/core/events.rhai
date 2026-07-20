@@ -123,12 +123,12 @@ fn petition_ignored(ctx) {
 }
 
 // ---------------------------------------------------------------------------
-// Job complications
+// Assignment complications
 // ---------------------------------------------------------------------------
 
 define_event(#{
     id: "work-delayed",
-    family: "job",
+    family: "assignment",
     weight: 100,
     cooldown_days: 240,
     weighty: false,

@@ -4,7 +4,7 @@
 //! need more than that — so the queries and resources they use are bundled
 //! here into a few named groups. The grouping is not only an arithmetic
 //! convenience: [`PanelData`] is everything the interface *reads*, and
-//! [`JobUi`] and [`MapUi`] are the small amounts of state it *writes*, so
+//! [`AssignmentUi`] and [`MapUi`] are the small amounts of state it *writes*, so
 //! the split says which is which.
 //!
 //! These live apart from the panels themselves because every panel module
@@ -23,10 +23,12 @@ use aeon_sim::obligations::Obligations;
 use aeon_sim::order::ProvincialOrder;
 use aeon_sim::politics::{CharacterSkills, CharacterTraits, Lineage, OpinionLedger};
 use aeon_sim::presence::CharacterLocation;
-use aeon_sim::{ActiveJob, CharacterId, CharacterRecord, OrgId, OrgRecord, TextDb, TitleRecord};
+use aeon_sim::{
+    ActiveAssignment, CharacterId, CharacterRecord, OrgId, OrgRecord, TextDb, TitleRecord,
+};
 
+use crate::assignment_ui::AssignmentForm;
 use crate::forecast_view::{AvailabilityView, ForecastCache};
-use crate::jobs_ui::JobForm;
 use crate::map_modes::MapReadout;
 use crate::ui::dock::DockState;
 use crate::ui::picker::PickerState;
@@ -38,8 +40,8 @@ use crate::view::MapMode;
 /// They belong together: the form holds the choice being made, and the
 /// picker is how one of its slots gets filled in.
 #[derive(SystemParam)]
-pub struct JobUi<'w> {
-    pub form: ResMut<'w, JobForm>,
+pub struct AssignmentUi<'w> {
+    pub form: ResMut<'w, AssignmentForm>,
     pub picker: ResMut<'w, PickerState>,
 }
 
@@ -94,7 +96,7 @@ pub struct PanelData<'w, 's> {
     pub titles: Query<'w, 's, &'static TitleRecord>,
     pub ships: Query<'w, 's, &'static ShipRecord>,
     pub armies: Query<'w, 's, &'static ArmyRecord>,
-    pub active_jobs: Query<'w, 's, &'static ActiveJob>,
+    pub active_assignments: Query<'w, 's, &'static ActiveAssignment>,
     pub order: Query<'w, 's, (&'static ProvinceRecord, &'static ProvincialOrder)>,
     pub obligations: Option<Res<'w, Obligations>>,
     pub availability: Res<'w, AvailabilityView>,

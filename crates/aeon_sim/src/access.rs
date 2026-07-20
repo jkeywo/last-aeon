@@ -15,12 +15,12 @@
 use aeon_core::rng::DeterministicRng;
 use bevy::prelude::{Component, Entity, World};
 
+use crate::assignments::{ActiveAssignment, AssignmentsIndex, LogEntry, MessageLog};
 use crate::clock::CampaignClock;
 use crate::forces::{ArmyRecord, ForcesIndex, ShipRecord};
 use crate::ids::{
-    ArmyId, BodyId, CharacterId, JobId, OfficeId, OrgId, ProvinceId, ShipId, TitleId,
+    ArmyId, AssignmentId, BodyId, CharacterId, OfficeId, OrgId, ProvinceId, ShipId, TitleId,
 };
-use crate::jobs::{ActiveJob, JobsIndex, LogEntry, MessageLog};
 use crate::map::{BodyRecord, DisplayName, MapIndex, ProvinceRecord};
 use crate::politics::{
     CharacterRecord, OfficeRecord, OrgRecord, PoliticsIndex, TitleHolder, TitleKind, TitleRecord,
@@ -87,11 +87,11 @@ pub fn ship_entity(world: &World, id: ShipId) -> Option<Entity> {
         .and_then(|index| index.ships.get(&id).copied())
 }
 
-/// The live entity behind an active job.
-pub fn job_entity(world: &World, id: JobId) -> Option<Entity> {
+/// The live entity behind an active assignment.
+pub fn assignment_entity(world: &World, id: AssignmentId) -> Option<Entity> {
     world
-        .get_resource::<JobsIndex>()
-        .and_then(|index| index.jobs.get(&id).copied())
+        .get_resource::<AssignmentsIndex>()
+        .and_then(|index| index.assignments.get(&id).copied())
 }
 
 // ---------------------------------------------------------------------------
@@ -138,9 +138,9 @@ pub fn ship(world: &World, id: ShipId) -> Option<&ShipRecord> {
     ship_entity(world, id).and_then(|entity| world.get::<ShipRecord>(entity))
 }
 
-/// An active job's record.
-pub fn job(world: &World, id: JobId) -> Option<&ActiveJob> {
-    job_entity(world, id).and_then(|entity| world.get::<ActiveJob>(entity))
+/// An active assignment's record.
+pub fn assignment(world: &World, id: AssignmentId) -> Option<&ActiveAssignment> {
+    assignment_entity(world, id).and_then(|entity| world.get::<ActiveAssignment>(entity))
 }
 
 /// Any other component carried by a character (skills, lineage, opinion
@@ -302,7 +302,7 @@ pub fn derived_rng(world: &World, purpose: &str, subjects: &[u64]) -> Determinis
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::jobs::LogChannel;
+    use crate::assignments::LogChannel;
     use aeon_core::calendar::GameDate;
 
     #[test]
@@ -315,7 +315,10 @@ mod tests {
         });
         world.insert_resource(MessageLog::default());
 
-        log(&mut world, LogEntry::line("it happened", LogChannel::Jobs));
+        log(
+            &mut world,
+            LogEntry::line("it happened", LogChannel::Assignments),
+        );
 
         let entries = &world.resource::<MessageLog>().entries;
         assert_eq!(entries.len(), 1);

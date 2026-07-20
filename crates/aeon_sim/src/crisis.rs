@@ -3,7 +3,7 @@
 //!
 //! The MVP opens with a vacant, contested planetary paramountcy: the
 //! previous paramount died without an accepted successor. A house can
-//! press its claim through a job when it holds strictly more of the
+//! press its claim through a assignment when it holds strictly more of the
 //! planet's provinces than any rival; the Consul can lend or withhold
 //! endorsement, which shifts a claimant's standing without deciding it.
 //! Imperial tithes let the Consul's office extract wealth from the
@@ -11,9 +11,9 @@
 
 use bevy::prelude::World;
 
+use crate::assignments::{LogChannel, LogEntry};
 use crate::economy::OrgResources;
 use crate::ids::{BodyId, OrgId, TitleId};
-use crate::jobs::{LogChannel, LogEntry};
 use crate::map::ProvinceRecord;
 use crate::politics::{PoliticsIndex, TitleHolder, TitleKind, TitleRecord};
 use crate::text::TextDb;

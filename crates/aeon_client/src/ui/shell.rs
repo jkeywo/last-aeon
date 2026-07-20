@@ -13,9 +13,9 @@ use aeon_sim::{CampaignClock, CampaignOver, CharacterId, PlayerHouse, PoliticsIn
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
-use crate::jobs_ui::UiCommandQueue;
+use crate::assignment_ui::UiCommandQueue;
 use crate::sim_driver::TimeControl;
-use crate::ui::data::{JobUi, MapUi, PanelData};
+use crate::ui::data::{AssignmentUi, MapUi, PanelData};
 use crate::ui::dock::{DockSide, PanelKind};
 use crate::ui::lookup::Lookup;
 use crate::ui::overlays::draw_overlays;
@@ -38,15 +38,15 @@ pub fn draw_panels(
     mut queue: ResMut<UiCommandQueue>,
     mut search: ResMut<SearchState>,
     map_ui: MapUi,
-    job_ui: JobUi,
+    assignment_ui: AssignmentUi,
     log: Option<Res<aeon_sim::MessageLog>>,
-    mut filter: ResMut<crate::jobs_ui::LogFilter>,
+    mut filter: ResMut<crate::assignment_ui::LogFilter>,
     data: PanelData,
 ) {
-    let JobUi {
+    let AssignmentUi {
         mut form,
         mut picker,
-    } = job_ui;
+    } = assignment_ui;
     let MapUi { mut mode, mut dock } = map_ui;
     let Ok(ctx) = contexts.ctx_mut() else {
         return;

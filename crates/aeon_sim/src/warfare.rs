@@ -1,12 +1,12 @@
 //! Operational warfare: engine-owned military operations, strategic
 //! engagement resolution, and standing orders.
 //!
-//! Military play is a sequence of jobs — move, resupply, patrol, besiege,
+//! Military play is a sequence of assignments — move, resupply, patrol, besiege,
 //! raid, blockade — led by each army's general. Engagements resolve from
 //! strategic state (strength, command, supply, fortification) with a
 //! bounded derived-stream swing; there is no tactical battle layer.
-//! Standing orders generate reactive defence jobs for idle armies, and a
-//! bespoke job on an army always takes precedence because standing orders
+//! Standing orders generate reactive defence assignments for idle armies, and a
+//! bespoke assignment on an army always takes precedence because standing orders
 //! only fire for idle armies.
 
 use aeon_core::calendar::GameDate;
@@ -17,10 +17,12 @@ use bevy::app::App;
 use bevy::prelude::{IntoScheduleConfigs, World};
 use serde::{Deserialize, Serialize};
 
+use crate::assignments::{
+    ActiveAssignment, AssignmentTarget, AssignmentsIndex, LogChannel, LogEntry,
+};
 use crate::clock::{CampaignClock, DailyTick, TickSet};
 use crate::forces::{ArmyRecord, ForcesIndex, ShipRecord};
 use crate::ids::{ArmyId, OrgId, ProvinceId};
-use crate::jobs::{ActiveJob, JobTarget, JobsIndex, LogChannel, LogEntry};
 use crate::politics::{PoliticsIndex, TitleHolder, TitleKind, TitleRecord};
 use crate::state::ContentDb;
 use crate::text::TextDb;
@@ -40,7 +42,7 @@ pub enum StandingOrder {
 /// captain's own competence is counted.
 pub const BLOCKADE_ORDER_LOSS: i32 = 20;
 
-/// The content key of the reactive-defence job standing orders start.
+/// The content key of the reactive-defence assignment standing orders start.
 pub const REACTIVE_DEFENCE_JOB: &str = "answer-the-alarm";
 
 /// An army's fighting strength from strategic state.
@@ -250,12 +252,12 @@ fn log(world: &mut World, org: OrgId, text: String) {
     );
 }
 
-/// Applies a military operation when its job succeeds. Returns `false`
-/// when the operation was defeated (the job reports failure instead).
-pub fn apply_military_op(world: &mut World, op: MilitaryOp, job: &ActiveJob) -> bool {
+/// Applies a military operation when its assignment succeeds. Returns `false`
+/// when the operation was defeated (the assignment reports failure instead).
+pub fn apply_military_op(world: &mut World, op: MilitaryOp, assignment: &ActiveAssignment) -> bool {
     let date = world.resource::<CampaignClock>().date;
-    match (op, job.target) {
-        (MilitaryOp::Move, JobTarget::ArmyToProvince(army, destination)) => {
+    match (op, assignment.target) {
+        (MilitaryOp::Move, AssignmentTarget::ArmyToProvince(army, destination)) => {
             if let Some(entity) = crate::access::army_entity(world, army)
                 && let Some(mut record) = world.get_mut::<ArmyRecord>(entity)
             {
@@ -263,13 +265,14 @@ pub fn apply_military_op(world: &mut World, op: MilitaryOp, job: &ActiveJob) -> 
             }
             true
         }
-        (MilitaryOp::Resupply, JobTarget::OwnArmy(army)) => {
+        (MilitaryOp::Resupply, AssignmentTarget::OwnArmy(army)) => {
             if let Some(entity) = crate::access::army_entity(world, army) {
                 let need = {
                     let record = world.get::<ArmyRecord>(entity);
                     record.map(|a| (1 + a.manpower / 1000) * 6).unwrap_or(0)
                 };
-                let org_entity = crate::access::org_entity(world, job.owner).expect("indexed");
+                let org_entity =
+                    crate::access::org_entity(world, assignment.owner).expect("indexed");
                 let drawn = world
                     .get_mut::<crate::economy::OrgResources>(org_entity)
                     .map(|mut r| {
@@ -284,15 +287,15 @@ pub fn apply_military_op(world: &mut World, op: MilitaryOp, job: &ActiveJob) -> 
             }
             true
         }
-        (MilitaryOp::Patrol, JobTarget::OwnArmy(_)) => true,
-        (MilitaryOp::Besiege, JobTarget::ArmyToProvince(army, target)) => {
+        (MilitaryOp::Patrol, AssignmentTarget::OwnArmy(_)) => true,
+        (MilitaryOp::Besiege, AssignmentTarget::ArmyToProvince(army, target)) => {
             // March to the walls; a defending garrison must be beaten first.
             if let Some(entity) = crate::access::army_entity(world, army)
                 && let Some(mut record) = world.get_mut::<ArmyRecord>(entity)
             {
                 record.location = target;
             }
-            if let Some(defender) = defending_army(world, target, job.owner) {
+            if let Some(defender) = defending_army(world, target, assignment.owner) {
                 let engagement = resolve_engagement(world, army, defender, date);
                 if !engagement.attacker_won {
                     return false;
@@ -311,19 +314,19 @@ pub fn apply_military_op(world: &mut World, op: MilitaryOp, job: &ActiveJob) -> 
                 && let Some(mut record) = world.get_mut::<TitleRecord>(entity)
             {
                 let name = record.name.clone();
-                record.holder = TitleHolder::Org(job.owner);
+                record.holder = TitleHolder::Org(assignment.owner);
                 let line = world
                     .resource::<TextDb>()
                     .format("sim.warfare.fallen-to-siege", &[("place", &name)]);
-                log(world, job.owner, line);
+                log(world, assignment.owner, line);
             }
             // Conquest breeds resentment: the province starts its new
             // allegiance badly out of order.
             crate::order::reset_order(world, target, crate::order::ORDER_AFTER_CONQUEST);
             true
         }
-        (MilitaryOp::Raid, JobTarget::ArmyToProvince(army, target)) => {
-            if let Some(defender) = defending_army(world, target, job.owner) {
+        (MilitaryOp::Raid, AssignmentTarget::ArmyToProvince(army, target)) => {
+            if let Some(defender) = defending_army(world, target, assignment.owner) {
                 let engagement = resolve_engagement(world, army, defender, date);
                 if !engagement.attacker_won {
                     return false;
@@ -331,7 +334,7 @@ pub fn apply_military_op(world: &mut World, op: MilitaryOp, job: &ActiveJob) -> 
             }
             // Loot a tenth of the holder's wealth, up to 100.
             if let Some(holder) = province_holder(world, target)
-                && holder != job.owner
+                && holder != assignment.owner
             {
                 let holder_entity = crate::access::org_entity(world, holder).expect("indexed");
                 let looted = world
@@ -342,7 +345,8 @@ pub fn apply_military_op(world: &mut World, op: MilitaryOp, job: &ActiveJob) -> 
                         looted
                     })
                     .unwrap_or(0);
-                let owner_entity = crate::access::org_entity(world, job.owner).expect("indexed");
+                let owner_entity =
+                    crate::access::org_entity(world, assignment.owner).expect("indexed");
                 if let Some(mut r) = world.get_mut::<crate::economy::OrgResources>(owner_entity) {
                     r.wealth += looted;
                 }
@@ -351,7 +355,7 @@ pub fn apply_military_op(world: &mut World, op: MilitaryOp, job: &ActiveJob) -> 
             crate::order::adjust_order(world, target, -crate::order::ORDER_RAID_LOSS);
             true
         }
-        (MilitaryOp::Blockade, JobTarget::ShipToProvince(ship, target)) => {
+        (MilitaryOp::Blockade, AssignmentTarget::ShipToProvince(ship, target)) => {
             let Some(entity) = crate::access::ship_entity(world, ship) else {
                 return false;
             };
@@ -379,12 +383,12 @@ pub fn apply_military_op(world: &mut World, op: MilitaryOp, job: &ActiveJob) -> 
     }
 }
 
-/// Daily: standing orders create reactive defence jobs for idle armies
+/// Daily: standing orders create reactive defence assignments for idle armies
 /// when hostile operations threaten the owner's provinces on their body.
 pub fn standing_orders(world: &mut World) {
     let (Some(_), Some(_)) = (
         world.get_resource::<ForcesIndex>(),
-        world.get_resource::<JobsIndex>(),
+        world.get_resource::<AssignmentsIndex>(),
     ) else {
         return;
     };
@@ -392,24 +396,24 @@ pub fn standing_orders(world: &mut World) {
     let Ok(reactive_key) = ContentKey::new(REACTIVE_DEFENCE_JOB) else {
         return;
     };
-    if !content.jobs.contains_key(&reactive_key) {
+    if !content.assignments.contains_key(&reactive_key) {
         return;
     }
 
     // Hostile army operations under way, by target province.
     let threats: Vec<(OrgId, ProvinceId)> = {
-        let jobs_index = world.resource::<JobsIndex>();
-        jobs_index
-            .jobs
+        let assignments_index = world.resource::<AssignmentsIndex>();
+        assignments_index
+            .assignments
             .values()
             .filter_map(|entity| {
-                let job = world.get::<ActiveJob>(*entity)?;
-                let def = content.jobs.get(&job.def)?;
-                match (def.military_op, job.target) {
+                let assignment = world.get::<ActiveAssignment>(*entity)?;
+                let def = content.assignments.get(&assignment.def)?;
+                match (def.military_op, assignment.target) {
                     (
                         Some(MilitaryOp::Besiege | MilitaryOp::Raid),
-                        JobTarget::ArmyToProvince(_, target),
-                    ) => Some((job.owner, target)),
+                        AssignmentTarget::ArmyToProvince(_, target),
+                    ) => Some((assignment.owner, target)),
                     _ => None,
                 }
             })
@@ -421,14 +425,18 @@ pub fn standing_orders(world: &mut World) {
 
     // Idle defending armies with standing orders, in ID order.
     let busy_armies: Vec<ArmyId> = {
-        let jobs_index = world.resource::<JobsIndex>();
-        jobs_index
-            .jobs
+        let assignments_index = world.resource::<AssignmentsIndex>();
+        assignments_index
+            .assignments
             .values()
-            .filter_map(|entity| match world.get::<ActiveJob>(*entity)?.target {
-                JobTarget::OwnArmy(army) | JobTarget::ArmyToProvince(army, _) => Some(army),
-                _ => None,
-            })
+            .filter_map(
+                |entity| match world.get::<ActiveAssignment>(*entity)?.target {
+                    AssignmentTarget::OwnArmy(army) | AssignmentTarget::ArmyToProvince(army, _) => {
+                        Some(army)
+                    }
+                    _ => None,
+                },
+            )
             .collect()
     };
     let candidates: Vec<(ArmyId, OrgId, ProvinceId)> = {
@@ -462,21 +470,21 @@ pub fn standing_orders(world: &mut World) {
         let Some(general) = crate::access::army(world, army).map(|a| a.general) else {
             continue;
         };
-        if crate::jobs::validate_start(
+        if crate::assignments::validate_start(
             world,
             owner,
             &reactive_key,
             general,
-            JobTarget::ArmyToProvince(army, target),
+            AssignmentTarget::ArmyToProvince(army, target),
         )
         .is_ok()
         {
-            crate::jobs::start_job(
+            crate::assignments::start_assignment(
                 world,
                 owner,
                 &reactive_key,
                 general,
-                JobTarget::ArmyToProvince(army, target),
+                AssignmentTarget::ArmyToProvince(army, target),
             );
             let name = crate::access::army(world, army)
                 .map(|a| a.name.clone())
@@ -494,7 +502,7 @@ pub(crate) fn install(app: &mut App) {
         DailyTick,
         standing_orders
             .in_set(TickSet::Simulation)
-            .after(crate::jobs::resolve_due_jobs),
+            .after(crate::assignments::resolve_due_assignments),
     );
 }
 
