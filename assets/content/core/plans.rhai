@@ -20,9 +20,48 @@ define_plan(#{
            requires: #{ dominant_claimant: true },
            steps: [
                #{ id: "fund", start: "collect-tithes", skip_if: #{ min_wealth: 150 } },
-               #{ id: "arm", start: "muster", skip_if: #{ has_army: true } },
+               #{ id: "muster", start: "muster", skip_if: #{ has_army: true } },
+               // A declaration invites answers; the claimant's own force
+               // stands ready for them before the claim is voiced.
+               #{ id: "arm", orders: ["respond", "patrol"], army: "own" },
                #{ id: "endorse", start: "seek-endorsement" },
                #{ id: "declare", start: "press-claim" },
+           ] },
+    ],
+});
+
+// Occupied ground gets an armed answer: raise a levy if none stands,
+// then point the head's own force at the doctrine — march to whatever
+// holding is threatened, and stand guard between alarms.
+define_plan(#{
+    id: "ready-the-levies",
+    goal: "muster",
+    cooldown_days: 180,
+    max_days: 240,
+    max_step_retries: 1,
+    methods: [
+        #{ id: "call-and-answer",
+           steps: [
+               #{ id: "raise", start: "muster", skip_if: #{ has_army: true } },
+               #{ id: "stand-to", orders: ["respond", "patrol"], army: "own" },
+           ] },
+    ],
+});
+
+// A household ambition: an idle courtier takes the realm's disquiet
+// personally, holding court and touring the holdings — work that costs
+// the house nothing but their time.
+define_plan(#{
+    id: "steady-the-shires",
+    goal: "order",
+    cooldown_days: 120,
+    max_days: 200,
+    max_step_retries: 1,
+    methods: [
+        #{ id: "in-person",
+           steps: [
+               #{ id: "court", start: "hold-court" },
+               #{ id: "tour", start: "tour-holdings" },
            ] },
     ],
 });

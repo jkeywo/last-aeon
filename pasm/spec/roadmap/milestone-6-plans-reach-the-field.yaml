@@ -15,8 +15,8 @@
 entities:
   - system: milestone-6-implementation-plan
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "Milestone 6: Plans Reach the Field"
       summary: >-
         The three scope cuts Milestone 5 recorded become the work: a plan
@@ -179,8 +179,8 @@ entities:
 
   - milestone: m6-campaigns-in-the-field
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "M6.4: Authored Campaigns Exercise All of It"
       summary: >-
         The shipped content grows into the new vocabulary: the claim
@@ -204,3 +204,21 @@ entities:
       tests:
         - crates/aeon_sim/tests/acceptance.rs
       status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/acceptance.rs
+        summary: >-
+          On the real scenario, once the opening tie is broken, Veyrin's
+          head carries the claim campaign through funding, mustering and
+          arming to a declaration, and by its end some Veyrin army stands
+          under standing orders it was not authored with — the declared
+          war is an armed one, unprompted.
+      - kind: manual-review
+        reference: assets/content/core/plans.rhai
+        summary: >-
+          Content alone drives every new behaviour: the claim campaign
+          gains an arm step, ready-the-levies finally gives occupied
+          ground an armed answer — the muster pressure had no reachable
+          assignment before, since muster is not ai_available — and
+          steady-the-shires is the first household ambition, costing the
+          house nothing but a courtier's time.

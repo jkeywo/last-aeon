@@ -334,7 +334,7 @@ fn an_autonomous_house_pursues_the_claim_as_a_campaign() {
         if plans.cooldowns.keys().any(|(_, def)| *def == claim) {
             finished = true;
         }
-        if finished && deepest_step + 1 >= 4 {
+        if finished && deepest_step + 1 >= 5 {
             break;
         }
     }
@@ -346,5 +346,25 @@ fn an_autonomous_house_pursues_the_claim_as_a_campaign() {
     assert!(
         finished,
         "the campaign should end, by completion or honest abandonment"
+    );
+
+    // Milestone 6: a declared war is an armed one. The campaign's arm
+    // step points the claimant head's own force at the doctrine, so by
+    // the time the claim has been pressed, some Veyrin army stands under
+    // standing orders it was not authored with.
+    let world = h.world_mut();
+    let veyrin = world.resource::<PoliticsIndex>().org_keys[&key("veyrin")];
+    let armed = {
+        let forces = world.resource::<aeon_sim::ForcesIndex>().clone();
+        forces
+            .armies
+            .values()
+            .filter_map(|e| world.get::<aeon_sim::ArmyRecord>(*e))
+            .filter(|a| a.owner == veyrin)
+            .any(|a| !a.standing_order.is_empty())
+    };
+    assert!(
+        armed,
+        "the campaign that declared the war should have armed it"
     );
 }

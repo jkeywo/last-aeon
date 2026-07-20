@@ -649,3 +649,7 @@ plan.shore-up-standing.summary,One-line summary of the standing plan.,[Win frien
 sim.plan.rumour,"Log line for the player when a rival's newly adopted plan is aimed at them or their holding. {house} is the plotting house, {target} what it concerns.",[You hear whispers that {house} intends something concerning {target}.]
 ui.inspector.character.pursuing,Inspector line naming the plan an autonomous character is pursuing. {plan} is the plan's title.,[Pursuing: {plan}]
 sim.plan.ordered,Log line when a plan gives an army new standing orders. {army} is the army's name.,[{army} was given new standing orders.]
+plan.ready-the-levies.title,Plan title: answering occupied ground with an armed levy.,[Ready the Levies]
+plan.ready-the-levies.summary,One-line summary of the defence campaign.,[Raise a levy if none stands and point it at whatever ground is threatened.]
+plan.steady-the-shires.title,Plan title: a household ambition to settle restive holdings.,[Steady the Shires]
+plan.steady-the-shires.summary,One-line summary of the household ambition.,[Hold court and tour the holdings until the realm sits quieter.]
