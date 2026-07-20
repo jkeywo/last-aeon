@@ -1039,8 +1039,7 @@ pub fn process_death(world: &mut World, id: CharacterId, date: GameDate) {
             .format("sim.politics.ship-without-captain", &[("ship", &name)]);
         crate::access::log(
             world,
-            crate::jobs::LogEntry::line(line, crate::jobs::LogChannel::Military)
-            .by(Some(owner)),
+            crate::jobs::LogEntry::line(line, crate::jobs::LogChannel::Military).by(Some(owner)),
         );
     }
 

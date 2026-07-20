@@ -9,6 +9,7 @@ use aeon_sim::{CharacterId, OrgId, TextDb};
 use bevy_egui::egui;
 
 use crate::ui::lookup::Lookup;
+use crate::ui::theme::UiTheme;
 use crate::view::Selection;
 
 /// The player-facing name of a kind of celestial body.
@@ -29,16 +30,10 @@ pub fn linked(ui: &mut egui::Ui, label: &str, summary: &str) -> bool {
 pub fn resource_readout(ui: &mut egui::Ui, strings: &TextDb, r: &OrgResources) {
     ui.label(strings.format("ui.cost.wealth", &[("amount", &r.wealth.to_string())]))
         .on_hover_text(strings.text("ui.resource.wealth.hover"));
-    ui.label(strings.format(
-        "ui.cost.manpower",
-        &[("amount", &r.manpower.to_string())],
-    ))
-    .on_hover_text(strings.text("ui.resource.manpower.hover"));
-    ui.label(strings.format(
-        "ui.cost.supplies",
-        &[("amount", &r.supplies.to_string())],
-    ))
-    .on_hover_text(strings.text("ui.resource.supplies.hover"));
+    ui.label(strings.format("ui.cost.manpower", &[("amount", &r.manpower.to_string())]))
+        .on_hover_text(strings.text("ui.resource.manpower.hover"));
+    ui.label(strings.format("ui.cost.supplies", &[("amount", &r.supplies.to_string())]))
+        .on_hover_text(strings.text("ui.resource.supplies.hover"));
     ui.label(strings.format(
         "ui.resource.influence",
         &[
@@ -46,10 +41,22 @@ pub fn resource_readout(ui: &mut egui::Ui, strings: &TextDb, r: &OrgResources) {
             ("legitimacy", &r.legitimacy.to_string()),
         ],
     ))
-        .on_hover_text(
-            "Influence / Legitimacy — spendable political capital, capped and \
+    .on_hover_text(
+        "Influence / Legitimacy — spendable political capital, capped and \
              recharged by your standing",
-        );
+    );
+}
+
+/// Draws a small filled square in `colour`.
+///
+/// Both the legend and the identity block need one, and they were drawing
+/// it to their own hardcoded measurements — so a designer changing swatch
+/// size changed one of them and not the other.
+pub fn swatch(ui: &mut egui::Ui, theme: &UiTheme, colour: egui::Color32) {
+    let side = f32::from(theme.components.swatch_size);
+    let (rect, _) = ui.allocate_exact_size(egui::vec2(side, side), egui::Sense::hover());
+    ui.painter()
+        .rect_filled(rect, theme.components.swatch_radius as f32, colour);
 }
 
 /// Draws who the player is, and returns whatever they clicked on.
@@ -64,6 +71,7 @@ pub fn resource_readout(ui: &mut egui::Ui, strings: &TextDb, r: &OrgResources) {
 /// what changes rather than on what does not.
 pub fn draw_identity(
     ui: &mut egui::Ui,
+    theme: &UiTheme,
     lookup: &Lookup,
     org: Option<OrgId>,
     head: Option<CharacterId>,
@@ -82,8 +90,7 @@ pub fn draw_identity(
         .and_then(|(record, _)| lookup.content.organisations.get(&record.key))
         .map(|def| egui::Color32::from_rgb(def.color.0, def.color.1, def.color.2))
         .unwrap_or(egui::Color32::GRAY);
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
-    ui.painter().rect_filled(rect, 2.0, colour);
+    swatch(ui, theme, colour);
 
     if linked(ui, &lookup.org_name(org), &lookup.org_hover(org)) {
         hit = Some(Selection::Org(org));

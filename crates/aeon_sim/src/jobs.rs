@@ -17,10 +17,10 @@ use bevy::prelude::{Component, Entity, IntoScheduleConfigs, Resource, World};
 use serde::{Deserialize, Serialize};
 
 use crate::clock::{CampaignClock, DailyTick, MonthlyPulse, TickSet};
-use crate::text::TextDb;
 use crate::ids::{ArmyId, CharacterId, JobId, OrgId, ProvinceId, ShipId};
 use crate::politics::{CampaignOver, OpinionEntry, OpinionLedger, PlayerHouse, process_death};
 use crate::state::{CampaignIds, ContentDb};
+use crate::text::TextDb;
 
 /// What a job acts on.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -485,22 +485,17 @@ impl LeaderAvailability {
     }
 
     /// A short player-facing phrase, for showing beside a name.
-    pub fn describe(
-        &self,
-        strings: &TextDb,
-        job_title: impl Fn(&ContentKey) -> String,
-    ) -> String {
+    pub fn describe(&self, strings: &TextDb, job_title: impl Fn(&ContentKey) -> String) -> String {
         match self {
             LeaderAvailability::Available => strings.text("sim.leader.available").to_owned(),
             LeaderAvailability::Busy { def, completes, .. } => strings.format(
                 "sim.leader.busy",
-                &[
-                    ("job", &job_title(def)),
-                    ("date", &completes.to_string()),
-                ],
+                &[("job", &job_title(def)), ("date", &completes.to_string())],
             ),
-            LeaderAvailability::Indisposed { until: Some(until) } => strings
-                .format("sim.leader.indisposed-until", &[("date", &until.to_string())]),
+            LeaderAvailability::Indisposed { until: Some(until) } => strings.format(
+                "sim.leader.indisposed-until",
+                &[("date", &until.to_string())],
+            ),
             LeaderAvailability::Indisposed { until: None } => {
                 strings.text("sim.leader.indisposed").to_owned()
             }

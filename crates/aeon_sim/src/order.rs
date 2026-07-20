@@ -301,16 +301,13 @@ pub fn daily_order(world: &mut World) {
             let holder = crate::warfare::province_holder(world, province);
             let line = world.resource::<TextDb>().format(
                 "sim.order.unrest-begins",
-                &[
-                    ("province", &name),
-                    ("days", &REVOLT_DAYS.to_string()),
-                ],
+                &[("province", &name), ("days", &REVOLT_DAYS.to_string())],
             );
             crate::access::log(
                 world,
                 LogEntry::line(line, LogChannel::Economy)
-                .by(holder)
-                .about(LogSubject::Province(province)),
+                    .by(holder)
+                    .about(LogSubject::Province(province)),
             );
         }
 
@@ -347,8 +344,8 @@ fn revolt(world: &mut World, province: ProvinceId) {
     crate::access::log(
         world,
         LogEntry::line(line, LogChannel::Politics)
-        .by(holder)
-        .about(LogSubject::Province(province)),
+            .by(holder)
+            .about(LogSubject::Province(province)),
     );
 }
 

@@ -47,20 +47,23 @@ pub fn draw_forecast_body(
             "ui.forecast.duration",
             &[("days", &view.duration_days.to_string())],
         ))
-            .on_hover_text(strings.text("ui.forecast.duration.hover"));
+        .on_hover_text(strings.text("ui.forecast.duration.hover"));
         if view.order_delay_days > 0 {
             ui.label(strings.format(
                 "ui.forecast.delay",
                 &[("days", &view.order_delay_days.to_string())],
             ))
-                .on_hover_text(strings.text("ui.forecast.delay.hover"));
+            .on_hover_text(strings.text("ui.forecast.delay.hover"));
         }
     });
 
     // Immediate costs.
     let mut costs = Vec::new();
     if view.wealth_cost > 0 {
-        costs.push(strings.format("ui.cost.wealth", &[("amount", &view.wealth_cost.to_string())]));
+        costs.push(strings.format(
+            "ui.cost.wealth",
+            &[("amount", &view.wealth_cost.to_string())],
+        ));
     }
     if view.manpower_cost > 0 {
         costs.push(strings.format(
@@ -81,10 +84,7 @@ pub fn draw_forecast_body(
         ));
     }
     if !costs.is_empty() {
-        ui.label(strings.format(
-            "ui.forecast.costs",
-            &[("costs", &costs.join(" · "))],
-        ))
+        ui.label(strings.format("ui.forecast.costs", &[("costs", &costs.join(" · "))]))
             .on_hover_text(strings.text("ui.forecast.costs.hover"));
     }
 

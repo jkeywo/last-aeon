@@ -43,6 +43,7 @@ pub fn draw_search_results(
     search: &mut SearchState,
 ) {
     let strings = lookup.strings;
+    let theme = &data.theme;
     // Search results, floating below the top bar while the query is set.
     let query = search.query.trim().to_lowercase();
     if !query.is_empty() {
@@ -59,15 +60,18 @@ pub fn draw_search_results(
         let hits = matching(&query, candidates);
 
         egui::Area::new("search-results".into())
-            .fixed_pos(egui::pos2(ctx.viewport_rect().width() - 260.0, 34.0))
+            .fixed_pos(egui::pos2(
+                ctx.viewport_rect().width() - f32::from(theme.components.search_width),
+                f32::from(theme.components.search_offset_y),
+            ))
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.set_min_width(240.0);
+                    ui.set_min_width(f32::from(theme.components.search_width) - 20.0);
                     if hits.is_empty() {
                         ui.label(strings.text("ui.search.no-matches"));
                     }
                     egui::ScrollArea::vertical()
-                        .max_height(320.0)
+                        .max_height(f32::from(theme.components.search_max_height))
                         .show(ui, |ui| {
                             for (label, hit) in &hits {
                                 let tag = match hit {

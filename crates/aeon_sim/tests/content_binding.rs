@@ -7,10 +7,13 @@ use aeon_data::{ContentSource, load_content};
 use aeon_sim::{CampaignConfig, SimHost, SnapshotError};
 
 fn content(source_text: &str) -> Arc<aeon_data::ContentSet> {
-    let (set, report) = load_content(&[ContentSource {
-        path: "test.rhai".to_owned(),
-        source: source_text.to_owned(),
-    }], &aeon_data::StringTable::blank());
+    let (set, report) = load_content(
+        &[ContentSource {
+            path: "test.rhai".to_owned(),
+            source: source_text.to_owned(),
+        }],
+        &aeon_data::StringTable::blank(),
+    );
     assert!(!report.has_errors(), "findings: {:?}", report.findings);
     Arc::new(set.unwrap())
 }
@@ -26,10 +29,8 @@ fn config() -> CampaignConfig {
 // The two differ in a mechanical fact, not a display name: prose lives in
 // the string table now, so two content sets that differed only by what
 // they were called would hash identically — and should.
-const WORLD_A: &str =
-    r#"define_body(#{ id: "world", kind: "planet", radius_km: 6000 });"#;
-const WORLD_B: &str =
-    r#"define_body(#{ id: "world", kind: "planet", radius_km: 7000 });"#;
+const WORLD_A: &str = r#"define_body(#{ id: "world", kind: "planet", radius_km: 6000 });"#;
+const WORLD_B: &str = r#"define_body(#{ id: "world", kind: "planet", radius_km: 7000 });"#;
 
 #[test]
 fn snapshots_restore_only_with_matching_content() {

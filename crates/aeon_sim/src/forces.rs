@@ -15,11 +15,11 @@ use bevy::prelude::{Component, Entity, IntoScheduleConfigs, Resource, World};
 use serde::{Deserialize, Serialize};
 
 use crate::clock::MonthlyPulse;
-use crate::text::TextDb;
 use crate::ids::{ArmyId, CharacterId, OrgId, ProvinceId, ShipId};
 use crate::map::MapIndex;
 use crate::politics::PoliticsIndex;
 use crate::state::CampaignIds;
+use crate::text::TextDb;
 
 /// Where a ship is.
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]

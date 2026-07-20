@@ -105,16 +105,22 @@ fn strings() -> aeon_data::StringTable {
     let mut table = aeon_data::StringTable::blank();
     table.extend(&[
         ("job.lay-siege.success.log-text", "{target} fell."),
-        ("job.lay-siege.failure.log-text", "The siege of {target} broke."),
+        (
+            "job.lay-siege.failure.log-text",
+            "The siege of {target} broke.",
+        ),
     ]);
     table
 }
 
 fn content() -> Arc<aeon_data::ContentSet> {
-    let (set, report) = load_content(&[ContentSource {
-        path: "fixture.rhai".to_owned(),
-        source: FIXTURE.to_owned(),
-    }], &strings());
+    let (set, report) = load_content(
+        &[ContentSource {
+            path: "fixture.rhai".to_owned(),
+            source: FIXTURE.to_owned(),
+        }],
+        &strings(),
+    );
     assert!(!report.has_errors(), "findings: {:?}", report.findings);
     Arc::new(set.unwrap())
 }

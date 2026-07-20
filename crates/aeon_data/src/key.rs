@@ -160,7 +160,10 @@ mod tests {
             "ui.sp ace",
             "ui.-lead",
         ] {
-            assert!(TextKey::new(invalid).is_err(), "{invalid} should be invalid");
+            assert!(
+                TextKey::new(invalid).is_err(),
+                "{invalid} should be invalid"
+            );
         }
     }
 }

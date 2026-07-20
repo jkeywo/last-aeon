@@ -135,20 +135,7 @@ pub fn draw_panel_body(ui: &mut egui::Ui, kind: PanelKind, ctx: &PanelCtx, out: 
                 });
         }
         PanelKind::Listing => draw_listing(ui, ctx, out),
-        PanelKind::Log => match ctx.log {
-            Some(log) => draw_log_panel(
-                ui,
-                ctx.strings,
-                log,
-                out.filter,
-                ctx.player_org,
-                out.view,
-                &ctx.data.province_records,
-            ),
-            None => {
-                ui.weak(ctx.strings.text("ui.log.no-campaign"));
-            }
-        },
+        PanelKind::Log => draw_log_panel(ui, ctx, out),
         PanelKind::Jobs => draw_jobs_panel(
             ui,
             ctx.lookup,
@@ -158,6 +145,12 @@ pub fn draw_panel_body(ui: &mut egui::Ui, kind: PanelKind, ctx: &PanelCtx, out: 
             &ctx.data.active_jobs,
             out.queue,
         ),
-        PanelKind::Ledger => draw_ledger_panel(ui, ctx.strings, &ctx.data.readout, ctx.mode),
+        PanelKind::Ledger => draw_ledger_panel(
+            ui,
+            &ctx.data.theme,
+            ctx.strings,
+            &ctx.data.readout,
+            ctx.mode,
+        ),
     }
 }

@@ -21,9 +21,6 @@ use crate::ui::dock::PanelKind;
 use crate::ui::theme::UiTheme;
 use crate::view::MapMode;
 
-/// Side of a square map-mode button.
-const BUTTON: f32 = 24.0;
-
 /// Draws the row of map-mode buttons, and returns the mode picked this
 /// frame if one was.
 ///
@@ -39,9 +36,10 @@ pub fn draw_mode_bar(
     active: MapMode,
 ) -> Option<MapMode> {
     let mut picked = None;
+    let button = f32::from(theme.components.icon_button);
     for mode in MapMode::ALL {
         let (rect, response) =
-            ui.allocate_exact_size(egui::vec2(BUTTON, BUTTON), egui::Sense::click());
+            ui.allocate_exact_size(egui::vec2(button, button), egui::Sense::click());
         let selected = *mode == active;
 
         // The button's own surface, taken from the same widget states the
@@ -52,7 +50,7 @@ pub fn draw_mode_bar(
             ui.painter()
                 .rect_filled(rect, theme.shape.radius_small as f32, visuals.bg_fill);
         }
-        draw_mode_icon(ui.painter(), rect, *mode, visuals.fg_stroke.color);
+        draw_mode_icon(ui.painter(), theme, rect, *mode, visuals.fg_stroke.color);
 
         if response
             .on_hover_text(format!(
@@ -75,14 +73,15 @@ pub fn draw_mode_bar(
 /// resolve what is inside them.
 pub fn draw_mode_icon(
     painter: &egui::Painter,
+    theme: &UiTheme,
     rect: egui::Rect,
     mode: MapMode,
     colour: egui::Color32,
 ) {
     // Inset, so no icon touches its button's edge.
-    let r = rect.shrink(rect.width() * 0.18);
+    let r = rect.shrink(rect.width() * theme.components.icon_inset as f32 / 100.0);
     let at = |x: f32, y: f32| egui::pos2(r.left() + r.width() * x, r.top() + r.height() * y);
-    let width = (r.width() * 0.12).max(1.0);
+    let width = (r.width() * theme.components.icon_stroke as f32 / 100.0).max(1.0);
     let stroke = egui::Stroke::new(width, colour);
     let line = |a: egui::Pos2, b: egui::Pos2| painter.line_segment([a, b], stroke);
 
@@ -154,13 +153,14 @@ pub fn draw_mode_icon(
 /// stack of rows, lines of text, a clock, and a column of swatches.
 pub fn draw_panel_icon(
     painter: &egui::Painter,
+    theme: &UiTheme,
     rect: egui::Rect,
     kind: PanelKind,
     colour: egui::Color32,
 ) {
-    let r = rect.shrink(rect.width() * 0.2);
+    let r = rect.shrink(rect.width() * theme.components.icon_inset as f32 / 100.0);
     let at = |x: f32, y: f32| egui::pos2(r.left() + r.width() * x, r.top() + r.height() * y);
-    let width = (r.width() * 0.11).max(1.0);
+    let width = (r.width() * theme.components.icon_stroke as f32 / 100.0).max(1.0);
     let stroke = egui::Stroke::new(width, colour);
     let line = |a: egui::Pos2, b: egui::Pos2| painter.line_segment([a, b], stroke);
 

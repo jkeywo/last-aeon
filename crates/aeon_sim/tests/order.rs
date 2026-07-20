@@ -57,10 +57,13 @@ define_character(#{
 "#;
 
 fn content() -> Arc<aeon_data::ContentSet> {
-    let (set, report) = load_content(&[ContentSource {
-        path: "fixture.rhai".to_owned(),
-        source: FIXTURE.to_owned(),
-    }], &aeon_data::StringTable::blank());
+    let (set, report) = load_content(
+        &[ContentSource {
+            path: "fixture.rhai".to_owned(),
+            source: FIXTURE.to_owned(),
+        }],
+        &aeon_data::StringTable::blank(),
+    );
     assert!(!report.has_errors(), "findings: {:?}", report.findings);
     Arc::new(set.unwrap())
 }

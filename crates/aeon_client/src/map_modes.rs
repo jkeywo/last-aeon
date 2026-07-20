@@ -383,7 +383,9 @@ fn readout_for(
                     }
                 }
                 _ => ProvinceReadout {
-                    hint: strings.text("ui.map-mode.relations.hint.unclaimed").to_owned(),
+                    hint: strings
+                        .text("ui.map-mode.relations.hint.unclaimed")
+                        .to_owned(),
                     alert: true,
                     ..Default::default()
                 },
@@ -567,8 +569,7 @@ fn situation_for(world: &World, player: Option<OrgId>, body: BodyId) -> Vec<Situ
                         "ui.situation.revolt.headline",
                         &[("province", &name), ("days", &days.to_string())],
                     ),
-                    detail: strings
-                        .format("ui.situation.revolt.detail", &[("province", &name)]),
+                    detail: strings.format("ui.situation.revolt.detail", &[("province", &name)]),
                     urgent: days <= 30,
                 });
             } else if state.order < aeon_sim::order::ORDER_START / 2 {

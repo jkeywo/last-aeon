@@ -83,7 +83,7 @@ pub fn draw_picker(
         .id(egui::Id::new("character-picker"))
         .open(&mut open)
         .resizable(true)
-        .default_width(360.0)
+        .default_width(f32::from(theme.components.picker_width))
         .show(ctx, |ui| {
             let (free, committed): (Vec<&LeaderOption>, Vec<&LeaderOption>) =
                 cache.leaders.iter().partition(|o| o.blocked().is_none());
@@ -98,7 +98,7 @@ pub fn draw_picker(
             };
 
             egui::ScrollArea::vertical()
-                .max_height(420.0)
+                .max_height(f32::from(theme.components.picker_max_height))
                 .show(ui, |ui| {
                     if free.is_empty() {
                         draw_empty_state(ui, &theme, strings, &committed);
@@ -155,7 +155,7 @@ fn draw_candidate(
         // The full breakdown is one hover away from the summary, and is the
         // same calculation the job will resolve with.
         .on_hover_ui(|ui| {
-            ui.set_max_width(340.0);
+            ui.set_max_width(f32::from(theme.components.picker_hover_width));
             ui.strong(&option.name);
             if let Some(assignment) = &option.assignment {
                 ui.weak(assignment);
@@ -197,19 +197,21 @@ fn draw_committed(
         )
         .frame(false),
     )
-    .on_disabled_hover_text(strings.format(
-        "ui.picker.committed.hover",
-        &[
-            ("name", &option.name),
-            (
-                "reason",
-                option
-                    .blocked()
-                    .as_deref()
-                    .unwrap_or_else(|| strings.text("ui.actions.unavailable")),
-            ),
-        ],
-    ));
+    .on_disabled_hover_text(
+        strings.format(
+            "ui.picker.committed.hover",
+            &[
+                ("name", &option.name),
+                (
+                    "reason",
+                    option
+                        .blocked()
+                        .as_deref()
+                        .unwrap_or_else(|| strings.text("ui.actions.unavailable")),
+                ),
+            ],
+        ),
+    );
 }
 
 /// What to say when nobody is free.
@@ -248,10 +250,7 @@ fn draw_empty_state(
     );
     match soonest {
         Some(date) => {
-            ui.weak(strings.format(
-                "ui.picker.empty.wait-until",
-                &[("date", &date.to_string())],
-            ));
+            ui.weak(strings.format("ui.picker.empty.wait-until", &[("date", &date.to_string())]));
         }
         None => {
             ui.weak(strings.text("ui.picker.empty.cancel-one"));

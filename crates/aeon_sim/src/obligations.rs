@@ -17,9 +17,9 @@ use serde::{Deserialize, Serialize};
 use aeon_core::calendar::GameDate;
 
 use crate::clock::{CampaignClock, DailyTick, TickSet};
-use crate::text::TextDb;
 use crate::ids::OrgId;
 use crate::jobs::{LogChannel, LogEntry, LogSubject};
+use crate::text::TextDb;
 
 /// The obligation vocabulary is owned by the content model and parsed
 /// exactly once, at the boundary; the ledger reuses it unchanged.
@@ -243,8 +243,8 @@ pub fn expire_due(world: &mut World) {
             crate::access::log(
                 world,
                 LogEntry::line(line, LogChannel::Politics)
-                .by(Some(debtor))
-                .about(LogSubject::Org(debtor)),
+                    .by(Some(debtor))
+                    .about(LogSubject::Org(debtor)),
             );
         }
     }

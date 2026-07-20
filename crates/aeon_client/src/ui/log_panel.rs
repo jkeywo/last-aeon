@@ -5,28 +5,31 @@
 //! fills — so the same code serves a wide strip along the bottom and a
 //! narrow column down an edge.
 
-use aeon_sim::map::ProvinceRecord;
-use aeon_sim::{LogChannel, LogEntry, LogSubject, MessageLog, OrgId, TextDb};
-use bevy::prelude::Query;
+use aeon_sim::{LogChannel, LogEntry, LogSubject};
 use bevy_egui::egui;
 
-use crate::jobs_ui::LogFilter;
-use crate::view::{MapView, Selection, ViewState};
+use crate::ui::panel::{PanelCtx, PanelOut};
+use crate::view::{MapView, Selection};
 
 /// Draws the log's filter row and its entries.
-pub fn draw_log_panel(
-    ui: &mut egui::Ui,
-    strings: &TextDb,
-    log: &MessageLog,
-    filter: &mut LogFilter,
-    player_org: Option<OrgId>,
-    view: &mut ViewState,
-    provinces: &Query<&ProvinceRecord>,
-) {
+pub fn draw_log_panel(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
+    let Some(log) = ctx.log else {
+        ui.weak(ctx.strings.text("ui.log.no-campaign"));
+        return;
+    };
+    let theme = &ctx.data.theme;
+    let strings = ctx.strings;
+    let filter = &mut *out.filter;
+    let view = &mut *out.view;
+    let player_org = ctx.player_org;
+    let provinces = &ctx.data.province_records;
     ui.horizontal_wrapped(|ui| {
         for channel in LogChannel::ALL {
             let mut on = filter.channels.contains(&channel);
-            if ui.toggle_value(&mut on, strings.text(channel.label_key())).changed() {
+            if ui
+                .toggle_value(&mut on, strings.text(channel.label_key()))
+                .changed()
+            {
                 if on {
                     filter.channels.insert(channel);
                 } else {
@@ -39,7 +42,7 @@ pub fn draw_log_panel(
         ui.add(
             egui::TextEdit::singleline(&mut filter.text)
                 .hint_text(strings.text("ui.log.filter-hint"))
-                .desired_width(90.0),
+                .desired_width(f32::from(theme.components.log_filter_width)),
         );
     });
 
@@ -52,7 +55,7 @@ pub fn draw_log_panel(
                 .iter()
                 .filter(|entry| filter.admits(entry, player_org))
                 .rev()
-                .take(200)
+                .take(usize::from(theme.components.log_max_entries))
                 .collect();
             if visible.is_empty() {
                 ui.weak(strings.text("ui.log.no-matches"));

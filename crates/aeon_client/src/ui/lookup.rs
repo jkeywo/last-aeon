@@ -189,9 +189,7 @@ impl<'a> Lookup<'a> {
             (OrgKind::SanctoraImperim, _) => {
                 self.strings.text("ui.hover.standing.imperial").to_owned()
             }
-            (_, Some(HouseTier::Great)) => {
-                self.strings.text("ui.hover.standing.great").to_owned()
-            }
+            (_, Some(HouseTier::Great)) => self.strings.text("ui.hover.standing.great").to_owned(),
             (_, Some(HouseTier::Vassal)) => match record.liege {
                 Some(liege) => self.strings.format(
                     "ui.hover.standing.vassal-of",
@@ -199,9 +197,10 @@ impl<'a> Lookup<'a> {
                 ),
                 None => self.strings.text("ui.hover.standing.vassal").to_owned(),
             },
-            (_, Some(HouseTier::Independent)) => {
-                self.strings.text("ui.hover.standing.independent").to_owned()
-            }
+            (_, Some(HouseTier::Independent)) => self
+                .strings
+                .text("ui.hover.standing.independent")
+                .to_owned(),
             _ => String::new(),
         };
         let head = record

@@ -1,51 +1,154 @@
 // The interface's design tokens.
 //
-// This file is the whole appearance of the game: no colour, size or
-// spacing should be written as a literal anywhere in the client. It is
-// meant to be replaced wholesale by a designed token set, so keep it a
-// flat list of values with no logic in it.
+// This file is the whole appearance of the game: no colour, size, spacing
+// or interaction behaviour should be written as a literal anywhere in the
+// client. It is meant to be replaced wholesale by a designed token set, so
+// keep it a flat list of values with no logic in it.
+//
+// Every token here is read by something. A test asserts it — change any
+// one of these values and the applied style must differ, or the build
+// fails naming the token. If you add a token, wire it up in the same
+// change; a token that does nothing is a promise this file does not keep.
 //
 // Authored for a dark interface sitting over a near-black 3D viewport
 // (#04050a), with panels that must not fight a coloured political map
 // showing through behind them.
 (
     palette: (
+        // Surfaces.
         window:        (r:  4, g:  5, b: 10),
         panel:         (r: 18, g: 20, b: 27, a: 242),
         panel_alt:     (r: 24, g: 27, b: 35),
         popup:         (r: 26, g: 29, b: 38, a: 250),
+
+        // Controls with a box around them, per state. There is no
+        // disabled entry: egui fades by `interaction.disabled_alpha`.
         inactive:      (r: 34, g: 38, b: 48),
         hovered:       (r: 46, g: 52, b: 65),
         active:        (r: 62, g: 70, b: 86),
         open:          (r: 52, g: 59, b: 74),
-        disabled:      (r: 26, g: 29, b: 36),
+
+        // Controls without one — a bare clickable label, a small button.
+        // Quieter than their boxed equivalents so they do not read as
+        // buttons until the pointer is on them.
+        inactive_weak: (r: 26, g: 29, b: 37),
+        hovered_weak:  (r: 40, g: 45, b: 57),
+        active_weak:   (r: 56, g: 63, b: 78),
+        open_weak:     (r: 46, g: 52, b: 66),
+
+        // Text. `text` is what a plain label is drawn in; `text_strong` is
+        // where egui takes emphasis and headings from.
         text:          (r: 222, g: 224, b: 232),
         text_weak:     (r: 142, g: 148, b: 162),
-        heading:       (r: 236, g: 226, b: 196),
+        text_strong:   (r: 244, g: 238, b: 214),
+
         link:          (r: 138, g: 176, b: 226),
         border:        (r: 44, g: 49, b: 61),
         border_strong: (r: 82, g: 90, b: 108),
         selection:     (r: 58, g: 78, b: 112),
+
+        error:         (r: 226, g: 104, b: 100),
+        warn:          (r: 226, g: 178, b: 96),
+        code_bg:       (r: 14, g: 16, b: 22),
     ),
     typography: (
         heading: 17,
         body: 13,
+        button: 13,
         small: 11,
         monospace: 12,
+        map_label: 13,
+        map_label_selected: 15,
     ),
     spacing: (
         item_gap_x: 8,
         item_gap_y: 4,
         panel_margin: 10,
+        menu_margin: 6,
         indent: 16,
-        button_padding: 8,
+        button_pad_x: 8,
+        button_pad_y: 4,
         row_height: 20,
+        row_min_width: 40,
+        icon_width: 14,
+        icon_inner_width: 8,
+        icon_gap: 6,
+        slider_width: 100,
+        slider_rail_height: 8,
+        combo_width: 100,
+        combo_height: 200,
+        text_edit_width: 180,
+        tooltip_width: 460,
+        menu_width: 180,
+        menu_gap: 3,
+        scroll_bar_width: 8,
+        scroll_handle_min: 24,
+        scroll_bar_inner_margin: 4,
+        scroll_bar_outer_margin: 0,
+        clip_margin: 3,
+        resize_corner: 12,
     ),
     shape: (
         radius_small: 3,
         radius_large: 5,
-        stroke_hairline: 1,
-        stroke_normal: 1,
+        radius_menu: 4,
+
+        // A control's outline thickens as the pointer arrives and while it
+        // is held. This is most of what makes a control feel answerable.
+        stroke_rest: 1,
+        stroke_hover: 2,
+        stroke_active: 2,
+        stroke_open: 2,
+        stroke_noninteractive: 1,
+        text_stroke: 1,
+        window_stroke: 1,
+
+        window_shadow: (
+            offset_x: 0, offset_y: 6, blur: 16, spread: 0,
+            colour: (r: 0, g: 0, b: 0, a: 110),
+        ),
+        popup_shadow: (
+            offset_x: 0, offset_y: 4, blur: 12, spread: 0,
+            colour: (r: 0, g: 0, b: 0, a: 130),
+        ),
+    ),
+    interaction: (
+        // Points a control grows by. Growing on hover and settling back
+        // while pressed reads as the control being pushed in.
+        expansion_hover: 1.0,
+        expansion_active: 0.0,
+        animation_time: 0.083,
+        disabled_alpha: 0.45,
+        weak_text_alpha: 0.6,
+    ),
+    chrome: (
+        button_frame: true,
+        collapsing_header_frame: false,
+        striped: false,
+        indent_left_vline: true,
+        indent_ends_with_line: false,
+        slider_trailing_fill: true,
+        // Floating scrollbars keep a narrow panel's width for its content.
+        scroll_floating: true,
+        window_highlight_topmost: true,
+    ),
+    components: (
+        swatch_size: 12,
+        swatch_radius: 2,
+        icon_button: 24,
+        // Hundredths of the button, so an icon scales with its box.
+        icon_inset: 18,
+        icon_stroke: 12,
+        picker_width: 360,
+        picker_max_height: 420,
+        picker_hover_width: 340,
+        search_width: 260,
+        search_max_height: 320,
+        search_offset_y: 34,
+        strip_offset_x: 276,
+        strip_offset_y: 34,
+        log_filter_width: 90,
+        log_max_entries: 200,
     ),
     semantics: (
         // The five things a target can be. These must stay visually

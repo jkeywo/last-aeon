@@ -66,7 +66,10 @@ impl StringTable {
                 report.error(
                     path,
                     None,
-                    format!("header must be `id,context,english`, found `{}`", header.join(",")),
+                    format!(
+                        "header must be `id,context,english`, found `{}`",
+                        header.join(",")
+                    ),
                 );
                 return (None, report);
             }
@@ -192,7 +195,10 @@ impl StringTable {
 
     /// How many rows are still unapproved placeholder prose.
     pub fn placeholder_count(&self) -> usize {
-        self.rows.values().filter(|row| row.is_placeholder()).count()
+        self.rows
+            .values()
+            .filter(|row| row.is_placeholder())
+            .count()
     }
 
     /// The number of rows.

@@ -40,7 +40,7 @@ pub fn draw_top_bar(
     egui::Panel::top("top-bar").show(viewport, |ui| {
         ui.horizontal(|ui| {
             // Who you are, first and always.
-            if let Some(hit) = draw_identity(ui, lookup, player_org, player_head) {
+            if let Some(hit) = draw_identity(ui, theme, lookup, player_org, player_head) {
                 view.selected = Some(hit);
             }
             ui.separator();
@@ -78,7 +78,10 @@ pub fn draw_top_bar(
                     ui.label(strings.text("ui.top-bar.local-system"));
                 }
                 MapView::Body(id) => {
-                    if ui.button(strings.text("ui.top-bar.back-to-system")).clicked() {
+                    if ui
+                        .button(strings.text("ui.top-bar.back-to-system"))
+                        .clicked()
+                    {
                         view.view = MapView::System;
                     }
                     ui.label(lookup.body_name(id));
@@ -106,7 +109,7 @@ pub fn draw_top_bar(
                 );
                 ui.label("\u{1f50d}");
                 ui.separator();
-                draw_panel_toggles(ui, strings, dock);
+                draw_panel_toggles(ui, theme, strings, dock);
             });
         });
     });
@@ -118,15 +121,18 @@ pub fn draw_top_bar(
 /// clicking the side it is already on puts it away. The right-click
 /// affordance is spelled out in the tooltip, because a control whose
 /// second function is invisible has, for most players, only one.
-fn draw_panel_toggles(ui: &mut egui::Ui, strings: &TextDb, dock: &mut DockState) {
+fn draw_panel_toggles(ui: &mut egui::Ui, theme: &UiTheme, strings: &TextDb, dock: &mut DockState) {
+    let button = f32::from(theme.components.icon_button);
     for kind in PanelKind::ALL {
         let side = dock.side_of(*kind);
-        let (rect, response) = ui.allocate_exact_size(egui::vec2(24.0, 24.0), egui::Sense::click());
+        let (rect, response) =
+            ui.allocate_exact_size(egui::vec2(button, button), egui::Sense::click());
         let visuals = ui.style().interact_selectable(&response, side.is_some());
         if side.is_some() || response.hovered() {
-            ui.painter().rect_filled(rect, 3.0, visuals.bg_fill);
+            ui.painter()
+                .rect_filled(rect, theme.shape.radius_small as f32, visuals.bg_fill);
         }
-        draw_panel_icon(ui.painter(), rect, *kind, visuals.fg_stroke.color);
+        draw_panel_icon(ui.painter(), theme, rect, *kind, visuals.fg_stroke.color);
 
         let where_now = match side {
             Some(side) => strings.format(

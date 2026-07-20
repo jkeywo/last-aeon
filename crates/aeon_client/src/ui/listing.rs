@@ -129,7 +129,10 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                                         order,
                                     });
                                 }
-                                if ui.small_button(strings.text("ui.listing.disband")).clicked() {
+                                if ui
+                                    .small_button(strings.text("ui.listing.disband"))
+                                    .clicked()
+                                {
                                     out.queue
                                         .0
                                         .push(PlayerCommand::DisbandArmy { army: army.id });

@@ -154,15 +154,24 @@ fn strings() -> aeon_data::StringTable {
         ("scenario.fixture.name", "Fixture"),
         ("job.sure-court.title", "Court a Rival"),
         ("job.sure-court.summary", "Send an envoy."),
-        ("job.sure-court.success.log-text", "{leader} charmed {target}."),
+        (
+            "job.sure-court.success.log-text",
+            "{leader} charmed {target}.",
+        ),
         ("job.doomed-chore.title", "A Doomed Chore"),
         ("job.doomed-chore.summary", "It will not go well."),
         ("job.momentous-find.title", "A Momentous Find"),
         ("job.momentous-find.summary", "Something turned up."),
-        ("job.momentous-find.success.popup-text", "{leader} found it. Cera Ash was there."),
+        (
+            "job.momentous-find.success.popup-text",
+            "{leader} found it. Cera Ash was there.",
+        ),
         ("job.momentous-find.success.choice.keep-quiet", "Keep quiet"),
         ("job.momentous-find.success.choice.share-it", "Share it"),
-        ("job.momentous-find.shared.log", "The find was shared with the court."),
+        (
+            "job.momentous-find.shared.log",
+            "The find was shared with the court.",
+        ),
         ("job.even-gamble.title", "An Even Gamble"),
         ("job.even-gamble.summary", "Could go either way."),
         ("job.even-gamble.critical-success.log-text", "OUTCOME-CRIT"),
@@ -177,10 +186,13 @@ fn strings() -> aeon_data::StringTable {
 }
 
 fn content() -> Arc<aeon_data::ContentSet> {
-    let (set, report) = load_content(&[ContentSource {
-        path: "fixture.rhai".to_owned(),
-        source: FIXTURE.to_owned(),
-    }], &strings());
+    let (set, report) = load_content(
+        &[ContentSource {
+            path: "fixture.rhai".to_owned(),
+            source: FIXTURE.to_owned(),
+        }],
+        &strings(),
+    );
     assert!(!report.has_errors(), "findings: {:?}", report.findings);
     Arc::new(set.unwrap())
 }

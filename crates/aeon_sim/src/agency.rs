@@ -28,11 +28,11 @@ use crate::ids::{OrgId, ProvinceId};
 use crate::jobs::{
     JobTarget, JobsIndex, LogChannel, LogEntry, LogSubject, start_job, validate_start,
 };
-use crate::text::TextDb;
 use crate::obligations::{ObligationKind, Obligations};
 use crate::order::{ORDER_START, held_provinces, province_order};
 use crate::politics::{CampaignOver, PlayerHouse};
 use crate::state::ContentDb;
+use crate::text::TextDb;
 
 /// How many of the best-scoring intents a house will consider.
 const SHORTLIST: usize = 3;

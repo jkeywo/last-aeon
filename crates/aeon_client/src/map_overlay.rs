@@ -92,7 +92,12 @@ pub fn draw_map_overlay(
             label.push_str(&format!("  ⚓{ships_here}"));
         }
 
-        let font = egui::FontId::proportional(if selected { 15.0 } else { 12.5 });
+        let size = if selected {
+            theme.typography.map_label_selected
+        } else {
+            theme.typography.map_label
+        };
+        let font = egui::FontId::proportional(f32::from(size));
         let text_color = if selected {
             egui::Color32::from(theme.semantics.map_label_selected)
         } else if entry.is_some_and(|entry| entry.alert) {

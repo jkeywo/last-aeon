@@ -123,10 +123,13 @@ fn strings() -> aeon_data::StringTable {
 }
 
 fn content() -> Arc<aeon_data::ContentSet> {
-    let (set, report) = load_content(&[ContentSource {
-        path: "fixture.rhai".to_owned(),
-        source: FIXTURE.to_owned(),
-    }], &strings());
+    let (set, report) = load_content(
+        &[ContentSource {
+            path: "fixture.rhai".to_owned(),
+            source: FIXTURE.to_owned(),
+        }],
+        &strings(),
+    );
     assert!(!report.has_errors(), "findings: {:?}", report.findings);
     Arc::new(set.unwrap())
 }

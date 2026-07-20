@@ -108,10 +108,13 @@ fn strings() -> aeon_data::StringTable {
 }
 
 fn fixture_content() -> Arc<aeon_data::ContentSet> {
-    let (set, report) = load_content(&[ContentSource {
-        path: "fixture.rhai".to_owned(),
-        source: FIXTURE.to_owned(),
-    }], &strings());
+    let (set, report) = load_content(
+        &[ContentSource {
+            path: "fixture.rhai".to_owned(),
+            source: FIXTURE.to_owned(),
+        }],
+        &strings(),
+    );
     assert!(!report.has_errors(), "findings: {:?}", report.findings);
     Arc::new(set.unwrap())
 }
@@ -458,10 +461,13 @@ define_character(#{ id: "dorn-dogwood", gender: "male",
 "#;
 
 fn vassal_host(seed: u64) -> SimHost {
-    let (set, report) = load_content(&[ContentSource {
-        path: "vassals.rhai".to_owned(),
-        source: VASSAL_FIXTURE.to_owned(),
-    }], &aeon_data::StringTable::blank());
+    let (set, report) = load_content(
+        &[ContentSource {
+            path: "vassals.rhai".to_owned(),
+            source: VASSAL_FIXTURE.to_owned(),
+        }],
+        &aeon_data::StringTable::blank(),
+    );
     assert!(!report.has_errors(), "findings: {:?}", report.findings);
     SimHost::new_with_content(
         CampaignConfig {

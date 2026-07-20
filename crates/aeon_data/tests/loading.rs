@@ -66,10 +66,13 @@ define_province(#{
 
 #[test]
 fn loads_a_valid_content_set() {
-    let (set, report) = load_content(&[
-        source("core/jobs.rhai", GOOD_JOBS),
-        source("system/bodies.rhai", GOOD_SYSTEM),
-    ], &aeon_data::StringTable::blank());
+    let (set, report) = load_content(
+        &[
+            source("core/jobs.rhai", GOOD_JOBS),
+            source("system/bodies.rhai", GOOD_SYSTEM),
+        ],
+        &aeon_data::StringTable::blank(),
+    );
     assert!(
         !report.has_errors(),
         "unexpected findings: {:?}",
@@ -115,10 +118,13 @@ fn loading_is_deterministic_across_runs_and_input_order() {
 
 #[test]
 fn effect_functions_run_against_read_context() {
-    let (set, _) = load_content(&[
-        source("core/jobs.rhai", GOOD_JOBS),
-        source("system/bodies.rhai", GOOD_SYSTEM),
-    ], &aeon_data::StringTable::blank());
+    let (set, _) = load_content(
+        &[
+            source("core/jobs.rhai", GOOD_JOBS),
+            source("system/bodies.rhai", GOOD_SYSTEM),
+        ],
+        &aeon_data::StringTable::blank(),
+    );
     let set = set.unwrap();
     let host = ScriptHost::new();
 
@@ -219,7 +225,10 @@ fn sandbox_blocks_nondeterminism_and_imports() {
         ("eval", r#"eval("1 + 1");"#),
         ("import", r#"import "something" as s;"#),
     ] {
-        let (set, report) = load_content(&[source("sneaky.rhai", script)], &aeon_data::StringTable::blank());
+        let (set, report) = load_content(
+            &[source("sneaky.rhai", script)],
+            &aeon_data::StringTable::blank(),
+        );
         assert!(set.is_none(), "{name} should be blocked");
         assert!(
             report.has_errors(),
@@ -230,7 +239,10 @@ fn sandbox_blocks_nondeterminism_and_imports() {
 
 #[test]
 fn runaway_scripts_hit_the_operation_limit() {
-    let (set, report) = load_content(&[source("spin.rhai", "loop { }")], &aeon_data::StringTable::blank());
+    let (set, report) = load_content(
+        &[source("spin.rhai", "loop { }")],
+        &aeon_data::StringTable::blank(),
+    );
     assert!(set.is_none());
     assert!(
         report
@@ -242,8 +254,12 @@ fn runaway_scripts_hit_the_operation_limit() {
 
 #[test]
 fn print_output_is_captured_as_info() {
-    let script = r#"print("checking in"); define_body(#{ id: "w", kind: "planet", radius_km: 6000 });"#;
-    let (set, report) = load_content(&[source("noisy.rhai", script)], &aeon_data::StringTable::blank());
+    let script =
+        r#"print("checking in"); define_body(#{ id: "w", kind: "planet", radius_km: 6000 });"#;
+    let (set, report) = load_content(
+        &[source("noisy.rhai", script)],
+        &aeon_data::StringTable::blank(),
+    );
     assert!(set.is_some());
     assert!(
         report
@@ -258,7 +274,10 @@ fn unknown_fields_warn_but_load() {
     let script = r#"
 define_body(#{ id: "w", kind: "planet", radius_km: 6000, colour: "teal" });
 "#;
-    let (set, report) = load_content(&[source("typo.rhai", script)], &aeon_data::StringTable::blank());
+    let (set, report) = load_content(
+        &[source("typo.rhai", script)],
+        &aeon_data::StringTable::blank(),
+    );
     assert!(set.is_some());
     assert!(
         report
@@ -306,10 +325,13 @@ define_ship(#{{ id: "lantern", class: "capital", owner: "greatwood", captain: "{
 
 #[test]
 fn the_political_fixture_is_itself_valid() {
-    let (set, report) = load_content(&[source(
-        "fixture.rhai",
-        &political_fixture("greatwood", "", "gale"),
-    )], &aeon_data::StringTable::blank());
+    let (set, report) = load_content(
+        &[source(
+            "fixture.rhai",
+            &political_fixture("greatwood", "", "gale"),
+        )],
+        &aeon_data::StringTable::blank(),
+    );
     assert!(!report.has_errors(), "findings: {:?}", report.findings);
     assert!(set.is_some());
 }
@@ -317,10 +339,13 @@ fn the_political_fixture_is_itself_valid() {
 #[test]
 fn a_vassals_liege_must_be_a_great_house() {
     // Varga swears to itself: a vassal, not a great house.
-    let (set, report) = load_content(&[source(
-        "fixture.rhai",
-        &political_fixture("varga", "", "gale"),
-    )], &aeon_data::StringTable::blank());
+    let (set, report) = load_content(
+        &[source(
+            "fixture.rhai",
+            &political_fixture("varga", "", "gale"),
+        )],
+        &aeon_data::StringTable::blank(),
+    );
     assert!(set.is_none());
     assert!(
         report
@@ -337,14 +362,20 @@ fn conflicting_spouse_declarations_are_errors() {
     // Vale declares Gale; Gale declares nobody -- fine (mirrored). But a
     // spouse who names a *different* spouse is an authoring conflict.
     let mirrored = political_fixture("greatwood", r#", spouse: "gale""#, "gale");
-    let (set, _) = load_content(&[source("fixture.rhai", &mirrored)], &aeon_data::StringTable::blank());
+    let (set, _) = load_content(
+        &[source("fixture.rhai", &mirrored)],
+        &aeon_data::StringTable::blank(),
+    );
     assert!(set.is_some(), "one-sided declarations are mirrored");
 
     let conflicted = format!(
         "{}\ndefine_character(#{{ id: \"rook\", name: \"Rook\", gender: \"male\", birth_year: 371, organisation: \"greatwood\", spouse: \"vale\" }});",
         political_fixture("greatwood", r#", spouse: "gale""#, "gale")
     );
-    let (set, report) = load_content(&[source("fixture.rhai", &conflicted)], &aeon_data::StringTable::blank());
+    let (set, report) = load_content(
+        &[source("fixture.rhai", &conflicted)],
+        &aeon_data::StringTable::blank(),
+    );
     assert!(set.is_none());
     assert!(
         report
@@ -359,10 +390,13 @@ fn conflicting_spouse_declarations_are_errors() {
 #[test]
 fn a_ships_captain_must_belong_to_its_owner() {
     // Vale belongs to Varga; the Lantern belongs to Greatwood.
-    let (set, report) = load_content(&[source(
-        "fixture.rhai",
-        &political_fixture("greatwood", "", "vale"),
-    )], &aeon_data::StringTable::blank());
+    let (set, report) = load_content(
+        &[source(
+            "fixture.rhai",
+            &political_fixture("greatwood", "", "vale"),
+        )],
+        &aeon_data::StringTable::blank(),
+    );
     assert!(set.is_none());
     assert!(
         report
@@ -383,7 +417,10 @@ define_job(#{
     results: #{ success: #{ weight: 800 }, failure: #{ weight: 200 } },
 });
 "#;
-    let (set, report) = load_content(&[source("bad.rhai", script)], &aeon_data::StringTable::blank());
+    let (set, report) = load_content(
+        &[source("bad.rhai", script)],
+        &aeon_data::StringTable::blank(),
+    );
     assert!(set.is_none());
     assert!(
         report

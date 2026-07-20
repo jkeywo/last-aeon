@@ -19,11 +19,11 @@ use serde::{Deserialize, Serialize};
 
 use crate::clock::{CampaignClock, DailyTick, TickSet};
 use crate::forces::{ArmyRecord, ForcesIndex, ShipRecord};
-use crate::text::TextDb;
 use crate::ids::{ArmyId, OrgId, ProvinceId};
 use crate::jobs::{ActiveJob, JobTarget, JobsIndex, LogChannel, LogEntry};
 use crate::politics::{PoliticsIndex, TitleHolder, TitleKind, TitleRecord};
 use crate::state::ContentDb;
+use crate::text::TextDb;
 
 /// A standing order an army follows while idle.
 #[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

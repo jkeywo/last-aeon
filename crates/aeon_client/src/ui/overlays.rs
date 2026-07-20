@@ -27,7 +27,10 @@ pub fn draw_overlays(
     // ------------------------------------------------------------------
     if matches!(view.view, MapView::Body(_)) && !readout.situation.is_empty() {
         egui::Area::new("situation-strip".into())
-            .fixed_pos(egui::pos2(276.0, 34.0))
+            .fixed_pos(egui::pos2(
+                f32::from(theme.components.strip_offset_x),
+                f32::from(theme.components.strip_offset_y),
+            ))
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
                     ui.horizontal_wrapped(|ui| {

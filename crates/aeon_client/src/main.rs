@@ -25,19 +25,21 @@ use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                // Set before any world exists, so it reads the embedded
-                // table directly rather than the campaign resource.
-                title: aeon_sim::TextDb::embedded()
-                    .text("ui.window.title")
-                    .to_owned(),
-                // On the web, track the canvas' CSS size (full window).
-                fit_canvas_to_parent: true,
+        .add_plugins(
+            DefaultPlugins.set(WindowPlugin {
+                primary_window: Some(Window {
+                    // Set before any world exists, so it reads the embedded
+                    // table directly rather than the campaign resource.
+                    title: aeon_sim::TextDb::embedded()
+                        .text("ui.window.title")
+                        .to_owned(),
+                    // On the web, track the canvas' CSS size (full window).
+                    fit_canvas_to_parent: true,
+                    ..Default::default()
+                }),
                 ..Default::default()
             }),
-            ..Default::default()
-        }))
+        )
         .add_plugins(MeshPickingPlugin)
         .add_plugins(EguiPlugin::default())
         .add_plugins(AeonSimPlugin)

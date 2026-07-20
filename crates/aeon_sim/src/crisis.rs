@@ -12,11 +12,11 @@
 use bevy::prelude::World;
 
 use crate::economy::OrgResources;
-use crate::text::TextDb;
 use crate::ids::{BodyId, OrgId, TitleId};
 use crate::jobs::{LogChannel, LogEntry};
 use crate::map::ProvinceRecord;
 use crate::politics::{PoliticsIndex, TitleHolder, TitleKind, TitleRecord};
+use crate::text::TextDb;
 
 /// The tithe rate as a divisor of an organisation's wealth (a twentieth).
 pub const TITHE_DIVISOR: i64 = 20;

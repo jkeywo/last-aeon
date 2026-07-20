@@ -155,11 +155,19 @@ pub fn draw_context_jobs(
                         ui.indent(key.to_string(), |ui| {
                             if def.target != JobTargetKind::None {
                                 pick_target(
-                                    ui, strings, def.target, content, politics,
-                                    player_org, data, form,
+                                    ui, strings, def.target, content, politics, player_org, data,
+                                    form,
                                 );
                             }
-                            draw_forecast(ui, &data.theme, strings, cache, form, picker, LeaderChoice::Free);
+                            draw_forecast(
+                                ui,
+                                &data.theme,
+                                strings,
+                                cache,
+                                form,
+                                picker,
+                                LeaderChoice::Free,
+                            );
                             confirm_job(ui, strings, key, cache, form, queue);
                         });
                     }
@@ -202,7 +210,15 @@ pub fn draw_context_jobs(
                 let expanded = form.job.as_ref() == Some(key) && form.about == Some(target_char);
                 if expanded {
                     ui.indent(key.to_string(), |ui| {
-                        draw_forecast(ui, &data.theme, strings, cache, form, picker, LeaderChoice::Free);
+                        draw_forecast(
+                            ui,
+                            &data.theme,
+                            strings,
+                            cache,
+                            form,
+                            picker,
+                            LeaderChoice::Free,
+                        );
                         confirm_job(ui, strings, key, cache, form, queue);
                     });
                 }

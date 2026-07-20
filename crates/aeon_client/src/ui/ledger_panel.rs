@@ -9,11 +9,14 @@ use aeon_sim::TextDb;
 use bevy_egui::egui;
 
 use crate::map_modes::MapReadout;
+use crate::ui::theme::UiTheme;
+use crate::ui::widgets::swatch;
 use crate::view::MapMode;
 
 /// Draws the legend for the active map mode.
 pub fn draw_ledger_panel(
     ui: &mut egui::Ui,
+    theme: &UiTheme,
     strings: &TextDb,
     readout: &MapReadout,
     mode: MapMode,
@@ -29,11 +32,9 @@ pub fn draw_ledger_panel(
         .show(ui, |ui| {
             for (label, colour) in &readout.legend {
                 ui.horizontal(|ui| {
-                    let (rect, _) =
-                        ui.allocate_exact_size(egui::vec2(12.0, 12.0), egui::Sense::hover());
-                    ui.painter().rect_filled(
-                        rect,
-                        2.0,
+                    swatch(
+                        ui,
+                        theme,
                         egui::Color32::from_rgb(colour[0], colour[1], colour[2]),
                     );
                     ui.label(label);

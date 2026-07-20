@@ -55,7 +55,10 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                     );
                     ui.end_row();
                 });
-                if ui.button(strings.text("ui.inspector.body.open-map")).clicked() {
+                if ui
+                    .button(strings.text("ui.inspector.body.open-map"))
+                    .clicked()
+                {
                     out.view.view = MapView::Body(id);
                 }
             }
@@ -75,10 +78,7 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                     .find(|(body, _)| body.id == record.body)
                     .map(|(_, name)| name.0.as_str())
                     .unwrap_or_else(|| strings.text("ui.inspector.unknown"));
-                ui.label(strings.format(
-                    "ui.inspector.province.of-body",
-                    &[("body", body_name)],
-                ));
+                ui.label(strings.format("ui.inspector.province.of-body", &[("body", body_name)]));
                 ui.separator();
 
                 let holder = ctx
@@ -195,10 +195,7 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                         ui.horizontal(|ui| {
                             ui.label(strings.format(
                                 "ui.inspector.province.army",
-                                &[
-                                    ("army", &army.name),
-                                    ("men", &army.manpower.to_string()),
-                                ],
+                                &[("army", &army.name), ("men", &army.manpower.to_string())],
                             ));
                             if let Some((general, ..)) = ctx.lookup.chars.get(&army.general) {
                                 ui.label("·");
@@ -211,7 +208,8 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                     for ship in ships_here {
                         ui.horizontal(|ui| {
                             ui.label(
-                                strings.format("ui.inspector.province.ship", &[("ship", &ship.name)]),
+                                strings
+                                    .format("ui.inspector.province.ship", &[("ship", &ship.name)]),
                             );
                             if let Some(captain) = ship.captain
                                 && let Some((c, ..)) = ctx.lookup.chars.get(&captain)
@@ -357,10 +355,7 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                                     "ui.obligation.lapses",
                                     &[
                                         ("date", &expiry.to_string()),
-                                        (
-                                            "days",
-                                            &ctx.date.days_until(expiry).max(0).to_string(),
-                                        ),
+                                        ("days", &ctx.date.days_until(expiry).max(0).to_string()),
                                     ],
                                 )),
                                 None => detail.push_str(strings.text("ui.obligation.stands")),
