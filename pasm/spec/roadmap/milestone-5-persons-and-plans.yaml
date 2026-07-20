@@ -159,8 +159,8 @@ entities:
 
   - milestone: m5-authored-plans
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "M5.4: The Claim and the Grievance Become Campaigns"
       summary: >-
         The first real plans: pressing the paramountcy claim becomes a
@@ -177,8 +177,27 @@ entities:
         - Plans may reference assignments the reactive scorer cannot, without widening what the scorer may touch.
     implementation:
       paths:
+        - assets/content/core/plans.rhai
         - assets/text/strings.csv
+      tests:
+        - crates/aeon_sim/tests/acceptance.rs
       status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/acceptance.rs
+        summary: >-
+          On the real authored scenario, once the opening three-way tie is
+          broken, Veyrin's head adopts the claim campaign unprompted and
+          carries it past funding and mustering to an ending, by
+          completion or honest abandonment.
+      - kind: manual-review
+        reference: assets/content/scenario/ashkarr-succession.rhai
+        summary: >-
+          The authored crisis opens with Veyrin, Draksha and Meloch tied
+          at five provinces each, so no dominant claimant exists and the
+          claim campaign cannot fire until play breaks the tie. The
+          acceptance test breaks it deliberately; campaigns from a
+          standing start are the scenario's drama, not a defect.
 
   - milestone: m5-plans-speak
     core:

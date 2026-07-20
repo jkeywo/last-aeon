@@ -640,3 +640,9 @@ ui.window.title,"The game's name, shown in the title bar of the window and on th
 sim.plan.adopted,"Log line when a house's head adopts a plan, giving the pressure behind it. {house} is the house, {plan} the plan's title, {reason} why.",[{house} has set its mind to '{plan}': {reason}.]
 sim.plan.completed,Log line when a plan is seen through to the end. {house} {plan},[{house} has seen '{plan}' through.]
 sim.plan.abandoned,Log line when a plan is given up. {house} {plan},[{house} has abandoned '{plan}'.]
+plan.press-the-claim.title,Plan title: the campaign to take the planetary paramountcy.,[Press the Claim]
+plan.press-the-claim.summary,One-line summary of the claim campaign.,"[A campaign to fund, arm, endorse, and declare a claim to the Paramountcy.]"
+plan.answer-a-grievance.title,Plan title: answering a grievance another house holds.,[Answer a Grievance]
+plan.answer-a-grievance.summary,One-line summary of the grievance plan.,"[Mend what was wronged - from strength directly, from weakness by rebuilding standing first.]"
+plan.shore-up-standing.title,Plan title: rebuilding thin political standing.,[Shore Up Standing]
+plan.shore-up-standing.summary,One-line summary of the standing plan.,[Win friends and endorsements until the house's standing recovers.]

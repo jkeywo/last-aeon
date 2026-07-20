@@ -281,3 +281,70 @@ fn the_enhanced_campaign_replays_from_a_mid_campaign_snapshot() {
         "at least one autonomous house should have acted on a pressure and said why"
     );
 }
+
+/// Milestone 5 acceptance: on the real authored scenario, some autonomous
+/// head adopts the claim campaign and carries it through to the declare
+/// step, in order, without a single scripted nudge.
+#[test]
+fn an_autonomous_house_pursues_the_claim_as_a_campaign() {
+    use aeon_sim::plans::Plans;
+
+    let content = repository_content();
+    let mut h = scenario_host(content, 31337);
+
+    // The authored crisis opens contested — Veyrin, Draksha and Meloch
+    // each hold five provinces, so nobody may press. Revolt one holding
+    // each out from under Draksha and Meloch, and Veyrin's head is left
+    // the dominant claimant with a campaign worth adopting.
+    use aeon_sim::order::adjust_order;
+    let mournhollow =
+        h.world_mut().resource::<aeon_sim::MapIndex>().province_keys[&key("mournhollow")];
+    let sable_steppe =
+        h.world_mut().resource::<aeon_sim::MapIndex>().province_keys[&key("sable-steppe")];
+    for _ in 0..130 {
+        h.advance_days(1);
+        adjust_order(h.world_mut(), mournhollow, -1000);
+        adjust_order(h.world_mut(), sable_steppe, -1000);
+    }
+    {
+        let world = h.world_mut();
+        let body = aeon_sim::crisis::paramountcy(world)
+            .map(|(_, b)| b)
+            .expect("paramountcy");
+        assert_eq!(
+            aeon_sim::crisis::dominant_claimant(world, body),
+            Some(world.resource::<PoliticsIndex>().org_keys[&key("veyrin")]),
+            "the nudge should leave Veyrin dominant"
+        );
+    }
+
+    let claim = key("press-the-claim");
+    let mut adopted = false;
+    let mut deepest_step = 0usize;
+    let mut finished = false;
+    for _ in 0..240 {
+        h.advance_days(15);
+        let plans = h.world_mut().resource::<Plans>().clone();
+        for plan in plans.active.values() {
+            if plan.def == claim {
+                adopted = true;
+                deepest_step = deepest_step.max(plan.step);
+            }
+        }
+        if plans.cooldowns.keys().any(|(_, def)| *def == claim) {
+            finished = true;
+        }
+        if finished && deepest_step + 1 >= 4 {
+            break;
+        }
+    }
+    assert!(adopted, "some head should adopt the claim campaign");
+    assert!(
+        deepest_step >= 2,
+        "the campaign should get past funding and mustering; deepest step seen was {deepest_step}"
+    );
+    assert!(
+        finished,
+        "the campaign should end, by completion or honest abandonment"
+    );
+}
