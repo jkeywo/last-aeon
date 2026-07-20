@@ -1,0 +1,158 @@
+# Post-MVP implementation plan — Milestone 6
+#
+# Milestone 5 gave the simulation persons who plan, and recorded its own
+# unfinished business: the claim campaign ends where the war begins,
+# only heads hold plans, and a plan can aim at nothing but its own
+# target. This milestone is that recorded remainder — plans reach the
+# battlefield through the standing orders armies already obey, the
+# household gains ambitions within the no-spend leash it already wears,
+# and the target vocabulary grows exactly as far as authored content
+# needs it to.
+#
+# Deliberately still excluded, as M5 excluded it: any espionage or
+# plot-detection system. Plans keep speaking openly.
+
+entities:
+  - system: milestone-6-implementation-plan
+    core:
+      status: proposed
+      confidence: provisional
+      title: "Milestone 6: Plans Reach the Field"
+      summary: >-
+        The three scope cuts Milestone 5 recorded become the work: a plan
+        step can set an army's standing orders, so a campaign that
+        declares a war also arms the war it declared; household members
+        below the head pursue small ambitions of their own, still never
+        spending what is not theirs; and plan steps gain the few extra
+        target selectors the authored campaigns actually need. Everything
+        still passes validate_start, replays identically, and says what
+        it is doing in the log.
+      references:
+        - plans-are-authored-campaigns
+        - characters-are-the-acting-unit
+        - plans-are-data-not-script
+        - plan-steps-bypass-ai-available-not-validation
+        - plans-live-in-one-resource
+        - standing-orders-are-priority-lists
+        - households-act-within-their-own-means
+        - rng-stream-labels-are-identities-not-names
+
+  - milestone: m6-plans-command-forces
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M6.1: A Plan Step Sets Standing Orders"
+      summary: >-
+        A new kind of plan step writes an ordered list of standing orders
+        onto the authority's armies, instantly, as authored data — the
+        same editable lists the player sets by hand, driving the same
+        reactive military behaviour. The claim campaign grows a step that
+        readies its armies for the war the declaration invites, closing
+        the gap where the AI planned a war and never fought it. A plan
+        never commands a battle; it points the army at the doctrine and
+        the doctrine fights.
+      references:
+        - standing-orders-are-priority-lists
+        - plans-are-authored-campaigns
+      goals:
+        - A campaign that ends in a declaration leaves its armies under orders that answer what follows.
+        - A standing order set by a plan is indistinguishable from one set by hand, because it is the same list on the same component.
+        - No new RNG stream; setting orders is a deterministic act.
+    implementation:
+      paths:
+        - crates/aeon_data/src/model.rs
+        - crates/aeon_data/src/host/builders.rs
+        - crates/aeon_data/src/host/validate.rs
+        - crates/aeon_sim/src/plans.rs
+        - crates/aeon_sim/src/warfare.rs
+        - assets/content/core/plans.rhai
+      tests:
+        - crates/aeon_sim/tests/plans.rs
+      status: declared
+
+  - milestone: m6-targets-worth-aiming-at
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M6.2: The Target Vocabulary Grows As Needed"
+      summary: >-
+        PlanTargetSelector grows past none-or-plan by exactly the
+        selectors authored campaigns require — the authority's most
+        disordered holding first, so a restore-order campaign can name
+        the province it means — each one an integer choice over visible
+        state, resolved at the moment the step starts and validated at
+        load against the assignment it feeds. Richer selection remains a
+        vocabulary that grows by demonstrated need, never a default.
+      references:
+        - plans-are-data-not-script
+        - plans-are-authored-campaigns
+      goals:
+        - A selector is resolved when its step starts, from visible state, deterministically; a step whose selector finds nothing waits like any blocked step.
+        - Load-time validation still guarantees a step can only feed its assignment a target kind it accepts.
+    implementation:
+      paths:
+        - crates/aeon_data/src/model.rs
+        - crates/aeon_data/src/host/builders.rs
+        - crates/aeon_data/src/host/validate.rs
+        - crates/aeon_sim/src/plans.rs
+      tests:
+        - crates/aeon_sim/tests/plans.rs
+      status: declared
+
+  - milestone: m6-household-ambitions
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M6.3: The Household Has Ambitions"
+      summary: >-
+        Characters below the head may adopt small plans of their own,
+        under the same leash the household has always worn: a household
+        plan may not contain a step that spends the house's wealth,
+        manpower, supplies or influence, checked at adoption so the
+        promise is structural rather than incidental. The head's plan
+        remains the house's campaign; a household ambition is one
+        person's project, visible in their inspector like anyone else's.
+      references:
+        - households-act-within-their-own-means
+        - characters-are-the-acting-unit
+        - plans-are-authored-campaigns
+      goals:
+        - Nothing is started unbidden that spends the house's stores, exactly as before — now provable over whole plans, not only single assignments.
+        - One character holds at most one plan, whoever they are; the plans resource does not change shape.
+        - A household member's ambition never pre-empts work the head or player assigns them; leader availability already arbitrates, and keeps doing so.
+    implementation:
+      paths:
+        - crates/aeon_data/src/model.rs
+        - crates/aeon_sim/src/plans.rs
+        - crates/aeon_sim/src/agency.rs
+      tests:
+        - crates/aeon_sim/tests/plans.rs
+      status: declared
+
+  - milestone: m6-campaigns-in-the-field
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M6.4: Authored Campaigns Exercise All of It"
+      summary: >-
+        The shipped content grows into the new vocabulary: the claim
+        campaign arms itself before declaring; a defence campaign answers
+        a threatened holding by pointing the levy at it; and a small
+        household ambition or two gives courtiers something of their own
+        to want. A seed-pinned acceptance run proves a campaign that
+        declares a war also fights it, and the log tells the story
+        without a single scripted nudge.
+      references:
+        - plans-are-authored-campaigns
+        - standing-orders-are-priority-lists
+        - agency-intents-are-authored-on-jobs
+      goals:
+        - An autonomous house visibly carries a claim from funding through declaration into armed readiness, for reasons it states.
+        - Content alone drives every new behaviour; no engine change lands in this sub-milestone.
+    implementation:
+      paths:
+        - assets/content/core/plans.rhai
+        - assets/text/strings.csv
+      tests:
+        - crates/aeon_sim/tests/acceptance.rs
+      status: declared
