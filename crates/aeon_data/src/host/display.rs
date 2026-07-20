@@ -18,8 +18,10 @@
 //! to say whether it had one; now the table does, and there is no second
 //! place for the two to disagree.
 
+use std::collections::BTreeSet;
+
 use crate::key::ContentKey;
-use crate::model::JobResultKind;
+use crate::model::{ContentSet, JobResultKind};
 use crate::report::ContentReport;
 use crate::text::StringTable;
 
@@ -88,6 +90,82 @@ pub(super) fn fill_display_text(builder: &mut BuilderState, strings: &StringTabl
         let key = scenario.key.clone();
         scenario.name = fill.req("scenario", &key, "name");
     }
+}
+
+/// Every string-table row a loaded content set draws on.
+///
+/// The mirror of [`fill_display_text`], over the finished set rather than
+/// the builder. Together they answer both halves of the question: the fill
+/// says which rows are missing, and this says which rows nothing asks for.
+/// The two derivations agreeing is not assumed — a row this misses shows
+/// up as an orphan, and a row it invents shows up as missing.
+pub fn text_keys(set: &ContentSet) -> BTreeSet<String> {
+    let mut keys = BTreeSet::new();
+    let mut add = |key: String| {
+        keys.insert(key);
+    };
+
+    for (key, def) in &set.jobs {
+        add(format!("job.{key}.title"));
+        add(format!("job.{key}.summary"));
+        for (kind, result) in &def.results {
+            let stem = format!("job.{key}.{}", result_stem(*kind));
+            if result.popup_text.is_some() {
+                add(format!("{stem}.popup-text"));
+            }
+            if result.log_text.is_some() {
+                add(format!("{stem}.log-text"));
+            }
+            for choice in &result.choices {
+                add(format!("{stem}.choice.{}", choice.id));
+            }
+        }
+    }
+    for key in set.bodies.keys() {
+        add(format!("body.{key}.name"));
+    }
+    for key in set.provinces.keys() {
+        add(format!("province.{key}.name"));
+    }
+    for key in set.traits.keys() {
+        add(format!("trait.{key}.name"));
+        add(format!("trait.{key}.summary"));
+    }
+    for key in set.characters.keys() {
+        add(format!("character.{key}.name"));
+    }
+    for (key, def) in &set.organisations {
+        add(format!("organisation.{key}.name"));
+        if def.surname.is_some() {
+            add(format!("organisation.{key}.surname"));
+        }
+    }
+    for key in set.titles.keys() {
+        add(format!("title.{key}.name"));
+    }
+    for key in set.offices.keys() {
+        add(format!("office.{key}.name"));
+    }
+    for key in set.ships.keys() {
+        add(format!("ship.{key}.name"));
+    }
+    for key in set.armies.keys() {
+        add(format!("army.{key}.name"));
+    }
+    for (key, def) in &set.events {
+        add(format!("event.{key}.title"));
+        add(format!("event.{key}.text"));
+        if def.log_text.is_some() {
+            add(format!("event.{key}.log-text"));
+        }
+        for choice in &def.choices {
+            add(format!("event.{key}.choice.{}", choice.id));
+        }
+    }
+    if let Some(scenario) = &set.scenario {
+        add(format!("scenario.{}.name", scenario.key));
+    }
+    keys
 }
 
 struct Filler<'a> {

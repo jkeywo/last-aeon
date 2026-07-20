@@ -19,7 +19,7 @@
 //! orchestration, and the runtime [`ScriptHost`].
 
 mod builders;
-mod display;
+pub mod display;
 mod validate;
 
 use std::collections::{BTreeMap, BTreeSet};

@@ -171,3 +171,50 @@ entities:
       - kind: manual-review
         reference: crates/aeon_client/src/ui/icons.rs
         summary: Verified in the native client that the eight painter-drawn map-mode icons are distinguishable at their drawn size, that the active one is lit, and that the colour ledger appears and disappears with the button beside them.
+
+  - milestone: m3-string-table
+    core:
+      status: accepted
+      confidence: confirmed
+      title: "M3.4: The Words Move to a Table"
+      summary: >-
+        Lift every string the player reads out of Rust and out of the
+        authored content scripts into one CSV, keyed so a definition's
+        prose cannot drift from the definition, and bracket the English so
+        that prose no human has approved is visible on screen rather than
+        indistinguishable from prose that has been.
+      references:
+        - display-text-lives-in-one-string-table
+        - unapproved-prose-is-bracketed-in-the-data
+      goals:
+        - No player-facing string is written as a literal in Rust or in an authored content script.
+        - A definition's display text is found by deriving its key from the definition's own ID, so a renamed definition takes its prose with it or fails to load.
+        - A key the interface names but the table lacks fails the build, naming the file and line, rather than painting a blank label three menus deep.
+        - A row nothing reads fails the build too, so a deleted definition or a rewritten panel cannot leave prose behind.
+        - Unapproved prose is bracketed on screen, and the share still bracketed is reported on every content validation.
+    implementation:
+      paths:
+        - assets/text/strings.csv
+        - crates/aeon_data/src/text.rs
+        - crates/aeon_data/src/key.rs
+        - crates/aeon_data/src/host/display.rs
+        - crates/aeon_data/src/host/builders.rs
+        - crates/aeon_sim/src/text.rs
+        - crates/aeon_client/src/ui/lookup.rs
+        - crates/aeon_client/src/map_modes.rs
+        - crates/aeon_tools/src/main.rs
+      tests:
+        - crates/aeon_data/src/text.rs
+        - crates/aeon_client/tests/strings.rs
+      status: declared
+
+    evidence:
+      - kind: test
+        reference: crates/aeon_data/src/text.rs
+        summary: The parser reads the RFC 4180 subset the table needs — quoted fields, doubled quotes, embedded newlines, CRLF, a missing trailing newline — and rejects a bad header, duplicate and malformed IDs, and an unterminated quote; placeholders are filled by name and a plural row is selected on the count.
+      - kind: test
+        reference: crates/aeon_client/tests/strings.rs
+        summary: Every key the interface and the simulation name exists in the table and is supplied the placeholders its row asks for, and every row in the table is read by the client, the simulation, or an authored definition. Verified by breaking a key deliberately; the failure names the file and line.
+      - kind: manual-review
+        reference: assets/text/strings.csv
+        summary: The orphan check found a job result whose log line had been keyed without its result kind, so that outcome logged nothing; the row was re-keyed under the failing result. It also found one speculative row nothing drew, which was removed.

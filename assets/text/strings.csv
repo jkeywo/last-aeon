@@ -166,7 +166,7 @@ job.petition-the-consul.summary,Authored job 'petition-the-consul': one-line sum
 job.petition-the-consul.title,Authored job 'petition-the-consul': title. Moved from the content scripts.,[Petition the Consul]
 job.press-claim-to-the-paramountcy.critical-success.log-text,Authored job 'press-claim-to-the-paramountcy': log line. Moved from the content scripts.,[{leader} pressed a claim to the Paramountcy.]
 job.press-claim-to-the-paramountcy.critical-success.popup-text,Authored job 'press-claim-to-the-paramountcy': popup body. Moved from the content scripts.,[The assembled houses could find no rival to {leader}'s claim. The Paramountcy is yours.]
-job.press-claim-to-the-paramountcy.log-text,Authored job 'press-claim-to-the-paramountcy': log line. Moved from the content scripts.,[{leader}'s claim to the Paramountcy went nowhere.]
+job.press-claim-to-the-paramountcy.failure.log-text,Authored job 'press-claim-to-the-paramountcy': log line. Moved from the content scripts.,[{leader}'s claim to the Paramountcy went nowhere.]
 job.press-claim-to-the-paramountcy.success.log-text,Authored job 'press-claim-to-the-paramountcy': log line. Moved from the content scripts.,[{leader} pressed a claim to the Paramountcy.]
 job.press-claim-to-the-paramountcy.summary,Authored job 'press-claim-to-the-paramountcy': one-line summary. Moved from the content scripts.,[Advance your house's claim to the vacant planetary Paramountcy. Succeeds only if you hold more of the planet than any rival.]
 job.press-claim-to-the-paramountcy.title,Authored job 'press-claim-to-the-paramountcy': title. Moved from the content scripts.,[Press the Claim to the Paramountcy]
@@ -376,7 +376,6 @@ ui.forecast.military-op,Line warning that a military job is settled in the field
 ui.forecast.military-op.hover,Tooltip explaining that the field contest is deliberately outside the percentages.,"[These chances cover the order itself. Even a successful order is then decided by the operation — the strength, supply and order of the forces present settle it, and that contest is deliberately not folded into the percentages above.]"
 ui.forecast.outcomes,Heading above the outcome distribution in a forecast.,[If ordered now]
 ui.forecast.outcomes.hover,Tooltip on the outcome heading.,[The exact outcome distribution the simulation would roll against today. It moves with the leader you choose and their skill.]
-ui.forecast.result,Reserved: an outcome row's label with no annotation. {result} is the outcome name.,[{result}]
 ui.forecast.result.asks-you,An outcome row for a result that opens a popup asking the player to choose. {result} is the outcome name.,[{result}  (asks you)]
 ui.forecast.result.unauthored,Tooltip on an outcome with no authored consequence written for it.,[No authored consequence for this outcome.]
 ui.forecast.risk,A personal risk to the job's leader. {risk} is the risk's name; {on_failure} and {on_disaster} are percentages.,"[{risk} risk — {on_failure} on a failure, {on_disaster} on a disaster]"
@@ -492,6 +491,7 @@ ui.log.filter-hint,Placeholder inside the empty log filter box.,[Filter…]
 ui.log.go-to-subject,Tooltip on a log entry that can be clicked to select what it is about.,[Show what this is about]
 ui.log.mine-only,Toggle in the log panel that hides entries not concerning the player's house.,[Mine]
 ui.log.mine-only.hover,Tooltip on the mine-only toggle.,[Show only entries concerning your own house.]
+ui.log.no-campaign,"Shown in the log panel before a campaign has started, so there is nothing to log.",[No campaign is running.]
 ui.log.no-matches,Shown in the log panel when the filter excludes every entry.,[Nothing matches this filter.]
 ui.map-mode.claim.description,"Hover description of the claim-pressure map mode, on its toolbar button.","[Each province's weight in the race for the Paramountcy: who leads, who is contesting, and who is out of it.]"
 ui.map-mode.claim.hint.held,"Province hover hint, claim-pressure mode. {holder} is a house name, {held} how many provinces it holds on this body, {total} how many there are.",[{holder} holds {held} of {total} provinces here]
@@ -614,3 +614,4 @@ ui.top-bar.local-system,Label in the top bar when the system view is showing rat
 ui.top-bar.pause,Top bar button that stops campaign time. Shown while time is running.,[Pause]
 ui.top-bar.resume,Top bar button that starts campaign time. Shown while paused.,[Resume]
 ui.top-bar.search-hint,Placeholder text inside the empty search box in the top bar.,[Search…]
+ui.window.title,"The game's name, shown in the title bar of the window and on the taskbar.",[The Last Aeons]

@@ -1176,3 +1176,49 @@ entities:
         - forecasts-derive-from-shared-resolution-code
         - single-source-leader-availability
         - context-sensitive-job-ui
+
+  - decision: display-text-lives-in-one-string-table
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Every Player-Facing String Lives in One Table
+      summary: >-
+        No display text is written in Rust or in authored Rhai. One CSV
+        holds every string the player reads, each row carrying an ID, the
+        context whoever translates it needs, and the English text. Content
+        rows are keyed by derivation from the definition's own ID —
+        province.karvessa.name, event.grain-riot.log-text — so a definition
+        cannot point at the wrong row and a renamed definition either takes
+        its prose with it or fails to load. Interface and simulation rows
+        are keyed by hand under ui. and sim. prefixes. The table is
+        embedded at build time and inserted by the simulation plugin, so a
+        world restored from a snapshot has it for the same reason a fresh
+        one does; it is not campaign state and is not snapshotted.
+      rationale:
+        - Translation needs one data source with stable IDs, and code is not one.
+        - Deriving a definition's key from its ID removes the second place the two could disagree, which an authored key field would reintroduce.
+        - Resolving simulation log lines as they are written keeps LogEntry a plain string, leaving the snapshot format, state hashing, and the client's log filter untouched. A save records the language it was played in, which is the price of that and is worth paying until a second language exists.
+        - Pluralised strings are two whole rows selected on the count rather than a sentence assembled from fragments, so word order stays the translator's to choose.
+        - Enums whose variants the player reads return keys rather than English, which turns "this variant has no label" from an invisible gap into a failing test.
+      references:
+        - content-ids-are-kebab-case-strings
+        - client-embeds-content-at-build-time
+        - validated-declarative-game-data
+
+  - decision: unapproved-prose-is-bracketed-in-the-data
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Unapproved Prose Is Bracketed in the Data
+      summary: >-
+        English that no human has yet approved is wrapped in square
+        brackets in the table itself, not flagged by a column or decorated
+        at runtime. Approving a line is the act of deleting its brackets.
+        The loader reports how many rows remain bracketed, so the figure is
+        visible on every validate run.
+      rationale:
+        - Almost all the prose was drafted mechanically, and the brackets make that legible on screen rather than hiding it in a manifest a reader has to go and consult.
+        - Brackets in the data mean the placeholder state survives every path the text takes — panels, logs, popups, tooltips — without any code knowing about it.
+        - Approval becomes a one-character edit in the file being read, which is the smallest possible ceremony for the act that matters most.
+      references:
+        - display-text-lives-in-one-string-table

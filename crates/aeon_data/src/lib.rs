@@ -16,6 +16,7 @@ pub mod report;
 pub mod text;
 
 pub use effect::{EffectRole, ScriptEffect};
+pub use host::display::text_keys;
 pub use host::{ContentSource, ScriptError, ScriptHost, load_content};
 pub use key::{ContentKey, TextKey};
 pub use model::ContentSet;

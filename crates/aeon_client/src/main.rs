@@ -27,7 +27,11 @@ fn main() {
     App::new()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
-                title: "The Last Aeons".to_owned(),
+                // Set before any world exists, so it reads the embedded
+                // table directly rather than the campaign resource.
+                title: aeon_sim::TextDb::embedded()
+                    .text("ui.window.title")
+                    .to_owned(),
                 // On the web, track the canvas' CSS size (full window).
                 fit_canvas_to_parent: true,
                 ..Default::default()

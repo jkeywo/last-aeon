@@ -146,7 +146,7 @@ pub fn draw_panel_body(ui: &mut egui::Ui, kind: PanelKind, ctx: &PanelCtx, out: 
                 &ctx.data.province_records,
             ),
             None => {
-                ui.weak("No campaign is running.");
+                ui.weak(ctx.strings.text("ui.log.no-campaign"));
             }
         },
         PanelKind::Jobs => draw_jobs_panel(
