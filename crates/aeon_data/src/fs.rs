@@ -11,6 +11,21 @@ use std::io;
 use std::path::{Path, PathBuf};
 
 use crate::host::ContentSource;
+use crate::report::ContentReport;
+use crate::text::StringTable;
+
+/// Where the string table sits relative to a content root.
+///
+/// The tools validate the working tree, so they read the same file the
+/// client embeds rather than a copy compiled into the binary.
+pub const STRINGS_FROM_CONTENT_ROOT: &str = "../text/strings.csv";
+
+/// Reads and parses the string table beside a content root.
+pub fn read_string_table(content_root: &Path) -> io::Result<(Option<StringTable>, ContentReport)> {
+    let path = content_root.join(STRINGS_FROM_CONTENT_ROOT);
+    let source = fs::read_to_string(&path)?;
+    Ok(StringTable::parse(&source, &path.display().to_string()))
+}
 
 /// Recursively reads every `.rhai` file under `root`, returning sources
 /// with content-relative forward-slash paths in sorted order.

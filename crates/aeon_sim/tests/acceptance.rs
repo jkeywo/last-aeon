@@ -17,7 +17,7 @@ use aeon_sim::{
 fn repository_content() -> Arc<ContentSet> {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/content");
     let sources = aeon_data::fs::read_content_dir(&root).expect("assets/content readable");
-    let (set, report) = load_content(&sources);
+    let (set, report) = load_content(&sources, &aeon_data::StringTable::blank());
     assert!(set.is_some(), "content loads: {:?}", report.findings);
     Arc::new(set.unwrap())
 }

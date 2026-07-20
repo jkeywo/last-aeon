@@ -15,81 +15,81 @@ use aeon_sim::{
 
 const FIXTURE: &str = r#"
 define_scenario(#{
-    id: "fixture", name: "Fixture", start_year: 411, start_month: 1, start_day: 1,
+    id: "fixture", start_year: 411, start_month: 1, start_day: 1,
     player_house: "ash",
 });
 define_name_pool(#{ id: "names", male: ["Bram"], female: ["Yeva"] });
 
-define_body(#{ id: "world", name: "World", kind: "planet", radius_km: 6000 });
-define_province(#{ id: "alpha", name: "Alpha", body: "world",
+define_body(#{ id: "world", kind: "planet", radius_km: 6000 });
+define_province(#{ id: "alpha", body: "world",
                    latitude_mdeg: 0, longitude_mdeg: 0 });
-define_province(#{ id: "beta", name: "Beta", body: "world",
+define_province(#{ id: "beta", body: "world",
                    latitude_mdeg: 10000, longitude_mdeg: 10000,
                    wealth_output: 40 });
-define_province(#{ id: "gamma", name: "Gamma", body: "world",
+define_province(#{ id: "gamma", body: "world",
                    latitude_mdeg: -10000, longitude_mdeg: -10000 });
 
 define_house(#{
-    id: "ash", name: "House Ash", surname: "Ash", tier: "great",
+    id: "ash", tier: "great",
     head: "aron-ash", color: [200, 60, 60], provinces: ["alpha"],
     wealth: 500, manpower: 5000, supplies: 800, legitimacy: 60,
 });
 define_house(#{
-    id: "birch", name: "House Birch", surname: "Birch", tier: "great",
+    id: "birch", tier: "great",
     head: "bela-birch", color: [60, 60, 200], provinces: ["beta", "gamma"],
     wealth: 400, manpower: 2000, supplies: 400, legitimacy: 50,
 });
 
 define_ship(#{
-    id: "ash-sloop", name: "Ash Sloop", class: "patrol",
+    id: "ash-sloop", class: "patrol",
     owner: "ash", location: "alpha",
 });
 
 define_character(#{
-    id: "aron-ash", name: "Aron Ash", gender: "male",
+    id: "aron-ash", gender: "male",
     birth_year: 370, organisation: "ash",
     skills: #{ command: 14, diplomacy: 8, intrigue: 4, stewardship: 7 },
 });
 define_character(#{
-    id: "bela-birch", name: "Bela Birch", gender: "female",
+    id: "bela-birch", gender: "female",
     birth_year: 372, organisation: "birch",
     skills: #{ command: 4, diplomacy: 9, intrigue: 8, stewardship: 5 },
 });
 
 // Engine-op jobs with certain rolls so tests isolate op semantics.
 define_job(#{
-    id: "march-the-army", title: "March", summary: "s",
+    id: "march-the-army", 
     category: "consequential", duration_days: 2,
     skill: "command", difficulty: 0,
     target: "own-army-and-province", military_op: "move", ai_available: false,
     results: #{ success: #{ weight: 1000000 }, failure: #{ weight: 1 } },
 });
 define_job(#{
-    id: "lay-siege", title: "Siege", summary: "s",
+    id: "lay-siege", 
     category: "consequential", duration_days: 20,
     skill: "command", difficulty: 0,
     target: "own-army-and-province", military_op: "besiege", ai_available: false,
     results: #{
-        success: #{ weight: 1000000, log: true, log_text: "{target} fell." },
-        failure: #{ weight: 1, log: true, log_text: "The siege of {target} broke." },
+        success: #{ weight: 1000000, log: true, },
+        failure: #{ weight: 1, log: true, },
     },
 });
 define_job(#{
-    id: "raid-the-province", title: "Raid", summary: "s",
+    id: "raid-the-province", 
     category: "consequential", duration_days: 3,
     skill: "command", difficulty: 0,
     target: "own-army-and-province", military_op: "raid", ai_available: false,
     results: #{ success: #{ weight: 1000000 }, failure: #{ weight: 1 } },
 });
 define_job(#{
-    id: "blockade-the-port", title: "Blockade", summary: "s",
+    id: "blockade-the-port", 
     category: "consequential", duration_days: 2,
     skill: "command", difficulty: 0,
     target: "own-ship-and-province", military_op: "blockade", ai_available: false,
     results: #{ success: #{ weight: 1000000 }, failure: #{ weight: 1 } },
 });
 define_job(#{
-    id: "answer-the-alarm", title: "Answer the Alarm", summary: "s",
+    id: "answer-the-alarm", 
     category: "consequential", duration_days: 2,
     skill: "command", difficulty: 0,
     target: "own-army-and-province", military_op: "move", ai_available: false,
@@ -97,11 +97,24 @@ define_job(#{
 });
 "#;
 
+/// The blank table, plus the two siege lines these tests read.
+///
+/// Blank answers every other key, so the fixture does not have to author
+/// prose for definitions no test looks at.
+fn strings() -> aeon_data::StringTable {
+    let mut table = aeon_data::StringTable::blank();
+    table.extend(&[
+        ("job.lay-siege.success.log-text", "{target} fell."),
+        ("job.lay-siege.failure.log-text", "The siege of {target} broke."),
+    ]);
+    table
+}
+
 fn content() -> Arc<aeon_data::ContentSet> {
     let (set, report) = load_content(&[ContentSource {
         path: "fixture.rhai".to_owned(),
         source: FIXTURE.to_owned(),
-    }]);
+    }], &strings());
     assert!(!report.has_errors(), "findings: {:?}", report.findings);
     Arc::new(set.unwrap())
 }

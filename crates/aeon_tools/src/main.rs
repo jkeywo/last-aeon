@@ -163,6 +163,19 @@ fn dispatch(command: Command) -> Result<ExitCode, String> {
     }
 }
 
+/// Reads the string table beside a content root, failing on any error.
+///
+/// The tools validate the working tree, so they read the table from
+/// disk rather than the copy the client embeds at build time.
+fn read_strings(content_root: &Path) -> Result<aeon_data::StringTable, String> {
+    let (table, report) = aeon_data::fs::read_string_table(content_root)
+        .map_err(|e| format!("reading the string table: {e}"))?;
+    table.ok_or_else(|| {
+        let errors: Vec<String> = report.findings.iter().map(|f| f.to_string()).collect();
+        format!("the string table failed to parse:\n{}", errors.join("\n"))
+    })
+}
+
 /// Loads and validates an authored content set, failing on any error.
 fn load_content_set(dir: &Path) -> Result<Arc<ContentSet>, String> {
     let sources = aeon_data::fs::read_content_dir(dir)
@@ -170,7 +183,8 @@ fn load_content_set(dir: &Path) -> Result<Arc<ContentSet>, String> {
     if sources.is_empty() {
         return Err(format!("no .rhai files under {}", dir.display()));
     }
-    let (set, report) = aeon_data::load_content(&sources);
+    let strings = read_strings(dir)?;
+    let (set, report) = aeon_data::load_content(&sources, &strings);
     set.ok_or_else(|| {
         let errors: Vec<String> = report.findings.iter().map(|f| f.to_string()).collect();
         format!("content failed validation:\n{}", errors.join("\n"))
@@ -207,7 +221,16 @@ fn validate_content(args: ValidateContentArgs) -> Result<ExitCode, String> {
         return Err(format!("no .rhai files under {}", args.root.display()));
     }
 
-    let (set, report) = aeon_data::load_content(&sources);
+    let (strings, string_report) = aeon_data::fs::read_string_table(&args.root)
+        .map_err(|e| format!("reading the string table: {e}"))?;
+    for finding in &string_report.findings {
+        println!("{finding}");
+    }
+    let Some(strings) = strings else {
+        return Ok(ExitCode::from(1));
+    };
+
+    let (set, report) = aeon_data::load_content(&sources, &strings);
     for finding in &report.findings {
         println!("{finding}");
     }
@@ -216,7 +239,7 @@ fn validate_content(args: ValidateContentArgs) -> Result<ExitCode, String> {
     // data and hash. Divergence means authored content used forbidden
     // stateful behaviour that slipped past the sandbox.
     if let Some(set) = &set {
-        let (second, _) = aeon_data::load_content(&sources);
+        let (second, _) = aeon_data::load_content(&sources, &strings);
         match second {
             Some(second) if set.data_eq(&second) => {}
             _ => {

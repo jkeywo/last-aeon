@@ -1155,17 +1155,20 @@ fn resolve_succession(world: &mut World, org_id: OrgId, dead: CharacterId, date:
                     org.defunct = true;
                     let is_player = world.resource::<PlayerHouse>().0 == Some(org_id);
                     if is_player && world.get_resource::<CampaignOver>().is_none() {
+                        let strings = world.resource::<crate::text::TextDb>();
                         let name = world
                             .resource::<ContentDb>()
                             .0
                             .organisations
                             .get(&key)
                             .map(|def| def.name.clone())
-                            .unwrap_or_else(|| "the player house".to_owned());
-                        world.insert_resource(CampaignOver {
-                            date,
-                            reason: format!("{name} has no viable successor"),
-                        });
+                            .unwrap_or_else(|| {
+                                strings.text("sim.politics.the-player-house").to_owned()
+                            });
+                        let reason = world
+                            .resource::<crate::text::TextDb>()
+                            .format("sim.politics.no-successor", &[("house", &name)]);
+                        world.insert_resource(CampaignOver { date, reason });
                     }
                 }
             }

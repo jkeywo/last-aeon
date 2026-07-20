@@ -17,52 +17,51 @@ use aeon_sim::{
 
 const FIXTURE: &str = r#"
 define_scenario(#{
-    id: "fixture", name: "Fixture", start_year: 411, start_month: 1, start_day: 1,
+    id: "fixture", start_year: 411, start_month: 1, start_day: 1,
     player_house: "ash",
 });
 define_name_pool(#{ id: "names", male: ["Bram"], female: ["Yeva"] });
 
-define_body(#{ id: "world", name: "World", kind: "planet", radius_km: 6000 });
-define_province(#{ id: "alpha", name: "Alpha", body: "world",
+define_body(#{ id: "world", kind: "planet", radius_km: 6000 });
+define_province(#{ id: "alpha", body: "world",
                    latitude_mdeg: 0, longitude_mdeg: 0 });
-define_province(#{ id: "beta", name: "Beta", body: "world",
+define_province(#{ id: "beta", body: "world",
                    latitude_mdeg: 10000, longitude_mdeg: 10000 });
 
 define_house(#{
-    id: "ash", name: "House Ash", surname: "Ash", tier: "great",
+    id: "ash", tier: "great",
     head: "aron-ash", color: [200, 60, 60], provinces: ["alpha"],
 });
 define_house(#{
-    id: "birch", name: "House Birch", surname: "Birch", tier: "great",
+    id: "birch", tier: "great",
     head: "bela-birch", color: [60, 60, 200], provinces: ["beta"],
 });
 
 define_character(#{
-    id: "aron-ash", name: "Aron Ash", gender: "male",
+    id: "aron-ash", gender: "male",
     birth_year: 370, organisation: "ash",
     skills: #{ command: 8, diplomacy: 20, intrigue: 4, stewardship: 7 },
 });
 define_character(#{
-    id: "cera-ash", name: "Cera Ash", gender: "female",
+    id: "cera-ash", gender: "female",
     birth_year: 380, organisation: "ash",
     skills: #{ command: 4, diplomacy: 6, intrigue: 5, stewardship: 8 },
 });
 define_character(#{
-    id: "bela-birch", name: "Bela Birch", gender: "female",
+    id: "bela-birch", gender: "female",
     birth_year: 372, organisation: "birch",
     skills: #{ command: 6, diplomacy: 9, intrigue: 8, stewardship: 5 },
 });
 
 // Always succeeds for a competent leader; carries a courting effect.
 define_job(#{
-    id: "sure-court", title: "Sure Courting", summary: "s",
+    id: "sure-court", 
     category: "consequential", duration_days: 10,
     skill: "diplomacy", difficulty: 0, target: "organisation",
     ai_available: false,
     results: #{
         success: #{
             weight: 1000000, log: true,
-            log_text: "{leader} charmed {target}.",
             effect_fn: "court_win",
         },
         failure: #{ weight: 1 },
@@ -75,7 +74,7 @@ fn court_win(ctx) {
 
 // Practically always fails; routine, so it retries.
 define_job(#{
-    id: "doomed-chore", title: "Doomed Chore", summary: "s",
+    id: "doomed-chore", 
     category: "routine", duration_days: 5,
     skill: "stewardship", difficulty: 40, ai_available: false,
     results: #{
@@ -86,23 +85,22 @@ define_job(#{
 
 // Popup with two choices on success.
 define_job(#{
-    id: "momentous-find", title: "Momentous Find", summary: "s",
+    id: "momentous-find", 
     category: "consequential", duration_days: 7,
     skill: "stewardship", difficulty: 0, ai_available: false,
     results: #{
         success: #{
             weight: 1000000, popup: true,
-            popup_text: "{leader} uncovered something in the archives.",
             choices: [
-                #{ id: "keep-quiet", label: "Keep it quiet" },
-                #{ id: "share-it", label: "Share it", effect_fn: "share_find" },
+                #{ id: "keep-quiet", },
+                #{ id: "share-it", effect_fn: "share_find" },
             ],
         },
         failure: #{ weight: 1 },
     },
 });
 fn share_find(ctx) {
-    [#{ kind: "log", message: "The find was shared with the court." }]
+    [#{ kind: "log", message_key: "job.momentous-find.shared.log" }]
 }
 
 // A spread of outcomes, each logged distinctly, so a forecast can be
@@ -110,41 +108,85 @@ fn share_find(ctx) {
 // stewardship, so effectiveness is zero and the authored weights apply
 // unshifted: 100 / 300 / 400 / 200 permille.
 define_job(#{
-    id: "even-gamble", title: "Even Gamble", summary: "s",
+    id: "even-gamble", 
     category: "consequential", duration_days: 5,
     skill: "stewardship", difficulty: 8, ai_available: false,
     risks: ["injury"],
     results: #{
-        critical_success: #{ weight: 100, log: true, log_text: "OUTCOME-CRIT" },
-        success: #{ weight: 300, log: true, log_text: "OUTCOME-SUCCESS" },
-        failure: #{ weight: 400, log: true, log_text: "OUTCOME-FAILURE" },
-        disaster: #{ weight: 200, log: true, log_text: "OUTCOME-DISASTER" },
+        critical_success: #{ weight: 100, log: true, },
+        success: #{ weight: 300, log: true, },
+        failure: #{ weight: 400, log: true, },
+        disaster: #{ weight: 200, log: true, },
     },
 });
 
 // AI-available job so autonomous organisations act.
 define_job(#{
-    id: "ai-errand", title: "Errand", summary: "s",
+    id: "ai-errand", 
     category: "consequential", duration_days: 15,
     skill: "diplomacy", difficulty: 5, ai_available: true,
     results: #{
-        success: #{ weight: 700, log: true, log_text: "{leader} ran an errand." },
+        success: #{ weight: 700, log: true, },
         failure: #{ weight: 300 },
     },
 });
 "#;
 
+/// The prose behind the fixture's IDs.
+///
+/// These tests are about text reaching the player — a popup naming who it
+/// is about, an outcome distinguishable in the log — so they need real
+/// rows rather than the blank table fixtures use when prose is beside the
+/// point.
+fn strings() -> aeon_data::StringTable {
+    // Starts from the shipped table so the simulation's own rows — the
+    // lines it writes into the log itself — are still there.
+    let mut table = aeon_sim::TextDb::embedded().0.as_ref().clone();
+    table.extend(&[
+        ("character.aron-ash.name", "Aron Ash"),
+        ("character.cera-ash.name", "Cera Ash"),
+        ("character.bela-birch.name", "Bela Birch"),
+        ("organisation.ash.name", "House Ash"),
+        ("organisation.birch.name", "House Birch"),
+        ("body.world.name", "World"),
+        ("province.alpha.name", "Alpha"),
+        ("province.beta.name", "Beta"),
+        ("scenario.fixture.name", "Fixture"),
+        ("job.sure-court.title", "Court a Rival"),
+        ("job.sure-court.summary", "Send an envoy."),
+        ("job.sure-court.success.log-text", "{leader} charmed {target}."),
+        ("job.doomed-chore.title", "A Doomed Chore"),
+        ("job.doomed-chore.summary", "It will not go well."),
+        ("job.momentous-find.title", "A Momentous Find"),
+        ("job.momentous-find.summary", "Something turned up."),
+        ("job.momentous-find.success.popup-text", "{leader} found it. Cera Ash was there."),
+        ("job.momentous-find.success.choice.keep-quiet", "Keep quiet"),
+        ("job.momentous-find.success.choice.share-it", "Share it"),
+        ("job.momentous-find.shared.log", "The find was shared with the court."),
+        ("job.even-gamble.title", "An Even Gamble"),
+        ("job.even-gamble.summary", "Could go either way."),
+        ("job.even-gamble.critical-success.log-text", "OUTCOME-CRIT"),
+        ("job.even-gamble.success.log-text", "OUTCOME-SUCCESS"),
+        ("job.even-gamble.failure.log-text", "OUTCOME-FAILURE"),
+        ("job.even-gamble.disaster.log-text", "OUTCOME-DISASTER"),
+        ("job.ai-errand.title", "An AI errand"),
+        ("job.ai-errand.summary", "Ordinary business."),
+        ("job.ai-errand.success.log-text", "the errand was run"),
+    ]);
+    table
+}
+
 fn content() -> Arc<aeon_data::ContentSet> {
     let (set, report) = load_content(&[ContentSource {
         path: "fixture.rhai".to_owned(),
         source: FIXTURE.to_owned(),
-    }]);
+    }], &strings());
     assert!(!report.has_errors(), "findings: {:?}", report.findings);
     Arc::new(set.unwrap())
 }
 
 fn host(seed: u64) -> SimHost {
-    SimHost::new_with_content(
+    let mut host = SimHost::new_with_content(
         CampaignConfig {
             name: "Jobs Trial".to_owned(),
             seed,
@@ -157,7 +199,14 @@ fn host(seed: u64) -> SimHost {
             .unwrap(),
         },
         content(),
-    )
+    );
+    // The plugin installs the shipped table; this fixture has its own
+    // prose, and the lines a script asks for by key are resolved as they
+    // are written, so the simulation must read the same table the content
+    // was loaded against.
+    host.world_mut()
+        .insert_resource(aeon_sim::TextDb(Arc::new(strings())));
+    host
 }
 
 fn char_id(h: &mut SimHost, key: &str) -> CharacterId {

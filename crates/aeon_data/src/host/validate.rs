@@ -50,13 +50,9 @@ pub(super) fn validate_cross_references(
                     ));
                 }
             }
-            if result.popup && result.popup_text.is_none() {
-                findings.push((
-                    fn_ref_path(job),
-                    Some(key.to_string()),
-                    "popup results should declare popup_text".to_owned(),
-                ));
-            }
+            // Whether a popup has body text is the string table's to
+            // answer, and it is not consulted until after this pass; the
+            // fill reports a popup result whose row is missing.
         }
     }
 

@@ -16,59 +16,59 @@ use aeon_sim::{
 
 const FIXTURE: &str = r#"
 define_scenario(#{
-    id: "fixture", name: "Fixture", start_year: 411, start_month: 1, start_day: 1,
+    id: "fixture", start_year: 411, start_month: 1, start_day: 1,
     player_house: "ash",
 });
 define_name_pool(#{ id: "names", male: ["Bram"], female: ["Yeva"] });
 
-define_body(#{ id: "world", name: "World", kind: "planet", radius_km: 6000 });
-define_body(#{ id: "moon", name: "Moon", kind: "moon", radius_km: 1500,
+define_body(#{ id: "world", kind: "planet", radius_km: 6000 });
+define_body(#{ id: "moon", kind: "moon", radius_km: 1500,
                parent: "world", orbit_radius_mm: 384, orbit_days: 27 });
-define_province(#{ id: "alpha", name: "Alpha", body: "world",
+define_province(#{ id: "alpha", body: "world",
                    latitude_mdeg: 0, longitude_mdeg: 0,
                    wealth_output: 20, manpower_output: 30, supplies_output: 10 });
-define_province(#{ id: "beta", name: "Beta", body: "world",
+define_province(#{ id: "beta", body: "world",
                    latitude_mdeg: 10000, longitude_mdeg: 10000 });
-define_province(#{ id: "luna-port", name: "Luna Port", body: "moon",
+define_province(#{ id: "luna-port", body: "moon",
                    latitude_mdeg: 0, longitude_mdeg: 0 });
 
 define_house(#{
-    id: "ash", name: "House Ash", surname: "Ash", tier: "great",
+    id: "ash", tier: "great",
     head: "aron-ash", color: [200, 60, 60],
     provinces: ["alpha", "luna-port"],
     wealth: 100, manpower: 2000, supplies: 300, legitimacy: 60,
 });
 define_house(#{
-    id: "birch", name: "House Birch", surname: "Birch", tier: "great",
+    id: "birch", tier: "great",
     head: "bela-birch", color: [60, 60, 200], provinces: ["beta"],
     wealth: 50, manpower: 500, supplies: 100, legitimacy: 40,
 });
 
-define_title(#{ id: "paramountcy", name: "Paramount", kind: "paramount", body: "world" });
+define_title(#{ id: "paramountcy", kind: "paramount", body: "world" });
 
 define_ship(#{
-    id: "runner", name: "Runner", class: "transport",
+    id: "runner", class: "transport",
     owner: "ash", location: "alpha",
 });
 
 define_character(#{
-    id: "aron-ash", name: "Aron Ash", gender: "male",
+    id: "aron-ash", gender: "male",
     birth_year: 370, organisation: "ash",
     skills: #{ command: 20, diplomacy: 8, intrigue: 4, stewardship: 7 },
 });
 define_character(#{
-    id: "cera-ash", name: "Cera Ash", gender: "female",
+    id: "cera-ash", gender: "female",
     birth_year: 380, organisation: "ash",
     skills: #{ command: 6, diplomacy: 6, intrigue: 5, stewardship: 8 },
 });
 define_character(#{
-    id: "bela-birch", name: "Bela Birch", gender: "female",
+    id: "bela-birch", gender: "female",
     birth_year: 372, organisation: "birch",
     skills: #{ command: 6, diplomacy: 9, intrigue: 8, stewardship: 5 },
 });
 
 define_job(#{
-    id: "sure-muster", title: "Sure Muster", summary: "s",
+    id: "sure-muster", 
     category: "consequential", duration_days: 10,
     skill: "command", difficulty: 0,
     wealth_cost: 40, influence_cost: 5, ai_available: false,
@@ -82,7 +82,7 @@ fn muster(ctx) {
 }
 
 define_job(#{
-    id: "pricey-rite", title: "Pricey Rite", summary: "s",
+    id: "pricey-rite", 
     category: "consequential", duration_days: 5,
     skill: "stewardship", difficulty: 0,
     wealth_cost: 100000, ai_available: false,
@@ -93,17 +93,46 @@ define_job(#{
 });
 "#;
 
+/// The prose behind the fixture's IDs.
+///
+/// Starts from the shipped table so the simulation's own rows are still
+/// there, and adds the rows this fixture's IDs derive. Only the house name
+/// is asserted on, but a definition without a row would not load at all.
+fn strings() -> aeon_data::StringTable {
+    let mut table = aeon_sim::TextDb::embedded().0.as_ref().clone();
+    table.extend(&[
+        ("scenario.fixture.name", "Fixture"),
+        ("body.world.name", "World"),
+        ("body.moon.name", "Moon"),
+        ("province.alpha.name", "Alpha"),
+        ("province.beta.name", "Beta"),
+        ("province.luna-port.name", "Luna Port"),
+        ("organisation.ash.name", "House Ash"),
+        ("organisation.birch.name", "House Birch"),
+        ("title.paramountcy.name", "The Paramountcy"),
+        ("ship.runner.name", "The Runner"),
+        ("character.aron-ash.name", "Aron Ash"),
+        ("character.bela-birch.name", "Bela Birch"),
+        ("character.cera-ash.name", "Cera Ash"),
+        ("job.pricey-rite.title", "A Pricey Rite"),
+        ("job.pricey-rite.summary", "It costs."),
+        ("job.sure-muster.title", "Muster the Levies"),
+        ("job.sure-muster.summary", "Raise an army."),
+    ]);
+    table
+}
+
 fn content() -> Arc<aeon_data::ContentSet> {
     let (set, report) = load_content(&[ContentSource {
         path: "fixture.rhai".to_owned(),
         source: FIXTURE.to_owned(),
-    }]);
+    }], &strings());
     assert!(!report.has_errors(), "findings: {:?}", report.findings);
     Arc::new(set.unwrap())
 }
 
 fn host(seed: u64) -> SimHost {
-    SimHost::new_with_content(
+    let mut host = SimHost::new_with_content(
         CampaignConfig {
             name: "Logistics Trial".to_owned(),
             seed,
@@ -116,7 +145,12 @@ fn host(seed: u64) -> SimHost {
             .unwrap(),
         },
         content(),
-    )
+    );
+    // The simulation names a mustered army from the table, so it must read
+    // the same one the content was loaded against.
+    host.world_mut()
+        .insert_resource(aeon_sim::TextDb(Arc::new(strings())));
+    host
 }
 
 fn key(text: &str) -> ContentKey {

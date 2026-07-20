@@ -6,14 +6,12 @@
 
 define_body(#{
     id: "ashkarr",
-    name: "Ashkarr",
     kind: "planet",
     radius_km: 6400,
 });
 
 define_body(#{
     id: "vesk",
-    name: "Vesk",
     kind: "moon",
     parent: "ashkarr",
     radius_km: 1700,
@@ -23,7 +21,6 @@ define_body(#{
 
 define_body(#{
     id: "aurelian-spire",
-    name: "The Aurelian Spire",
     kind: "starbase",
     parent: "ashkarr",
     radius_km: 60,

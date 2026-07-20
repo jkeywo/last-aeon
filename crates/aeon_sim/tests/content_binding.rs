@@ -10,7 +10,7 @@ fn content(source_text: &str) -> Arc<aeon_data::ContentSet> {
     let (set, report) = load_content(&[ContentSource {
         path: "test.rhai".to_owned(),
         source: source_text.to_owned(),
-    }]);
+    }], &aeon_data::StringTable::blank());
     assert!(!report.has_errors(), "findings: {:?}", report.findings);
     Arc::new(set.unwrap())
 }
@@ -23,10 +23,13 @@ fn config() -> CampaignConfig {
     }
 }
 
+// The two differ in a mechanical fact, not a display name: prose lives in
+// the string table now, so two content sets that differed only by what
+// they were called would hash identically — and should.
 const WORLD_A: &str =
-    r#"define_body(#{ id: "world", name: "World", kind: "planet", radius_km: 6000 });"#;
+    r#"define_body(#{ id: "world", kind: "planet", radius_km: 6000 });"#;
 const WORLD_B: &str =
-    r#"define_body(#{ id: "world", name: "Another World", kind: "planet", radius_km: 6000 });"#;
+    r#"define_body(#{ id: "world", kind: "planet", radius_km: 7000 });"#;
 
 #[test]
 fn snapshots_restore_only_with_matching_content() {
@@ -67,12 +70,12 @@ fn content_free_snapshots_refuse_content_on_restore() {
 }
 
 const SMALL_SYSTEM: &str = r#"
-define_body(#{ id: "world", name: "World", kind: "planet", radius_km: 6000 });
-define_body(#{ id: "moon", name: "Moon", kind: "moon", radius_km: 1500,
+define_body(#{ id: "world", kind: "planet", radius_km: 6000 });
+define_body(#{ id: "moon", kind: "moon", radius_km: 1500,
                parent: "world", orbit_radius_mm: 300, orbit_days: 20 });
-define_province(#{ id: "alpha", name: "Alpha", body: "world",
+define_province(#{ id: "alpha", body: "world",
                    latitude_mdeg: 10000, longitude_mdeg: 20000 });
-define_province(#{ id: "beta", name: "Beta", body: "moon",
+define_province(#{ id: "beta", body: "moon",
                    latitude_mdeg: -5000, longitude_mdeg: 90000 });
 "#;
 

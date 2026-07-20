@@ -85,6 +85,25 @@ impl BuilderState {
 // maps (job results, choices, skills) use them directly with an explicit
 // allow-list because they live inside a single field of the parent.
 
+/// Reports a display-text field a nested map still carries.
+///
+/// The `Fields` reader has [`Fields::from_table`] for the same job;
+/// nested maps — job-result choices, event choices — read their fields
+/// directly and use this instead. The key such a choice fills is only
+/// known to the pass that fills it, so this names the field rather than
+/// the row.
+fn reject_authored_text(state: &mut BuilderState, key: &str, map: &Map, field: &str) {
+    if map.contains_key(field) {
+        state.error(
+            Some(key),
+            format!(
+                "'{field}' is display text and now lives in the string table; \
+                 move it to assets/text/strings.csv"
+            ),
+        );
+    }
+}
+
 /// Reads a required string field from a definition map.
 fn req_str(state: &mut BuilderState, key: Option<&str>, map: &Map, field: &str) -> Option<String> {
     match map.get(field) {
@@ -333,6 +352,27 @@ impl<'s> Fields<'s> {
         req_str(self.state, Some(&key), &self.map, field)
     }
 
+    /// Marks a display-text field as belonging to the string table.
+    ///
+    /// Returns an empty placeholder, which [`fill_display_text`] replaces
+    /// with the row this definition's ID derives. A file that still carries
+    /// the field is an error rather than a warning: silently ignoring it
+    /// would leave an author editing prose that never reaches the screen.
+    /// The error names the row to move it to.
+    ///
+    /// [`fill_display_text`]: super::display::fill_display_text
+    fn moved_to_table(&mut self, field: &'static str, kind: &str) -> String {
+        self.read.insert(field);
+        if self.map.contains_key(field) {
+            let derived = format!("{kind}.{}.{}", self.key, field.replace('_', "-"));
+            self.error(format!(
+                "'{field}' is display text and now lives in the string table; \
+                 move it to assets/text/strings.csv under '{derived}'"
+            ));
+        }
+        String::new()
+    }
+
     fn opt_str(&mut self, field: &'static str) -> Option<Option<String>> {
         self.read.insert(field);
         let key = self.key.to_string();
@@ -486,12 +526,8 @@ fn define_job(state: &mut BuilderState, map: Map) {
     let Some(mut f) = Fields::begin(state, map) else {
         return;
     };
-    let Some(title) = f.req_str("title") else {
-        return;
-    };
-    let Some(summary) = f.req_str("summary") else {
-        return;
-    };
+    let title = f.moved_to_table("title", "job");
+    let summary = f.moved_to_table("summary", "job");
     let Some(category) = f.req_enum(
         "category",
         &[
@@ -765,13 +801,11 @@ fn job_results(
                         }
                     }
                 });
-                let (Some(choice_id), Some(label)) = (
-                    choice_id,
-                    req_str(state, Some(&key_str), &choice_map, "label"),
-                ) else {
+                let Some(choice_id) = choice_id else {
                     choices_bad = true;
                     break;
                 };
+                reject_authored_text(state, &key_str, &choice_map, "label");
                 let Some(choice_effect) = opt_str(state, Some(&key_str), &choice_map, "effect_fn")
                 else {
                     choices_bad = true;
@@ -779,7 +813,7 @@ fn job_results(
                 };
                 choices.push(PopupChoiceDef {
                     id: choice_id,
-                    label,
+                    label: String::new(),
                     effect_fn: choice_effect.map(|name| ScriptFnRef {
                         path: state.current_path.clone(),
                         name,
@@ -827,9 +861,7 @@ fn define_body(state: &mut BuilderState, map: Map) {
     let Some(mut f) = Fields::begin(state, map) else {
         return;
     };
-    let Some(name) = f.req_str("name") else {
-        return;
-    };
+    let name = f.moved_to_table("name", "body");
     let Some(kind) = f.req_enum(
         "kind",
         &[
@@ -879,9 +911,7 @@ fn define_province(state: &mut BuilderState, map: Map) {
     let Some(mut f) = Fields::begin(state, map) else {
         return;
     };
-    let Some(name) = f.req_str("name") else {
-        return;
-    };
+    let name = f.moved_to_table("name", "province");
     let Some(body) = f.req_key_field("body") else {
         return;
     };
@@ -930,9 +960,7 @@ fn define_scenario(state: &mut BuilderState, map: Map) {
     let Some(mut f) = Fields::begin(state, map) else {
         return;
     };
-    let Some(name) = f.req_str("name") else {
-        return;
-    };
+    let name = f.moved_to_table("name", "scenario");
     let (Some(start_year), Some(start_month), Some(start_day)) = (
         f.req_int("start_year"),
         f.req_int("start_month"),
@@ -969,9 +997,8 @@ fn define_trait(state: &mut BuilderState, map: Map) {
     let Some(mut f) = Fields::begin(state, map) else {
         return;
     };
-    let (Some(name), Some(summary)) = (f.req_str("name"), f.req_str("summary")) else {
-        return;
-    };
+    let name = f.moved_to_table("name", "trait");
+    let summary = f.moved_to_table("summary", "trait");
     let (Some(opinion_same), Some(opinion_opposed)) = (
         f.opt_int("opinion_same", 0),
         f.opt_int("opinion_opposed", 0),
@@ -1003,9 +1030,7 @@ fn define_character(state: &mut BuilderState, map: Map) {
     let Some(mut f) = Fields::begin(state, map) else {
         return;
     };
-    let Some(name) = f.req_str("name") else {
-        return;
-    };
+    let name = f.moved_to_table("name", "character");
     let Some(gender) = f.req_enum(
         "gender",
         &[("male", Gender::Male), ("female", Gender::Female)],
@@ -1149,9 +1174,7 @@ fn define_house(state: &mut BuilderState, map: Map) {
     let Some(mut f) = Fields::begin(state, map) else {
         return;
     };
-    let Some(name) = f.req_str("name") else {
-        return;
-    };
+    let name = f.moved_to_table("name", "organisation");
     let Some(tier) = f.req_enum(
         "tier",
         &[
@@ -1165,9 +1188,8 @@ fn define_house(state: &mut BuilderState, map: Map) {
     let Some(liege) = f.opt_key("liege") else {
         return;
     };
-    let Some(surname) = f.opt_str("surname") else {
-        return;
-    };
+    f.moved_to_table("surname", "organisation");
+    let surname = None;
     let Some(head) = f.opt_key("head") else {
         return;
     };
@@ -1205,9 +1227,7 @@ fn define_organisation(state: &mut BuilderState, map: Map) {
     let Some(mut f) = Fields::begin(state, map) else {
         return;
     };
-    let Some(name) = f.req_str("name") else {
-        return;
-    };
+    let name = f.moved_to_table("name", "organisation");
     let Some(kind_raw) = f.req_str("kind") else {
         return;
     };
@@ -1282,9 +1302,7 @@ fn define_ship(state: &mut BuilderState, map: Map) {
     let Some(mut f) = Fields::begin(state, map) else {
         return;
     };
-    let Some(name) = f.req_str("name") else {
-        return;
-    };
+    let name = f.moved_to_table("name", "ship");
     let Some(class) = f.req_enum(
         "class",
         &[
@@ -1326,9 +1344,7 @@ fn define_army(state: &mut BuilderState, map: Map) {
     let Some(mut f) = Fields::begin(state, map) else {
         return;
     };
-    let Some(name) = f.req_str("name") else {
-        return;
-    };
+    let name = f.moved_to_table("name", "army");
     let (Some(owner), Some(general), Some(province)) = (
         f.req_key_field("owner"),
         f.req_key_field("general"),
@@ -1367,9 +1383,8 @@ fn define_event(state: &mut BuilderState, map: Map) {
     let Some(mut f) = Fields::begin(state, map) else {
         return;
     };
-    let (Some(title), Some(text)) = (f.req_str("title"), f.req_str("text")) else {
-        return;
-    };
+    let title = f.moved_to_table("title", "event");
+    let text = f.moved_to_table("text", "event");
     let Some(family) = f.opt_enum(
         "family",
         &[
@@ -1390,9 +1405,8 @@ fn define_event(state: &mut BuilderState, map: Map) {
     let Some(weighty) = f.opt_bool("weighty", false) else {
         return;
     };
-    let Some(log_text) = f.opt_str("log_text") else {
-        return;
-    };
+    f.moved_to_table("log_text", "event");
+    let log_text = None;
     let Some(effect_fn) = f.opt_fn_ref("effect_fn") else {
         return;
     };
@@ -1462,9 +1476,7 @@ fn define_event(state: &mut BuilderState, map: Map) {
                     let Some(id) = id else {
                         continue;
                     };
-                    let Some(label) = req_str(f.state, Some(&key_str), &choice, "label") else {
-                        continue;
-                    };
+                    reject_authored_text(f.state, &key_str, &choice, "label");
                     let effect_fn = opt_str(f.state, Some(&key_str), &choice, "effect_fn")
                         .flatten()
                         .map(|name| ScriptFnRef {
@@ -1473,7 +1485,7 @@ fn define_event(state: &mut BuilderState, map: Map) {
                         });
                     choices.push(EventChoiceDef {
                         id,
-                        label,
+                        label: String::new(),
                         effect_fn,
                     });
                 }
@@ -1572,9 +1584,7 @@ fn define_title(state: &mut BuilderState, map: Map) {
     let Some(mut f) = Fields::begin(state, map) else {
         return;
     };
-    let Some(name) = f.req_str("name") else {
-        return;
-    };
+    let name = f.moved_to_table("name", "title");
     let Some(kind_raw) = f.req_str("kind") else {
         return;
     };
@@ -1630,9 +1640,7 @@ fn define_office(state: &mut BuilderState, map: Map) {
     let Some(mut f) = Fields::begin(state, map) else {
         return;
     };
-    let Some(name) = f.req_str("name") else {
-        return;
-    };
+    let name = f.moved_to_table("name", "office");
     let Some(organisation) = f.req_key_field("organisation") else {
         return;
     };

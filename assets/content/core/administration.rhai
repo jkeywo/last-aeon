@@ -8,8 +8,6 @@
 define_job(#{
     id: "manage-estates",
     ai_intent: "resources",
-    title: "Manage the Estates",
-    summary: "Routine administration of the house's provincial holdings; steadies order everywhere you rule.",
     category: "routine",
     duration_days: 30,
     skill: "stewardship",
@@ -26,8 +24,6 @@ fn estates_kept(ctx) {
 define_job(#{
     id: "hold-court",
     ai_intent: "order",
-    title: "Hold Court",
-    summary: "Hear petitions and settle disputes among your household; settles the province you sit in.",
     category: "routine",
     duration_days: 20,
     skill: "diplomacy",
@@ -44,8 +40,6 @@ fn court_settled(ctx) {
 define_job(#{
     id: "court-a-rival-house",
     ai_intent: "standing",
-    title: "Court a Rival House",
-    summary: "Send an envoy to soften another house's standing against you.",
     category: "consequential",
     duration_days: 45,
     wealth_cost: 15,
@@ -56,20 +50,15 @@ define_job(#{
     results: #{
         critical_success: #{
             weight: 100, popup: true, log: true,
-            popup_text: "{leader} returns from {target} with warm assurances and an open door.",
-            log_text: "{leader} won unexpected goodwill from {target}.",
             effect_fn: "courting_crit",
         },
         success: #{
             weight: 500, log: true,
-            log_text: "{leader} improved relations with {target}.",
             effect_fn: "courting_success",
         },
         failure: #{ weight: 300 },
         disaster: #{
             weight: 100, popup: true, log: true,
-            popup_text: "{leader} gave insult at the court of {target}; doors close across the region.",
-            log_text: "{leader} insulted {target}; relations sour.",
             effect_fn: "courting_disaster",
         },
     },
@@ -93,8 +82,6 @@ fn courting_disaster(ctx) {
 define_job(#{
     id: "curry-favour-with-the-sanctora",
     ai_intent: "standing",
-    title: "Curry Favour with the Sanctora",
-    summary: "Pay respects, tithes, and flattery aboard the Spire.",
     category: "consequential",
     duration_days: 60,
     wealth_cost: 25,
@@ -104,19 +91,15 @@ define_job(#{
     results: #{
         critical_success: #{
             weight: 100, log: true,
-            log_text: "{leader} is spoken of warmly throughout the Spire.",
             effect_fn: "sanctora_crit",
         },
         success: #{
             weight: 450, log: true,
-            log_text: "{leader} made a good impression on the Sanctora.",
             effect_fn: "sanctora_success",
         },
         failure: #{ weight: 350 },
         disaster: #{
             weight: 100, popup: true, log: true,
-            popup_text: "{leader} misjudged the Spire's etiquette badly. The adepts remember.",
-            log_text: "{leader} embarrassed themselves before the Sanctora.",
             effect_fn: "sanctora_disaster",
         },
     },
@@ -136,8 +119,6 @@ fn sanctora_disaster(ctx) {
 
 define_job(#{
     id: "spread-whispers",
-    title: "Spread Whispers",
-    summary: "Undermine a rival with rumour and insinuation.",
     category: "consequential",
     duration_days: 40,
     skill: "intrigue",
@@ -147,7 +128,6 @@ define_job(#{
     results: #{
         critical_success: #{
             weight: 100, log: true,
-            log_text: "Whispers against {target} take root everywhere at once.",
             effect_fn: "whispers_crit",
         },
         success: #{
@@ -157,8 +137,6 @@ define_job(#{
         failure: #{ weight: 350 },
         disaster: #{
             weight: 100, popup: true, log: true,
-            popup_text: "The whisper campaign is traced back to {leader}. {target} knows.",
-            log_text: "{leader} was caught spreading whispers against {target}.",
             effect_fn: "whispers_disaster",
         },
     },
@@ -180,8 +158,6 @@ fn whispers_disaster(ctx) {
 define_job(#{
     id: "tour-the-holdings",
     ai_intent: "order",
-    title: "Tour the Holdings",
-    summary: "Show the household's face across its provinces.",
     category: "consequential",
     duration_days: 50,
     skill: "diplomacy",
@@ -190,15 +166,12 @@ define_job(#{
     results: #{
         critical_success: #{
             weight: 150, log: true,
-            log_text: "{leader}'s tour of the holdings is met with genuine warmth.",
             effect_fn: "tour_triumph",
         },
         success: #{ weight: 550, effect_fn: "tour_done" },
         failure: #{ weight: 250 },
         disaster: #{
             weight: 50, popup: true, log: true,
-            popup_text: "An accident on the road; {leader} is hurt, and the tour is remembered badly.",
-            log_text: "{leader}'s tour ended in an ugly accident.",
             effect_fn: "tour_soured",
         },
     },
@@ -215,8 +188,6 @@ fn tour_soured(ctx) {
 
 define_job(#{
     id: "petition-the-consul",
-    title: "Petition the Consul",
-    summary: "Seek the Consul's ear for your house's interests.",
     category: "consequential",
     duration_days: 30,
     influence_cost: 10,
@@ -226,13 +197,11 @@ define_job(#{
     results: #{
         success: #{
             weight: 450, log: true,
-            log_text: "The Consul received {leader}'s petition favourably.",
             effect_fn: "petition_success",
         },
         failure: #{ weight: 450 },
         disaster: #{
             weight: 100, log: true,
-            log_text: "{leader}'s petition irritated the Consulate.",
             effect_fn: "petition_disaster",
         },
     },
@@ -249,8 +218,6 @@ fn petition_disaster(ctx) {
 define_job(#{
     id: "muster-the-levies",
     ai_intent: "muster",
-    title: "Muster the Levies",
-    summary: "Raise a standing army under a general, with manpower and supplies from the house pool.",
     category: "consequential",
     duration_days: 40,
     skill: "command",
@@ -262,12 +229,10 @@ define_job(#{
     results: #{
         critical_success: #{
             weight: 150, log: true,
-            log_text: "{leader} mustered an eager and well-found levy.",
             effect_fn: "muster_crit",
         },
         success: #{
             weight: 600, log: true,
-            log_text: "{leader} mustered the levies.",
             effect_fn: "muster_success",
         },
         failure: #{ weight: 250 },
@@ -287,8 +252,6 @@ fn muster_success(ctx) {
 define_job(#{
     id: "press-claim-to-the-paramountcy",
     ai_intent: "claim",
-    title: "Press the Claim to the Paramountcy",
-    summary: "Advance your house's claim to the vacant planetary Paramountcy. Succeeds only if you hold more of the planet than any rival.",
     category: "consequential",
     duration_days: 90,
     skill: "diplomacy",
@@ -299,16 +262,13 @@ define_job(#{
     results: #{
         critical_success: #{
             weight: 200, popup: true, log: true,
-            popup_text: "The assembled houses could find no rival to {leader}'s claim. The Paramountcy is yours.",
-            log_text: "{leader} pressed a claim to the Paramountcy.",
             effect_fn: "press_claim",
         },
         success: #{
             weight: 500, log: true,
-            log_text: "{leader} pressed a claim to the Paramountcy.",
             effect_fn: "press_claim",
         },
-        failure: #{ weight: 300, log: true, log_text: "{leader}'s claim to the Paramountcy went nowhere." },
+        failure: #{ weight: 300, log: true, },
     },
 });
 
@@ -318,8 +278,6 @@ fn press_claim(ctx) {
 
 define_job(#{
     id: "collect-imperial-tithes",
-    title: "Collect the Imperial Tithes",
-    summary: "Exercise the Consul's authority to levy a tithe on every house of the planet.",
     category: "consequential",
     duration_days: 60,
     skill: "stewardship",
@@ -328,7 +286,6 @@ define_job(#{
     results: #{
         success: #{
             weight: 700, log: true,
-            log_text: "{leader} levied the Imperial tithes.",
             effect_fn: "levy_tithes",
         },
         failure: #{ weight: 300 },
@@ -342,8 +299,6 @@ fn levy_tithes(ctx) {
 define_job(#{
     id: "seek-consular-endorsement",
     ai_intent: "standing",
-    title: "Seek the Consul's Endorsement",
-    summary: "Court the Consul's public backing for your house's ambitions. Helpful, but never decisive.",
     category: "consequential",
     duration_days: 45,
     skill: "diplomacy",
@@ -354,19 +309,15 @@ define_job(#{
     results: #{
         critical_success: #{
             weight: 100, popup: true, log: true,
-            popup_text: "The Consul receives {leader} warmly and lets it be known that the Spire looks kindly on the house.",
-            log_text: "The Consul endorsed {leader}'s house.",
             effect_fn: "endorsement_crit",
         },
         success: #{
             weight: 450, log: true,
-            log_text: "The Consul gave {leader} a guarded hearing.",
             effect_fn: "endorsement_success",
         },
         failure: #{ weight: 350 },
         disaster: #{
             weight: 100, log: true,
-            log_text: "{leader}'s approach to the Consul was rebuffed and remembered.",
             effect_fn: "endorsement_disaster",
         },
     },
@@ -388,8 +339,6 @@ fn endorsement_disaster(ctx) {
 define_job(#{
     id: "call-in-a-favour",
     ai_intent: "obligation",
-    title: "Call in a Favour",
-    summary: "Ask a house that owes you to make good on it. Spends the debt, whatever they think of you.",
     category: "consequential",
     duration_days: 25,
     skill: "diplomacy",
@@ -400,22 +349,17 @@ define_job(#{
     results: #{
         critical_success: #{
             weight: 200, log: true,
-            log_text: "{target} honoured its debt to {leader} handsomely.",
             effect_fn: "favour_called_well",
         },
         success: #{
             weight: 500, log: true,
-            log_text: "{target} made good on what it owed {leader}.",
             effect_fn: "favour_called",
         },
         failure: #{
             weight: 250, log: true,
-            log_text: "{target} put {leader} off with promises.",
         },
         disaster: #{
             weight: 50, popup: true, log: true,
-            popup_text: "{target} denies owing {leader} anything at all, and says so publicly.",
-            log_text: "{target} repudiated its debt to {leader}.",
             effect_fn: "favour_repudiated",
         },
     },

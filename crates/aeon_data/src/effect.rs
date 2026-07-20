@@ -17,8 +17,12 @@ use rhai::Dynamic;
 pub enum ScriptEffect {
     /// Append a message to the notable-result log.
     Log {
-        /// The message text.
-        message: String,
+        /// The string-table row holding the line.
+        ///
+        /// A script function returns effects from inside its own body,
+        /// where there is no definition ID to derive a key from — so
+        /// unlike a definition's prose, this key is authored.
+        message_key: String,
     },
     /// Add a directional opinion modifier between job-context roles.
     Opinion {
@@ -203,16 +207,16 @@ pub fn parse_effects(value: Dynamic) -> Result<Vec<ScriptEffect>, EffectParseErr
             .ok_or(EffectParseError::MissingKind { index })?;
         match kind.as_str() {
             "log" => {
-                let message = map
-                    .get("message")
+                let message_key = map
+                    .get("message_key")
                     .and_then(|m| m.clone().into_string().ok())
                     .ok_or_else(|| EffectParseError::BadField {
                         index,
                         kind: kind.clone(),
-                        field: "message".to_owned(),
+                        field: "message_key".to_owned(),
                         expected: "string".to_owned(),
                     })?;
-                effects.push(ScriptEffect::Log { message });
+                effects.push(ScriptEffect::Log { message_key });
             }
             "opinion" => {
                 let get_role = |field: &str| -> Result<EffectRole, EffectParseError> {
@@ -392,11 +396,11 @@ mod tests {
 
     #[test]
     fn parses_log_effects() {
-        let value = dynamic_from(r#"[#{ kind: "log", message: "A quiet day" }]"#);
+        let value = dynamic_from(r#"[#{ kind: "log", message_key: "event.a.quiet-day" }]"#);
         assert_eq!(
             parse_effects(value).unwrap(),
             vec![ScriptEffect::Log {
-                message: "A quiet day".to_owned()
+                message_key: "event.a.quiet-day".to_owned()
             }]
         );
     }

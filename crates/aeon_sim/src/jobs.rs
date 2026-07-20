@@ -832,11 +832,21 @@ pub fn apply_effects(
     let date = world.resource::<CampaignClock>().date;
     for effect in effects {
         match effect {
-            ScriptEffect::Log { message } => {
-                crate::access::log(
-                    world,
-                    LogEntry::line(message.clone(), LogChannel::Jobs).by(owner),
-                );
+            ScriptEffect::Log { message_key } => {
+                // Templated like every other authored line, so a row can
+                // name the people involved rather than the script having
+                // to build the sentence by concatenation.
+                let leader = roles
+                    .leader
+                    .map(|id| crate::access::character_name(world, id))
+                    .unwrap_or_default();
+                let target = roles
+                    .target
+                    .map(|id| crate::access::character_name(world, id))
+                    .unwrap_or_default();
+                let template = world.resource::<TextDb>().text(message_key).to_owned();
+                let line = render_template(&template, &leader, &target, "");
+                crate::access::log(world, LogEntry::line(line, LogChannel::Jobs).by(owner));
             }
             ScriptEffect::FormArmy { manpower, supplies } => {
                 let Some(owner) = owner else {

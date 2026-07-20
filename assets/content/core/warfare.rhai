@@ -4,8 +4,6 @@
 
 define_job(#{
     id: "march-the-army",
-    title: "March the Army",
-    summary: "Move an army to another province. Marches take as long as the road demands.",
     category: "consequential",
     duration_days: 5,
     skill: "command",
@@ -17,15 +15,12 @@ define_job(#{
         success: #{ weight: 950 },
         failure: #{
             weight: 50, log: true,
-            log_text: "{leader}'s march on {target} dissolved in confusion.",
         },
     },
 });
 
 define_job(#{
     id: "resupply-the-army",
-    title: "Resupply the Army",
-    summary: "Refill an army's supply train from the house stores.",
     category: "consequential",
     duration_days: 15,
     skill: "stewardship",
@@ -41,8 +36,6 @@ define_job(#{
 
 define_job(#{
     id: "patrol-the-province",
-    title: "Patrol",
-    summary: "Stand guard where the army is; a visible deterrent to raiders, and a steadying presence.",
     category: "routine",
     duration_days: 30,
     skill: "command",
@@ -61,8 +54,6 @@ fn patrol_kept(ctx) {
 
 define_job(#{
     id: "lay-siege",
-    title: "Lay Siege",
-    summary: "March on a province and take it. Its garrison must be beaten first.",
     category: "consequential",
     duration_days: 60,
     skill: "command",
@@ -76,30 +67,21 @@ define_job(#{
     results: #{
         critical_success: #{
             weight: 100, popup: true, log: true,
-            popup_text: "{target} has fallen to {leader}, and quickly enough that the granaries are intact.",
-            log_text: "{target} fell swiftly to {leader}.",
         },
         success: #{
             weight: 500, popup: true, log: true,
-            popup_text: "After a grinding investment, {target} has fallen to {leader}.",
-            log_text: "{target} fell to {leader} after a siege.",
         },
         failure: #{
             weight: 350, log: true,
-            log_text: "The siege of {target} was broken.",
         },
         disaster: #{
             weight: 50, popup: true, log: true,
-            popup_text: "The siege of {target} collapsed in recrimination and blood.",
-            log_text: "The siege of {target} ended in disaster.",
         },
     },
 });
 
 define_job(#{
     id: "raid-the-province",
-    title: "Raid",
-    summary: "Strike a province for loot and be gone before the response forms.",
     category: "consequential",
     duration_days: 25,
     skill: "command",
@@ -112,27 +94,21 @@ define_job(#{
     results: #{
         critical_success: #{
             weight: 150, log: true,
-            log_text: "{leader}'s raid on {target} came home heavy with plunder.",
         },
         success: #{
             weight: 500, log: true,
-            log_text: "{leader} raided {target}.",
         },
         failure: #{
             weight: 300, log: true,
-            log_text: "{leader}'s raid on {target} was driven off.",
         },
         disaster: #{
             weight: 50, log: true,
-            log_text: "{leader}'s raiders were cut apart at {target}.",
         },
     },
 });
 
 define_job(#{
     id: "blockade-the-port",
-    title: "Blockade",
-    summary: "Station a ship over a province and choke its trade.",
     category: "consequential",
     duration_days: 20,
     skill: "command",
@@ -144,7 +120,6 @@ define_job(#{
     results: #{
         success: #{
             weight: 800, log: true,
-            log_text: "{target} is under blockade.",
         },
         failure: #{ weight: 200 },
     },
@@ -153,8 +128,6 @@ define_job(#{
 // Standing orders start this when a defended holding is threatened.
 define_job(#{
     id: "answer-the-alarm",
-    title: "Answer the Alarm",
-    summary: "March to relieve a threatened holding.",
     category: "consequential",
     duration_days: 3,
     skill: "command",
@@ -170,8 +143,6 @@ define_job(#{
 
 define_job(#{
     id: "negotiate-standdown",
-    title: "Negotiate a Stand-Down",
-    summary: "Talk a rival back from the brink before more blood is spilt.",
     category: "consequential",
     duration_days: 20,
     skill: "diplomacy",
@@ -182,13 +153,11 @@ define_job(#{
     results: #{
         success: #{
             weight: 550, log: true,
-            log_text: "{leader} negotiated a stand-down with {target}.",
             effect_fn: "standdown_success",
         },
         failure: #{ weight: 400 },
         disaster: #{
             weight: 50, log: true,
-            log_text: "{leader}'s overture to {target} was thrown back in their face.",
             effect_fn: "standdown_disaster",
         },
     },

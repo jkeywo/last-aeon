@@ -15,38 +15,38 @@ use aeon_sim::{
 
 const FIXTURE: &str = r#"
 define_scenario(#{
-    id: "fixture", name: "Fixture", start_year: 411, start_month: 1, start_day: 1,
+    id: "fixture", start_year: 411, start_month: 1, start_day: 1,
     player_house: "ash",
 });
 define_name_pool(#{ id: "names", male: ["Bram"], female: ["Yeva"] });
 
-define_body(#{ id: "world", name: "World", kind: "planet", radius_km: 6000 });
-define_province(#{ id: "alpha", name: "Alpha", body: "world",
+define_body(#{ id: "world", kind: "planet", radius_km: 6000 });
+define_province(#{ id: "alpha", body: "world",
                    latitude_mdeg: 0, longitude_mdeg: 0 });
-define_province(#{ id: "beta", name: "Beta", body: "world",
+define_province(#{ id: "beta", body: "world",
                    latitude_mdeg: 10000, longitude_mdeg: 10000 });
 // An outlying Ash holding where nobody stands, so damage there persists.
-define_province(#{ id: "gamma", name: "Gamma", body: "world",
+define_province(#{ id: "gamma", body: "world",
                    latitude_mdeg: -20000, longitude_mdeg: -20000 });
 
 define_house(#{
-    id: "ash", name: "House Ash", surname: "Ash", tier: "great",
+    id: "ash", tier: "great",
     head: "aron-ash", color: [200, 60, 60], provinces: ["alpha", "gamma"],
     wealth: 500, manpower: 5000, supplies: 800, legitimacy: 60,
 });
 define_house(#{
-    id: "birch", name: "House Birch", surname: "Birch", tier: "great",
+    id: "birch", tier: "great",
     head: "bela-birch", color: [60, 60, 200], provinces: ["beta"],
     wealth: 400, manpower: 2000, supplies: 400, legitimacy: 50,
 });
 
 define_character(#{
-    id: "aron-ash", name: "Aron Ash", gender: "male",
+    id: "aron-ash", gender: "male",
     birth_year: 370, organisation: "ash",
     skills: #{ command: 8, diplomacy: 12, intrigue: 4, stewardship: 7 },
 });
 define_character(#{
-    id: "bela-birch", name: "Bela Birch", gender: "female",
+    id: "bela-birch", gender: "female",
     birth_year: 372, organisation: "birch",
     skills: #{ command: 6, diplomacy: 9, intrigue: 8, stewardship: 5 },
 });
@@ -66,7 +66,7 @@ define_obligation(#{
 // Jobs an autonomous house can reach for, each declaring the pressure it
 // answers, so agency is driven by content rather than by hardcoded keys.
 define_job(#{
-    id: "settle-the-shire", title: "Settle the Shire", summary: "s",
+    id: "settle-the-shire", 
     ai_intent: "order", category: "consequential", duration_days: 20,
     skill: "diplomacy", difficulty: 5, ai_available: true,
     results: #{
@@ -78,7 +78,7 @@ fn settled(ctx) {
     [#{ kind: "order", scope: "all-held", amount: 40 }]
 }
 define_job(#{
-    id: "collect-what-is-owed", title: "Collect What Is Owed", summary: "s",
+    id: "collect-what-is-owed", 
     ai_intent: "obligation", category: "consequential", duration_days: 20,
     skill: "diplomacy", difficulty: 5, target: "organisation", ai_available: true,
     results: #{
@@ -87,7 +87,7 @@ define_job(#{
     },
 });
 define_job(#{
-    id: "ordinary-business", title: "Ordinary Business", summary: "s",
+    id: "ordinary-business", 
     category: "consequential", duration_days: 30,
     skill: "stewardship", difficulty: 5, ai_available: true,
     results: #{
@@ -99,17 +99,14 @@ define_job(#{
 // Fires only on badly disordered player ground, and asks a question.
 define_event(#{
     id: "unrest-choice",
-    title: "Unrest",
     family: "province",
     weight: 100,
     cooldown_days: 90,
     weighty: true,
     requires: #{ player_only: true, max_order: 400 },
-    text: "{subject} is close to open defiance.",
-    log_text: "EVENT-UNREST in {subject}",
     choices: [
-        #{ id: "firm-hand", label: "A firm hand", effect_fn: "unrest_firm" },
-        #{ id: "concessions", label: "Concessions", effect_fn: "unrest_soft" },
+        #{ id: "firm-hand", effect_fn: "unrest_firm" },
+        #{ id: "concessions", effect_fn: "unrest_soft" },
     ],
 });
 fn unrest_firm(ctx) {
@@ -122,13 +119,10 @@ fn unrest_soft(ctx) {
 // A minor event that can fire anywhere, to exercise the log-only path.
 define_event(#{
     id: "quiet-talk",
-    title: "Quiet Talk",
     family: "political",
     weight: 100,
     cooldown_days: 30,
     weighty: false,
-    text: "Talk about {subject}.",
-    log_text: "EVENT-TALK about {subject}",
 });
 "#;
 
@@ -136,7 +130,7 @@ fn content() -> Arc<aeon_data::ContentSet> {
     let (set, report) = load_content(&[ContentSource {
         path: "fixture.rhai".to_owned(),
         source: FIXTURE.to_owned(),
-    }]);
+    }], &aeon_data::StringTable::blank());
     assert!(!report.has_errors(), "findings: {:?}", report.findings);
     Arc::new(set.unwrap())
 }
@@ -166,12 +160,19 @@ fn org(h: &mut SimHost, name: &str) -> OrgId {
     h.world_mut().resource::<PoliticsIndex>().org_keys[&key(name)]
 }
 
-fn log_contains(h: &mut SimHost, needle: &str) -> bool {
+/// Whether an event has fired at all this campaign.
+///
+/// Was a sentinel word planted in the event's log line and grepped for
+/// out of the message log. The simulation keeps the record itself, so
+/// the test asks it rather than reading prose that now lives in the
+/// string table.
+fn event_fired(h: &mut SimHost, event: &str) -> bool {
+    let key = key(event);
     h.world_mut()
-        .resource::<MessageLog>()
-        .entries
+        .resource::<aeon_sim::EventState>()
+        .history
         .iter()
-        .any(|entry| entry.text.contains(needle))
+        .any(|occurrence| occurrence.event == key)
 }
 
 // ---------------------------------------------------------------------------
@@ -271,8 +272,17 @@ fn obligations_expire_on_their_day_and_stay_on_the_record() {
             .any(|entry| entry.status == ObligationStatus::Expired),
         "the lapse is recorded rather than erased"
     );
+    // The wording lives in the string table; what this test is about is
+    // that the lapse reaches the player at all, on the channel it belongs
+    // on, attributed to the house that let it go.
     assert!(
-        log_contains(&mut h, "let a promise lapse"),
+        h.world_mut()
+            .resource::<MessageLog>()
+            .entries
+            .iter()
+            .any(|entry| entry.channel == aeon_sim::LogChannel::Politics
+                && entry.org == Some(ash)
+                && !entry.text.is_empty()),
         "a lapsed promise is public"
     );
 }
@@ -287,7 +297,7 @@ fn events_only_fire_where_their_conditions_hold() {
     // Every province is settled, so the unrest event can never be drawn.
     h.advance_days(700);
     assert!(
-        !log_contains(&mut h, "EVENT-UNREST"),
+        !event_fired(&mut h, "unrest-choice"),
         "an unrest event must not fire on settled ground"
     );
 
@@ -297,7 +307,7 @@ fn events_only_fire_where_their_conditions_hold() {
     adjust_order(h.world_mut(), gamma, -450);
     for _ in 0..2000 {
         h.advance_days(1);
-        if log_contains(&mut h, "EVENT-UNREST") {
+        if event_fired(&mut h, "unrest-choice") {
             return;
         }
     }
@@ -439,10 +449,10 @@ fn houses_score_the_pressures_they_are_actually_under() {
         "disorder should outrank ordinary business: {} vs {calm_top}",
         top.score
     );
-    assert!(
-        top.reason.contains("Beta"),
-        "the reason should name the pressure: {}",
-        top.reason
+    assert_eq!(
+        top.subject,
+        Some(aeon_sim::LogSubject::Province(beta)),
+        "the intent should be about the province actually under pressure"
     );
 }
 

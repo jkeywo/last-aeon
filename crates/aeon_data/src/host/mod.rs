@@ -19,6 +19,7 @@
 //! orchestration, and the runtime [`ScriptHost`].
 
 mod builders;
+mod display;
 mod validate;
 
 use std::collections::{BTreeMap, BTreeSet};
@@ -30,8 +31,10 @@ use rhai::{AST, Dynamic, Engine, Map, Scope};
 use crate::effect::{EffectParseError, ScriptEffect, parse_effects};
 use crate::model::{ContentSet, ScriptFnRef};
 use crate::report::ContentReport;
+use crate::text::StringTable;
 
 use builders::{BuilderState, loading_engine};
+use display::fill_display_text;
 use validate::validate_cross_references;
 
 /// One authored source file, path-relative to the content root.
@@ -96,7 +99,14 @@ fn content_hash(sources: &[ContentSource]) -> aeon_core::hash::StateHash {
 ///
 /// Files run in sorted path order. All findings are collected; the set is
 /// returned only when no errors were found.
-pub fn load_content(sources: &[ContentSource]) -> (Option<ContentSet>, ContentReport) {
+///
+/// `strings` supplies every string the player reads: authored files carry
+/// IDs and mechanics, and their prose is filled in from the table by the
+/// key each ID derives. See [`display`].
+pub fn load_content(
+    sources: &[ContentSource],
+    strings: &StringTable,
+) -> (Option<ContentSet>, ContentReport) {
     let mut sources: Vec<ContentSource> = sources.to_vec();
     sources.sort_by(|a, b| a.path.cmp(&b.path));
 
@@ -144,6 +154,7 @@ pub fn load_content(sources: &[ContentSource]) -> (Option<ContentSet>, ContentRe
         });
 
     validate_cross_references(&mut builder, &fn_names);
+    fill_display_text(&mut builder, strings, "assets/text/strings.csv");
 
     if builder.report.has_errors() {
         return (None, builder.report);

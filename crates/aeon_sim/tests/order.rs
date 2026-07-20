@@ -19,38 +19,38 @@ use aeon_sim::{
 
 const FIXTURE: &str = r#"
 define_scenario(#{
-    id: "fixture", name: "Fixture", start_year: 411, start_month: 1, start_day: 1,
+    id: "fixture", start_year: 411, start_month: 1, start_day: 1,
     player_house: "ash",
 });
 define_name_pool(#{ id: "names", male: ["Bram"], female: ["Yeva"] });
 
-define_body(#{ id: "world", name: "World", kind: "planet", radius_km: 6000 });
-define_province(#{ id: "alpha", name: "Alpha", body: "world",
+define_body(#{ id: "world", kind: "planet", radius_km: 6000 });
+define_province(#{ id: "alpha", body: "world",
                    latitude_mdeg: 0, longitude_mdeg: 0, wealth_output: 100 });
-define_province(#{ id: "beta", name: "Beta", body: "world",
+define_province(#{ id: "beta", body: "world",
                    latitude_mdeg: 10000, longitude_mdeg: 10000 });
 // A second Ash holding, far from the seat, where nobody stands.
-define_province(#{ id: "gamma", name: "Gamma", body: "world",
+define_province(#{ id: "gamma", body: "world",
                    latitude_mdeg: -20000, longitude_mdeg: -20000, wealth_output: 100 });
 
 define_house(#{
-    id: "ash", name: "House Ash", surname: "Ash", tier: "great",
+    id: "ash", tier: "great",
     head: "aron-ash", color: [200, 60, 60], provinces: ["alpha", "gamma"],
     wealth: 500, manpower: 5000, supplies: 800, legitimacy: 60,
 });
 define_house(#{
-    id: "birch", name: "House Birch", surname: "Birch", tier: "great",
+    id: "birch", tier: "great",
     head: "bela-birch", color: [60, 60, 200], provinces: ["beta"],
     wealth: 400, manpower: 2000, supplies: 400, legitimacy: 50,
 });
 
 define_character(#{
-    id: "aron-ash", name: "Aron Ash", gender: "male",
+    id: "aron-ash", gender: "male",
     birth_year: 370, organisation: "ash",
     skills: #{ command: 14, diplomacy: 8, intrigue: 4, stewardship: 7 },
 });
 define_character(#{
-    id: "bela-birch", name: "Bela Birch", gender: "female",
+    id: "bela-birch", gender: "female",
     birth_year: 372, organisation: "birch",
     skills: #{ command: 4, diplomacy: 9, intrigue: 8, stewardship: 5 },
 });
@@ -60,7 +60,7 @@ fn content() -> Arc<aeon_data::ContentSet> {
     let (set, report) = load_content(&[ContentSource {
         path: "fixture.rhai".to_owned(),
         source: FIXTURE.to_owned(),
-    }]);
+    }], &aeon_data::StringTable::blank());
     assert!(!report.has_errors(), "findings: {:?}", report.findings);
     Arc::new(set.unwrap())
 }

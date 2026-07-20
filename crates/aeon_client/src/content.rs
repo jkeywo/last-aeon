@@ -3,6 +3,7 @@
 use std::sync::Arc;
 
 use aeon_data::{ContentSet, ContentSource, load_content};
+use aeon_sim::TextDb;
 
 include!(concat!(env!("OUT_DIR"), "/embedded_content.rs"));
 
@@ -20,7 +21,10 @@ pub fn load_embedded() -> Arc<ContentSet> {
             source: (*source).to_owned(),
         })
         .collect();
-    let (set, report) = load_content(&sources);
+    // The same table the simulation and the panels read, so a definition's
+    // prose and the interface's cannot come from different files.
+    let strings = TextDb::embedded();
+    let (set, report) = load_content(&sources, &strings.0);
     match set {
         Some(set) => Arc::new(set),
         None => {

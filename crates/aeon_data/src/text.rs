@@ -37,6 +37,8 @@ impl TextRow {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct StringTable {
     rows: BTreeMap<TextKey, TextRow>,
+    /// Answer any key with an empty string. Test support only.
+    echo: bool,
 }
 
 impl StringTable {
@@ -111,16 +113,71 @@ impl StringTable {
                 path,
                 format!("{bracketed} of {total} strings still bracketed"),
             );
-            (Some(Self { rows }), report)
+            (Some(Self { rows, echo: false }), report)
+        }
+    }
+
+    /// Builds a table from `(id, english)` pairs.
+    ///
+    /// For tests that assert on what the player is actually shown, and so
+    /// need real prose behind their fixture's IDs. Panics on a malformed
+    /// ID, which in a test is the right moment to find out.
+    pub fn from_rows(rows: &[(&str, &str)]) -> Self {
+        Self {
+            rows: rows
+                .iter()
+                .map(|(id, english)| {
+                    let key = TextKey::new(id).unwrap_or_else(|e| panic!("{e}"));
+                    let row = TextRow {
+                        context: String::new(),
+                        english: (*english).to_owned(),
+                    };
+                    (key, row)
+                })
+                .collect(),
+            echo: false,
+        }
+    }
+
+    /// Adds `(id, english)` rows, replacing any already present.
+    ///
+    /// For a test fixture that brings its own prose: start from the shipped
+    /// table, so the simulation's own rows are still there, and add the
+    /// rows the fixture's IDs derive. Panics on a malformed ID.
+    pub fn extend(&mut self, rows: &[(&str, &str)]) {
+        for (id, english) in rows {
+            let key = TextKey::new(id).unwrap_or_else(|e| panic!("{e}"));
+            self.rows.insert(
+                key,
+                TextRow {
+                    context: String::new(),
+                    english: (*english).to_owned(),
+                },
+            );
+        }
+    }
+
+    /// A table that answers every key with an empty string.
+    ///
+    /// For tests whose subject is loading mechanics rather than prose: a
+    /// fixture defining a province `test-a` should not also have to author
+    /// a row for its name. Tests that *are* about the prose — that every
+    /// shipped definition has a row — use the shipped table instead.
+    pub fn blank() -> Self {
+        Self {
+            rows: BTreeMap::new(),
+            echo: true,
         }
     }
 
     /// The text for a key, or `None` if the table has no such row.
     pub fn get(&self, key: &str) -> Option<&str> {
-        TextKey::new(key)
-            .ok()
-            .and_then(|key| self.rows.get(&key))
-            .map(|row| row.english.as_str())
+        let key = TextKey::new(key).ok()?;
+        match self.rows.get(&key) {
+            Some(row) => Some(row.english.as_str()),
+            None if self.echo => Some(""),
+            None => None,
+        }
     }
 
     /// The row for a key, context included.

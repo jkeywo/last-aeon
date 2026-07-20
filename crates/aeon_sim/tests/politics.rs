@@ -17,91 +17,101 @@ use aeon_sim::{
 
 const FIXTURE: &str = r#"
 define_scenario(#{
-    id: "fixture", name: "Fixture", start_year: 411, start_month: 1, start_day: 1,
+    id: "fixture", start_year: 411, start_month: 1, start_day: 1,
     player_house: "ash",
 });
 define_name_pool(#{ id: "names", male: ["Bram", "Tolv"], female: ["Yeva", "Sanna"] });
-define_trait(#{ id: "devout", name: "Devout", summary: "s",
+define_trait(#{ id: "devout",
                 opinion_same: 15, opinion_opposed: 15, opposites: ["profane"] });
-define_trait(#{ id: "profane", name: "Profane", summary: "s",
+define_trait(#{ id: "profane",
                 opinion_same: 5, opinion_opposed: 15, opposites: ["devout"] });
 
-define_body(#{ id: "world", name: "World", kind: "planet", radius_km: 6000 });
-define_province(#{ id: "alpha", name: "Alpha", body: "world",
+define_body(#{ id: "world", kind: "planet", radius_km: 6000 });
+define_province(#{ id: "alpha", body: "world",
                    latitude_mdeg: 0, longitude_mdeg: 0 });
-define_province(#{ id: "beta", name: "Beta", body: "world",
+define_province(#{ id: "beta", body: "world",
                    latitude_mdeg: 10000, longitude_mdeg: 10000 });
-define_province(#{ id: "gamma", name: "Gamma", body: "world",
+define_province(#{ id: "gamma", body: "world",
                    latitude_mdeg: -10000, longitude_mdeg: -10000 });
 
 define_house(#{
-    id: "ash", name: "House Ash", surname: "Ash", tier: "great",
+    id: "ash", tier: "great",
     head: "aron-ash", color: [200, 60, 60], provinces: ["alpha"],
 });
 define_house(#{
-    id: "birch", name: "House Birch", surname: "Birch", tier: "great",
+    id: "birch", tier: "great",
     head: "bela-birch", color: [60, 60, 200], provinces: ["beta"],
 });
 define_organisation(#{
-    id: "sanctora-imperim", name: "Sanctora", kind: "sanctora-imperim",
+    id: "sanctora-imperim", kind: "sanctora-imperim",
     head: "consul-vex", color: [212, 175, 55], provinces: ["gamma"],
 });
 
-define_title(#{ id: "paramountcy", name: "Paramount", kind: "paramount", body: "world" });
-define_title(#{ id: "consulate", name: "Consul", kind: "consul",
+define_title(#{ id: "paramountcy", kind: "paramount", body: "world" });
+define_title(#{ id: "consulate", kind: "consul",
                 holder_character: "consul-vex" });
-define_office(#{ id: "commander", name: "Commander", organisation: "sanctora-imperim",
+define_office(#{ id: "commander", organisation: "sanctora-imperim",
                  province: "gamma", holder: "prefect-hale" });
 
 define_character(#{
-    id: "aron-ash", name: "Aron Ash", gender: "male",
+    id: "aron-ash", gender: "male",
     birth_year: 370, organisation: "ash", spouse: "yeva-ash", traits: ["devout"],
     skills: #{ command: 8, diplomacy: 6, intrigue: 4, stewardship: 7 },
 });
 define_character(#{
-    id: "yeva-ash", name: "Yeva Ash", gender: "female",
+    id: "yeva-ash", gender: "female",
     birth_year: 374, organisation: "ash", traits: ["devout"],
     skills: #{ command: 2, diplomacy: 8, intrigue: 6, stewardship: 9 },
 });
 define_character(#{
-    id: "cera-ash", name: "Cera Ash", gender: "female",
+    id: "cera-ash", gender: "female",
     birth_year: 395, organisation: "ash", parents: ["aron-ash", "yeva-ash"],
     traits: ["profane"],
     skills: #{ command: 4, diplomacy: 3, intrigue: 5, stewardship: 2 },
 });
 define_character(#{
-    id: "doran-ash", name: "Doran Ash", gender: "male",
+    id: "doran-ash", gender: "male",
     birth_year: 398, organisation: "ash", parents: ["aron-ash", "yeva-ash"],
     traits: ["devout"],
     skills: #{ command: 3, diplomacy: 2, intrigue: 2, stewardship: 3 },
 });
 define_character(#{
-    id: "bela-birch", name: "Bela Birch", gender: "female",
+    id: "bela-birch", gender: "female",
     birth_year: 372, organisation: "birch", traits: ["profane"],
     skills: #{ command: 6, diplomacy: 9, intrigue: 8, stewardship: 5 },
 });
 define_character(#{
-    id: "consul-vex", name: "Consul Vex", gender: "male",
+    id: "consul-vex", gender: "male",
     birth_year: 365, organisation: "sanctora-imperim", traits: ["devout"],
     skills: #{ command: 3, diplomacy: 12, intrigue: 9, stewardship: 11 },
 });
 define_character(#{
-    id: "prefect-hale", name: "Prefect Hale", gender: "female",
+    id: "prefect-hale", gender: "female",
     birth_year: 380, organisation: "sanctora-imperim", traits: ["devout"],
     skills: #{ command: 9, diplomacy: 6, intrigue: 5, stewardship: 8 },
 });
 define_character(#{
-    id: "adept-rho", name: "Adept Rho", gender: "male",
+    id: "adept-rho", gender: "male",
     birth_year: 384, organisation: "sanctora-imperim", traits: ["devout"],
     skills: #{ command: 5, diplomacy: 10, intrigue: 6, stewardship: 9 },
 });
 "#;
 
+/// The blank table, plus the one name this fixture asserts on.
+///
+/// Blank answers every other key, so the fixture does not have to author
+/// prose for definitions no test reads.
+fn strings() -> aeon_data::StringTable {
+    let mut table = aeon_data::StringTable::blank();
+    table.extend(&[("organisation.ash.name", "House Ash")]);
+    table
+}
+
 fn fixture_content() -> Arc<aeon_data::ContentSet> {
     let (set, report) = load_content(&[ContentSource {
         path: "fixture.rhai".to_owned(),
         source: FIXTURE.to_owned(),
-    }]);
+    }], &strings());
     assert!(!report.has_errors(), "findings: {:?}", report.findings);
     Arc::new(set.unwrap())
 }
@@ -371,7 +381,7 @@ fn politics_survive_snapshot_restore_identically() {
 fn repository_content_runs_a_political_decade() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/content");
     let sources = aeon_data::fs::read_content_dir(&root).expect("assets readable");
-    let (set, report) = load_content(&sources);
+    let (set, report) = load_content(&sources, &aeon_data::StringTable::blank());
     assert!(
         set.is_some(),
         "repository content loads: {:?}",
@@ -410,40 +420,40 @@ fn repository_content_runs_a_political_decade() {
 /// testing vassalage does not perturb unrelated counts.
 const VASSAL_FIXTURE: &str = r#"
 define_scenario(#{
-    id: "vassals", name: "Vassals", start_year: 411, start_month: 1, start_day: 1,
+    id: "vassals", start_year: 411, start_month: 1, start_day: 1,
     player_house: "cedar",
 });
 define_name_pool(#{ id: "names", male: ["Bram"], female: ["Yeva"] });
-define_body(#{ id: "world", name: "World", kind: "planet", radius_km: 6000 });
-define_province(#{ id: "alpha", name: "Alpha", body: "world",
+define_body(#{ id: "world", kind: "planet", radius_km: 6000 });
+define_province(#{ id: "alpha", body: "world",
                    latitude_mdeg: 0, longitude_mdeg: 0 });
-define_province(#{ id: "beta", name: "Beta", body: "world",
+define_province(#{ id: "beta", body: "world",
                    latitude_mdeg: 20000, longitude_mdeg: 20000 });
 
 define_house(#{
-    id: "ash", name: "House Ash", surname: "Ash", tier: "great",
+    id: "ash", tier: "great",
     head: "aron-ash", color: [200, 60, 60], provinces: ["alpha"],
 });
 define_house(#{
-    id: "birch", name: "House Birch", surname: "Birch", tier: "great",
+    id: "birch", tier: "great",
     head: "bela-birch", color: [60, 60, 200], provinces: ["beta"],
 });
 define_house(#{
-    id: "cedar", name: "House Cedar", surname: "Cedar", tier: "vassal",
+    id: "cedar", tier: "vassal",
     liege: "ash", head: "cera-cedar", color: [90, 140, 90],
 });
 define_house(#{
-    id: "dogwood", name: "House Dogwood", surname: "Dogwood", tier: "vassal",
+    id: "dogwood", tier: "vassal",
     liege: "birch", head: "dorn-dogwood", color: [140, 120, 90],
 });
 
-define_character(#{ id: "aron-ash", name: "Aron Ash", gender: "male",
+define_character(#{ id: "aron-ash", gender: "male",
     birth_year: 370, organisation: "ash" });
-define_character(#{ id: "bela-birch", name: "Bela Birch", gender: "female",
+define_character(#{ id: "bela-birch", gender: "female",
     birth_year: 372, organisation: "birch" });
-define_character(#{ id: "cera-cedar", name: "Cera Cedar", gender: "female",
+define_character(#{ id: "cera-cedar", gender: "female",
     birth_year: 378, organisation: "cedar" });
-define_character(#{ id: "dorn-dogwood", name: "Dorn Dogwood", gender: "male",
+define_character(#{ id: "dorn-dogwood", gender: "male",
     birth_year: 381, organisation: "dogwood" });
 "#;
 
@@ -451,7 +461,7 @@ fn vassal_host(seed: u64) -> SimHost {
     let (set, report) = load_content(&[ContentSource {
         path: "vassals.rhai".to_owned(),
         source: VASSAL_FIXTURE.to_owned(),
-    }]);
+    }], &aeon_data::StringTable::blank());
     assert!(!report.has_errors(), "findings: {:?}", report.findings);
     SimHost::new_with_content(
         CampaignConfig {
