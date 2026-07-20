@@ -26,6 +26,8 @@ use crate::ui::listing::draw_listing;
 use crate::ui::log_panel::draw_log_panel;
 use crate::ui::lookup::Lookup;
 use crate::ui::picker::PickerState;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::ui::specimen::draw_specimen_panel;
 use crate::view::{MapMode, ViewState};
 
 /// Everything a panel reads.
@@ -145,6 +147,8 @@ pub fn draw_panel_body(ui: &mut egui::Ui, kind: PanelKind, ctx: &PanelCtx, out: 
             &ctx.data.active_jobs,
             out.queue,
         ),
+        #[cfg(not(target_arch = "wasm32"))]
+        PanelKind::Specimen => draw_specimen_panel(ui, &ctx.data.theme),
         PanelKind::Ledger => draw_ledger_panel(
             ui,
             &ctx.data.theme,

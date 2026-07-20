@@ -17,6 +17,8 @@ pub mod panel;
 pub mod picker;
 pub mod search;
 pub mod shell;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod specimen;
 pub mod theme;
 pub mod top_bar;
 pub mod widgets;

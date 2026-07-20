@@ -91,6 +91,10 @@ fn main() {
         .add_systems(
             EguiPrimaryContextPass,
             (
+                // Watching the file must happen before the style is
+                // written, or an edit is a frame late.
+                #[cfg(not(target_arch = "wasm32"))]
+                ui::theme::reload_theme_from_disk,
                 ui::theme::apply_theme,
                 map_overlay::draw_map_overlay,
                 ui::shell::draw_panels,

@@ -637,6 +637,76 @@ impl UiTheme {
     }
 }
 
+/// Reloads the token file from disk while the game is running.
+///
+/// Native only, and deliberately so: the point is the design loop — save
+/// `theme.ron`, see it — and the web build has no filesystem to watch. The
+/// embedded copy remains what ships.
+///
+/// A broken file logs and is ignored rather than panicking. That is the
+/// opposite of [`UiTheme::embedded`], and for a good reason: a token file
+/// that fails to parse at build time is a bug, while one that fails to
+/// parse mid-edit is just a designer halfway through typing a colour.
+/// Taking the game down over it would make the feature useless.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn reload_theme_from_disk(
+    mut theme: bevy::prelude::ResMut<UiTheme>,
+    time: bevy::prelude::Res<bevy::prelude::Time>,
+    mut next_check: bevy::prelude::Local<f32>,
+    mut last_seen: bevy::prelude::Local<Option<std::time::SystemTime>>,
+) {
+    // A file a human edits does not need checking every frame.
+    const INTERVAL_SECONDS: f32 = 0.5;
+    let now = time.elapsed_secs();
+    if now < *next_check {
+        return;
+    }
+    *next_check = now + INTERVAL_SECONDS;
+
+    let Some(path) = theme_path() else {
+        return;
+    };
+    let Ok(modified) = std::fs::metadata(&path).and_then(|meta| meta.modified()) else {
+        return;
+    };
+    // The first sighting establishes the baseline rather than reloading:
+    // what is on disk at startup is what was compiled in.
+    if last_seen.is_none() {
+        *last_seen = Some(modified);
+        return;
+    }
+    if *last_seen == Some(modified) {
+        return;
+    }
+    *last_seen = Some(modified);
+
+    match std::fs::read_to_string(&path) {
+        Ok(text) => match ron::from_str::<UiTheme>(&text) {
+            Ok(parsed) => {
+                bevy::log::info!("theme reloaded from {}", path.display());
+                *theme = parsed;
+            }
+            Err(error) => bevy::log::warn!("theme.ron not applied — {error}"),
+        },
+        Err(error) => bevy::log::warn!("theme.ron not readable — {error}"),
+    }
+}
+
+/// Where the live token file is, if it can be found.
+///
+/// Tried relative to the working directory first, which is how the game is
+/// launched from the repository root, then relative to the crate as it was
+/// built. Neither existing simply means no hot-reload.
+#[cfg(not(target_arch = "wasm32"))]
+fn theme_path() -> Option<std::path::PathBuf> {
+    const RELATIVE: &str = "crates/aeon_client/assets/theme.ron";
+    let candidates = [
+        std::path::PathBuf::from(RELATIVE),
+        std::path::PathBuf::from(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/theme.ron")),
+    ];
+    candidates.into_iter().find(|path| path.is_file())
+}
+
 /// Applies the theme once at startup, and again whenever it changes.
 pub fn apply_theme(
     mut contexts: bevy_egui::EguiContexts,

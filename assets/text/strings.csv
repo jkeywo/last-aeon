@@ -564,6 +564,8 @@ ui.panel.jobs.description,Tooltip for the active-jobs panel.,"[Jobs under way, a
 ui.panel.jobs.title,"Title of the active-jobs panel, in its header.",[Active Jobs]
 ui.panel.ledger.description,Tooltip for the map ledger panel.,[What the colours on the map mean.]
 ui.panel.ledger.title,"Title of the map ledger panel, in its header.",[Map Ledger]
+ui.panel.specimen.description,Tooltip for the theme specimen panel — a native-only design tool.,Every design token drawn in context.
+ui.panel.specimen.title,"Title of the theme specimen panel, in its header.",Theme Specimen
 ui.panel.listing.description,Tooltip for the listing panel.,"[Bodies, houses, and the forces you command.]"
 ui.panel.listing.title,"Title of the listing panel, in its header.",[Listing]
 ui.panel.log.description,Tooltip for the log panel.,"[What has happened, filterable by channel.]"

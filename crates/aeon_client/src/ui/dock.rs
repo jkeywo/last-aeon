@@ -60,10 +60,32 @@ pub enum PanelKind {
     Jobs,
     /// What the map's colours mean.
     Ledger,
+    /// Every design token, drawn in context.
+    ///
+    /// A tool for authoring the theme rather than part of the game, so it
+    /// exists only on native — the same reasoning as the hot-reload it
+    /// pairs with, and the web build is what players get.
+    #[cfg(not(target_arch = "wasm32"))]
+    Specimen,
 }
 
 impl PanelKind {
     /// Every panel, in the order they appear in the toolbar.
+    ///
+    /// A function rather than a constant because the list differs between
+    /// targets: the specimen is a native-only design tool.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub const ALL: &'static [PanelKind] = &[
+        PanelKind::Inspector,
+        PanelKind::Listing,
+        PanelKind::Log,
+        PanelKind::Jobs,
+        PanelKind::Ledger,
+        PanelKind::Specimen,
+    ];
+
+    /// Every panel, in the order they appear in the toolbar.
+    #[cfg(target_arch = "wasm32")]
     pub const ALL: &'static [PanelKind] = &[
         PanelKind::Inspector,
         PanelKind::Listing,
@@ -80,6 +102,8 @@ impl PanelKind {
             PanelKind::Log => "ui.panel.log.title",
             PanelKind::Jobs => "ui.panel.jobs.title",
             PanelKind::Ledger => "ui.panel.ledger.title",
+            #[cfg(not(target_arch = "wasm32"))]
+            PanelKind::Specimen => "ui.panel.specimen.title",
         }
     }
 
@@ -91,6 +115,8 @@ impl PanelKind {
             PanelKind::Log => "ui.panel.log.description",
             PanelKind::Jobs => "ui.panel.jobs.description",
             PanelKind::Ledger => "ui.panel.ledger.description",
+            #[cfg(not(target_arch = "wasm32"))]
+            PanelKind::Specimen => "ui.panel.specimen.description",
         }
     }
 }

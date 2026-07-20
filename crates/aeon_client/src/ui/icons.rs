@@ -188,6 +188,17 @@ pub fn draw_panel_icon(
             line(r.center(), at(0.5, 0.2));
             line(r.center(), at(0.75, 0.6));
         }
+        // A row of paint chips: the tokens themselves.
+        #[cfg(not(target_arch = "wasm32"))]
+        PanelKind::Specimen => {
+            for x in [0.12, 0.42, 0.72] {
+                painter.rect_filled(
+                    egui::Rect::from_min_max(at(x, 0.15), at(x + 0.18, 0.85)),
+                    1.0,
+                    colour,
+                );
+            }
+        }
         // A column of swatches: the colour key.
         PanelKind::Ledger => {
             for y in [0.15, 0.45, 0.75] {
