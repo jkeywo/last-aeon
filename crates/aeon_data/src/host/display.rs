@@ -52,6 +52,9 @@ pub(super) fn fill_display_text(builder: &mut BuilderState, strings: &StringTabl
     for (key, def) in &mut builder.bodies {
         def.name = fill.req("body", key, "name");
     }
+    for (key, def) in &mut builder.goods {
+        def.name = fill.req("good", key, "name");
+    }
     for (key, def) in &mut builder.provinces {
         def.name = fill.req("province", key, "name");
     }
@@ -131,6 +134,9 @@ pub fn text_keys(set: &ContentSet) -> BTreeSet<String> {
     }
     for key in set.bodies.keys() {
         add(format!("body.{key}.name"));
+    }
+    for key in set.goods.keys() {
+        add(format!("good.{key}.name"));
     }
     for key in set.provinces.keys() {
         add(format!("province.{key}.name"));

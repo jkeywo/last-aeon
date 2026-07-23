@@ -20,12 +20,12 @@ use crate::key::ContentKey;
 use crate::model::{
     AiIntent, ArmyDef, AssignmentCategory, AssignmentDef, AssignmentRequires, AssignmentTargetKind,
     BodyDef, BodyKind, CharacterDef, DirectiveDef, DirectiveTarget, EventChoiceDef, EventDef,
-    EventFamily, EventRequires, Gender, GoalDef, GoalRequires, GoverningSkill, HolderRelation,
-    HouseTier, MilitaryOp, NamePoolDef, ObligationDef, ObligationKind, OfficeDef, OrgDef, OrgKind,
-    OutcomeDef, OutcomeKind, PlanArmySelector, PlanDef, PlanMethodDef, PlanRequires,
-    PlanStepAction, PlanStepDef, PlanTargetSelector, PopupChoiceDef, ProvinceDef, RiskTag,
-    ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SkillsDef, StageDef, TitleDef, TitleHolderDef,
-    TitleKindDef, TitleNeed, TraitDef, Urgency,
+    EventFamily, EventRequires, Gender, GoalDef, GoalRequires, GoodDef, GoverningSkill,
+    HolderRelation, HouseTier, MilitaryOp, NamePoolDef, ObligationDef, ObligationKind, OfficeDef,
+    OrgDef, OrgKind, OutcomeDef, OutcomeKind, PlanArmySelector, PlanDef, PlanMethodDef,
+    PlanRequires, PlanStepAction, PlanStepDef, PlanTargetSelector, PopupChoiceDef, ProvinceDef,
+    RiskTag, ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SkillsDef, StageDef, TitleDef,
+    TitleHolderDef, TitleKindDef, TitleNeed, TraitDef, Urgency,
 };
 use crate::report::{ContentReport, Severity};
 
@@ -36,6 +36,7 @@ pub(super) struct BuilderState {
     pub(super) report: ContentReport,
     pub(super) assignments: BTreeMap<ContentKey, AssignmentDef>,
     pub(super) bodies: BTreeMap<ContentKey, BodyDef>,
+    pub(super) goods: BTreeMap<ContentKey, GoodDef>,
     pub(super) provinces: BTreeMap<ContentKey, ProvinceDef>,
     pub(super) traits: BTreeMap<ContentKey, TraitDef>,
     pub(super) name_pools: BTreeMap<ContentKey, NamePoolDef>,
@@ -65,6 +66,7 @@ impl BuilderState {
             report: std::mem::take(&mut self.report),
             assignments: std::mem::take(&mut self.assignments),
             bodies: std::mem::take(&mut self.bodies),
+            goods: std::mem::take(&mut self.goods),
             provinces: std::mem::take(&mut self.provinces),
             traits: std::mem::take(&mut self.traits),
             name_pools: std::mem::take(&mut self.name_pools),
@@ -1095,6 +1097,64 @@ fn define_body(state: &mut BuilderState, map: Map) {
     );
 }
 
+fn define_good(state: &mut BuilderState, map: Map) {
+    let Some(mut f) = Fields::begin(state, map) else {
+        return;
+    };
+    let name = f.moved_to_table("name", "good");
+    let Some(value) = f.opt_int("value", 1) else {
+        return;
+    };
+    if !(0..=1_000_000).contains(&value) {
+        f.error(format!("value must be 0..=1000000, got {value}"));
+        return;
+    }
+    let (state, key) = f.finish();
+    if state.goods.contains_key(&key) {
+        state.error(Some(key.as_str()), "duplicate good id");
+        return;
+    }
+    state
+        .goods
+        .insert(key.clone(), GoodDef { key, name, value });
+}
+
+/// Reads an authored map of good keys to monthly rates.
+///
+/// Open-ended — any defined good may appear — so it iterates the map's
+/// entries rather than a fixed field list, the same way skills are read
+/// for a fixed one. Keys are validated as content keys here; that they
+/// name a *defined* good is a cross-reference check, done at load.
+fn goods_map(f: &mut Fields, field: &'static str) -> Option<BTreeMap<ContentKey, i64>> {
+    let Some(raw) = f.take_raw(field) else {
+        return Some(BTreeMap::new());
+    };
+    let Some(map) = raw.try_cast::<Map>() else {
+        f.error(format!("field '{field}' must be a map of goods to rates"));
+        return None;
+    };
+    let mut goods = BTreeMap::new();
+    for (good, amount) in map {
+        let good_key = match ContentKey::new(&good) {
+            Ok(key) => key,
+            Err(err) => {
+                f.error(format!("field '{field}': {err}"));
+                return None;
+            }
+        };
+        let Ok(rate) = amount.as_int() else {
+            f.error(format!("field '{field}': '{good}' must be an integer rate"));
+            return None;
+        };
+        if rate < 0 {
+            f.error(format!("field '{field}': '{good}' must not be negative"));
+            return None;
+        }
+        goods.insert(good_key, rate);
+    }
+    Some(goods)
+}
+
 fn define_province(state: &mut BuilderState, map: Map) {
     let Some(mut f) = Fields::begin(state, map) else {
         return;
@@ -1123,6 +1183,11 @@ fn define_province(state: &mut BuilderState, map: Map) {
     ) else {
         return;
     };
+    let (Some(produces), Some(consumes)) =
+        (goods_map(&mut f, "produces"), goods_map(&mut f, "consumes"))
+    else {
+        return;
+    };
 
     let (state, key) = f.finish();
     if state.provinces.contains_key(&key) {
@@ -1140,6 +1205,8 @@ fn define_province(state: &mut BuilderState, map: Map) {
             wealth_output,
             manpower_output,
             supplies_output,
+            produces,
+            consumes,
         },
     );
 }
@@ -2396,6 +2463,7 @@ pub(super) fn loading_engine(state: Arc<Mutex<BuilderState>>) -> Engine {
     }
     register!("define_assignment", define_assignment);
     register!("define_body", define_body);
+    register!("define_good", define_good);
     register!("define_province", define_province);
     register!("define_scenario", define_scenario);
     register!("define_trait", define_trait);

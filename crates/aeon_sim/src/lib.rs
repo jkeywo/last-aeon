@@ -45,6 +45,7 @@ pub mod presence;
 pub mod snapshot;
 pub mod state;
 pub mod text;
+pub mod trade;
 pub mod warfare;
 
 use bevy::app::{App, Plugin};
@@ -104,6 +105,7 @@ impl Plugin for AeonSimPlugin {
         warfare::install(app);
         plans::install(app);
         goals::install(app);
+        trade::install(app);
     }
 }
 

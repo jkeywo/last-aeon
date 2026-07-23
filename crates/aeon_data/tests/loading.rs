@@ -821,3 +821,77 @@ define_goal(#{
         report.findings
     );
 }
+
+// ---------------------------------------------------------------------------
+// Goods
+// ---------------------------------------------------------------------------
+
+const GOOD_GOODS_SYSTEM: &str = r#"
+define_body(#{ id: "the-world", kind: "planet", radius_km: 6400 });
+define_good(#{ id: "grain", value: 2 });
+define_good(#{ id: "ore", value: 5 });
+define_province(#{
+    id: "farmstead", body: "the-world",
+    latitude_mdeg: 0, longitude_mdeg: 0,
+    produces: #{ grain: 30 }, consumes: #{ ore: 5 },
+});
+define_province(#{
+    id: "minehead", body: "the-world",
+    latitude_mdeg: 1000, longitude_mdeg: 1000,
+    produces: #{ ore: 20 }, consumes: #{ grain: 10 },
+});
+"#;
+
+#[test]
+fn loads_provinces_with_typed_goods() {
+    let (set, report) = load_content(
+        &[source("system/goods.rhai", GOOD_GOODS_SYSTEM)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(
+        !report.has_errors(),
+        "unexpected findings: {:?}",
+        report.findings
+    );
+    let set = set.expect("valid goods content loads");
+    assert_eq!(set.goods.len(), 2);
+    assert_eq!(
+        set.goods[&aeon_data::ContentKey::new("ore").unwrap()].value,
+        5
+    );
+
+    let farm = &set.provinces[&aeon_data::ContentKey::new("farmstead").unwrap()];
+    assert_eq!(
+        farm.produces[&aeon_data::ContentKey::new("grain").unwrap()],
+        30
+    );
+    assert_eq!(
+        farm.consumes[&aeon_data::ContentKey::new("ore").unwrap()],
+        5
+    );
+}
+
+#[test]
+fn a_province_producing_an_undefined_good_fails_to_load() {
+    let script = r#"
+define_body(#{ id: "the-world", kind: "planet", radius_km: 6400 });
+define_province(#{
+    id: "smuggler", body: "the-world",
+    latitude_mdeg: 0, longitude_mdeg: 0,
+    produces: #{ contraband: 5 },
+});
+"#;
+    let (set, report) = load_content(
+        &[source("system/goods.rhai", script)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|f| f.message.contains("good 'contraband' is not defined")),
+        "findings: {:?}",
+        report.findings
+    );
+}

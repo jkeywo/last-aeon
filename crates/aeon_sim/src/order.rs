@@ -256,6 +256,16 @@ pub fn pressures(world: &World, province: ProvinceId) -> OrderPressures {
         }
     }
 
+    // A world that cannot feed its own consumption is in want, and the
+    // want presses on every province of that world — whoever holds it, or
+    // if no one does. It reuses the same privation a supply shortage
+    // raises.
+    if let Some(body) = crate::presence::province_body(world, province)
+        && crate::trade::body_in_want(world, body)
+    {
+        pressures.shortage = true;
+    }
+
     pressures
 }
 

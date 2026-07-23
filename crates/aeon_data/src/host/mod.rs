@@ -163,6 +163,7 @@ pub fn load_content(
     let set = ContentSet {
         assignments: builder.assignments,
         bodies: builder.bodies,
+        goods: builder.goods,
         provinces: builder.provinces,
         traits: builder.traits,
         name_pools: builder.name_pools,

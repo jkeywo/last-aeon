@@ -328,6 +328,21 @@ pub struct BodyDef {
     pub parent: Option<ContentKey>,
 }
 
+/// A traded commodity: something provinces make and want.
+///
+/// A good is authored so a province's production and consumption are
+/// typed, not free strings, and so a surplus has a worth. The set is
+/// small by intent; the model is logistics, not a market.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GoodDef {
+    /// The good's stable content key.
+    pub key: ContentKey,
+    /// Player-facing name.
+    pub name: String,
+    /// Wealth a surplus unit fetches when it sells.
+    pub value: i64,
+}
+
 /// A province on a body.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProvinceDef {
@@ -347,6 +362,10 @@ pub struct ProvinceDef {
     pub manpower_output: i64,
     /// Monthly supplies output.
     pub supplies_output: i64,
+    /// Monthly production of each good, by good key.
+    pub produces: BTreeMap<ContentKey, i64>,
+    /// Monthly consumption of each good, by good key.
+    pub consumes: BTreeMap<ContentKey, i64>,
 }
 
 /// Scenario metadata. Extended by the authored-scenario milestone.
@@ -375,6 +394,8 @@ pub struct ContentSet {
     pub assignments: BTreeMap<ContentKey, AssignmentDef>,
     /// Celestial bodies by key.
     pub bodies: BTreeMap<ContentKey, BodyDef>,
+    /// Traded commodities by key.
+    pub goods: BTreeMap<ContentKey, GoodDef>,
     /// Provinces by key.
     pub provinces: BTreeMap<ContentKey, ProvinceDef>,
     /// Trait definitions by key.
@@ -415,6 +436,7 @@ impl ContentSet {
     pub fn data_eq(&self, other: &ContentSet) -> bool {
         self.assignments == other.assignments
             && self.bodies == other.bodies
+            && self.goods == other.goods
             && self.provinces == other.provinces
             && self.traits == other.traits
             && self.name_pools == other.name_pools

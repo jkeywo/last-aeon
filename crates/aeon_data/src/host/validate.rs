@@ -117,7 +117,8 @@ pub(super) fn validate_cross_references(
         }
     }
 
-    // Provinces: bodies must exist.
+    // Provinces: bodies must exist, and every good produced or consumed
+    // must be a defined good.
     for (key, province) in &builder.provinces {
         if !builder.bodies.contains_key(&province.body) {
             findings.push((
@@ -125,6 +126,15 @@ pub(super) fn validate_cross_references(
                 Some(key.to_string()),
                 format!("body '{}' is not defined", province.body),
             ));
+        }
+        for good in province.produces.keys().chain(province.consumes.keys()) {
+            if !builder.goods.contains_key(good) {
+                findings.push((
+                    String::new(),
+                    Some(key.to_string()),
+                    format!("good '{good}' is not defined"),
+                ));
+            }
         }
     }
 

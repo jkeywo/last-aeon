@@ -33,8 +33,8 @@ entities:
 
   - milestone: m9-goods-and-the-provincial-balance
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "M9.1: Provinces Produce and Consume"
       summary: >-
         A small authored set of goods, and per-province rates for what
@@ -52,12 +52,34 @@ entities:
         - provincial-order-system
     implementation:
       paths:
-        - crates/aeon_sim/src/economy.rs
-        - crates/aeon_sim/src/order.rs
-        - crates/aeon_sim/src/snapshot.rs
         - crates/aeon_data/src/model.rs
-        - assets/content/system/provinces.rhai
+        - crates/aeon_data/src/host/builders.rs
+        - crates/aeon_data/src/host/validate.rs
+        - crates/aeon_sim/src/trade.rs
+        - crates/aeon_sim/src/order.rs
+      tests:
+        - crates/aeon_sim/tests/trade.rs
+        - crates/aeon_data/tests/loading.rs
       status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/trade.rs
+        summary: >-
+          A body nets what its provinces make and want; a world that
+          cannot feed itself falls into disorder while a self-sufficient
+          one does not; a world's surplus reaches the house that holds it,
+          to the exact wealth; and the whole flow replays and round-trips a
+          snapshot. Loading refuses a province that names an undefined
+          good.
+      - kind: manual-review
+        reference: crates/aeon_sim/src/trade.rs
+        summary: >-
+          A body's balance is a pure function of content, so it needs no
+          stored state and no snapshot bump — it is recomputed whenever
+          read. A deficit reuses the order system's existing privation
+          pressure rather than adding a new arithmetic kind; a surplus
+          sells and splits equally among the body's held provinces.
+          Between bodies goods do not net; carrying them is M9.3.
 
   - milestone: m9-buildings
     core:
