@@ -32,3 +32,6 @@ dist/
 
 # PASM generated reports
 pasm-reports/
+
+# Runtime autosave written by the client
+last-aeons-autosave.ron

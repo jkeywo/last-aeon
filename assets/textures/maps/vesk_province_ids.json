@@ -1,0 +1,49 @@
+﻿{
+    "body":  "vesk",
+    "size":  [
+                 768,
+                 384
+             ],
+    "provinces":  {
+                      "port-vesk":  [
+                                        0,
+                                        0,
+                                        1
+                                    ],
+                      "tithe-pits":  [
+                                         0,
+                                         0,
+                                         2
+                                     ],
+                      "cryon-basin":  [
+                                          0,
+                                          0,
+                                          3
+                                      ],
+                      "stillmere":  [
+                                        0,
+                                        0,
+                                        4
+                                    ],
+                      "lanternfall":  [
+                                          0,
+                                          0,
+                                          5
+                                      ],
+                      "regolith-verge":  [
+                                             0,
+                                             0,
+                                             6
+                                         ],
+                      "hollow-crown":  [
+                                           0,
+                                           0,
+                                           7
+                                       ],
+                      "silent-quarter":  [
+                                             0,
+                                             0,
+                                             8
+                                         ]
+                  }
+}

@@ -48,7 +48,7 @@ impl DockSide {
 }
 
 /// A panel, named by what it shows.
-#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum PanelKind {
     /// The current selection, in detail.
     Inspector,

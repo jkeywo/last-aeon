@@ -16,11 +16,13 @@ mod offer_view;
 mod scene;
 mod selection;
 mod sim_driver;
+mod skybox;
 mod title;
 mod ui;
 mod view;
 
 use aeon_sim::AeonSimPlugin;
+use bevy::pbr::MaterialPlugin;
 use bevy::picking::mesh_picking::MeshPickingPlugin;
 use bevy::prelude::*;
 use bevy_egui::{EguiPlugin, EguiPrimaryContextPass};
@@ -43,6 +45,8 @@ fn main() {
             }),
         )
         .add_plugins(MeshPickingPlugin)
+        .add_plugins(MaterialPlugin::<scene::GlobeSurfaceMaterial>::default())
+        .add_plugins(skybox::SpaceSkyboxPlugin)
         .add_plugins(EguiPlugin::default())
         .add_plugins(AeonSimPlugin)
         .init_resource::<sim_driver::TimeControl>()
@@ -84,10 +88,11 @@ fn main() {
                 sim_driver::time_hotkeys,
                 selection::attach_pickers,
                 selection::view_hotkeys,
+                scene::spawn_loaded_starbases,
                 scene::update_system_positions,
                 scene::apply_view_visibility,
                 scene::apply_projection,
-                scene::update_selection_pin,
+                scene::update_globe_selection_glow,
                 scene::apply_selection_tint,
                 camera::retarget_on_view_change,
                 camera::drive_camera,

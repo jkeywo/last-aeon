@@ -1,15 +1,15 @@
 //! Picking and selection.
 //!
-//! Click selects a body or (on a globe) the nearest province to the hit
-//! point; double-clicking a body opens its strategic view; Escape returns
+//! Click selects a body or (on a textured globe) the province whose ID colour
+//! is under the hit point; double-clicking a body opens its strategic view; Escape returns
 //! to the system view.
 
-use aeon_sim::AssignmentTarget;
+use aeon_sim::{AssignmentTarget, BodyId};
 use bevy::picking::pointer::PointerButton;
 use bevy::prelude::*;
 
 use crate::assignment_ui::{AssignmentForm, ProvinceSlot};
-use crate::scene::{GlobeVisual, SystemBodyVisual, nearest_province};
+use crate::scene::{GlobeVisual, SystemBodyVisual, nearest_province, province_from_id_texture};
 use crate::view::{MapView, Selection, ViewState};
 
 /// Attaches pointer observers to every map visual once the scene exists.
@@ -17,6 +17,9 @@ pub fn attach_pickers(
     mut commands: Commands,
     new_bodies: Query<Entity, Added<SystemBodyVisual>>,
     new_globes: Query<Entity, Added<GlobeVisual>>,
+    new_model_meshes: Query<(Entity, &ChildOf), Added<Mesh3d>>,
+    body_visuals: Query<&SystemBodyVisual>,
+    parents: Query<&ChildOf>,
 ) {
     for entity in &new_bodies {
         commands.entity(entity).observe(on_body_click);
@@ -24,28 +27,51 @@ pub fn attach_pickers(
     for entity in &new_globes {
         commands.entity(entity).observe(on_globe_click);
     }
+    // GLTF scenes add their mesh children asynchronously. Attach the same
+    // observer to those children, then resolve their system body by walking
+    // up to the model root in `on_body_click`.
+    for (entity, _) in &new_model_meshes {
+        if body_for_entity(entity, &body_visuals, &parents).is_some() {
+            commands.entity(entity).observe(on_body_click);
+        }
+    }
+}
+
+fn body_for_entity(
+    mut entity: Entity,
+    bodies: &Query<&SystemBodyVisual>,
+    parents: &Query<&ChildOf>,
+) -> Option<BodyId> {
+    loop {
+        if let Ok(visual) = bodies.get(entity) {
+            return Some(visual.body);
+        }
+        entity = parents.get(entity).ok()?.parent();
+    }
 }
 
 fn on_body_click(
     event: On<Pointer<Click>>,
     bodies: Query<&SystemBodyVisual>,
+    parents: Query<&ChildOf>,
     mut view: ResMut<ViewState>,
 ) {
     if event.button != PointerButton::Primary {
         return;
     }
-    let Ok(visual) = bodies.get(event.entity) else {
+    let Some(body) = body_for_entity(event.entity, &bodies, &parents) else {
         return;
     };
-    view.selected = Some(Selection::Body(visual.body));
+    view.selected = Some(Selection::Body(body));
     if event.count >= 2 {
-        view.view = MapView::Body(visual.body);
+        view.view = MapView::Body(body);
     }
 }
 
 fn on_globe_click(
     event: On<Pointer<Click>>,
     globes: Query<&GlobeVisual>,
+    images: Res<Assets<Image>>,
     mut view: ResMut<ViewState>,
     mut form: ResMut<AssignmentForm>,
 ) {
@@ -62,7 +88,16 @@ fn on_globe_click(
         return;
     };
     let dir = view.projection.direction_at(position);
-    let Some(province) = nearest_province(dir, &globe.centroids) else {
+    // Authored bodies use their hard-edged ID texture. The starbase has no
+    // province-ID texture, so it retains the single-region centroid fallback.
+    let province = province_from_id_texture(dir, globe, &images).or_else(|| {
+        globe
+            .province_id_texture
+            .is_none()
+            .then(|| nearest_province(dir, &globe.centroids))
+            .flatten()
+    });
+    let Some(province) = province else {
         return;
     };
     // A province pick requested from the assignment popup consumes the click:

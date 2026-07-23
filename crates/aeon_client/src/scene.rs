@@ -10,11 +10,15 @@ use std::collections::BTreeMap;
 
 use aeon_data::model::BodyKind;
 use aeon_sim::map::{BodyRecord, DisplayName, GeoPosition, ProvinceRecord};
-use aeon_sim::{BodyId, CampaignClock, ProvinceId};
+use aeon_sim::{BodyId, ProvinceId};
 use bevy::asset::RenderAssetUsages;
+use bevy::gltf::{Gltf, GltfMaterial, GltfMesh};
+use bevy::pbr::{ExtendedMaterial, MaterialExtension};
 use bevy::prelude::*;
 use bevy::render::mesh::{Indices, PrimitiveTopology};
-use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
+use bevy::render::render_resource::{AsBindGroup, Extent3d, TextureDimension, TextureFormat};
+use bevy::shader::ShaderRef;
+use serde::Deserialize;
 
 use crate::map_modes::MapReadout;
 use crate::view::{
@@ -33,6 +37,23 @@ pub struct SystemBodyVisual {
     pub body: BodyId,
 }
 
+/// The uniform scale a system-view visual takes in its orbit, and the larger
+/// scale it swells to when it is the focused body view. `focus` is `Some` only
+/// for bodies whose system-view visual doubles as their zoomed-in view (the
+/// starbase model); planets and moons hand off to a political globe instead.
+#[derive(Component, Copy, Clone)]
+pub struct SystemScale {
+    orbit: f32,
+    focus: Option<f32>,
+}
+
+/// Waits for the downloaded GLB to finish loading before spawning its meshes.
+#[derive(Component)]
+pub struct PendingStarbaseModel {
+    asset: Handle<Gltf>,
+    spawned: bool,
+}
+
 /// A body's political globe in its body view.
 #[derive(Component, Clone)]
 pub struct GlobeVisual {
@@ -43,11 +64,36 @@ pub struct GlobeVisual {
     pub centroids: Vec<(ProvinceId, Vec3)>,
     /// The political texture this globe paints (mutated on rebake).
     pub texture: Handle<Image>,
+    /// Authored surface art, composited below the political map colours.
+    pub surface_texture: Option<Handle<Image>>,
+    /// Flat province ID image used for exact texture-colour picking.
+    pub province_id_texture: Option<Handle<Image>>,
+    /// Decoded RGB ID values, mapped to the live simulation province IDs.
+    pub province_by_colour: BTreeMap<[u8; 3], ProvinceId>,
+    /// The material extension that receives the active province RGB value.
+    pub material: Handle<GlobeSurfaceMaterial>,
 }
 
-/// The bright pin marking the selected province on a globe.
-#[derive(Component)]
-pub struct SelectionPin;
+/// GPU data for the province-selection pulse. Binding slots start at 100 so
+/// they cannot overlap with Bevy's standard PBR material bindings.
+#[derive(Asset, AsBindGroup, TypePath, Debug, Clone)]
+pub struct GlobeMaterial {
+    /// Selected ID encoded as sRGB RGB plus an enabled flag in alpha.
+    #[uniform(100)]
+    pub selection: Vec4,
+    /// Exact, unfiltered province ID image.
+    #[texture(101)]
+    #[sampler(102)]
+    pub province_ids: Handle<Image>,
+}
+
+impl MaterialExtension for GlobeMaterial {
+    fn fragment_shader() -> ShaderRef {
+        "shaders/globe_selection.wgsl".into()
+    }
+}
+
+pub type GlobeSurfaceMaterial = ExtendedMaterial<StandardMaterial, GlobeMaterial>;
 
 /// Base colour of a system-view body, so selection tint can restore it.
 #[derive(Component, Copy, Clone)]
@@ -58,6 +104,28 @@ pub struct BaseColor(pub Color);
 #[derive(Resource, Default)]
 pub struct GlobeBake {
     baked: Option<(BodyId, MapMode, u64)>,
+}
+
+/// The small per-body manifest next to a province-ID texture.
+#[derive(Deserialize)]
+struct ProvinceIdManifest {
+    provinces: BTreeMap<String, [u8; 3]>,
+}
+
+fn texture_asset_paths(body_key: &str) -> Option<(&'static str, &'static str, &'static str)> {
+    match body_key {
+        "ashkarr" => Some((
+            "textures/maps/ashkarr_surface.png",
+            "textures/maps/ashkarr_province_ids.png",
+            include_str!("../../../assets/textures/maps/ashkarr_province_ids.json"),
+        )),
+        "vesk" => Some((
+            "textures/maps/vesk_surface.png",
+            "textures/maps/vesk_province_ids.png",
+            include_str!("../../../assets/textures/maps/vesk_province_ids.json"),
+        )),
+        _ => None,
+    }
 }
 
 fn body_display_radius(record: &BodyRecord) -> f32 {
@@ -77,6 +145,102 @@ fn body_color(kind: BodyKind) -> Color {
         BodyKind::Planet => Color::srgb(0.45, 0.40, 0.32),
         BodyKind::Moon => Color::srgb(0.55, 0.56, 0.60),
         BodyKind::Starbase => Color::srgb(0.75, 0.62, 0.28),
+    }
+}
+
+/// The downloaded starbase model is authored in large metre-like units; this
+/// scales its roughly 95 km diameter to the display radius used by the system
+/// map's other bodies.
+fn starbase_display_scale(record: &BodyRecord) -> f32 {
+    body_display_radius(record) / 65_000.0
+}
+
+/// The scale the starbase model swells to when it is the focused body view,
+/// sized to fill the frame like a globe would under the same camera.
+fn starbase_focus_scale() -> f32 {
+    GLOBE_RADIUS / 65_000.0
+}
+
+fn imported_starbase_material(source: Option<&GltfMaterial>) -> StandardMaterial {
+    let Some(source) = source else {
+        return StandardMaterial {
+            base_color: Color::srgb(0.45, 0.42, 0.34),
+            metallic: 0.7,
+            perceptual_roughness: 0.45,
+            ..default()
+        };
+    };
+    StandardMaterial {
+        base_color: source.base_color,
+        base_color_texture: source.base_color_texture.clone(),
+        emissive: source.emissive,
+        emissive_texture: source.emissive_texture.clone(),
+        perceptual_roughness: source.perceptual_roughness,
+        metallic: source.metallic,
+        metallic_roughness_texture: source.metallic_roughness_texture.clone(),
+        normal_map_texture: source.normal_map_texture.clone(),
+        double_sided: source.double_sided,
+        cull_mode: source.cull_mode,
+        alpha_mode: source.alpha_mode,
+        unlit: source.unlit,
+        ..default()
+    }
+}
+
+/// Spawns the downloaded model's primitives after Bevy has loaded its GLB
+/// assets. Bevy 0.19 exposes glTF scenes as world assets, so the small static
+/// station is expanded directly rather than using the previous scene-root API.
+pub fn spawn_loaded_starbases(
+    mut commands: Commands,
+    mut pending: Query<(Entity, &mut PendingStarbaseModel)>,
+    gltfs: Res<Assets<Gltf>>,
+    gltf_meshes: Res<Assets<GltfMesh>>,
+    gltf_materials: Res<Assets<GltfMaterial>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    for (root, mut pending) in &mut pending {
+        if pending.spawned {
+            continue;
+        }
+        let Some(gltf) = gltfs.get(&pending.asset) else {
+            continue;
+        };
+        if gltf
+            .meshes
+            .iter()
+            .any(|mesh| gltf_meshes.get(mesh).is_none())
+        {
+            continue;
+        }
+
+        let model_root = commands
+            .spawn((
+                Transform::from_rotation(Quat::from_rotation_x(-std::f32::consts::FRAC_PI_2)),
+                Visibility::default(),
+                Name::new("aurelian-spire-model"),
+            ))
+            .id();
+        commands.entity(root).add_child(model_root);
+        commands.entity(model_root).with_children(|parent| {
+            for mesh in &gltf.meshes {
+                let mesh = gltf_meshes
+                    .get(mesh)
+                    .expect("loaded glTF mesh checked above");
+                for primitive in &mesh.primitives {
+                    let source_material = primitive
+                        .material
+                        .as_ref()
+                        .and_then(|material| gltf_materials.get(material));
+                    parent.spawn((
+                        Mesh3d(primitive.mesh.clone()),
+                        MeshMaterial3d(materials.add(imported_starbase_material(source_material))),
+                        Transform::default(),
+                        Name::new(format!("aurelian-spire:{}", primitive.name)),
+                    ));
+                }
+            }
+        });
+        pending.spawned = true;
     }
 }
 
@@ -187,12 +351,67 @@ pub fn nearest_province(dir: Vec3, centroids: &[(ProvinceId, Vec3)]) -> Option<P
         .map(|(id, _)| id)
 }
 
+/// Resolves a clicked direction through the authored RGB province-ID image.
+/// The image is sampled by texel (not filtered), so selection follows the
+/// exact visible borders rather than a nearest-centroid approximation.
+pub fn province_from_id_texture(
+    dir: Vec3,
+    globe: &GlobeVisual,
+    images: &Assets<Image>,
+) -> Option<ProvinceId> {
+    let texture = globe.province_id_texture.as_ref()?;
+    let image = images.get(texture)?;
+    let size = image.texture_descriptor.size;
+    let data = image.data.as_ref()?;
+    let longitude = (-dir.z).atan2(dir.x);
+    let latitude = dir.y.clamp(-1.0, 1.0).asin();
+    let x = (((longitude / std::f32::consts::TAU + 0.5) * size.width as f32).floor() as u32)
+        % size.width;
+    let y = ((0.5 - latitude / std::f32::consts::PI) * size.height as f32)
+        .floor()
+        .clamp(0.0, (size.height - 1) as f32) as u32;
+    let offset = ((y * size.width + x) * 4) as usize;
+    let colour = [
+        *data.get(offset)?,
+        *data.get(offset + 1)?,
+        *data.get(offset + 2)?,
+    ];
+    globe.province_by_colour.get(&colour).copied()
+}
+
+/// Updates only when the player changes selection; the shader itself drives
+/// the ongoing pulse using Bevy's global time uniform.
+pub fn update_globe_selection_glow(
+    view: Res<ViewState>,
+    globes: Query<&GlobeVisual>,
+    mut materials: ResMut<Assets<GlobeSurfaceMaterial>>,
+) {
+    if !view.is_changed() {
+        return;
+    }
+    for globe in &globes {
+        let selected_colour = match view.selected {
+            Some(Selection::Province(province)) if view.view == MapView::Body(globe.body) => globe
+                .province_by_colour
+                .iter()
+                .find_map(|(colour, id)| (*id == province).then_some(*colour)),
+            _ => None,
+        };
+        if let Some(mut material) = materials.get_mut(&globe.material) {
+            material.extension.selection = selected_colour.map_or(Vec4::ZERO, |[r, g, b]| {
+                Vec4::new(r as f32 / 255.0, g as f32 / 255.0, b as f32 / 255.0, 1.0)
+            });
+        }
+    }
+}
+
 /// Bakes the political texture: each texel takes the colour of its nearest
 /// province, black where it borders a different province, neutral grey
 /// where a province is unheld.
 fn bake_texture(
     centroids: &[(ProvinceId, Vec3)],
     colours: &BTreeMap<ProvinceId, [u8; 3]>,
+    surface: Option<&Image>,
 ) -> Vec<u8> {
     // Grid of nearest-province indices (into `centroids`).
     let mut grid = vec![u16::MAX; TEX_W * TEX_H];
@@ -212,14 +431,13 @@ fn bake_texture(
         }
     }
 
-    let neutral = [90u8, 90, 96];
-    let mut data = vec![0u8; TEX_W * TEX_H * 4];
+    // Border where a 4-neighbour belongs to a different province.
+    let mut is_border = vec![false; TEX_W * TEX_H];
     for y in 0..TEX_H {
         for x in 0..TEX_W {
             let i = y * TEX_W + x;
             let prov = grid[i];
-            // Border where a 4-neighbour belongs to a different province.
-            let border = [
+            is_border[i] = [
                 grid[y * TEX_W + x.wrapping_sub(1).min(TEX_W - 1)],
                 grid[y * TEX_W + (x + 1).min(TEX_W - 1)],
                 grid[y.saturating_sub(1) * TEX_W + x],
@@ -227,14 +445,41 @@ fn bake_texture(
             ]
             .iter()
             .any(|n| *n != prov);
-            let rgb = if border {
-                [12u8, 12, 14]
+        }
+    }
+
+    // Distance in texels from each texel to the nearest province border, so
+    // the map-mode overlay can fade from strong at the border to faint in the
+    // interior. The overlay is a reading aid, not a paint job: it names who
+    // holds a border and then steps aside to let the authored world show.
+    let distance = border_distance(&is_border);
+    // Texels over which the overlay fades from its border peak to its floor.
+    let fade = 24.0f32;
+
+    let neutral = [90u8, 90, 96];
+    let mut data = vec![0u8; TEX_W * TEX_H * 4];
+    for y in 0..TEX_H {
+        for x in 0..TEX_W {
+            let i = y * TEX_W + x;
+            let prov = grid[i];
+            let rgb = if is_border[i] {
+                surface_rgb(surface, x, y).unwrap_or([12, 12, 14])
             } else {
-                centroids
+                let political = centroids
                     .get(prov as usize)
                     .and_then(|(id, _)| colours.get(id))
                     .copied()
-                    .unwrap_or(neutral)
+                    .unwrap_or(neutral);
+                match surface_rgb(surface, x, y) {
+                    // Overlay weight: near the border the political colour
+                    // dominates; deep inside a province the surface art does.
+                    Some(base) => {
+                        let edge = 1.0 - smoothstep01(distance[i] / fade);
+                        blend(base, political, 0.15 + 0.75 * edge)
+                    }
+                    // No authored art to reveal: paint the mode solidly.
+                    None => political,
+                }
             };
             let o = i * 4;
             data[o] = rgb[0];
@@ -244,6 +489,91 @@ fn bake_texture(
         }
     }
     data
+}
+
+/// A two-pass chamfer transform: the approximate Euclidean distance in texels
+/// from every texel to the nearest `true` (border) texel. Runs on rebake only.
+fn border_distance(is_border: &[bool]) -> Vec<f32> {
+    const DIAG: f32 = std::f32::consts::SQRT_2;
+    let big = (TEX_W + TEX_H) as f32;
+    let mut dist: Vec<f32> = is_border
+        .iter()
+        .map(|&b| if b { 0.0 } else { big })
+        .collect();
+    for y in 0..TEX_H {
+        for x in 0..TEX_W {
+            let i = y * TEX_W + x;
+            let mut d = dist[i];
+            if x > 0 {
+                d = d.min(dist[i - 1] + 1.0);
+            }
+            if y > 0 {
+                d = d.min(dist[i - TEX_W] + 1.0);
+                if x > 0 {
+                    d = d.min(dist[i - TEX_W - 1] + DIAG);
+                }
+                if x + 1 < TEX_W {
+                    d = d.min(dist[i - TEX_W + 1] + DIAG);
+                }
+            }
+            dist[i] = d;
+        }
+    }
+    for y in (0..TEX_H).rev() {
+        for x in (0..TEX_W).rev() {
+            let i = y * TEX_W + x;
+            let mut d = dist[i];
+            if x + 1 < TEX_W {
+                d = d.min(dist[i + 1] + 1.0);
+            }
+            if y + 1 < TEX_H {
+                d = d.min(dist[i + TEX_W] + 1.0);
+                if x + 1 < TEX_W {
+                    d = d.min(dist[i + TEX_W + 1] + DIAG);
+                }
+                if x > 0 {
+                    d = d.min(dist[i + TEX_W - 1] + DIAG);
+                }
+            }
+            dist[i] = d;
+        }
+    }
+    dist
+}
+
+/// Smoothstep on an already-normalised input, clamped to 0..1.
+fn smoothstep01(t: f32) -> f32 {
+    let t = t.clamp(0.0, 1.0);
+    t * t * (3.0 - 2.0 * t)
+}
+
+/// Linear blend of two colours: `weight` is how much of `overlay` shows.
+fn blend(base: [u8; 3], overlay: [u8; 3], weight: f32) -> [u8; 3] {
+    let w = weight.clamp(0.0, 1.0);
+    let mix = |a: u8, b: u8| (f32::from(a) * (1.0 - w) + f32::from(b) * w).round() as u8;
+    [
+        mix(base[0], overlay[0]),
+        mix(base[1], overlay[1]),
+        mix(base[2], overlay[2]),
+    ]
+}
+
+/// Reads a source-art texel when it is the expected uncompressed map size.
+/// Texture loading is asynchronous, so an unavailable asset simply delays a
+/// bake rather than producing an incorrectly sized or filtered result.
+fn surface_rgb(surface: Option<&Image>, x: usize, y: usize) -> Option<[u8; 3]> {
+    let surface = surface?;
+    let size = surface.texture_descriptor.size;
+    if size.width != TEX_W as u32 || size.height != TEX_H as u32 {
+        return None;
+    }
+    let data = surface.data.as_ref()?;
+    let offset = (y * TEX_W + x) * 4;
+    Some([
+        *data.get(offset)?,
+        *data.get(offset + 1)?,
+        *data.get(offset + 2)?,
+    ])
 }
 
 /// A stable fingerprint of what the focused globe is painting, so the
@@ -271,7 +601,9 @@ pub fn spawn_scene(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
+    mut globe_materials: ResMut<Assets<GlobeSurfaceMaterial>>,
     mut images: ResMut<Assets<Image>>,
+    asset_server: Res<AssetServer>,
     bodies: Query<(&BodyRecord, &DisplayName)>,
     provinces: Query<(&ProvinceRecord, &DisplayName, &GeoPosition)>,
 ) {
@@ -294,66 +626,133 @@ pub fn spawn_scene(
     for (record, name) in &bodies {
         let radius = body_display_radius(record);
         let color = body_color(record.kind);
-        commands.spawn((
-            SystemBodyVisual { body: record.id },
-            BaseColor(color),
-            Mesh3d(meshes.add(Sphere::new(radius).mesh().ico(4).unwrap())),
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: color,
-                perceptual_roughness: 0.9,
-                metallic: 0.0,
-                ..Default::default()
-            })),
-            Transform::default(),
-            Name::new(format!("system:{}", name.0)),
-        ));
+        if record.kind == BodyKind::Starbase {
+            commands.spawn((
+                SystemBodyVisual { body: record.id },
+                SystemScale {
+                    orbit: starbase_display_scale(record),
+                    focus: Some(starbase_focus_scale()),
+                },
+                BaseColor(color),
+                PendingStarbaseModel {
+                    asset: asset_server.load("models/aurelian_spire.glb"),
+                    spawned: false,
+                },
+                Transform::from_scale(Vec3::splat(starbase_display_scale(record))),
+                Visibility::default(),
+                Name::new(format!("system:{}", name.0)),
+            ));
+        } else {
+            // Planets and moons show their surface art, lit, so the system
+            // view reads as real worlds rather than coloured dots. A body's
+            // equirectangular UV sphere maps the same art the globe uses;
+            // bodies without authored art fall back to a flat-shaded sphere.
+            let surface = texture_asset_paths(record.key.as_str())
+                .map(|(surface_path, _, _)| asset_server.load(surface_path));
+            let (mesh, base_color) = match &surface {
+                Some(_) => (meshes.add(build_globe_mesh(radius, 64, 32)), Color::WHITE),
+                None => (
+                    meshes.add(Sphere::new(radius).mesh().ico(4).unwrap()),
+                    color,
+                ),
+            };
+            commands.spawn((
+                SystemBodyVisual { body: record.id },
+                SystemScale {
+                    orbit: 1.0,
+                    focus: None,
+                },
+                // The tint the selection highlight restores to: white keeps a
+                // textured world true-coloured, a flat body keeps its colour.
+                BaseColor(base_color),
+                Mesh3d(mesh),
+                MeshMaterial3d(materials.add(StandardMaterial {
+                    base_color,
+                    base_color_texture: surface,
+                    perceptual_roughness: 0.9,
+                    metallic: 0.0,
+                    ..Default::default()
+                })),
+                Transform::default(),
+                Name::new(format!("system:{}", name.0)),
+            ));
+        }
     }
 
-    // Per-body political globes, hidden until focused.
+    // Per-body political globes, hidden until focused. The starbase has no
+    // province surface; its zoomed-in view is the station model instead.
     for (record, name) in &bodies {
-        let centroids: Vec<(ProvinceId, Vec3)> = provinces
+        if record.kind == BodyKind::Starbase {
+            continue;
+        }
+        let body_provinces: Vec<(&ProvinceRecord, &DisplayName, &GeoPosition)> = provinces
             .iter()
             .filter(|(p, _, _)| p.body == record.id)
+            .collect();
+        let centroids = body_provinces
+            .iter()
             .map(|(p, _, geo)| (p.id, geo_to_unit(geo.latitude_mdeg, geo.longitude_mdeg)))
             .collect();
+        let (surface_texture, province_id_texture, province_by_colour) =
+            texture_asset_paths(record.key.as_str()).map_or_else(
+                || (None, None, BTreeMap::new()),
+                |(surface_path, id_path, manifest)| {
+                    let manifest: ProvinceIdManifest = serde_json::from_str(manifest.strip_prefix('\u{FEFF}').unwrap_or(manifest))
+                        .expect("bundled province ID manifests must be valid JSON");
+                    let province_by_colour = body_provinces
+                        .iter()
+                        .filter_map(|(province, _, _)| {
+                            manifest
+                                .provinces
+                                .get(province.key.as_str())
+                                .map(|colour| (*colour, province.id))
+                        })
+                        .collect();
+                    (
+                        Some(asset_server.load(surface_path)),
+                        Some(asset_server.load(id_path)),
+                        province_by_colour,
+                    )
+                },
+            );
         // Blank texture; the refresh system paints it on first focus.
         let texture = images.add(blank_texture());
+        let province_ids_for_shader = province_id_texture
+            .clone()
+            .unwrap_or_else(|| texture.clone());
+        let material = globe_materials.add(GlobeSurfaceMaterial {
+            base: StandardMaterial {
+                base_color: Color::WHITE,
+                base_color_texture: Some(texture.clone()),
+                unlit: true,
+                ..Default::default()
+            },
+            extension: GlobeMaterial {
+                selection: Vec4::ZERO,
+                province_ids: province_ids_for_shader,
+            },
+        });
         commands.spawn((
             GlobeVisual {
                 body: record.id,
                 centroids,
                 texture: texture.clone(),
+                surface_texture,
+                province_id_texture,
+                province_by_colour,
+                material: material.clone(),
             },
             Mesh3d(globe_mesh.clone()),
             // Lit evenly: this is a political map, not a lit body. Shading
             // it would darken the limb exactly where province colours and
             // their labels still need to be read. The system view keeps its
             // directional light — those materials are separate.
-            MeshMaterial3d(materials.add(StandardMaterial {
-                base_color: Color::WHITE,
-                base_color_texture: Some(texture),
-                unlit: true,
-                ..Default::default()
-            })),
+            MeshMaterial3d(material),
             Transform::default(),
             Visibility::Hidden,
             Name::new(format!("globe:{}", name.0)),
         ));
     }
-
-    // A single reusable selection pin.
-    commands.spawn((
-        SelectionPin,
-        Mesh3d(meshes.add(Sphere::new(0.09).mesh().ico(2).unwrap())),
-        MeshMaterial3d(materials.add(StandardMaterial {
-            base_color: Color::srgb(0.98, 0.88, 0.30),
-            unlit: true,
-            ..Default::default()
-        })),
-        Transform::default(),
-        Visibility::Hidden,
-        Name::new("selection-pin"),
-    ));
 }
 
 fn blank_texture() -> Image {
@@ -371,45 +770,57 @@ fn blank_texture() -> Image {
     )
 }
 
-/// Positions system-view bodies along their orbits from the campaign date.
+/// Places system-view bodies at fixed, static positions: each sits at its
+/// orbit radius but at an angle fixed by its id, so the system reads as a
+/// stable diagram rather than an animated orrery. A body whose visual doubles
+/// as its zoomed-in view (the starbase) is instead centred and enlarged while
+/// it is focused.
 pub fn update_system_positions(
-    clock: Option<Res<CampaignClock>>,
+    view: Res<ViewState>,
     bodies: Query<&BodyRecord>,
-    mut visuals: Query<(&SystemBodyVisual, &mut Transform)>,
+    mut visuals: Query<(&SystemBodyVisual, &SystemScale, &mut Transform)>,
 ) {
-    let Some(clock) = clock else {
-        return;
-    };
-    let day = clock.date.days_since_epoch() as f32;
-
-    for (visual, mut transform) in &mut visuals {
+    for (visual, scale, mut transform) in &mut visuals {
         let Some(record) = bodies.iter().find(|r| r.id == visual.body) else {
             continue;
         };
-        let position = if record.orbit_days == 0 {
+        if let (MapView::Body(body), Some(focus)) = (view.view, scale.focus)
+            && body == visual.body
+        {
+            transform.translation = Vec3::ZERO;
+            transform.scale = Vec3::splat(focus);
+            continue;
+        }
+        let radius = body_orbit_display_radius(record);
+        let position = if radius == 0.0 {
             Vec3::ZERO
         } else {
-            let angle =
-                std::f32::consts::TAU * (day / record.orbit_days as f32) + visual.body.raw() as f32;
-            let radius = body_orbit_display_radius(record);
+            let angle = visual.body.raw() as f32;
             Vec3::new(angle.cos() * radius, 0.0, angle.sin() * radius)
         };
         transform.translation = position;
+        transform.scale = Vec3::splat(scale.orbit);
     }
 }
 
 /// Shows and hides visuals according to the active view.
 pub fn apply_view_visibility(
     view: Res<ViewState>,
-    mut system_visuals: Query<&mut Visibility, (With<SystemBodyVisual>, Without<GlobeVisual>)>,
+    mut system_visuals: Query<
+        (&SystemBodyVisual, &SystemScale, &mut Visibility),
+        Without<GlobeVisual>,
+    >,
     mut globes: Query<(&GlobeVisual, &mut Visibility), Without<SystemBodyVisual>>,
 ) {
     if !view.is_changed() {
         return;
     }
     let system_active = view.view == MapView::System;
-    for mut visibility in &mut system_visuals {
-        *visibility = if system_active {
+    for (visual, scale, mut visibility) in &mut system_visuals {
+        // A body whose visual is also its zoomed-in view stays lit while it is
+        // the focused body; every other marker hides outside the system view.
+        let focused = view.view == MapView::Body(visual.body) && scale.focus.is_some();
+        *visibility = if system_active || focused {
             Visibility::Inherited
         } else {
             Visibility::Hidden
@@ -447,42 +858,25 @@ pub fn refresh_globe_texture(
     let Some(globe) = globes.iter().find(|g| g.body == body) else {
         return;
     };
+    let surface = match &globe.surface_texture {
+        Some(handle) => {
+            let Some(image) = images.get(handle) else {
+                return;
+            };
+            Some(image)
+        }
+        None => None,
+    };
     let colours: BTreeMap<ProvinceId, [u8; 3]> = readout
         .provinces
         .iter()
         .map(|(id, entry)| (*id, entry.colour))
         .collect();
-    let data = bake_texture(&globe.centroids, &colours);
+    let data = bake_texture(&globe.centroids, &colours, surface);
     if let Some(mut image) = images.get_mut(&globe.texture) {
         image.data = Some(data);
     }
     bake.baked = Some((body, *mode, fingerprint));
-}
-
-/// Moves the selection pin to the selected province on the focused globe,
-/// or hides it.
-pub fn update_selection_pin(
-    view: Res<ViewState>,
-    provinces: Query<(&ProvinceRecord, &DisplayName, &GeoPosition)>,
-    mut pins: Query<(&mut Transform, &mut Visibility), With<SelectionPin>>,
-) {
-    let Ok((mut transform, mut visibility)) = pins.single_mut() else {
-        return;
-    };
-    let target = match (view.view, view.selected) {
-        (MapView::Body(body), Some(Selection::Province(id))) => provinces
-            .iter()
-            .find(|(p, _, _)| p.id == id && p.body == body)
-            .map(|(_, _, geo)| geo_to_unit(geo.latitude_mdeg, geo.longitude_mdeg)),
-        _ => None,
-    };
-    match target {
-        Some(dir) => {
-            transform.translation = view.projection.place(dir) + view.projection.pin_offset(dir);
-            *visibility = Visibility::Inherited;
-        }
-        None => *visibility = Visibility::Hidden,
-    }
 }
 
 /// Tints hovered/selected system-view bodies so feedback is unmissable.

@@ -51,10 +51,10 @@ pub fn draw_map_overlay(
         }
     }
 
-    let painter = ctx.layer_painter(egui::LayerId::new(
-        egui::Order::Background,
-        egui::Id::new("map_overlay"),
-    ));
+    // Paint into the shared background layer the panels also draw into. This
+    // system runs before the panels in the egui pass, so their opaque frames
+    // land on top: labels sit behind the GUI rather than over it.
+    let painter = ctx.layer_painter(egui::LayerId::background());
 
     for (record, name, geo) in &provinces {
         if record.body != body {

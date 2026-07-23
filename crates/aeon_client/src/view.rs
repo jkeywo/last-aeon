@@ -101,14 +101,6 @@ impl MapProjection {
             MapProjection::Flat => true,
         }
     }
-
-    /// How far the selection pin stands off the surface.
-    pub fn pin_offset(self, dir: Vec3) -> Vec3 {
-        match self {
-            MapProjection::Globe => dir * (GLOBE_RADIUS * 0.03),
-            MapProjection::Flat => Vec3::Z * 0.12,
-        }
-    }
 }
 
 /// A unit direction as latitude and longitude in radians.

@@ -1,0 +1,169 @@
+﻿{
+    "body":  "ashkarr",
+    "size":  [
+                 768,
+                 384
+             ],
+    "provinces":  {
+                      "karvessa":  [
+                                       0,
+                                       0,
+                                       1
+                                   ],
+                      "dreghal":  [
+                                      0,
+                                      0,
+                                      2
+                                  ],
+                      "tolmaz":  [
+                                     0,
+                                     0,
+                                     3
+                                 ],
+                      "veyrmark":  [
+                                       0,
+                                       0,
+                                       4
+                                   ],
+                      "cindral":  [
+                                      0,
+                                      0,
+                                      5
+                                  ],
+                      "ostragard":  [
+                                        0,
+                                        0,
+                                        6
+                                    ],
+                      "palensk":  [
+                                      0,
+                                      0,
+                                      7
+                                  ],
+                      "vhorruk":  [
+                                      0,
+                                      0,
+                                      8
+                                  ],
+                      "sallow-march":  [
+                                           0,
+                                           0,
+                                           9
+                                       ],
+                      "brakkenveld":  [
+                                          0,
+                                          0,
+                                          10
+                                      ],
+                      "mournhollow":  [
+                                          0,
+                                          0,
+                                          11
+                                      ],
+                      "thassik":  [
+                                      0,
+                                      0,
+                                      12
+                                  ],
+                      "ulmgorn":  [
+                                      0,
+                                      0,
+                                      13
+                                  ],
+                      "redwater":  [
+                                       0,
+                                       0,
+                                       14
+                                   ],
+                      "charhold":  [
+                                       0,
+                                       0,
+                                       15
+                                   ],
+                      "sable-steppe":  [
+                                           0,
+                                           0,
+                                           16
+                                       ],
+                      "hyperions-rest":  [
+                                             0,
+                                             0,
+                                             17
+                                         ],
+                      "tsarovka":  [
+                                       0,
+                                       0,
+                                       18
+                                   ],
+                      "consulate-fields":  [
+                                               0,
+                                               0,
+                                               19
+                                           ],
+                      "greyspire":  [
+                                        0,
+                                        0,
+                                        20
+                                    ],
+                      "vantar-deep":  [
+                                          0,
+                                          0,
+                                          21
+                                      ],
+                      "koszevny-flats":  [
+                                             0,
+                                             0,
+                                             22
+                                         ],
+                      "drossmark":  [
+                                        0,
+                                        0,
+                                        23
+                                    ],
+                      "emberwash":  [
+                                        0,
+                                        0,
+                                        24
+                                    ],
+                      "halveth":  [
+                                      0,
+                                      0,
+                                      25
+                                  ],
+                      "skarnos":  [
+                                      0,
+                                      0,
+                                      26
+                                  ],
+                      "old-anchorage":  [
+                                            0,
+                                            0,
+                                            27
+                                        ],
+                      "pellamir":  [
+                                       0,
+                                       0,
+                                       28
+                                   ],
+                      "rustholt":  [
+                                       0,
+                                       0,
+                                       29
+                                   ],
+                      "virek-sound":  [
+                                          0,
+                                          0,
+                                          30
+                                      ],
+                      "calders-folly":  [
+                                            0,
+                                            0,
+                                            31
+                                        ],
+                      "shattered-coast":  [
+                                              0,
+                                              0,
+                                              32
+                                          ]
+                  }
+}

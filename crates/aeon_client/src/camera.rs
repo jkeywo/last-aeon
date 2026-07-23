@@ -6,6 +6,7 @@
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll};
 use bevy::prelude::*;
 
+use crate::skybox::{SpaceSkybox, space_skybox};
 use crate::view::{FLAT_HEIGHT, FLAT_WIDTH, MapProjection, MapView, ViewState};
 
 /// Orbit parameters, eased toward `goal_distance` when views change.
@@ -38,7 +39,7 @@ impl Default for OrbitCamera {
     }
 }
 
-pub fn spawn_camera(mut commands: Commands) {
+pub fn spawn_camera(mut commands: Commands, skybox: Res<SpaceSkybox>) {
     commands.spawn((
         Camera3d::default(),
         Camera {
@@ -50,6 +51,7 @@ pub fn spawn_camera(mut commands: Commands) {
             brightness: 220.0,
             ..Default::default()
         },
+        space_skybox(&skybox),
         Transform::from_xyz(0.0, 10.0, 26.0).looking_at(Vec3::ZERO, Vec3::Y),
     ));
 }
