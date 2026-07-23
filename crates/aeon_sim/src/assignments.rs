@@ -1328,6 +1328,13 @@ pub fn apply_effects(
                     }
                 }
             },
+            ScriptEffect::Condition { target, tag } => {
+                // The same harm a failed leader suffers, laid on the role
+                // the content names — a knife that reaches its mark.
+                for who in roles.resolve_from(*target) {
+                    apply_risk(world, who, *tag, date);
+                }
+            }
             ScriptEffect::Construct { building } => {
                 // Raise the building on the province the work was aimed
                 // at. Only what content defines can be built.

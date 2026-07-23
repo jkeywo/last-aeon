@@ -105,6 +105,18 @@ pub enum RiskTag {
 }
 
 impl RiskTag {
+    /// Parses the authored spelling; anything else is a content error.
+    pub fn parse(text: &str) -> Option<Self> {
+        match text {
+            "injury" => Some(RiskTag::Injury),
+            "capture" => Some(RiskTag::Capture),
+            "scandal" => Some(RiskTag::Scandal),
+            "incapacity" => Some(RiskTag::Incapacity),
+            "death" => Some(RiskTag::Death),
+            _ => None,
+        }
+    }
+
     /// The key of this risk's player-facing name.
     ///
     /// Risks used to reach the player through `{:?}`, which put the Rust

@@ -85,6 +85,15 @@ pub enum ScriptEffect {
         /// body where no definition id is in scope.
         building: String,
     },
+    /// Lay a personal condition on a named role — injury, capture,
+    /// incapacity, scandal, or death — the harm the simulation already
+    /// visits on a failed leader, now aimed where the content directs.
+    Condition {
+        /// Whom the condition falls on.
+        target: EffectRole,
+        /// The condition laid on them.
+        tag: crate::model::RiskTag,
+    },
 }
 
 /// A assignment-context role an authored effect may address.
@@ -393,6 +402,33 @@ pub fn parse_effects(value: Dynamic) -> Result<Vec<ScriptEffect>, EffectParseErr
                         expected: "string".to_owned(),
                     })?;
                 effects.push(ScriptEffect::Construct { building });
+            }
+            "condition" => {
+                let target = map
+                    .get("target")
+                    .and_then(|v| v.clone().into_string().ok())
+                    .as_deref()
+                    .and_then(EffectRole::parse)
+                    .ok_or_else(|| EffectParseError::BadField {
+                        index,
+                        kind: kind.clone(),
+                        field: "target".to_owned(),
+                        expected: "a role: leader, target, target-head, owner-head, \
+                                   liege-head, consul, or sanctora"
+                            .to_owned(),
+                    })?;
+                let tag = map
+                    .get("tag")
+                    .and_then(|v| v.clone().into_string().ok())
+                    .as_deref()
+                    .and_then(crate::model::RiskTag::parse)
+                    .ok_or_else(|| EffectParseError::BadField {
+                        index,
+                        kind: kind.clone(),
+                        field: "tag".to_owned(),
+                        expected: "injury, capture, scandal, incapacity, or death".to_owned(),
+                    })?;
+                effects.push(ScriptEffect::Condition { target, tag });
             }
             other => {
                 return Err(EffectParseError::UnknownKind {

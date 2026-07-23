@@ -973,3 +973,80 @@ define_building(#{ id: "smokehouse", build_days: 30, consumes: #{ mystery: 3 } }
         report.findings
     );
 }
+
+#[test]
+fn a_condition_effect_parses_to_its_typed_variant() {
+    use aeon_data::model::RiskTag;
+    use aeon_data::{EffectRole, ScriptEffect, ScriptHost};
+
+    let script = r#"
+define_assignment(#{
+    id: "have-them-killed", category: "consequential",
+    duration_days: 30, skill: "intrigue", difficulty: 16, target: "character",
+    results: #{
+        success: #{ weight: 400, effect_fn: "struck_down" },
+        failure: #{ weight: 600 },
+    },
+});
+fn struck_down(ctx) { [#{ kind: "condition", target: "target", tag: "death" }] }
+"#;
+    let (set, report) = load_content(
+        &[source("core/intrigue.rhai", script)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(
+        !report.has_errors(),
+        "unexpected findings: {:?}",
+        report.findings
+    );
+    let set = set.expect("valid intrigue loads");
+    let host = ScriptHost::new();
+    let fn_ref = set.assignments[&aeon_data::ContentKey::new("have-them-killed").unwrap()].results
+        [&aeon_data::model::OutcomeKind::Success]
+        .effect_fn
+        .clone()
+        .unwrap();
+    let effects = host
+        .call_effect_fn(&set, &fn_ref, rhai::Map::new())
+        .unwrap();
+    assert_eq!(
+        effects,
+        vec![ScriptEffect::Condition {
+            target: EffectRole::Target,
+            tag: RiskTag::Death
+        }]
+    );
+}
+
+#[test]
+fn a_condition_naming_an_unknown_harm_fails_to_parse() {
+    use aeon_data::ScriptHost;
+
+    let script = r#"
+define_assignment(#{
+    id: "botched", category: "consequential",
+    duration_days: 10, skill: "intrigue", difficulty: 8, target: "character",
+    results: #{
+        success: #{ weight: 500, effect_fn: "oops" },
+        failure: #{ weight: 500 },
+    },
+});
+fn oops(ctx) { [#{ kind: "condition", target: "target", tag: "curse" }] }
+"#;
+    let (set, _) = load_content(
+        &[source("core/intrigue.rhai", script)],
+        &aeon_data::StringTable::blank(),
+    );
+    let set = set.expect("loads; the bad effect is a runtime failure");
+    let host = ScriptHost::new();
+    let fn_ref = set.assignments[&aeon_data::ContentKey::new("botched").unwrap()].results
+        [&aeon_data::model::OutcomeKind::Success]
+        .effect_fn
+        .clone()
+        .unwrap();
+    assert!(
+        host.call_effect_fn(&set, &fn_ref, rhai::Map::new())
+            .is_err(),
+        "an unknown harm is refused"
+    );
+}

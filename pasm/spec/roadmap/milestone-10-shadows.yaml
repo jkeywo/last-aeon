@@ -35,8 +35,8 @@ entities:
 
   - milestone: m10-target-directed-harm
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "M10.1: Harm Reaches the Target"
       summary: >-
         A new authored effect names a target and a condition and lays it
@@ -55,10 +55,30 @@ entities:
     implementation:
       paths:
         - crates/aeon_data/src/effect.rs
+        - crates/aeon_data/src/model.rs
         - crates/aeon_sim/src/assignments.rs
+      tests:
+        - crates/aeon_sim/tests/intrigue.rs
+        - crates/aeon_data/tests/loading.rs
       status: declared
-
-  - milestone: m10-assassination-and-abduction
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/intrigue.rs
+        summary: >-
+          A scheme's harm reaches the character it is aimed at and not the
+          one who leads the work, and a character harmed by a scheme is
+          barred from new work by the same condition machinery a failed
+          leader's is. The condition effect parses to its typed variant,
+          and an unknown harm is refused.
+      - kind: manual-review
+        reference: crates/aeon_sim/src/assignments.rs
+        summary: >-
+          The one engine seam is a condition effect that resolves a named
+          role and calls the existing apply_risk on it — the harm that has
+          only ever struck a failed leader, now aimed where content
+          directs. The tag fixes the duration, so the effect carries no
+          days of its own; RiskTag gains a parse shared with the builder.
+          Everything after this is authored content.
     core:
       status: proposed
       confidence: provisional
