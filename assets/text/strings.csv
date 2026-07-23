@@ -687,3 +687,10 @@ goal.take-the-planet.summary,One-line summary of the take-the-planet ambition.,[
 goal.conquer-a-neighbour.title,Goal title: conquering a weaker neighbour.,[Conquer a Neighbour]
 goal.conquer-a-neighbour.summary,One-line summary of the conquer ambition.,[Arm against a weaker rival and call the vassals to muster.]
 ui.inspector.province.buildings,Inspector heading over the buildings a province has raised.,[Built:]
+good.grain.name,Name of the grain commodity.,[Grain]
+good.ore.name,Name of the ore commodity.,[Ore]
+building.granary.name,Name of the granary building.,[Granary]
+building.granary.summary,One-line summary of the granary.,"[Lifts a province's grain, easing a hungry world.]"
+assignment.raise-a-granary.title,Title of the granary-construction assignment.,[Raise a Granary]
+assignment.raise-a-granary.summary,One-line summary of raising a granary.,[Build a granary on one of your provinces to grow more grain.]
+ship.karvess-hauler.name,Name of Veyrin's freighter out of Karvessa.,[Karvess Hauler]

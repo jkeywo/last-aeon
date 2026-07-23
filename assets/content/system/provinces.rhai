@@ -8,16 +8,19 @@ define_province(#{
     id: "karvessa", body: "ashkarr",
     latitude_mdeg: 75638, longitude_mdeg: 0,
     wealth_output: 20, manpower_output: 20, supplies_output: 12,
+    produces: #{ grain: 15 },
 });
 define_province(#{
     id: "dreghal", body: "ashkarr",
     latitude_mdeg: 64992, longitude_mdeg: 137508,
     wealth_output: 12, manpower_output: 15, supplies_output: 8,
+    produces: #{ grain: 15 },
 });
 define_province(#{
     id: "tolmaz", body: "ashkarr",
     latitude_mdeg: 57538, longitude_mdeg: -84984,
     wealth_output: 12, manpower_output: 15, supplies_output: 8,
+    produces: #{ grain: 10 },
 });
 define_province(#{
     id: "veyrmark", body: "ashkarr",
@@ -169,16 +172,19 @@ define_province(#{
     id: "port-vesk", body: "vesk",
     latitude_mdeg: 61045, longitude_mdeg: 57296,
     wealth_output: 20, manpower_output: 20, supplies_output: 12,
+    produces: #{ ore: 10 }, consumes: #{ grain: 10 },
 });
 define_province(#{
     id: "tithe-pits", body: "vesk",
     latitude_mdeg: 38682, longitude_mdeg: -165196,
     wealth_output: 12, manpower_output: 15, supplies_output: 8,
+    consumes: #{ grain: 10 },
 });
 define_province(#{
     id: "cryon-basin", body: "vesk",
     latitude_mdeg: 22024, longitude_mdeg: -27689,
     wealth_output: 12, manpower_output: 15, supplies_output: 8,
+    produces: #{ ore: 10 },
 });
 define_province(#{
     id: "stillmere", body: "vesk",
@@ -210,4 +216,5 @@ define_province(#{
     id: "spire-decks", body: "aurelian-spire",
     latitude_mdeg: 0, longitude_mdeg: 0,
     wealth_output: 25, manpower_output: 8, supplies_output: 20,
+    consumes: #{ grain: 8 },
 });

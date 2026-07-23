@@ -12,8 +12,8 @@
 entities:
   - system: milestone-9-implementation-plan
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "Milestone 9: The Living Economy"
       summary: >-
         Provinces gain typed goods they produce and consume. Within a
@@ -26,6 +26,9 @@ entities:
         relieving a deficit and earning wealth on the trip. Every flow is
         integer and legible; there is no price discovery, by design.
       references:
+        - the-goods-economy
+        - goods-balance-is-derived-not-stored
+        - trade-crosses-worlds-only-by-ship
         - provincial-order-system
         - campaign-map
         - tracked-starships
@@ -190,8 +193,8 @@ entities:
 
   - milestone: m9-authored-economy
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "M9.4: The Scenario Comes Alive"
       summary: >-
         The authored world grows the economy it now supports: the moon and
@@ -208,5 +211,27 @@ entities:
     implementation:
       paths:
         - assets/content/system/provinces.rhai
+        - assets/content/core/economy.rhai
+        - assets/content/scenario/ashkarr-succession.rhai
         - assets/text/strings.csv
+      tests:
+        - crates/aeon_sim/tests/acceptance.rs
       status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/acceptance.rs
+        summary: >-
+          On the real scenario the planet grows a grain surplus while the
+          moon runs a deficit and, untraded, is in want; left to run, a
+          transport takes up the surplus-to-deficit route unbidden, the
+          grain reaches the moon, and a blockade at the delivery dock cuts
+          the line — content alone, no scripted nudge.
+      - kind: manual-review
+        reference: assets/content/core/economy.rhai
+        summary: >-
+          The single-system scenario is now economically interdependent —
+          the moon and starbase cannot feed themselves, the planet can and
+          more — with two goods, a granary to build, and a non-player
+          transport that ferries between the worlds. Content alone drives
+          every new behaviour; no engine change landed in this
+          sub-milestone.

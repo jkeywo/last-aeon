@@ -1515,3 +1515,49 @@ entities:
         - directives-are-derived-not-stored
         - player-organisation
         - single-source-leader-availability
+
+  - decision: goods-balance-is-derived-not-stored
+    core:
+      status: accepted
+      confidence: confirmed
+      title: A World's Goods Balance Is Derived, Not Stored
+      summary: >-
+        A body's net balance in each good — production less consumption
+        across its provinces, plus what its buildings add and its routes
+        carry in — is recomputed whenever it is read, never kept in a
+        buffer. Production and consumption are content; buildings and trade
+        routes are already-persisted state; so the balance follows from
+        state that exists and needs no store of its own. A world in want
+        reuses the order system's existing privation rather than adding a
+        new arithmetic kind; a surplus sells and splits among the world's
+        held provinces.
+      rationale:
+        - A stored balance invites the store and its sources to disagree; deriving it keeps one truth and removes a snapshot section and a reconciliation step.
+        - Reusing the order privation for a goods shortfall means a hungry world behaves like a supply-starved one, which the player already understands.
+      references:
+        - the-goods-economy
+        - provincial-order-system
+        - plans-live-in-one-resource
+
+  - decision: trade-crosses-worlds-only-by-ship
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Goods Net Within a World, but Cross the Gulf Only by Ship
+      summary: >-
+        Goods flow freely within a body but do not net between bodies:
+        a hungry world is answered only by a transport plying a standing
+        route to it, the ship's counterpart to an army's standing orders.
+        A running route brings its capacity of the good each month and
+        earns its carrier the margin on what it sells into scarcity; a
+        blockade at either dock cuts the line. The route is ship state, so
+        it persists with the ship, and its relief is derived like the rest
+        of the balance. The transport shuttles its docks through the
+        transit machinery ships already have.
+      rationale:
+        - Making distance matter — a surplus on one world cannot answer a want on another without a carrier — is what turns tracked starships and idle transports into an economy rather than flavour.
+        - Interdicting trade by blockade layers a lever of war onto a system that already halves a blockaded province's wealth.
+      references:
+        - the-goods-economy
+        - tracked-starships
+        - job-based-operational-warfare

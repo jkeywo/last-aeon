@@ -1395,6 +1395,33 @@ entities:
       classification: domain
       authority: authoritative
 
+  - component: the-goods-economy
+    core:
+      status: accepted
+      confidence: confirmed
+      title: The Goods Economy
+      summary: >-
+        Provinces produce and consume typed goods. Within a world the
+        balance nets freely; a world that cannot cover its own consumption
+        falls into want, felt as the order privation the game already
+        models, and a surplus sells to enrich the houses that hold the
+        land. Buildings, raised over time at a cost through the ordinary
+        assignment pipeline, change what a place makes. Between worlds
+        goods must be carried: a transport plies a standing route from a
+        surplus world to a hungry one, answering the want and earning the
+        trade margin, until a blockade at either dock cuts the line. The
+        model is logistics, not a market — deterministic integer flows a
+        player can read.
+      references:
+        - provincial-order-system
+        - tracked-starships
+        - campaign-map
+        - mvp-local-system-scope
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
   - component: grand-strategy-goals
     core:
       status: accepted

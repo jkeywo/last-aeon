@@ -485,6 +485,10 @@ define_ship(#{
     owner: "harrow", captain: "captain-lira", location: "tolmaz",
 });
 define_ship(#{
+    id: "karvess-hauler", class: "transport",
+    owner: "veyrin", location: "karvessa",
+});
+define_ship(#{
     id: "pale-lantern", class: "patrol",
     owner: "okonn", captain: "captain-okonn-marek", location: "port-vesk",
 });

@@ -60,7 +60,7 @@ fn scenario_has_the_full_authored_field() {
     assert_eq!(content.organisations.len(), 14, "organisation count");
     assert_eq!(content.provinces.len(), 41, "province count");
     assert_eq!(content.bodies.len(), 3, "bodies");
-    assert_eq!(content.ships.len(), 6, "ships");
+    assert_eq!(content.ships.len(), 7, "ships");
     assert_eq!(content.armies.len(), 17, "starting armies");
     assert_eq!(
         content

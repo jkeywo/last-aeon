@@ -413,3 +413,84 @@ fn a_great_house_forms_an_ambition_and_directs_a_vassal() {
         "a house pursuing a directive-pressing ambition should press it on a vassal"
     );
 }
+
+/// Milestone 9 acceptance: on the real authored scenario the worlds are
+/// economically interdependent — the moon cannot feed itself while the
+/// planet grows a surplus — and a transport takes up the route that
+/// answers the want, unbidden. A blockade cuts the line.
+#[test]
+fn the_scenario_worlds_trade_grain_across_the_gulf() {
+    use aeon_sim::MapIndex;
+
+    let content = repository_content();
+    let mut h = scenario_host(content, 24680);
+
+    let vesk = h.world_mut().resource::<MapIndex>().body_keys[&key("vesk")];
+    let ashkarr = h.world_mut().resource::<MapIndex>().body_keys[&key("ashkarr")];
+    let grain = key("grain");
+
+    // The planet grows a grain surplus; the moon runs a grain deficit.
+    assert!(
+        aeon_sim::trade::body_balance(h.world_mut(), ashkarr)[&grain] > 0,
+        "the planet feeds itself and more"
+    );
+    assert!(
+        aeon_sim::trade::body_balance(h.world_mut(), vesk)[&grain] < 0,
+        "the moon cannot grow the grain it eats"
+    );
+    assert!(
+        aeon_sim::trade::body_in_want(h.world_mut(), vesk),
+        "so, untraded, the moon is in want"
+    );
+
+    // Left to run, a transport takes up the route that answers it.
+    let hauler =
+        h.world_mut().resource::<aeon_sim::ForcesIndex>().ship_keys[&key("karvess-hauler")];
+    let mut routed = false;
+    for _ in 0..24 {
+        h.advance_days(30);
+        let has_route = {
+            let entity = h.world_mut().resource::<aeon_sim::ForcesIndex>().ships[&hauler];
+            h.world_mut()
+                .get::<aeon_sim::ShipRecord>(entity)
+                .and_then(|s| s.route.clone())
+        };
+        if let Some(route) = has_route {
+            assert_eq!(route.good, grain, "the route carries grain");
+            routed = true;
+            break;
+        }
+    }
+    assert!(
+        routed,
+        "an idle transport should take up the surplus-to-deficit route unbidden"
+    );
+    assert!(
+        aeon_sim::trade::route_relief(h.world_mut(), vesk, &grain) > 0,
+        "and the grain now reaches the moon"
+    );
+
+    // Blockade the delivery dock and the line is cut.
+    let route = {
+        let entity = h.world_mut().resource::<aeon_sim::ForcesIndex>().ships[&hauler];
+        h.world_mut()
+            .get::<aeon_sim::ShipRecord>(entity)
+            .unwrap()
+            .route
+            .clone()
+            .unwrap()
+    };
+    let picket = h.world_mut().resource::<aeon_sim::ForcesIndex>().ship_keys[&key("pale-lantern")];
+    {
+        let entity = h.world_mut().resource::<aeon_sim::ForcesIndex>().ships[&picket];
+        h.world_mut()
+            .get_mut::<aeon_sim::ShipRecord>(entity)
+            .unwrap()
+            .blockading = Some(route.sink);
+    }
+    assert_eq!(
+        aeon_sim::trade::route_relief(h.world_mut(), vesk, &grain),
+        0,
+        "a blockade at the dock stops the grain"
+    );
+}
