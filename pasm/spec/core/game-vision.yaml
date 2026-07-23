@@ -1395,6 +1395,32 @@ entities:
       classification: domain
       authority: authoritative
 
+  - component: grand-strategy-goals
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Grand-Strategy Goals
+      summary: >-
+        Above the per-character plan sits the house's standing ambition: a
+        head chooses a goal — win the Consulship, take the planet, conquer
+        a neighbour — that it pursues across reigns. A goal does not
+        execute. It lifts the pressures it favours in the head's own
+        scoring, so the plans and assignments already in place carry it
+        out, and it presses advisory directives on the house's vassals,
+        lifting the pressures they name in the vassal head's scoring in
+        turn. The player joins the same chain of command: they may press a
+        directive on a house that answers to them, and they see the wish
+        their liege presses on them, to heed or ignore.
+      references:
+        - plans-are-authored-campaigns
+        - characters-are-the-acting-unit
+        - organisation-agency-model
+        - consul-vacancy-is-a-contested-appointment
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
   - component: job-forecast-and-explanation-ui
     core:
       status: accepted

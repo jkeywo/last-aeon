@@ -1447,3 +1447,71 @@ entities:
         - plans-are-authored-campaigns
         - characters-are-the-acting-unit
         - rng-stream-labels-are-identities-not-names
+
+  - decision: goals-are-a-lens-over-scoring
+    core:
+      status: accepted
+      confidence: confirmed
+      title: A Goal Steers by Biasing Scoring, Not by Executing
+      summary: >-
+        A grand-strategy goal adds no executor. While a house holds one, it
+        lifts the pressures the goal favours in the head's own scoring, so
+        the reactive scorer, the plans, and the assignments already in
+        place carry the ambition out. The goal lives in a resource keyed by
+        the organisation rather than the character, so it outlives the
+        succession that ends a plan; it ends when its rival falls, its
+        house falls, or its horizon passes.
+      rationale:
+        - A second execution engine above plans would double the ways a house can act and the places behaviour can diverge; a bias over the one scorer keeps a single path from pressure to deed.
+        - An ambition that spans reigns belongs to the house, not the person, which is why goals key by organisation while plans key by character.
+      references:
+        - grand-strategy-goals
+        - plans-are-authored-campaigns
+        - characters-are-the-acting-unit
+        - rng-stream-labels-are-identities-not-names
+
+  - decision: directives-are-derived-not-stored
+    core:
+      status: accepted
+      confidence: confirmed
+      title: A Goal's Directives Are Derived, Not Stored
+      summary: >-
+        A directive pressed by a liege's ambition is read straight off goal
+        state through one function, directives_on, rather than kept in a
+        record of its own. It therefore exists exactly while the liege
+        holds the goal that presses it, cannot drift after a restore, and
+        lapses for free when the goal ends. Only a directive issued by hand
+        — which has no goal behind it — is stored, in IssuedDirectives, and
+        the same function merges the two so the scorer and the interface
+        read one source. A directive is advisory: it lifts a pressure in
+        the vassal head's scoring and never compels.
+      rationale:
+        - Storing what can be derived invites the store and the source to disagree; deriving the goal's directives removes a snapshot section and a whole class of drift.
+        - A hand-issued directive is the exception that must be stored precisely because no goal stands behind it to derive it from.
+      references:
+        - grand-strategy-goals
+        - goals-are-a-lens-over-scoring
+        - organisation-agency-model
+
+  - decision: directives-authorised-by-the-chain-of-command
+    core:
+      status: accepted
+      confidence: confirmed
+      title: A Directive Is Authorised by the Chain of Command
+      summary: >-
+        IssueDirective and ClearDirective are the first player commands
+        authorised by hierarchy rather than ownership: the player may press
+        a directive on a house that answers directly to them —
+        answers_to == Some(1) — and on no other, re-checked at apply time
+        like every command. What the player may ask of a vassal is exactly
+        what the vassal could choose, so the advisory rule holds in both
+        directions, and the interface shows the player both the wish their
+        liege presses on them and the wish they press on a vassal.
+      rationale:
+        - Every prior command validated against the player's own organisation; directing a vassal is a genuinely new authority, and the hierarchy — not ownership — is what grants it.
+        - "Advisory in both directions keeps the guarantee that a house acts only through its head — neither a liege nor the player can compel a vassal to do what it could not have chosen."
+      references:
+        - grand-strategy-goals
+        - directives-are-derived-not-stored
+        - player-organisation
+        - single-source-leader-availability

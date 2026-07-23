@@ -14,8 +14,8 @@
 entities:
   - system: milestone-8-implementation-plan
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "Milestone 8: Grand Strategy"
       summary: >-
         A goal is a house's standing ambition, pursued across reigns,
@@ -30,6 +30,10 @@ entities:
         directive their liege has issued them as information to act on or
         set aside.
       references:
+        - grand-strategy-goals
+        - goals-are-a-lens-over-scoring
+        - directives-are-derived-not-stored
+        - directives-authorised-by-the-chain-of-command
         - characters-are-the-acting-unit
         - intent-driven-organisation-agency
         - plans-are-authored-campaigns
@@ -238,8 +242,8 @@ entities:
 
   - milestone: m8-authored-goals
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "M8.5: Real Ambitions Move the World"
       summary: >-
         The shipped content grows real goals — conquer a neighbour,
@@ -256,5 +260,26 @@ entities:
         - planetary-paramount-title-is-contested
     implementation:
       paths:
+        - assets/content/core/goals.rhai
         - assets/text/strings.csv
+      tests:
+        - crates/aeon_sim/tests/acceptance.rs
       status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/acceptance.rs
+        summary: >-
+          On the real authored scenario, a great house forms a grand
+          ambition unprompted and presses an advisory directive on a house
+          that answers to it, with no scripted nudge — the whole layer, end
+          to end, on the shipped content.
+      - kind: manual-review
+        reference: assets/content/core/goals.rhai
+        summary: >-
+          Three shipped ambitions — win the Consulship, take the planet,
+          conquer a neighbour — each favouring the pressures that serve it
+          and directing vassals to lend their weight. Content alone drives
+          every behaviour; no engine change landed in this sub-milestone.
+          Becoming Consul is now something a house works toward rather than
+          only falls into, though it must still wait on a vacancy until the
+          shadows of Milestone 10 can make one.

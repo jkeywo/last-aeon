@@ -368,3 +368,48 @@ fn an_autonomous_house_pursues_the_claim_as_a_campaign() {
         "the campaign that declared the war should have armed it"
     );
 }
+
+/// Milestone 8 acceptance: on the real authored scenario, a great house
+/// forms a grand ambition unprompted and presses an advisory directive on
+/// a house that answers to it — with no scripted nudge.
+#[test]
+fn a_great_house_forms_an_ambition_and_directs_a_vassal() {
+    use aeon_sim::goals::Goals;
+
+    let content = repository_content();
+    let mut h = scenario_host(content, 90210);
+
+    let mut directed_vassal = false;
+    let mut ambitious_house = None;
+    for _ in 0..48 {
+        h.advance_days(30);
+        let active: Vec<OrgId> = h
+            .world_mut()
+            .resource::<Goals>()
+            .active
+            .keys()
+            .copied()
+            .collect();
+        for house in active {
+            ambitious_house = Some(house);
+            // Does any house receive a directive from an ambition?
+            for vassal in aeon_sim::politics::vassals_of(h.world_mut(), house) {
+                if !aeon_sim::goals::directives_on(h.world_mut(), vassal).is_empty() {
+                    directed_vassal = true;
+                }
+            }
+        }
+        if directed_vassal {
+            break;
+        }
+    }
+
+    assert!(
+        ambitious_house.is_some(),
+        "some autonomous house should form a grand ambition on the real scenario"
+    );
+    assert!(
+        directed_vassal,
+        "a house pursuing a directive-pressing ambition should press it on a vassal"
+    );
+}
