@@ -14,6 +14,7 @@ use crate::assignment_ui::UiCommandQueue;
 use crate::ui::lookup::Lookup;
 
 /// Draws the player's assignments in progress.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_assignments_panel(
     ui: &mut egui::Ui,
     lookup: &Lookup,

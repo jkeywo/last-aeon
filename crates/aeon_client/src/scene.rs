@@ -595,8 +595,8 @@ fn readout_fingerprint(readout: &MapReadout) -> u64 {
     acc
 }
 
-/// Spawns lights, system-view body markers, per-body political globes, and
-/// the selection pin.
+/// Spawns lights, system-view body markers, and per-body political globes.
+#[allow(clippy::too_many_arguments)]
 pub fn spawn_scene(
     mut commands: Commands,
     mut meshes: ResMut<Assets<Mesh>>,
@@ -697,8 +697,9 @@ pub fn spawn_scene(
             texture_asset_paths(record.key.as_str()).map_or_else(
                 || (None, None, BTreeMap::new()),
                 |(surface_path, id_path, manifest)| {
-                    let manifest: ProvinceIdManifest = serde_json::from_str(manifest.strip_prefix('\u{FEFF}').unwrap_or(manifest))
-                        .expect("bundled province ID manifests must be valid JSON");
+                    let manifest: ProvinceIdManifest =
+                        serde_json::from_str(manifest.strip_prefix('\u{FEFF}').unwrap_or(manifest))
+                            .expect("bundled province ID manifests must be valid JSON");
                     let province_by_colour = body_provinces
                         .iter()
                         .filter_map(|(province, _, _)| {

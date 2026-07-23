@@ -648,7 +648,11 @@ pub fn pick_destination(
         form.province = Some(id);
         form.map_pick = None;
     }
-    if map_pick_button(ui, strings, form.map_pick == Some(ProvinceSlot::Destination)) {
+    if map_pick_button(
+        ui,
+        strings,
+        form.map_pick == Some(ProvinceSlot::Destination),
+    ) {
         form.map_pick = Some(ProvinceSlot::Destination);
     }
 }

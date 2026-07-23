@@ -139,7 +139,11 @@ fn draw_panel_toggles(ui: &mut egui::Ui, theme: &UiTheme, strings: &TextDb, dock
         // A stable id keyed by the panel kind, so egui's sizing and render
         // passes agree on it even as widgets to the left change width.
         let (rect, _) = ui.allocate_exact_size(egui::vec2(button, button), egui::Sense::hover());
-        let response = ui.interact(rect, ui.id().with(("panel-toggle", *kind)), egui::Sense::click());
+        let response = ui.interact(
+            rect,
+            ui.id().with(("panel-toggle", *kind)),
+            egui::Sense::click(),
+        );
         let visuals = ui.style().interact_selectable(&response, side.is_some());
         if side.is_some() || response.hovered() {
             ui.painter()
