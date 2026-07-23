@@ -38,7 +38,7 @@ fn fragment(vertex_output: VertexOutput, @builtin(front_facing) is_front: bool) 
 
     // A two-second pulse marking the selected territory. With no pin sphere
     // to point at it, this brightening is the only cue, so it runs strong.
-    let pulse = 0.35 + 0.15 * (0.5 + 0.5 * sin(globals.time * 3.14159265));
+    let pulse = 0.55 + 0.20 * (0.5 + 0.5 * sin(globals.time * 3.14159265));
     if (matches_selection) {
         let boosted = pbr_input.material.base_color.rgb * (1.0 + pulse);
         pbr_input.material.base_color = vec4<f32>(boosted, pbr_input.material.base_color.a);

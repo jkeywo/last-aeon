@@ -454,7 +454,7 @@ fn bake_texture(
     // holds a border and then steps aside to let the authored world show.
     let distance = border_distance(&is_border);
     // Texels over which the overlay fades from its border peak to its floor.
-    let fade = 24.0f32;
+    let fade = 16.0f32;
 
     let neutral = [90u8, 90, 96];
     let mut data = vec![0u8; TEX_W * TEX_H * 4];

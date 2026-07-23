@@ -19,8 +19,10 @@ use crate::sim_driver;
 /// Which screen the client is showing.
 #[derive(States, Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Screen {
-    /// The front door.
+    /// Warming the presentation assets before the front door opens.
     #[default]
+    Loading,
+    /// The front door.
     Title,
     /// A campaign, running.
     Playing,

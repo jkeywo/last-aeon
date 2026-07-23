@@ -664,3 +664,4 @@ ui.title.new-game,Title screen button: start the authored scenario afresh.,[New 
 ui.title.continue,Title screen button: restore the autosaved campaign. Native builds only.,[Continue]
 ui.title.spectator,Title screen tickbox: start with no player house and watch.,[Spectator mode]
 ui.title.spectator-note,Small print under the spectator tickbox explaining what it means.,"[No house is yours: every court acts on its own, and the whole interface is a window to watch through.]"
+ui.loading,Loading screen label shown while the game presentation assets are fetched.,[Loading the local system...]

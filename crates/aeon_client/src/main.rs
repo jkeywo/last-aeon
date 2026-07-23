@@ -10,6 +10,7 @@ mod assignment_ui;
 mod camera;
 mod content;
 mod forecast_view;
+mod loading;
 mod map_modes;
 mod map_overlay;
 mod offer_view;
@@ -66,12 +67,13 @@ fn main() {
         .init_resource::<ui::picker::PickerState>()
         .init_resource::<ui::assignment_popup::AssignmentPopup>()
         .init_resource::<ui::dock::DockState>()
+        .init_resource::<loading::GameAssets>()
         .init_state::<title::Screen>()
         .init_resource::<title::TitleState>()
         // The client boots to the title screen; no campaign resource
         // exists until the player steps through, and the scene has
         // nothing to spawn a globe from until one does.
-        .add_systems(Startup, camera::spawn_camera)
+        .add_systems(Startup, (camera::spawn_camera, loading::begin_preload))
         .add_systems(OnEnter(title::Screen::Playing), scene::spawn_scene)
         .add_systems(
             OnEnter(title::Screen::Title),
@@ -114,6 +116,7 @@ fn main() {
                 #[cfg(not(target_arch = "wasm32"))]
                 ui::theme::reload_theme_from_disk,
                 ui::theme::apply_theme,
+                loading::loading_screen.run_if(in_state(title::Screen::Loading)),
                 title::draw_title.run_if(in_state(title::Screen::Title)),
                 (
                     map_overlay::draw_map_overlay,
