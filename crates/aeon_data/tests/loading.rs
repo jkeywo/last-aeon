@@ -300,6 +300,61 @@ fn repository_content_loads() {
     assert!(set.is_some(), "repository content must load without errors");
 }
 
+/// The authored assassination lays death on its target; exposed, it
+/// swears a grievance against the house that tried.
+#[test]
+fn the_authored_assassination_strikes_the_target() {
+    use aeon_data::model::{OutcomeKind, RiskTag};
+    use aeon_data::{EffectRole, ScriptEffect, ScriptHost};
+
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/content");
+    let sources = aeon_data::fs::read_content_dir(&root).expect("assets/content readable");
+    let (set, _) = load_content(&sources, &aeon_data::StringTable::blank());
+    let set = set.expect("repository content loads");
+    let host = ScriptHost::new();
+    let assassinate = &set.assignments[&aeon_data::ContentKey::new("assassinate").unwrap()];
+
+    let done = host
+        .call_effect_fn(
+            &set,
+            assassinate.results[&OutcomeKind::Success]
+                .effect_fn
+                .as_ref()
+                .unwrap(),
+            rhai::Map::new(),
+        )
+        .unwrap();
+    assert_eq!(
+        done,
+        vec![ScriptEffect::Condition {
+            target: EffectRole::Target,
+            tag: RiskTag::Death
+        }],
+        "success ends the mark's life"
+    );
+
+    let exposed = host
+        .call_effect_fn(
+            &set,
+            assassinate.results[&OutcomeKind::Disaster]
+                .effect_fn
+                .as_ref()
+                .unwrap(),
+            rhai::Map::new(),
+        )
+        .unwrap();
+    assert!(
+        matches!(
+            exposed.as_slice(),
+            [ScriptEffect::Obligation {
+                kind: aeon_data::model::ObligationKind::Grievance,
+                ..
+            }]
+        ),
+        "exposure swears a grievance, got {exposed:?}"
+    );
+}
+
 // ---------------------------------------------------------------------------
 // Individual validation branches, exercised through small fixtures
 // ---------------------------------------------------------------------------

@@ -82,8 +82,8 @@ entities:
 
   - milestone: m10-assassination-and-abduction
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "M10.2: A Knife in the Dark"
       summary: >-
         Authored intrigue aimed at a person: to have them killed, taken,
@@ -96,15 +96,34 @@ entities:
       goals:
         - A character can be removed by intrigue, at real risk to the house that tries.
         - Being caught leaves a grievance on the record, so a failed scheme has a political cost that outlives it.
-        - The AI can scheme, because the assignment declares the pressure it answers like every other.
+        - The AI reaches these through the plans and goals of Milestone 8, not the reactive scorer — a house does not murder on a whim.
       references:
         - obligations-are-specific-political-facts
         - consul-vacancy-is-a-contested-appointment
     implementation:
       paths:
-        - assets/content/core/administration.rhai
+        - assets/content/core/intrigue.rhai
         - assets/text/strings.csv
+      tests:
+        - crates/aeon_data/tests/loading.rs
       status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_data/tests/loading.rs
+        summary: >-
+          The authored assassination lays death on its target on success
+          and swears a grievance against the house that tried when exposed;
+          the target-directed harm of M10.1 carries it.
+      - kind: manual-review
+        reference: assets/content/core/intrigue.rhai
+        summary: >-
+          Assassination and abduction are authored intrigue aimed at a
+          character: success lays death or capture on the target through
+          the condition effect, and the leader who fails risks capture,
+          scandal, or their own life. They are ai_available:false — the
+          reactive scorer never reaches them, so a house does not murder on
+          a whim; a plan or a grand ambition may call for them, and the
+          player may order them by hand. Content alone; no engine change.
 
   - milestone: m10-sabotage
     core:

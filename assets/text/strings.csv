@@ -694,3 +694,12 @@ building.granary.summary,One-line summary of the granary.,"[Lifts a province's g
 assignment.raise-a-granary.title,Title of the granary-construction assignment.,[Raise a Granary]
 assignment.raise-a-granary.summary,One-line summary of raising a granary.,[Build a granary on one of your provinces to grow more grain.]
 ship.karvess-hauler.name,Name of Veyrin's freighter out of Karvessa.,[Karvess Hauler]
+assignment.assassinate.title,Title of the assassination assignment.,[Have Them Killed]
+assignment.assassinate.summary,One-line summary of assassination.,"[Send an agent to end a rival's life. Hard, and deadly if it goes wrong.]"
+assignment.assassinate.critical-success.popup-text,Popup when an assassination succeeds cleanly.,[Your agent found the moment. The mark will not see another dawn.]
+assignment.assassinate.success.popup-text,Popup when an assassination succeeds.,"[It is done. The mark is dead, and no thread leads back to you.]"
+assignment.assassinate.disaster.popup-text,Popup when an assassination is exposed.,"[The attempt failed and was traced to your house; a grievance is sworn against you.]"
+assignment.abduct.title,Title of the abduction assignment.,[Have Them Taken]
+assignment.abduct.summary,One-line summary of abduction.,[Send an agent to seize a rival and hold them out of the game.]
+assignment.abduct.success.popup-text,Popup when an abduction succeeds.,"[The mark is taken, and will trouble no one for a long while.]"
+assignment.abduct.disaster.popup-text,Popup when an abduction is exposed.,"[The seizure was bungled and traced to you; a grievance is sworn against your house.]"
