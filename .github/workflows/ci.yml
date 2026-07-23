@@ -23,8 +23,8 @@ jobs:
     name: PASM model validation
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
       - name: Validate the PASM model
         run: uv run pasm validate
 
@@ -32,7 +32,7 @@ jobs:
     name: Format, lint, and test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Install Bevy system dependencies
         run: |
           sudo apt-get update
@@ -54,14 +54,15 @@ jobs:
     name: Build the web client
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: Swatinem/rust-cache@v2
       - name: Add the wasm target
         run: rustup target add wasm32-unknown-unknown
       - name: Install trunk
-        uses: jetli/trunk-action@v0.5.0
-        with:
-          version: latest
+        # Built from source rather than a third-party action, so the
+        # wasm job carries no Node-runtime dependency of its own; the
+        # rust-cache above keeps the compiled binary between runs.
+        run: cargo install --locked trunk
       - name: Build the release web bundle
         working-directory: crates/aeon_client
         # The site is served from a repository subpath on GitHub Pages, so
