@@ -1,0 +1,141 @@
+# Post-MVP implementation plan — Milestone 9
+#
+# A province's economy is three numbers: the wealth, manpower, and
+# supplies it yields each month, summed straight into its holder's
+# stores. Nothing is made or wanted in particular, nothing moves, nothing
+# is built. This milestone gives the economy a body: provinces produce
+# and consume typed goods, a shortfall bites, a surplus sells, buildings
+# change what a place makes, and transports finally earn their keep
+# carrying goods between worlds. The model is logistics, not a market —
+# deterministic integer flows a player can read, not prices to arbitrage.
+
+entities:
+  - system: milestone-9-implementation-plan
+    core:
+      status: proposed
+      confidence: provisional
+      title: "Milestone 9: The Living Economy"
+      summary: >-
+        Provinces gain typed goods they produce and consume. Within a
+        world the balance nets freely; between worlds goods must be
+        carried, and a world that cannot meet its own consumption feels
+        the shortfall through the order pressure that already models
+        privation. Buildings, constructed over time at a cost, change what
+        a province makes. Transports — a ship class that has carried
+        nothing until now — run standing trade routes between worlds,
+        relieving a deficit and earning wealth on the trip. Every flow is
+        integer and legible; there is no price discovery, by design.
+      references:
+        - provincial-order-system
+        - campaign-map
+        - tracked-starships
+        - mvp-local-system-scope
+
+  - milestone: m9-goods-and-the-provincial-balance
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M9.1: Provinces Produce and Consume"
+      summary: >-
+        A small authored set of goods, and per-province rates for what
+        each makes and needs. Monthly, each world nets its provinces'
+        production against their consumption; an unmet need raises the
+        shortage the order system already knows how to feel, and a surplus
+        sells into its holder's wealth. This reuses the order model's
+        shape exactly — derive a balance, apply a pure integer delta, tell
+        the player why — and adds no new arithmetic kind.
+      goals:
+        - A world that cannot feed itself shows it, through the same privation pressure a supply shortage already raises.
+        - A surplus becomes wealth, so what a province makes matters beyond the three flat outputs.
+        - The whole balance is integer and per-world deterministic, and its state rides the snapshot like order does.
+      references:
+        - provincial-order-system
+    implementation:
+      paths:
+        - crates/aeon_sim/src/economy.rs
+        - crates/aeon_sim/src/order.rs
+        - crates/aeon_sim/src/snapshot.rs
+        - crates/aeon_data/src/model.rs
+        - assets/content/system/provinces.rhai
+      status: declared
+
+  - milestone: m9-buildings
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M9.2: Buildings Change What a Place Makes"
+      summary: >-
+        A building is authored content; a province holds the ones it has
+        built, in stable order. Constructing one is an assignment that
+        spends wealth and supplies over time and, on completion, adds the
+        building through a new economic effect — the same enum, parse, and
+        apply pattern every authored effect follows. A building changes
+        the province's production and consumption, feeding back into the
+        monthly balance, and the interface shows what a province has and
+        is raising.
+      goals:
+        - What a province produces is no longer fixed by its definition alone; building is a lever the player and the AI can pull.
+        - A building is added only through the same validated assignment pipeline every action takes.
+        - The construction effect extends the authored vocabulary in the one established place, not the engine's decisions.
+      references:
+        - agency-intents-are-authored-on-jobs
+    implementation:
+      paths:
+        - crates/aeon_data/src/effect.rs
+        - crates/aeon_data/src/model.rs
+        - crates/aeon_sim/src/assignments.rs
+        - crates/aeon_sim/src/economy.rs
+        - crates/aeon_client/src/ui/inspector.rs
+      status: declared
+
+  - milestone: m9-trade-routes
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M9.3: Transports Run the Routes Between Worlds"
+      summary: >-
+        A transport carries a surplus good from the world that has it to
+        the world that lacks it, on a standing route — the ship's
+        counterpart to an army's standing orders, reusing the transit,
+        travel-time, and docking machinery that has sat idle since ships
+        were tracked. Each round trip moves a quantity, relieves the
+        deficit, and earns wealth. A blockade, which already starves a
+        province's wealth, now also interdicts the routes that pass
+        through it, so a war can throttle a rival's supply.
+      goals:
+        - A ship class that has carried nothing finally has a job, and the transit machinery already built carries it.
+        - A world's deficit can be answered from another world's surplus, at the cost and delay of the crossing.
+        - Interdicting trade is a lever of war, layered onto the blockade that already exists.
+      references:
+        - tracked-starships
+        - job-based-operational-warfare
+    implementation:
+      paths:
+        - crates/aeon_sim/src/forces.rs
+        - crates/aeon_sim/src/warfare.rs
+        - crates/aeon_sim/src/presence.rs
+        - crates/aeon_sim/src/snapshot.rs
+      status: declared
+
+  - milestone: m9-authored-economy
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M9.4: The Scenario Comes Alive"
+      summary: >-
+        The authored world grows the economy it now supports: the moon and
+        starbase produce what the planet wants and want what the planet
+        makes, buildings worth raising, and the routes that tie them
+        together. A seed-pinned acceptance run proves goods flow between
+        worlds, a deficit is relieved by a route, and a blockade is felt —
+        with no scripted nudge. The spec records the milestone.
+      goals:
+        - "The single-system scenario is economically interdependent — worlds need each other, and ships make the difference."
+        - Content alone drives every new behaviour; no engine change lands in this sub-milestone.
+      references:
+        - mvp-local-system-scope
+    implementation:
+      paths:
+        - assets/content/system/provinces.rhai
+        - assets/text/strings.csv
+      status: declared
