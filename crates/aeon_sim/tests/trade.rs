@@ -336,3 +336,178 @@ fn a_raised_building_survives_a_snapshot() {
         "a raised building is campaign state and rides the snapshot"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Trade routes
+// ---------------------------------------------------------------------------
+
+const ROUTE_FIXTURE: &str = r#"
+define_scenario(#{
+    id: "fixture", start_year: 411, start_month: 1, start_day: 1,
+    player_house: "ash",
+});
+define_name_pool(#{ id: "names", male: ["Bram"], female: ["Yeva"] });
+
+define_body(#{ id: "world", kind: "planet", radius_km: 6000 });
+define_body(#{ id: "moon", kind: "moon", radius_km: 1700,
+              parent: "world", orbit_radius_mm: 384, orbit_days: 27 });
+define_good(#{ id: "grain", value: 2 });
+
+define_province(#{ id: "alpha", body: "world",
+                   latitude_mdeg: 0, longitude_mdeg: 0,
+                   wealth_output: 0, manpower_output: 0, supplies_output: 0,
+                   produces: #{ grain: 30 } });
+define_province(#{ id: "luna", body: "moon",
+                   latitude_mdeg: 0, longitude_mdeg: 0,
+                   wealth_output: 0, manpower_output: 0, supplies_output: 0,
+                   consumes: #{ grain: 20 } });
+
+define_house(#{
+    id: "ash", tier: "great",
+    head: "aron-ash", color: [200, 60, 60], provinces: ["alpha", "luna"],
+    wealth: 500, manpower: 5000, supplies: 800, legitimacy: 60,
+});
+define_character(#{
+    id: "aron-ash", gender: "male",
+    birth_year: 370, organisation: "ash",
+    skills: #{ command: 8, diplomacy: 12, intrigue: 4, stewardship: 7 },
+});
+
+// A transport to ply the route, and a patrol boat to blockade with.
+define_ship(#{ id: "hauler", class: "transport", owner: "ash", location: "alpha" });
+define_ship(#{ id: "picket", class: "patrol", owner: "ash", location: "luna" });
+"#;
+
+fn route_host(seed: u64) -> SimHost {
+    let (set, report) = load_content(
+        &[ContentSource {
+            path: "fixture.rhai".to_owned(),
+            source: ROUTE_FIXTURE.to_owned(),
+        }],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(!report.has_errors(), "findings: {:?}", report.findings);
+    SimHost::new_with_content(
+        CampaignConfig {
+            name: "Route Trial".to_owned(),
+            seed,
+            start_date: CalendarDate {
+                year: 411,
+                month: 1,
+                day: 1,
+            }
+            .to_date()
+            .unwrap(),
+        },
+        Arc::new(set.unwrap()),
+    )
+}
+
+fn ship(h: &mut SimHost, name: &str) -> aeon_sim::ShipId {
+    h.world_mut().resource::<aeon_sim::ForcesIndex>().ship_keys[&key(name)]
+}
+
+fn grain_route(h: &mut SimHost) -> aeon_sim::trade::TradeRoute {
+    aeon_sim::trade::TradeRoute {
+        good: key("grain"),
+        source: province(h, "alpha"),
+        sink: province(h, "luna"),
+    }
+}
+
+#[test]
+fn a_route_answers_a_hungry_world() {
+    let mut h = route_host(81);
+    let moon = h.world_mut().resource::<MapIndex>().body_keys[&key("moon")];
+    let hauler = ship(&mut h, "hauler");
+
+    assert!(
+        aeon_sim::trade::body_in_want(h.world_mut(), moon),
+        "the moon starts hungry"
+    );
+
+    let route = grain_route(&mut h);
+    assert!(aeon_sim::trade::set_route(h.world_mut(), hauler, route));
+
+    assert_eq!(
+        aeon_sim::trade::route_relief(h.world_mut(), moon, &key("grain")),
+        20
+    );
+    assert!(
+        !aeon_sim::trade::body_in_want(h.world_mut(), moon),
+        "the route brings enough grain to answer the want"
+    );
+}
+
+#[test]
+fn a_blockade_cuts_the_line() {
+    let mut h = route_host(82);
+    let moon = h.world_mut().resource::<MapIndex>().body_keys[&key("moon")];
+    let luna = province(&mut h, "luna");
+    let hauler = ship(&mut h, "hauler");
+    let picket = ship(&mut h, "picket");
+    let route = grain_route(&mut h);
+    aeon_sim::trade::set_route(h.world_mut(), hauler, route);
+    assert!(!aeon_sim::trade::body_in_want(h.world_mut(), moon));
+
+    // The picket blockades the delivery dock; the line is cut and the
+    // want returns.
+    {
+        let entity = h.world_mut().resource::<aeon_sim::ForcesIndex>().ships[&picket];
+        h.world_mut()
+            .get_mut::<aeon_sim::ShipRecord>(entity)
+            .unwrap()
+            .blockading = Some(luna);
+    }
+    assert!(
+        aeon_sim::trade::body_in_want(h.world_mut(), moon),
+        "a blockade at either dock stops the goods"
+    );
+}
+
+#[test]
+fn a_route_earns_the_carrier_the_trade_margin() {
+    let mut h = route_host(83);
+    let ash = org(&mut h, "ash");
+    let hauler = ship(&mut h, "hauler");
+    let route = grain_route(&mut h);
+    aeon_sim::trade::set_route(h.world_mut(), hauler, route);
+
+    let before = wealth(&mut h, ash);
+    aeon_sim::trade::monthly_trade_profit(h.world_mut());
+    // 20 grain delivered into a deficit of 20, at value 2, is 40 wealth.
+    assert_eq!(
+        wealth(&mut h, ash) - before,
+        40,
+        "the carrier profits on what it sells into scarcity"
+    );
+}
+
+#[test]
+fn the_player_may_route_a_transport_and_it_survives_a_snapshot() {
+    use aeon_sim::PlayerCommand;
+
+    let mut h = route_host(84);
+    let moon = h.world_mut().resource::<MapIndex>().body_keys[&key("moon")];
+    let hauler = ship(&mut h, "hauler");
+    let route = grain_route(&mut h);
+    h.submit(PlayerCommand::SetTradeRoute {
+        ship: hauler,
+        route,
+    })
+    .expect("the player may route their own transport");
+    h.advance_days(2);
+    assert!(!aeon_sim::trade::body_in_want(h.world_mut(), moon));
+
+    let content = h
+        .world_mut()
+        .resource::<aeon_sim::state::ContentDb>()
+        .0
+        .clone();
+    let snapshot = h.snapshot();
+    let mut restored = SimHost::restore_with_content(snapshot, content).unwrap();
+    assert!(
+        !aeon_sim::trade::body_in_want(restored.world_mut(), moon),
+        "the route is campaign state and rides the snapshot"
+    );
+}

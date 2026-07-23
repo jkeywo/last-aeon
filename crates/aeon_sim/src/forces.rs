@@ -54,6 +54,8 @@ pub struct ShipRecord {
     pub location: ShipLocation,
     /// The province this ship is blockading, if any.
     pub blockading: Option<ProvinceId>,
+    /// The standing trade route this ship plies, if any. Transports only.
+    pub route: Option<crate::trade::TradeRoute>,
 }
 
 /// A persistent army.
@@ -111,6 +113,7 @@ pub fn spawn_from_content(world: &mut World, content: &ContentSet) {
                 captain: def.captain.as_ref().map(|c| politics.character_keys[c]),
                 location: ShipLocation::Docked(map_index.province_keys[&def.location]),
                 blockading: None,
+                route: None,
             })
             .id();
         index.ships.insert(id, entity);
@@ -293,6 +296,9 @@ pub struct ShipState {
     /// Blockade target.
     #[serde(default)]
     pub blockading: Option<ProvinceId>,
+    /// Standing trade route.
+    #[serde(default)]
+    pub route: Option<crate::trade::TradeRoute>,
 }
 
 /// Serialised army.
@@ -345,6 +351,7 @@ pub fn capture_forces(world: &World) -> ForcesState {
                     captain: ship.captain,
                     location: ship.location,
                     blockading: ship.blockading,
+                    route: ship.route.clone(),
                 }
             })
             .collect(),
@@ -393,6 +400,7 @@ pub fn restore_forces(world: &mut World, state: &ForcesState, content: &ContentS
                 captain: ship.captain,
                 location: ship.location,
                 blockading: ship.blockading,
+                route: ship.route.clone(),
             })
             .id();
         index.ships.insert(ship.id, entity);

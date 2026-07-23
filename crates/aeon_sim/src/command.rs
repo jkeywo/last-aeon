@@ -105,6 +105,18 @@ pub enum PlayerCommand {
         /// The vassal whose directive is withdrawn.
         vassal: crate::ids::OrgId,
     },
+    /// Sets a standing trade route on one of the player's transports.
+    SetTradeRoute {
+        /// The transport to route.
+        ship: ShipId,
+        /// The route it will ply.
+        route: crate::trade::TradeRoute,
+    },
+    /// Clears the trade route on one of the player's ships.
+    ClearTradeRoute {
+        /// The ship whose route is cleared.
+        ship: ShipId,
+    },
 }
 
 /// A command bound to its execution day and order.
@@ -349,6 +361,18 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
                 Err(CommandRejection::NotYourVassal)
             }
         }
+        PlayerCommand::SetTradeRoute { ship, .. } | PlayerCommand::ClearTradeRoute { ship } => {
+            let org = world
+                .get_resource::<PlayerHouse>()
+                .and_then(|p| p.0)
+                .ok_or(AssignmentRejection::NoPlayerOrg)?;
+            let owned = crate::access::ship(world, *ship).is_some_and(|s| s.owner == org);
+            if owned {
+                Ok(())
+            } else {
+                Err(AssignmentRejection::BadAssignment.into())
+            }
+        }
     }
 }
 
@@ -454,6 +478,18 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
             if let Some(mut issued) = world.get_resource_mut::<crate::goals::IssuedDirectives>() {
                 issued.by_vassal.remove(vassal);
             }
+        }
+        PlayerCommand::SetTradeRoute { ship, route } => {
+            // Re-check ownership; the route is set only if it still makes
+            // sense (an owned transport, two different worlds).
+            if let Some(org) = world.get_resource::<PlayerHouse>().and_then(|p| p.0)
+                && crate::access::ship(world, *ship).is_some_and(|s| s.owner == org)
+            {
+                crate::trade::set_route(world, *ship, route.clone());
+            }
+        }
+        PlayerCommand::ClearTradeRoute { ship } => {
+            crate::trade::clear_route(world, *ship);
         }
     }
 }

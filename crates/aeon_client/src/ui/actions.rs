@@ -567,6 +567,7 @@ mod tests {
             captain: captain.map(|c| CharacterId::from_raw(c).unwrap()),
             location: ShipLocation::Docked(ProvinceId::from_raw(3).unwrap()),
             blockading: None,
+            route: None,
         }
     }
 

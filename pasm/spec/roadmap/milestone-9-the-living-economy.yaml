@@ -138,8 +138,8 @@ entities:
 
   - milestone: m9-trade-routes
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "M9.3: Transports Run the Routes Between Worlds"
       summary: >-
         A transport carries a surplus good from the world that has it to
@@ -159,11 +159,34 @@ entities:
         - job-based-operational-warfare
     implementation:
       paths:
+        - crates/aeon_sim/src/trade.rs
         - crates/aeon_sim/src/forces.rs
-        - crates/aeon_sim/src/warfare.rs
-        - crates/aeon_sim/src/presence.rs
+        - crates/aeon_sim/src/command.rs
         - crates/aeon_sim/src/snapshot.rs
+      tests:
+        - crates/aeon_sim/tests/trade.rs
       status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/trade.rs
+        summary: >-
+          A route answers a hungry world, lifting its want; a blockade at
+          either dock cuts the line and the want returns; the carrier earns
+          the trade margin on exactly what it sells into scarcity; and the
+          player may route a transport, the route riding a snapshot.
+      - kind: manual-review
+        reference: crates/aeon_sim/src/trade.rs
+        summary: >-
+          A route is ship state, so it persists with the ship (snapshot
+          16); its relief is derived from active routes, keeping the
+          balance free of stored buffers. Relief answers a world's want but
+          only what covers a real deficit turns the carrier a profit, so
+          routing to a world that wants nothing earns nothing. A transport
+          shuttles its docks through the transit machinery that had sat
+          idle since ships were tracked, and an idle transport takes up an
+          obvious surplus-to-deficit route unbidden. Physically animating
+          the goods themselves stays out; the shuttle is for visibility
+          and to give a blockade something to interdict.
 
   - milestone: m9-authored-economy
     core:
