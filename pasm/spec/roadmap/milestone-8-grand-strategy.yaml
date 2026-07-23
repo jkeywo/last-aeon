@@ -82,8 +82,8 @@ entities:
 
   - milestone: m8-goals-bias-agency
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "M8.2: A Goal Steers the House"
       summary: >-
         Monthly, a head whose house has no active goal adopts the one
@@ -104,10 +104,33 @@ entities:
         - intent-driven-organisation-agency
     implementation:
       paths:
+        - crates/aeon_sim/src/goals.rs
         - crates/aeon_sim/src/agency.rs
-        - crates/aeon_sim/src/politics.rs
         - crates/aeon_sim/src/snapshot.rs
+      tests:
+        - crates/aeon_sim/tests/goals.rs
       status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/goals.rs
+        summary: >-
+          A non-player head forms the ambition its trigger clears; the
+          goal lifts exactly the pressure it favours and no other; it
+          outlives the death of the head who formed it because it is the
+          house's, keyed by organisation; and it replays identically and
+          round-trips a snapshot. The player's own house forms no ambition
+          on its own.
+      - kind: manual-review
+        reference: crates/aeon_sim/src/goals.rs
+        summary: >-
+          A goal is a lens over scoring — the head-only favour bonus rides
+          the pressures score_intents already builds, so no second
+          executor exists. Adoption consumes one roll on the frozen
+          "grand-goal" stream; an organisation-aimed goal resolves the
+          weakest rival great house outside its own chain of command, and
+          a goal ends when its rival falls, its house falls, or its
+          horizon passes. advance_goals guards on ContentDb, so a snapshot
+          restored without content advances nothing. Snapshot format 13.
 
   - milestone: m8-directives-to-vassals
     core:

@@ -32,6 +32,7 @@ pub mod economy;
 pub mod events;
 pub mod forces;
 pub mod forecast;
+pub mod goals;
 pub mod host;
 pub mod ids;
 pub mod map;
@@ -102,6 +103,7 @@ impl Plugin for AeonSimPlugin {
         events::install(app);
         warfare::install(app);
         plans::install(app);
+        goals::install(app);
     }
 }
 

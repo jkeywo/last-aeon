@@ -666,3 +666,6 @@ ui.title.continue,Title screen button: restore the autosaved campaign. Native bu
 ui.title.spectator,Title screen tickbox: start with no player house and watch.,[Spectator mode]
 ui.title.spectator-note,Small print under the spectator tickbox explaining what it means.,"[No house is yours: every court acts on its own, and the whole interface is a window to watch through.]"
 ui.loading,Loading screen label shown while the game presentation assets are fetched.,[Loading the local system...]
+sim.goal.adopted,"Log line when a house sets its mind to a grand ambition. {house} is the house, {goal} the ambition's title.",[{house} has set its mind to a greater end: {goal}.]
+sim.goal.achieved,"Log line when a house's ambition is achieved. {house} {goal}",[{house} has achieved its aim: {goal}.]
+sim.goal.set-aside,"Log line when a house lets a grand ambition lapse. {house} {goal}",[{house} has set aside its ambition: {goal}.]

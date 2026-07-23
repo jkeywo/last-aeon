@@ -302,6 +302,17 @@ pub fn score_intents(world: &World, actor: CharacterId, authority: OrgId) -> Vec
         });
     }
 
+    // A house pursuing a grand ambition feels the pressures that serve it
+    // more keenly. The goal is the head's lens over scoring — head-only,
+    // like the paramountcy claim it already weighs alone — not a separate
+    // executor: the bonus rides the existing pressures the head chooses
+    // among.
+    if crate::access::org_head(world, authority) == Some(actor) {
+        for intent in &mut intents {
+            intent.score += crate::goals::favour_bonus(world, authority, intent.intent);
+        }
+    }
+
     // Best first; ties broken by assignment key so the order never wobbles.
     intents.sort_by(|a, b| {
         b.score
@@ -370,6 +381,13 @@ pub fn characters_act(world: &mut World) {
         .collect();
 
     for (actor, authority, is_head) in actors {
+        // Before anything tactical, a head with no ambition may form one.
+        // A goal is momentous and rare, on its own cadence, so it is
+        // weighed even in a month the head takes no other action.
+        if is_head {
+            crate::goals::maybe_adopt_goal(world, actor, authority);
+        }
+
         // A head pursuing a plan has already decided what their months
         // are for; the reactive pass leaves them to it.
         if world

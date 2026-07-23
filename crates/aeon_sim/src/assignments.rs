@@ -1785,6 +1785,7 @@ pub fn init_assignments(world: &mut World) {
     world.insert_resource(PendingPopups::default());
     world.insert_resource(ScriptRuntime(ScriptHost::new()));
     world.insert_resource(crate::plans::Plans::default());
+    world.insert_resource(crate::goals::Goals::default());
 }
 
 pub(crate) fn install(app: &mut App) {

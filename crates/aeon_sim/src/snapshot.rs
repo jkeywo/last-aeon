@@ -23,7 +23,7 @@ use crate::state::{CampaignIds, CampaignMeta, CampaignSeed, ContentDb};
 /// Bump on any change to [`CampaignState`]'s serialised shape, and provide a
 /// migration for every version a release has ever written. No release has
 /// shipped yet, so pre-release bumps carry no migrations.
-pub const SNAPSHOT_FORMAT_VERSION: u32 = 12;
+pub const SNAPSHOT_FORMAT_VERSION: u32 = 13;
 
 /// The complete authoritative campaign state.
 ///
@@ -61,6 +61,9 @@ pub struct CampaignState {
     /// Plans autonomous characters are pursuing, and their cooldowns.
     #[serde(default)]
     pub plans: crate::plans::Plans,
+    /// Grand-strategy ambitions houses are pursuing, and their cooldowns.
+    #[serde(default)]
+    pub goals: crate::goals::Goals,
     /// Next command sequence number.
     pub next_command_seq: u64,
     /// Commands accepted but not yet applied, in `(day, seq)` order.
@@ -155,6 +158,7 @@ pub fn capture_state(world: &World) -> CampaignState {
         obligations: crate::obligations::capture(world),
         events: crate::events::capture(world),
         plans: crate::plans::capture(world),
+        goals: crate::goals::capture(world),
         next_command_seq: log.next_seq,
         pending_commands: world.resource::<PendingCommands>().entries().to_vec(),
         applied_commands: log.applied.clone(),
@@ -218,6 +222,7 @@ pub fn restore_state(world: &mut World, state: CampaignState) {
     crate::obligations::restore(world, &state.obligations);
     crate::events::restore(world, &state.events);
     crate::plans::restore(world, &state.plans);
+    crate::goals::restore(world, &state.goals);
 }
 
 /// Respawns the content-bound half of a restore against hash-verified
