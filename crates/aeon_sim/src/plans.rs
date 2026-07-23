@@ -493,6 +493,12 @@ pub fn advance_plans(world: &mut World) {
                         PlanTargetSelector::WorstHolding => {
                             worst_holding(world, authority).map(AssignmentTarget::Province)
                         }
+                        PlanTargetSelector::TargetHead => match plan.target {
+                            AssignmentTarget::Org(org) => {
+                                crate::access::org_head(world, org).map(AssignmentTarget::Character)
+                            }
+                            _ => None,
+                        },
                     };
                     let Some(target) = resolved else {
                         break;

@@ -1561,3 +1561,49 @@ entities:
         - the-goods-economy
         - tracked-starships
         - job-based-operational-warfare
+
+  - decision: harm-reuses-one-condition-effect
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Target-Directed Harm Is One Effect Over the Existing Machinery
+      summary: >-
+        The whole of the shadows rests on a single engine addition: an
+        effect that resolves a named role and lays a condition on it,
+        calling the very apply_risk that has always struck a failed leader.
+        The tag fixes how long the harm lasts, so the effect carries no
+        duration of its own, and a harmed target is barred from leading by
+        the same machinery an injured leader is. Assassination, abduction,
+        and sabotage are then authored content on that one seam; wrecking a
+        building is the one further effect, and it leans on the economy of
+        Milestone 9 for something to break.
+      rationale:
+        - Harm was already modelled — injury, capture, incapacity, scandal, death — and had only ever been aimed at the actor; letting content aim it elsewhere is a smaller and safer change than a parallel harm system.
+        - Reusing apply_risk means a character felled by a scheme recovers, or does not, exactly as one felled by a failed job, so there is one truth about conditions.
+      references:
+        - the-shadows
+        - character-simulation-scope
+        - the-goods-economy
+
+  - decision: the-ai-schemes-through-plans-not-the-scorer
+    core:
+      status: accepted
+      confidence: confirmed
+      title: A House Schemes Through Its Plans, Not on a Whim
+      summary: >-
+        The murderous work is ai_available:false: the reactive scorer that
+        answers a month's heaviest pressure never reaches for it. A house
+        comes to the knife only through the plans and goals of Milestone 8
+        — a plan step that aims an assassination at the head of the plan's
+        target organisation, through a target selector grown for exactly
+        that. So a house answering a grievance may answer it in blood, and
+        a grand ambition may remove the person who blocks it, but no house
+        murders as ordinary business.
+      rationale:
+        - Making the scorer reach for assassination would have houses killing over routine pressures; gating it behind deliberate, authored plans keeps intrigue rare and motivated.
+        - The plan target vocabulary grew by one selector — the target's head — exactly the demonstrated need, no more.
+      references:
+        - the-shadows
+        - plans-are-authored-campaigns
+        - grand-strategy-goals
+        - agency-intents-are-authored-on-jobs

@@ -2043,9 +2043,11 @@ fn plan_step(f: &mut Fields, entry: rhai::Dynamic) -> Option<PlanStepDef> {
                 None | Some("none") => PlanTargetSelector::None,
                 Some("plan") => PlanTargetSelector::PlanTarget,
                 Some("worst-holding") => PlanTargetSelector::WorstHolding,
+                Some("target-head") => PlanTargetSelector::TargetHead,
                 Some(other) => {
                     f.error(format!(
-                        "unknown step target '{other}' (expected none, plan, worst-holding)"
+                        "unknown step target '{other}' \
+                         (expected none, plan, worst-holding, target-head)"
                     ));
                     return None;
                 }

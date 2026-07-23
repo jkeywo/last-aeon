@@ -190,3 +190,138 @@ fn wrecking_pulls_down_a_building_and_stirs_disorder() {
         "and the province is stirred toward disorder"
     );
 }
+
+// A house that has wronged another, and a plan to answer the grievance
+// in blood rather than court.
+const SCHEME_FIXTURE: &str = r#"
+define_scenario(#{
+    id: "fixture", start_year: 411, start_month: 1, start_day: 1,
+    player_house: "ash",
+});
+define_name_pool(#{ id: "names", male: ["Bram"], female: ["Yeva"] });
+
+define_body(#{ id: "world", kind: "planet", radius_km: 6000 });
+define_province(#{ id: "alpha", body: "world", latitude_mdeg: 0, longitude_mdeg: 0 });
+define_province(#{ id: "beta", body: "world", latitude_mdeg: 10000, longitude_mdeg: 10000 });
+
+define_house(#{
+    id: "ash", tier: "great", head: "aron-ash", color: [200, 60, 60],
+    provinces: ["alpha"], wealth: 500, manpower: 5000, supplies: 800, legitimacy: 60,
+});
+define_house(#{
+    id: "birch", tier: "great", head: "bela-birch", color: [60, 60, 200],
+    provinces: ["beta"], wealth: 400, manpower: 2000, supplies: 400, legitimacy: 60,
+});
+define_character(#{ id: "aron-ash", gender: "male", birth_year: 370, organisation: "ash",
+    skills: #{ command: 8, diplomacy: 6, intrigue: 4, stewardship: 7 } });
+define_character(#{ id: "bela-birch", gender: "female", birth_year: 372, organisation: "birch",
+    skills: #{ command: 6, diplomacy: 9, intrigue: 14, stewardship: 5 } });
+
+// Birch has wronged Ash, and Ash resents it — the pressure a house
+// answers.
+define_obligation(#{
+    id: "birch-wronged-ash", kind: "grievance",
+    debtor: "birch", creditor: "ash", weight: 80,
+    origin: "an old and bitter injury",
+});
+
+// A standing assignment aimed at an organisation, so the grievance
+// scores a pressure the vendetta can answer. The scorer names a pressure
+// only when some assignment could serve it.
+define_assignment(#{
+    id: "court", ai_intent: "standing", category: "consequential",
+    duration_days: 30, skill: "diplomacy", difficulty: 5, target: "organisation",
+    results: #{ success: #{ weight: 900 }, failure: #{ weight: 100 } },
+});
+
+// The knife an assassination lays on its mark.
+define_assignment(#{
+    id: "assassinate", category: "consequential",
+    duration_days: 30, skill: "intrigue", difficulty: 4, target: "character",
+    risks: ["scandal"], ai_available: false,
+    requires: #{ target_house: "other" },
+    results: #{
+        success: #{ weight: 900, effect_fn: "struck" },
+        failure: #{ weight: 100 },
+    },
+});
+fn struck(ctx) { [#{ kind: "condition", target: "target", tag: "death" }] }
+
+// A vendetta: answer the grievance by removing the rival's head. The one
+// standing plan here, so the house that resents another reaches for it.
+define_plan(#{
+    id: "vendetta",
+    goal: "standing",
+    target: "organisation",
+    max_days: 360,
+    methods: [
+        #{ id: "in-the-dark",
+           steps: [ #{ id: "remove", start: "assassinate", target: "target-head" } ] },
+    ],
+});
+"#;
+
+fn scheme_host(seed: u64) -> SimHost {
+    let (set, report) = load_content(
+        &[ContentSource {
+            path: "fixture.rhai".to_owned(),
+            source: SCHEME_FIXTURE.to_owned(),
+        }],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(!report.has_errors(), "findings: {:?}", report.findings);
+    SimHost::new_with_content(
+        CampaignConfig {
+            name: "Vendetta Trial".to_owned(),
+            seed,
+            start_date: CalendarDate {
+                year: 411,
+                month: 1,
+                day: 1,
+            }
+            .to_date()
+            .unwrap(),
+        },
+        Arc::new(set.unwrap()),
+    )
+}
+
+#[test]
+fn a_house_weaves_the_knife_into_its_ambition() {
+    let mut h = scheme_host(94);
+    let aron = character(&mut h, "aron-ash"); // the rival's head, the mark
+    let bela = character(&mut h, "bela-birch"); // the schemer
+
+    // Left to run, Birch answers the grievance from the shadows: it takes
+    // up the vendetta and aims the knife at Ash's head.
+    let mut aimed = false;
+    for _ in 0..400 {
+        h.advance_days(1);
+        let index = h
+            .world_mut()
+            .resource::<aeon_sim::AssignmentsIndex>()
+            .clone();
+        for entity in index.assignments.values() {
+            if let Some(active) = h
+                .world_mut()
+                .get::<aeon_sim::assignments::ActiveAssignment>(*entity)
+                && active.def.as_str() == "assassinate"
+            {
+                assert_eq!(active.leader, bela, "Birch's head leads the scheme");
+                assert_eq!(
+                    active.target,
+                    aeon_sim::AssignmentTarget::Character(aron),
+                    "and the knife is aimed at the rival's head"
+                );
+                aimed = true;
+            }
+        }
+        if aimed {
+            break;
+        }
+    }
+    assert!(
+        aimed,
+        "a house's ambition can now include removing the person who blocks it"
+    );
+}

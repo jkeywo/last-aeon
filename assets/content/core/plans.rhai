@@ -88,6 +88,13 @@ define_plan(#{
                #{ plan: "shore-up-standing" },
                #{ id: "make-amends", start: "court", target: "plan" },
            ] },
+        // Or answer the grievance in blood: a house with the stomach and
+        // the standing to spend has the rival's head removed.
+        #{ id: "from-the-shadows",
+           requires: #{ min_influence: 30, min_legitimacy: 55 },
+           steps: [
+               #{ id: "remove", start: "assassinate", target: "target-head" },
+           ] },
     ],
 });
 

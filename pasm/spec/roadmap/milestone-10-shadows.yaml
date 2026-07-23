@@ -13,8 +13,8 @@
 entities:
   - system: milestone-10-implementation-plan
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "Milestone 10: Shadows"
       summary: >-
         The one capability the simulation lacks is an effect that harms
@@ -28,6 +28,9 @@ entities:
         that follows. With it, a grand ambition can remove the obstacle in
         its way rather than only outlast it.
       references:
+        - the-shadows
+        - harm-reuses-one-condition-effect
+        - the-ai-schemes-through-plans-not-the-scorer
         - character-simulation-scope
         - character-opinion-model
         - obligations-are-specific-political-facts
@@ -171,8 +174,8 @@ entities:
 
   - milestone: m10-schemes-in-grand-strategy
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "M10.4: Ambition Learns to Scheme"
       summary: >-
         The grand strategies of Milestone 8 take up the knife. A goal set
@@ -185,9 +188,34 @@ entities:
         - A house's long ambition can now include removing the person who blocks it, and does.
         - Content alone weaves the schemes into the goals and plans already in place.
       references:
+        - the-ai-schemes-through-plans-not-the-scorer
+        - plans-are-authored-campaigns
         - agency-intents-are-authored-on-jobs
     implementation:
       paths:
+        - crates/aeon_data/src/model.rs
+        - crates/aeon_data/src/host/builders.rs
+        - crates/aeon_data/src/host/validate.rs
+        - crates/aeon_sim/src/plans.rs
         - assets/content/core/plans.rhai
-        - assets/text/strings.csv
+      tests:
+        - crates/aeon_sim/tests/intrigue.rs
       status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/intrigue.rs
+        summary: >-
+          A house that has wronged another takes up a vendetta unbidden and
+          aims the assassination at the rival's head — the plan adopted,
+          the target's-head selector resolved, the knife started at the
+          right person — with no scripted nudge.
+      - kind: manual-review
+        reference: assets/content/core/plans.rhai
+        summary: >-
+          The plan target vocabulary grew by one selector, the target's
+          head, exactly the demonstrated need — a plan aimed at an
+          organisation can now aim a step at the person who leads it. The
+          shipped answer-a-grievance plan gains a from-the-shadows method
+          that removes the rival's head instead of courting them, so a
+          house may answer a grievance in blood. The AI comes to the knife
+          only through such plans, never the reactive scorer.

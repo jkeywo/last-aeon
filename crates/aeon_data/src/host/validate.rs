@@ -464,6 +464,7 @@ fn validate_plans(builder: &BuilderState, findings: &mut Vec<(String, Option<Str
                                 PlanTargetSelector::None => AssignmentTargetKind::None,
                                 PlanTargetSelector::PlanTarget => plan.target,
                                 PlanTargetSelector::WorstHolding => AssignmentTargetKind::Province,
+                                PlanTargetSelector::TargetHead => AssignmentTargetKind::Character,
                             };
                             if *target == PlanTargetSelector::PlanTarget
                                 && plan.target == AssignmentTargetKind::None
@@ -472,6 +473,17 @@ fn validate_plans(builder: &BuilderState, findings: &mut Vec<(String, Option<Str
                                     key,
                                     format!(
                                         "step '{}' aims at the plan's target, but the plan has none",
+                                        step.id
+                                    ),
+                                );
+                            } else if *target == PlanTargetSelector::TargetHead
+                                && plan.target != AssignmentTargetKind::Organisation
+                            {
+                                err(
+                                    key,
+                                    format!(
+                                        "step '{}' aims at the target's head, so the plan must \
+                                         target an organisation",
                                         step.id
                                     ),
                                 );

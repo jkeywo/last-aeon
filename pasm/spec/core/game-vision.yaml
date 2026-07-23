@@ -1395,6 +1395,33 @@ entities:
       classification: domain
       authority: authoritative
 
+  - component: the-shadows
+    core:
+      status: accepted
+      confidence: confirmed
+      title: The Shadows
+      summary: >-
+        Intrigue can now do worse than lower a reputation. A single engine
+        seam — an effect that lays a personal condition on a named role,
+        reusing the harm the simulation already visits on a failed leader —
+        opens the way to authored assassination and abduction aimed at a
+        person, and sabotage aimed at a place, disorder or the wrecking of
+        what a rival has built. Each carries the risk of exposure and the
+        grievance that follows. A house does not murder on a whim: the
+        reactive scorer never reaches these, but a plan or a grand ambition
+        may call for them, so a house set on the Consulship can make the
+        vacancy it means to win, and one answering a grievance may answer
+        it in blood.
+      references:
+        - character-simulation-scope
+        - obligations-are-specific-political-facts
+        - grand-strategy-goals
+        - the-goods-economy
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
   - component: the-goods-economy
     core:
       status: accepted

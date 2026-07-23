@@ -1121,6 +1121,11 @@ pub enum PlanTargetSelector {
     /// stable ID on a tie. Produces a province target; holding nothing
     /// leaves the step waiting.
     WorstHolding,
+    /// The head of the plan's target organisation — a character. The knife
+    /// a scheme aims at the person a rival house is led by. Needs the plan
+    /// to have an organisation target; a headless house leaves the step
+    /// waiting.
+    TargetHead,
 }
 
 /// Declarative conditions gating a plan method or skipping a step.
