@@ -98,6 +98,9 @@ pub struct PanelData<'w, 's> {
     pub ships: Query<'w, 's, &'static ShipRecord>,
     pub armies: Query<'w, 's, &'static ArmyRecord>,
     pub active_assignments: Query<'w, 's, &'static ActiveAssignment>,
+    /// Orders accepted but not yet under way, shown as "en route" so a
+    /// player who starts an assignment while paused sees it at once.
+    pub pending: Option<Res<'w, aeon_sim::command::PendingCommands>>,
     pub order: Query<'w, 's, (&'static ProvinceRecord, &'static ProvincialOrder)>,
     pub obligations: Option<Res<'w, Obligations>>,
     pub availability: Res<'w, AvailabilityView>,

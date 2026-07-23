@@ -337,12 +337,11 @@ trait.scheming.summary,Authored trait 'scheming': one-line summary. Moved from t
 trait.wary.name,Authored trait 'wary': name. Moved from the content scripts.,[Wary]
 trait.wary.summary,Authored trait 'wary': one-line summary. Moved from the content scripts.,[Trusts slowly and watches exits.]
 ui.actions.choose-character,"Placeholder on the closed character-target dropdown, before one is chosen.",[Choose a character]
-ui.actions.choose-destination,Placeholder in the destination picker for a force order.,Choose a destination
 ui.actions.choose-leader,Button that opens the leader comparison list for an action.,[Choose…]
 ui.actions.choose-leader.hover,"Tooltip on the choose-leader button. {free} is how many house members could take the assignment on now, {total} how many there are.",[Compare everyone in your house for this assignment. {free} of {total} could take it on now.]
-ui.actions.choose-org,"Placeholder on the closed organisation-target dropdown, before one is chosen.",[Choose an organisation]
-ui.actions.choose-province,"Placeholder on the closed province-target dropdown, before one is chosen.",[Choose a province]
 ui.actions.confirm,Button that issues the composed action to the simulation.,[Confirm]
+ui.actions.filter-org,Hint text in the organisation picker's filter box.,[Filter organisations…]
+ui.actions.filter-province,Hint text in the province picker's filter box.,[Filter provinces…]
 ui.actions.forecast-pending,Shown in place of the forecast while the action still has empty slots.,[Choose the remaining details to see the forecast.]
 ui.actions.heading,Heading above the context-sensitive assignment buttons under a selection.,[Actions]
 ui.actions.leader-chosen,"The chosen leader and their odds, beside the led-by label. {leader} is a character name, {chance} a percentage.",[{leader} — {chance}]
@@ -352,6 +351,8 @@ ui.actions.led-by,Label before whoever would lead the action being composed.,[Le
 ui.actions.no-leader,Shown beside the led-by label before anyone has been chosen.,[nobody yet]
 ui.actions.none-here,Shown when a selection offers no assignments at all.,Nothing to order here.
 ui.actions.obstacle.ship-has-no-captain,Shown at the ship slot when the chosen ship has no captain to carry the order. The ship's own name is already on screen beside it.,[This ship has no captain. A ship is ordered by the officer who commands it — assign one first.]
+ui.actions.pick-on-map,Button beside a province picker that starts choosing the province by clicking it on the map.,[Pick on map]
+ui.actions.pick-on-map.waiting,Shown beside the pick-on-map button while it is waiting for the player to click the map.,[click a province on the map…]
 ui.actions.unavailable,Fallback shown when a character cannot take on work and no more specific reason is known.,[unavailable]
 ui.assignments.cancel-pending,Shown instead of the cancel button once calling off has been asked for but cannot yet happen.,Called off when it can be
 ui.assignments.cannot-recall,Tooltip on the disabled cancel button while an assignment is past recall.,This is past the point of recall. It will run to its end.
@@ -462,6 +463,7 @@ ui.inspector.unknown,Stand-in shown where a name should be but none could be res
 ui.assignment.costs,Line in a assignment's tooltip listing what it costs. {costs} is a comma-separated list of amounts.,[Cost: {costs}]
 ui.assignment.risks,Line in a assignment's tooltip listing what its leader risks. {risks} is a comma-separated list.,[Risks: {risks}]
 ui.assignments.cancel,Button that calls off a assignment under way.,[Cancel]
+ui.assignments.en-route,"One row of the active-assignments panel for an order given but not yet under way. {assignment} is its title, {leader} who will lead it, {date} the day it reaches the field.","[{assignment} — {leader} (en route, arrives {date})]"
 ui.assignments.none,Shown in the active-assignments panel when nothing is under way.,[No assignments under way.]
 ui.assignments.row,"One row of the active-assignments panel. {assignment} is the assignment's title, {leader} who leads it, {days} how many days remain; the d abbreviates days.",[{assignment} — {leader} ({days}d left)]
 ui.ledger.no-map,"Shown in the map ledger panel when no body's map is open, so there are no colours to explain.",[Open a body's map to see what its colours mean.]
@@ -579,6 +581,11 @@ ui.panel.inspector.description,"Tooltip for the inspector panel, on its header a
 ui.panel.inspector.title,"Title of the inspector panel, in its header.",[Inspector]
 ui.panel.assignments.description,Tooltip for the active-assignments panel.,"[Assignments under way, and how long each has left.]"
 ui.panel.assignments.title,"Title of the active-assignments panel, in its header.",[Active Assignments]
+ui.panel.idle.description,Tooltip for the idle panel.,"[Household members you could put to work: the unassigned, and those on an assignment you could interrupt.]"
+ui.panel.idle.title,"Title of the idle panel, in its header.",[Idle]
+ui.panel.idle.unassigned,Heading above household members with no assignment at all.,[Unassigned]
+ui.panel.idle.interruptible,Heading above household members leading one of your assignments you could call off.,[On an assignment you could interrupt]
+ui.panel.idle.none,Shown in the idle panel when no household member is free or interruptible.,[Nobody in your household is free to reassign.]
 ui.panel.ledger.description,Tooltip for the map ledger panel.,[What the colours on the map mean.]
 ui.panel.ledger.title,"Title of the map ledger panel, in its header.",[Map Ledger]
 ui.panel.specimen.description,Tooltip for the theme specimen panel — a native-only design tool.,Every design token drawn in context.

@@ -21,6 +21,7 @@ use crate::ui::assignment_popup::AssignmentPopup;
 use crate::ui::assignments_panel::draw_assignments_panel;
 use crate::ui::data::PanelData;
 use crate::ui::dock::{DockSide, PanelKind};
+use crate::ui::idle_panel::draw_idle_panel;
 use crate::ui::inspector::draw_inspector;
 use crate::ui::ledger_panel::draw_ledger_panel;
 use crate::ui::listing::draw_listing;
@@ -147,8 +148,10 @@ pub fn draw_panel_body(ui: &mut egui::Ui, kind: PanelKind, ctx: &PanelCtx, out: 
             ctx.player_org,
             ctx.date,
             &ctx.data.active_assignments,
+            ctx.data.pending.as_deref(),
             out.queue,
         ),
+        PanelKind::Idle => draw_idle_panel(ui, ctx, out),
         #[cfg(not(target_arch = "wasm32"))]
         PanelKind::Specimen => draw_specimen_panel(ui, &ctx.data.theme),
         PanelKind::Ledger => draw_ledger_panel(

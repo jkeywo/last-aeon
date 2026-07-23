@@ -8,6 +8,7 @@ pub mod data;
 pub mod dock;
 pub mod forecast;
 pub mod icons;
+pub mod idle_panel;
 pub mod inspector;
 pub mod ledger_panel;
 pub mod listing;

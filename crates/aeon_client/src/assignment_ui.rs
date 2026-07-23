@@ -24,6 +24,18 @@ use crate::sim_driver::TimeControl;
 #[derive(Resource, Default)]
 pub struct UiCommandQueue(pub Vec<PlayerCommand>);
 
+/// Which province slot a map-pick fills in, once the player clicks the map.
+///
+/// A province target and a force's destination are different fields on the
+/// form, so the "pick on map" button records which one it is standing in for.
+#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+pub enum ProvinceSlot {
+    /// The assignment's own province target.
+    Target,
+    /// A force's destination.
+    Destination,
+}
+
 /// The inspector's in-progress assignment choice, expanded by a context button
 /// and filled in by inline pickers before it is confirmed.
 #[derive(Resource, Default)]
@@ -45,6 +57,13 @@ pub struct AssignmentForm {
     pub about: Option<CharacterId>,
     /// Last rejection message, shown until the next attempt.
     pub notice: Option<String>,
+    /// Free-text filter over the organisation picker's list.
+    pub org_filter: String,
+    /// Free-text filter over the province picker's list.
+    pub province_filter: String,
+    /// Set while the player is picking a province by clicking the map. The
+    /// next province click on the globe fills this slot and clears the flag.
+    pub map_pick: Option<ProvinceSlot>,
 }
 
 impl AssignmentForm {
@@ -57,6 +76,9 @@ impl AssignmentForm {
         self.ship = None;
         self.province = None;
         self.about = None;
+        self.org_filter.clear();
+        self.province_filter.clear();
+        self.map_pick = None;
     }
 }
 

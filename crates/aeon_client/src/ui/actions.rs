@@ -15,7 +15,7 @@ use aeon_sim::{
 };
 use bevy_egui::egui;
 
-use crate::assignment_ui::{AssignmentForm, UiCommandQueue};
+use crate::assignment_ui::{AssignmentForm, ProvinceSlot, UiCommandQueue};
 use crate::forecast_view::ForecastCache;
 use crate::ui::assignment_popup::AssignmentPopup;
 use crate::ui::data::PanelData;
@@ -359,40 +359,28 @@ pub fn pick_target(
 ) {
     match kind {
         AssignmentTargetKind::Organisation => {
-            let label = match form.target {
-                Some(AssignmentTarget::Org(org)) => politics
-                    .orgs
-                    .get(&org)
-                    .and_then(|e| data.orgs.get(*e).ok())
-                    .and_then(|(r, _)| content.organisations.get(&r.key))
-                    .map(|d| d.name.clone())
-                    .unwrap_or_default(),
-                _ => strings.text("ui.actions.choose-org").to_owned(),
-            };
-            egui::ComboBox::from_id_salt("ctx-org")
-                .selected_text(label)
-                .show_ui(ui, |ui| {
-                    for (id, entity) in &politics.orgs {
-                        if *id == player_org {
-                            continue;
-                        }
-                        let Ok((record, _)) = data.orgs.get(*entity) else {
-                            continue;
-                        };
-                        let Some(def) = content.organisations.get(&record.key) else {
-                            continue;
-                        };
-                        if ui
-                            .selectable_label(
-                                form.target == Some(AssignmentTarget::Org(*id)),
-                                &def.name,
-                            )
-                            .clicked()
-                        {
-                            form.target = Some(AssignmentTarget::Org(*id));
-                        }
-                    }
-                });
+            let mut items: Vec<(OrgId, String)> = politics
+                .orgs
+                .iter()
+                .filter(|(id, _)| **id != player_org)
+                .filter_map(|(id, entity)| {
+                    let (record, _) = data.orgs.get(*entity).ok()?;
+                    let def = content.organisations.get(&record.key)?;
+                    Some((*id, def.name.clone()))
+                })
+                .collect();
+            items.sort_by(|a, b| a.1.cmp(&b.1));
+            let current = form.target;
+            if let Some(id) = filtered_list(
+                ui,
+                strings.text("ui.actions.filter-org"),
+                &mut form.org_filter,
+                "ctx-org",
+                &items,
+                |id| current == Some(AssignmentTarget::Org(id)),
+            ) {
+                form.target = Some(AssignmentTarget::Org(id));
+            }
         }
         AssignmentTargetKind::Character => {
             let label = match form.target {
@@ -431,35 +419,104 @@ pub fn pick_target(
                 });
         }
         AssignmentTargetKind::Province => {
-            let label = match form.target {
-                Some(AssignmentTarget::Province(id)) => data
-                    .provinces
-                    .iter()
-                    .find(|(r, _, _)| r.id == id)
-                    .map(|(_, n, _)| n.0.clone())
-                    .unwrap_or_default(),
-                _ => strings.text("ui.actions.choose-province").to_owned(),
-            };
-            egui::ComboBox::from_id_salt("ctx-prov")
-                .selected_text(label)
-                .show_ui(ui, |ui| {
-                    let mut sorted: Vec<_> = data.provinces.iter().collect();
-                    sorted.sort_by_key(|(r, _, _)| r.id);
-                    for (record, name, _) in sorted {
-                        if ui
-                            .selectable_label(
-                                form.target == Some(AssignmentTarget::Province(record.id)),
-                                &name.0,
-                            )
-                            .clicked()
-                        {
-                            form.target = Some(AssignmentTarget::Province(record.id));
-                        }
-                    }
-                });
+            let current = form.target;
+            let picked = province_picker(
+                ui,
+                strings,
+                data,
+                &mut form.province_filter,
+                "ctx-prov",
+                |id| current == Some(AssignmentTarget::Province(id)),
+            );
+            if let Some(id) = picked {
+                form.target = Some(AssignmentTarget::Province(id));
+                form.map_pick = None;
+            }
+            if map_pick_button(ui, strings, form.map_pick == Some(ProvinceSlot::Target)) {
+                form.map_pick = Some(ProvinceSlot::Target);
+            }
         }
         _ => {}
     }
+}
+
+/// A filter box over a scrolling, selectable list. Returns the id the player
+/// clicked this frame, if any.
+///
+/// The province and organisation lists were dropdowns that showed every
+/// entry at once — workable with a handful, unusable with a map's worth. A
+/// filter narrows them to what the player is looking for without leaving the
+/// popup.
+fn filtered_list<T: Copy>(
+    ui: &mut egui::Ui,
+    hint: &str,
+    filter: &mut String,
+    id_salt: &str,
+    items: &[(T, String)],
+    selected: impl Fn(T) -> bool,
+) -> Option<T> {
+    ui.add(
+        egui::TextEdit::singleline(filter)
+            .hint_text(hint)
+            .desired_width(f32::INFINITY),
+    );
+    let needle = filter.trim().to_lowercase();
+    let mut picked = None;
+    egui::ScrollArea::vertical()
+        .max_height(160.0)
+        .id_salt(id_salt)
+        .show(ui, |ui| {
+            for (id, name) in items {
+                if !needle.is_empty() && !name.to_lowercase().contains(&needle) {
+                    continue;
+                }
+                if ui.selectable_label(selected(*id), name).clicked() {
+                    picked = Some(*id);
+                }
+            }
+        });
+    picked
+}
+
+/// The filtered province list, shared by the target and destination pickers.
+fn province_picker(
+    ui: &mut egui::Ui,
+    strings: &TextDb,
+    data: &PanelData,
+    filter: &mut String,
+    id_salt: &str,
+    selected: impl Fn(ProvinceId) -> bool,
+) -> Option<ProvinceId> {
+    let mut items: Vec<(ProvinceId, String)> = data
+        .provinces
+        .iter()
+        .map(|(record, name, _)| (record.id, name.0.clone()))
+        .collect();
+    items.sort_by(|a, b| a.1.cmp(&b.1));
+    filtered_list(
+        ui,
+        strings.text("ui.actions.filter-province"),
+        filter,
+        id_salt,
+        &items,
+        selected,
+    )
+}
+
+/// The "pick on map" button. Returns true when pressed. It stays lit while a
+/// pick is awaiting a click, so the interface's waiting on the player is
+/// visible rather than a mode they have silently entered.
+fn map_pick_button(ui: &mut egui::Ui, strings: &TextDb, awaiting: bool) -> bool {
+    ui.horizontal(|ui| {
+        let clicked = ui
+            .selectable_label(awaiting, strings.text("ui.actions.pick-on-map"))
+            .clicked();
+        if awaiting {
+            ui.weak(strings.text("ui.actions.pick-on-map.waiting"));
+        }
+        clicked
+    })
+    .inner
 }
 
 #[cfg(test)]
@@ -578,23 +635,20 @@ pub fn pick_destination(
     data: &PanelData,
     form: &mut AssignmentForm,
 ) {
-    let label = form
-        .province
-        .and_then(|id| data.provinces.iter().find(|(r, _, _)| r.id == id))
-        .map(|(_, name, _)| name.0.clone())
-        .unwrap_or_else(|| strings.text("ui.actions.choose-destination").to_owned());
-    egui::ComboBox::from_id_salt("ctx-destination")
-        .selected_text(label)
-        .show_ui(ui, |ui| {
-            let mut sorted: Vec<_> = data.provinces.iter().collect();
-            sorted.sort_by_key(|(r, _, _)| r.id);
-            for (record, name, _) in sorted {
-                if ui
-                    .selectable_label(form.province == Some(record.id), &name.0)
-                    .clicked()
-                {
-                    form.province = Some(record.id);
-                }
-            }
-        });
+    let current = form.province;
+    let picked = province_picker(
+        ui,
+        strings,
+        data,
+        &mut form.province_filter,
+        "ctx-destination",
+        |id| current == Some(id),
+    );
+    if let Some(id) = picked {
+        form.province = Some(id);
+        form.map_pick = None;
+    }
+    if map_pick_button(ui, strings, form.map_pick == Some(ProvinceSlot::Destination)) {
+        form.map_pick = Some(ProvinceSlot::Destination);
+    }
 }

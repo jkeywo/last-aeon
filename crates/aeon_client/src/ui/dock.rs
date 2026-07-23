@@ -58,6 +58,8 @@ pub enum PanelKind {
     Log,
     /// Assignments currently under way.
     Assignments,
+    /// Household members you could put to work: the idle and the interruptible.
+    Idle,
     /// What the map's colours mean.
     Ledger,
     /// Every design token, drawn in context.
@@ -80,6 +82,7 @@ impl PanelKind {
         PanelKind::Listing,
         PanelKind::Log,
         PanelKind::Assignments,
+        PanelKind::Idle,
         PanelKind::Ledger,
         PanelKind::Specimen,
     ];
@@ -91,6 +94,7 @@ impl PanelKind {
         PanelKind::Listing,
         PanelKind::Log,
         PanelKind::Assignments,
+        PanelKind::Idle,
         PanelKind::Ledger,
     ];
 
@@ -101,6 +105,7 @@ impl PanelKind {
             PanelKind::Listing => "ui.panel.listing.title",
             PanelKind::Log => "ui.panel.log.title",
             PanelKind::Assignments => "ui.panel.assignments.title",
+            PanelKind::Idle => "ui.panel.idle.title",
             PanelKind::Ledger => "ui.panel.ledger.title",
             #[cfg(not(target_arch = "wasm32"))]
             PanelKind::Specimen => "ui.panel.specimen.title",
@@ -114,6 +119,7 @@ impl PanelKind {
             PanelKind::Listing => "ui.panel.listing.description",
             PanelKind::Log => "ui.panel.log.description",
             PanelKind::Assignments => "ui.panel.assignments.description",
+            PanelKind::Idle => "ui.panel.idle.description",
             PanelKind::Ledger => "ui.panel.ledger.description",
             #[cfg(not(target_arch = "wasm32"))]
             PanelKind::Specimen => "ui.panel.specimen.description",
@@ -174,8 +180,18 @@ impl DockState {
     ///
     /// Removing it from wherever it was first is what keeps the
     /// ordering lists agreeing with the placement map.
+    ///
+    /// The left and right edges hold one panel at a time: docking a second
+    /// there closes whatever was already on that edge, rather than stacking
+    /// one under the other. The bottom is the exception — a row of short,
+    /// wide panels side by side is a shape it has room for.
     pub fn dock(&mut self, kind: PanelKind, side: DockSide) {
         self.close(kind);
+        if matches!(side, DockSide::Left | DockSide::Right) {
+            for other in self.panels_on(side).to_vec() {
+                self.close(other);
+            }
+        }
         self.placement.insert(kind, side);
         self.order.entry(side).or_default().push(kind);
     }
@@ -247,6 +263,31 @@ mod tests {
             })
             .sum();
         assert_eq!(total, 1);
+    }
+
+    #[test]
+    fn an_edge_holds_one_panel_at_a_time() {
+        let mut dock = DockState::default();
+        // The left opens with the inspector; docking the listing there
+        // replaces it rather than stacking beneath it.
+        dock.dock(PanelKind::Listing, DockSide::Left);
+        assert_eq!(dock.panels_on(DockSide::Left), &[PanelKind::Listing]);
+        assert_eq!(
+            dock.side_of(PanelKind::Inspector),
+            None,
+            "the panel that was on the edge is closed, not hidden behind"
+        );
+    }
+
+    #[test]
+    fn the_bottom_still_stacks_side_by_side() {
+        let mut dock = DockState::default();
+        dock.dock(PanelKind::Ledger, DockSide::Bottom);
+        assert_eq!(
+            dock.panels_on(DockSide::Bottom),
+            &[PanelKind::Log, PanelKind::Assignments, PanelKind::Ledger],
+            "the one-per-side rule is for the edges, not the bottom"
+        );
     }
 
     #[test]

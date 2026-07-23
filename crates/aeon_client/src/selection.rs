@@ -4,9 +4,11 @@
 //! point; double-clicking a body opens its strategic view; Escape returns
 //! to the system view.
 
+use aeon_sim::AssignmentTarget;
 use bevy::picking::pointer::PointerButton;
 use bevy::prelude::*;
 
+use crate::assignment_ui::{AssignmentForm, ProvinceSlot};
 use crate::scene::{GlobeVisual, SystemBodyVisual, nearest_province};
 use crate::view::{MapView, Selection, ViewState};
 
@@ -45,6 +47,7 @@ fn on_globe_click(
     event: On<Pointer<Click>>,
     globes: Query<&GlobeVisual>,
     mut view: ResMut<ViewState>,
+    mut form: ResMut<AssignmentForm>,
 ) {
     if event.button != PointerButton::Primary {
         return;
@@ -59,9 +62,20 @@ fn on_globe_click(
         return;
     };
     let dir = view.projection.direction_at(position);
-    if let Some(province) = nearest_province(dir, &globe.centroids) {
-        view.selected = Some(Selection::Province(province));
+    let Some(province) = nearest_province(dir, &globe.centroids) else {
+        return;
+    };
+    // A province pick requested from the assignment popup consumes the click:
+    // it fills the slot the "pick on map" button was standing in for, and
+    // leaves the selection where it was so the popup stays about its subject.
+    if let Some(slot) = form.map_pick.take() {
+        match slot {
+            ProvinceSlot::Target => form.target = Some(AssignmentTarget::Province(province)),
+            ProvinceSlot::Destination => form.province = Some(province),
+        }
+        return;
     }
+    view.selected = Some(Selection::Province(province));
 }
 
 /// Escape backs out of a body view.

@@ -4,6 +4,7 @@
 //! fills whatever space its side gives it rather than assuming a fixed
 //! strip along the bottom.
 
+use aeon_sim::command::PendingCommands;
 use aeon_sim::state::ContentDb;
 use aeon_sim::{ActiveAssignment, OrgId, PlayerCommand};
 use bevy::prelude::Query;
@@ -20,6 +21,7 @@ pub fn draw_assignments_panel(
     player_org: Option<OrgId>,
     date: aeon_core::calendar::GameDate,
     assignments: &Query<&ActiveAssignment>,
+    pending: Option<&PendingCommands>,
     queue: &mut UiCommandQueue,
 ) {
     let strings = lookup.strings;
@@ -31,8 +33,51 @@ pub fn draw_assignments_panel(
                 .filter(|assignment| Some(assignment.owner) == player_org)
                 .collect();
             sorted.sort_by_key(|assignment| assignment.id);
-            if sorted.is_empty() {
+
+            // Orders that have been given but not yet reached the field. An
+            // order carries a delay and only becomes an active assignment
+            // when a day ticks, so without this a player who starts one while
+            // paused would see nothing at all. Shown ahead of what is under
+            // way, and plainly marked as still on its way.
+            let en_route: Vec<(&str, String, aeon_core::calendar::GameDate)> = pending
+                .map(|pending| {
+                    pending
+                        .entries()
+                        .iter()
+                        .filter_map(|envelope| match &envelope.command {
+                            PlayerCommand::StartAssignment {
+                                assignment, leader, ..
+                            } => {
+                                let title = content
+                                    .0
+                                    .assignments
+                                    .get(assignment)
+                                    .map(|def| def.title.as_str())
+                                    .unwrap_or_else(|| strings.text("ui.inspector.unknown"));
+                                Some((title, lookup.char_name(*leader), envelope.day))
+                            }
+                            _ => None,
+                        })
+                        .collect()
+                })
+                .unwrap_or_default();
+
+            if sorted.is_empty() && en_route.is_empty() {
                 ui.label(strings.text("ui.assignments.none"));
+            }
+
+            for (title, leader, arrives) in &en_route {
+                ui.weak(strings.format(
+                    "ui.assignments.en-route",
+                    &[
+                        ("assignment", title),
+                        ("leader", leader),
+                        ("date", &arrives.to_string()),
+                    ],
+                ));
+            }
+            if !en_route.is_empty() && !sorted.is_empty() {
+                ui.separator();
             }
             for assignment in sorted {
                 let title = content

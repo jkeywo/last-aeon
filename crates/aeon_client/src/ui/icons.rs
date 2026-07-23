@@ -199,6 +199,12 @@ pub fn draw_panel_icon(
                 );
             }
         }
+        // A figure: a person waiting to be put to work.
+        PanelKind::Idle => {
+            painter.circle_stroke(at(0.5, 0.3), r.width() * 0.16, stroke);
+            line(at(0.24, 0.85), at(0.5, 0.52));
+            line(at(0.76, 0.85), at(0.5, 0.52));
+        }
         // A column of swatches: the colour key.
         PanelKind::Ledger => {
             for y in [0.15, 0.45, 0.75] {
