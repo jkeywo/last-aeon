@@ -1,0 +1,171 @@
+# Post-MVP implementation plan — Milestone 8
+#
+# Since M5 a character has pursued one plan at a time: a tactic that
+# answers the single heaviest pressure they are under. What no house has
+# is a long horizon — an ambition that spans reigns and bends its whole
+# court, and its vassals' courts, toward one end. This milestone adds
+# that layer above plans: an AI head chooses a grand-strategy goal —
+# conquer a neighbour, become Consul, take the planet — and the goal
+# steers the plans and assignments already in place, and issues advisory
+# directives down the vassal chain. The player joins the same hierarchy:
+# they may direct their own vassals, and they see what their liege wants
+# of them, to heed or ignore as they please.
+
+entities:
+  - system: milestone-8-implementation-plan
+    core:
+      status: proposed
+      confidence: provisional
+      title: "Milestone 8: Grand Strategy"
+      summary: >-
+        A goal is a house's standing ambition, pursued across reigns,
+        sitting above the per-character plan. It does not execute
+        directly: while active it biases which pressures the head reaches
+        for, so the existing plan and assignment machinery carries it out,
+        and it issues advisory directives to the house's vassals that bias
+        their own scoring in turn. Directives are advisory by design — a
+        vassal head still chooses — which is exactly how a house acts
+        through its head everywhere else. The player is one more member of
+        the hierarchy: they may direct their vassals, and they see the
+        directive their liege has issued them as information to act on or
+        set aside.
+      references:
+        - characters-are-the-acting-unit
+        - intent-driven-organisation-agency
+        - plans-are-authored-campaigns
+        - organisation-agency-model
+        - agency-intents-are-authored-on-jobs
+        - rng-stream-labels-are-identities-not-names
+
+  - milestone: m8-the-goal-vocabulary
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M8.1: Goals Are Authored Ambitions"
+      summary: >-
+        A goal is data, like a plan: a trigger that says when the ambition
+        is attractive, the pressures it favours and by how much, what it
+        is aimed at, and the directives it presses on vassals. define_goal
+        joins the content builders and loading validates it; the engine
+        ignores goals entirely at this stage. Conditions are integer facts
+        over visible state, extended with the hierarchy facts a grand
+        strategy needs — whether the house has vassals, whether it is a
+        vassal, whether a target is a neighbour.
+      goals:
+        - A new goal is authored content, not an engine change.
+        - A goal's trigger and its favoured pressures are declarative data, validated at load and replayed identically.
+        - A malformed goal fails at load with a named error.
+    implementation:
+      paths:
+        - crates/aeon_data/src/model.rs
+        - crates/aeon_data/src/host/builders.rs
+        - crates/aeon_data/src/host/validate.rs
+      status: declared
+
+  - milestone: m8-goals-bias-agency
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M8.2: A Goal Steers the House"
+      summary: >-
+        Monthly, a head whose house has no active goal adopts the one
+        whose trigger it clears — head-only, like the paramountcy claim it
+        already weighs alone. The goal lives in a resource keyed by the
+        house, not the person, so it survives succession: the plan dies
+        with its leader, the ambition does not. While a goal is active it
+        adds its bonus to every pressure it favours, so the existing
+        scorer, plans and assignments carry it out with no second
+        executor. A goal ends when achieved, made impossible, or run out
+        of time, and says so.
+      goals:
+        - An ambition outlives the reign that formed it, and the next head may keep or abandon it.
+        - A goal changes only what the head reaches for, never how an assignment is validated or resolved.
+        - Goal selection consumes one roll on a new, frozen stream, and the whole layer replays identically.
+      references:
+        - rng-stream-labels-are-identities-not-names
+        - intent-driven-organisation-agency
+    implementation:
+      paths:
+        - crates/aeon_sim/src/agency.rs
+        - crates/aeon_sim/src/politics.rs
+        - crates/aeon_sim/src/snapshot.rs
+      status: declared
+
+  - milestone: m8-directives-to-vassals
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M8.3: A Liege Directs Its Vassals"
+      summary: >-
+        An active goal presses directives on the house's vassals: a
+        directive is a standing wish — press this, muster against that —
+        recorded against the vassal it is meant for. It is advisory: a
+        directive adds a bonus to the matching pressure in the vassal
+        head's own scoring, so the vassal is more likely to do what its
+        liege wants without ever being compelled. A vassal cannot be
+        ordered to do what it could not choose, the same guarantee every
+        autonomous act already carries.
+      goals:
+        - A directive makes a vassal more likely to serve its liege's aim, and never forces it.
+        - Directives are found by scanning the hierarchy in stable order; a liege's vassals are enumerated deterministically.
+        - A directive lapses on its own, so a finished ambition stops steering the vassals it once moved.
+      references:
+        - organisation-agency-model
+        - characters-are-the-acting-unit
+    implementation:
+      paths:
+        - crates/aeon_sim/src/agency.rs
+        - crates/aeon_sim/src/politics.rs
+        - crates/aeon_sim/src/snapshot.rs
+      status: declared
+
+  - milestone: m8-the-player-in-the-hierarchy
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M8.4: The Player Directs, and Is Directed"
+      summary: >-
+        The player joins the same chain. A new command lets them press a
+        directive on a house that answers to them — authorised by the
+        hierarchy rather than by ownership, the first command that reaches
+        beyond the player's own org. And the interface shows the directive
+        the player's own liege has pressed on them: information, offered
+        the way a rumour is, to heed or ignore. What the player may ask of
+        a vassal is exactly what the vassal could choose, so the advisory
+        rule holds in both directions.
+      goals:
+        - The player may direct a house that answers to them, and the directive is validated by the chain of command, not by ownership.
+        - The player sees what their liege wants of them and remains free to do otherwise.
+        - No directive, issued by anyone, can compel an act its subject could not have chosen.
+      references:
+        - player-organisation
+        - single-source-leader-availability
+    implementation:
+      paths:
+        - crates/aeon_sim/src/command.rs
+        - crates/aeon_client/src/ui/inspector.rs
+        - assets/text/strings.csv
+      status: declared
+
+  - milestone: m8-authored-goals
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M8.5: Real Ambitions Move the World"
+      summary: >-
+        The shipped content grows real goals — conquer a neighbour,
+        become Consul, take the planet — each favouring the pressures that
+        serve it and directing vassals to lend their weight. A seed-pinned
+        acceptance run proves a great house adopts an ambition unprompted,
+        pursues it through its own plans, and presses it on its vassals,
+        who visibly weight the directive. The spec records the milestone.
+      goals:
+        - An autonomous great house visibly pursues a multi-reign ambition and bends its vassals toward it, for reasons it states.
+        - Becoming Consul is something a house can now work toward, not only fall into on a vacancy.
+      references:
+        - consul-vacancy-is-a-contested-appointment
+        - planetary-paramount-title-is-contested
+    implementation:
+      paths:
+        - assets/text/strings.csv
+      status: declared
