@@ -1,0 +1,131 @@
+# Post-MVP implementation plan — Milestone 10
+#
+# Intrigue in the game has been a matter of reputation. A whispering
+# campaign lowers what a rival's peers think of them; nothing worse ever
+# befalls the target, because the only harm the simulation can do lands
+# on the person who leads a failed job, never on the person it was aimed
+# at. This milestone gives the shadows teeth: an effect that harms a
+# named target, and the assignments that use it — assassination and
+# abduction against a person, sabotage against a place — with all the
+# risk of being caught that such work should carry. It is the piece that
+# lets a house make the vacancy it means to fill.
+
+entities:
+  - system: milestone-10-implementation-plan
+    core:
+      status: proposed
+      confidence: provisional
+      title: "Milestone 10: Shadows"
+      summary: >-
+        The one capability the simulation lacks is an effect that harms
+        someone other than the actor. The machinery of harm already
+        exists — the conditions that injure, capture, incapacitate, or
+        kill a character — but only ever strikes the leader of a failed
+        job. This milestone adds a target-directed harm effect that reuses
+        that machinery, then the authored assignments that wield it:
+        assassination and abduction aimed at a character, sabotage aimed
+        at a place, each carrying the risk of exposure and the grievance
+        that follows. With it, a grand ambition can remove the obstacle in
+        its way rather than only outlast it.
+      references:
+        - character-simulation-scope
+        - character-opinion-model
+        - obligations-are-specific-political-facts
+        - agency-intents-are-authored-on-jobs
+
+  - milestone: m10-target-directed-harm
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M10.1: Harm Reaches the Target"
+      summary: >-
+        A new authored effect names a target and a condition and lays it
+        on them — injury, capture, incapacity, or death — reusing the harm
+        the simulation already applies to a hapless leader, now aimed
+        where the content directs. It extends the effect vocabulary in the
+        one established place, resolving the target through the same roles
+        every effect uses. This is the whole engine seam the milestone
+        needs; everything after it is authored content.
+      goals:
+        - An assignment can harm the character it is aimed at, not only the one who leads it.
+        - The harm reuses the existing conditions and their durations, so nothing about how a character recovers is reinvented.
+        - The new effect extends the authored vocabulary in the single place effects are defined, parsed, and applied.
+      references:
+        - character-simulation-scope
+    implementation:
+      paths:
+        - crates/aeon_data/src/effect.rs
+        - crates/aeon_sim/src/assignments.rs
+      status: declared
+
+  - milestone: m10-assassination-and-abduction
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M10.2: A Knife in the Dark"
+      summary: >-
+        Authored intrigue aimed at a person: to have them killed, taken,
+        or laid up. The work is hard and the leader who attempts it risks
+        capture, scandal, and death if it goes wrong, and a house exposed
+        in the attempt earns a lasting grievance. Because the pressure it
+        answers is authored like any other, an autonomous house can reach
+        for it — and a house set on the Consulship can now make the
+        vacancy it means to win, rather than wait on a natural death.
+      goals:
+        - A character can be removed by intrigue, at real risk to the house that tries.
+        - Being caught leaves a grievance on the record, so a failed scheme has a political cost that outlives it.
+        - The AI can scheme, because the assignment declares the pressure it answers like every other.
+      references:
+        - obligations-are-specific-political-facts
+        - consul-vacancy-is-a-contested-appointment
+    implementation:
+      paths:
+        - assets/content/core/administration.rhai
+        - assets/text/strings.csv
+      status: declared
+
+  - milestone: m10-sabotage
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M10.3: A Fire in the Works"
+      summary: >-
+        Intrigue aimed at a place rather than a person: to throw a
+        province into disorder or wreck what it has built. Disorder it can
+        cause today, through the order effect that already exists; wrecking
+        a building leans on the buildings a rival economy raises, so that
+        half waits on the economy that gives it something to break. As
+        with a knife, the saboteur who is caught pays for it.
+      goals:
+        - A province can be thrown into disorder by an enemy's hand, not only by its own neglect.
+        - Where there is something built to break, sabotage can break it, at the same risk of exposure.
+      references:
+        - provincial-order-system
+    implementation:
+      paths:
+        - assets/content/core/administration.rhai
+        - assets/text/strings.csv
+      status: declared
+
+  - milestone: m10-schemes-in-grand-strategy
+    core:
+      status: proposed
+      confidence: provisional
+      title: "M10.4: Ambition Learns to Scheme"
+      summary: >-
+        The grand strategies of Milestone 8 take up the knife. A goal set
+        on the Consulship weaves in the removal of an incumbent; a goal
+        set on conquest weaves in beheading the general who stands in the
+        way. Plans reference the new intrigue, and a seed-pinned
+        acceptance run proves a house clears an obstacle by the shadows
+        and profits by it. The spec records the milestone.
+      goals:
+        - A house's long ambition can now include removing the person who blocks it, and does.
+        - Content alone weaves the schemes into the goals and plans already in place.
+      references:
+        - agency-intents-are-authored-on-jobs
+    implementation:
+      paths:
+        - assets/content/core/plans.rhai
+        - assets/text/strings.csv
+      status: declared
