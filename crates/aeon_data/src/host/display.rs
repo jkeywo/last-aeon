@@ -90,6 +90,10 @@ pub(super) fn fill_display_text(builder: &mut BuilderState, strings: &StringTabl
         def.title = fill.req("plan", key, "title");
         def.summary = fill.req("plan", key, "summary");
     }
+    for (key, def) in &mut builder.goals {
+        def.title = fill.req("goal", key, "title");
+        def.summary = fill.req("goal", key, "summary");
+    }
     if let Some(scenario) = &mut builder.scenario {
         let key = scenario.key.clone();
         scenario.name = fill.req("scenario", &key, "name");
@@ -169,6 +173,10 @@ pub fn text_keys(set: &ContentSet) -> BTreeSet<String> {
     for key in set.plans.keys() {
         add(format!("plan.{key}.title"));
         add(format!("plan.{key}.summary"));
+    }
+    for key in set.goals.keys() {
+        add(format!("goal.{key}.title"));
+        add(format!("goal.{key}.summary"));
     }
     if let Some(scenario) = &set.scenario {
         add(format!("scenario.{}.name", scenario.key));

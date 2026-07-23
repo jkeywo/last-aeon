@@ -399,6 +399,8 @@ pub struct ContentSet {
     pub events: BTreeMap<ContentKey, EventDef>,
     /// Plans autonomous characters may pursue, by key.
     pub plans: BTreeMap<ContentKey, PlanDef>,
+    /// Grand-strategy goals a house head may adopt, by key.
+    pub goals: BTreeMap<ContentKey, GoalDef>,
     /// The scenario, if this content set defines one.
     pub scenario: Option<ScenarioDef>,
     /// Compiled ASTs by content-relative path, for runtime function calls.
@@ -423,6 +425,7 @@ impl ContentSet {
             && self.ships == other.ships
             && self.armies == other.armies
             && self.plans == other.plans
+            && self.goals == other.goals
             && self.scenario == other.scenario
             && self.content_hash == other.content_hash
     }
@@ -1081,6 +1084,91 @@ pub struct PlanRequires {
     pub target_owes_favour: bool,
     /// The authority must be the dominant claimant of the crisis body.
     pub dominant_claimant: bool,
+}
+
+/// An authored grand-strategy goal: a house's standing ambition.
+///
+/// Where a [`PlanDef`] answers one pressure — a tactic — a goal is the
+/// long horizon above several, chosen by a head and pursued across
+/// reigns. A goal does not execute: while active it biases which
+/// pressures the house reaches for, so the plans and assignments already
+/// in place carry it out, and it presses advisory directives on the
+/// house's vassals. Like a plan, it is data all the way down, so a new
+/// ambition is authored content, not an engine change.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GoalDef {
+    /// The goal's stable content key.
+    pub key: ContentKey,
+    /// Short player-facing title.
+    pub title: String,
+    /// One-sentence player-facing summary.
+    pub summary: String,
+    /// When this ambition is attractive enough to adopt.
+    pub trigger: GoalRequires,
+    /// The pressures pursuing this goal favours; each is lifted by
+    /// `favour_bonus` in the head's scoring while the goal is active.
+    pub favours: Vec<AiIntent>,
+    /// How much a favoured pressure is lifted while the goal is active.
+    pub favour_bonus: i64,
+    /// What the ambition as a whole is aimed at. Restricted to `None`,
+    /// `Organisation`, or `Province`, like a plan's target.
+    pub target: AssignmentTargetKind,
+    /// The advisory directives pressed on the house's vassals while the
+    /// goal is active.
+    pub directives: Vec<DirectiveDef>,
+    /// Abandon the goal if it is still unmet after this many days.
+    pub max_days: u32,
+    /// Days after the goal ends before the house may adopt it again.
+    pub cooldown_days: u32,
+}
+
+/// One advisory directive a goal presses on each of the house's vassals.
+///
+/// A directive is a wish, not an order: it lifts the matching pressure in
+/// the vassal head's own scoring, so the vassal is more likely to serve
+/// its liege's aim without ever being compelled.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DirectiveDef {
+    /// The pressure the liege wants its vassals to feel more keenly.
+    pub intent: AiIntent,
+    /// Whether the directive carries the goal's target down to the vassal.
+    pub target: DirectiveTarget,
+}
+
+/// Where a directive's target comes from.
+#[derive(Copy, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum DirectiveTarget {
+    /// The directive names nothing; the vassal feels the pressure at large.
+    #[default]
+    None,
+    /// The directive carries the goal's own target down to the vassal.
+    GoalTarget,
+}
+
+/// Declarative trigger for adopting a goal.
+///
+/// The same shape and reason as [`PlanRequires`] — integer facts over
+/// visible state, validated at load, evaluated identically on replay —
+/// extended with the hierarchy facts a grand strategy weighs: whether the
+/// house has vassals to command, and whether it is itself a vassal. Every
+/// field defaults to "do not care".
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GoalRequires {
+    /// The house's wealth must be at or above this.
+    pub min_wealth: Option<i64>,
+    /// The house's manpower must be at or above this.
+    pub min_manpower: Option<i64>,
+    /// The house's effective legitimacy must be at or above this.
+    pub min_legitimacy: Option<i32>,
+    /// Whether the house must have (or must not have) a standing army.
+    pub has_army: Option<bool>,
+    /// The house must be the dominant claimant of the crisis body.
+    pub dominant_claimant: bool,
+    /// Whether the house must have (or must not have) vassals.
+    pub has_vassals: Option<bool>,
+    /// Whether the house must itself be (or not be) a vassal.
+    pub is_vassal: Option<bool>,
 }
 
 /// An authored office: a revocable appointment held by a character.

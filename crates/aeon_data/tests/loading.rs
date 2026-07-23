@@ -696,3 +696,128 @@ define_plan(#{
         report.findings
     );
 }
+
+// ---------------------------------------------------------------------------
+// Goals
+// ---------------------------------------------------------------------------
+
+const GOOD_GOALS: &str = r#"
+define_goal(#{
+    id: "become-consul",
+    favours: ["standing"],
+    favour_bonus: 40,
+    max_days: 3600,
+    cooldown_days: 720,
+    trigger: #{ min_legitimacy: 40, is_vassal: false },
+});
+define_goal(#{
+    id: "conquer-a-neighbour",
+    favours: ["muster", "order"],
+    favour_bonus: 30,
+    target: "organisation",
+    max_days: 5400,
+    trigger: #{ has_army: true, has_vassals: true },
+    directives: [
+        #{ intent: "muster", target: "goal" },
+        #{ intent: "standing" },
+    ],
+});
+"#;
+
+#[test]
+fn loads_a_valid_goal() {
+    use aeon_data::model::{AiIntent, AssignmentTargetKind, DirectiveTarget};
+
+    let (set, report) = load_content(
+        &[source("core/goals.rhai", GOOD_GOALS)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(
+        !report.has_errors(),
+        "unexpected findings: {:?}",
+        report.findings
+    );
+    let set = set.expect("valid goals load");
+    assert_eq!(set.goals.len(), 2);
+
+    let consul = &set.goals[&aeon_data::ContentKey::new("become-consul").unwrap()];
+    assert_eq!(consul.favours, vec![AiIntent::Standing]);
+    assert_eq!(consul.favour_bonus, 40);
+    assert_eq!(consul.target, AssignmentTargetKind::None);
+    assert_eq!(consul.trigger.min_legitimacy, Some(40));
+    assert_eq!(consul.trigger.is_vassal, Some(false));
+
+    let conquer = &set.goals[&aeon_data::ContentKey::new("conquer-a-neighbour").unwrap()];
+    assert_eq!(conquer.favours, vec![AiIntent::Muster, AiIntent::Order]);
+    assert_eq!(conquer.target, AssignmentTargetKind::Organisation);
+    assert_eq!(conquer.trigger.has_vassals, Some(true));
+    assert_eq!(conquer.directives.len(), 2);
+    assert_eq!(conquer.directives[0].intent, AiIntent::Muster);
+    assert_eq!(conquer.directives[0].target, DirectiveTarget::GoalTarget);
+    assert_eq!(conquer.directives[1].target, DirectiveTarget::None);
+}
+
+#[test]
+fn a_goal_with_no_favoured_pressure_fails_to_load() {
+    let script = r#"
+define_goal(#{ id: "aimless", favours: [], max_days: 100 });
+"#;
+    let (set, report) = load_content(
+        &[source("core/goals.rhai", script)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|f| f.message.contains("favour at least one pressure")),
+        "findings: {:?}",
+        report.findings
+    );
+}
+
+#[test]
+fn a_goal_favouring_an_unknown_pressure_fails_to_load() {
+    let script = r#"
+define_goal(#{ id: "confused", favours: ["conquest"], max_days: 100 });
+"#;
+    let (set, report) = load_content(
+        &[source("core/goals.rhai", script)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|f| f.message.contains("unknown favoured pressure 'conquest'")),
+        "findings: {:?}",
+        report.findings
+    );
+}
+
+#[test]
+fn a_directive_aiming_at_a_target_the_goal_lacks_fails_to_load() {
+    let script = r#"
+define_goal(#{
+    id: "misaimed",
+    favours: ["standing"],
+    max_days: 100,
+    directives: [ #{ intent: "muster", target: "goal" } ],
+});
+"#;
+    let (set, report) = load_content(
+        &[source("core/goals.rhai", script)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|f| f.message.contains("the goal has none")),
+        "findings: {:?}",
+        report.findings
+    );
+}

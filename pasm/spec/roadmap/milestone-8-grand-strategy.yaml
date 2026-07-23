@@ -39,8 +39,8 @@ entities:
 
   - milestone: m8-the-goal-vocabulary
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "M8.1: Goals Are Authored Ambitions"
       summary: >-
         A goal is data, like a plan: a trigger that says when the ambition
@@ -59,8 +59,26 @@ entities:
       paths:
         - crates/aeon_data/src/model.rs
         - crates/aeon_data/src/host/builders.rs
-        - crates/aeon_data/src/host/validate.rs
+        - crates/aeon_data/src/host/display.rs
+      tests:
+        - crates/aeon_data/tests/loading.rs
       status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_data/tests/loading.rs
+        summary: >-
+          A valid goal loads with its favoured pressures, trigger,
+          directives, and defaulted target; a goal that favours nothing,
+          one favouring an unknown pressure, and a directive aiming at a
+          target its goal lacks each fail to load with a named error.
+      - kind: manual-review
+        reference: crates/aeon_data/src/host/builders.rs
+        summary: >-
+          A goal references no other content by key — its favours are
+          pressures and its target a kind — so validation is builder-level
+          only; there is no cross-reference pass to add. The intent
+          spellings are shared by the goal and directive builders through
+          one table, so a pressure is named one way everywhere.
 
   - milestone: m8-goals-bias-agency
     core:

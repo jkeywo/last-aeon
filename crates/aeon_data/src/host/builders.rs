@@ -19,12 +19,13 @@ use rhai::{Engine, Map};
 use crate::key::ContentKey;
 use crate::model::{
     AiIntent, ArmyDef, AssignmentCategory, AssignmentDef, AssignmentRequires, AssignmentTargetKind,
-    BodyDef, BodyKind, CharacterDef, EventChoiceDef, EventDef, EventFamily, EventRequires, Gender,
-    GoverningSkill, HolderRelation, HouseTier, MilitaryOp, NamePoolDef, ObligationDef,
-    ObligationKind, OfficeDef, OrgDef, OrgKind, OutcomeDef, OutcomeKind, PlanArmySelector, PlanDef,
-    PlanMethodDef, PlanRequires, PlanStepAction, PlanStepDef, PlanTargetSelector, PopupChoiceDef,
-    ProvinceDef, RiskTag, ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SkillsDef, StageDef,
-    TitleDef, TitleHolderDef, TitleKindDef, TitleNeed, TraitDef, Urgency,
+    BodyDef, BodyKind, CharacterDef, DirectiveDef, DirectiveTarget, EventChoiceDef, EventDef,
+    EventFamily, EventRequires, Gender, GoalDef, GoalRequires, GoverningSkill, HolderRelation,
+    HouseTier, MilitaryOp, NamePoolDef, ObligationDef, ObligationKind, OfficeDef, OrgDef, OrgKind,
+    OutcomeDef, OutcomeKind, PlanArmySelector, PlanDef, PlanMethodDef, PlanRequires,
+    PlanStepAction, PlanStepDef, PlanTargetSelector, PopupChoiceDef, ProvinceDef, RiskTag,
+    ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SkillsDef, StageDef, TitleDef, TitleHolderDef,
+    TitleKindDef, TitleNeed, TraitDef, Urgency,
 };
 use crate::report::{ContentReport, Severity};
 
@@ -47,6 +48,7 @@ pub(super) struct BuilderState {
     pub(super) obligations: BTreeMap<ContentKey, ObligationDef>,
     pub(super) events: BTreeMap<ContentKey, EventDef>,
     pub(super) plans: BTreeMap<ContentKey, PlanDef>,
+    pub(super) goals: BTreeMap<ContentKey, GoalDef>,
     pub(super) scenario: Option<ScenarioDef>,
 }
 
@@ -75,6 +77,7 @@ impl BuilderState {
             obligations: std::mem::take(&mut self.obligations),
             events: std::mem::take(&mut self.events),
             plans: std::mem::take(&mut self.plans),
+            goals: std::mem::take(&mut self.goals),
             scenario: self.scenario.take(),
         }
     }
@@ -2015,6 +2018,212 @@ fn plan_requires(f: &mut Fields, raw: rhai::Dynamic) -> Option<PlanRequires> {
     })
 }
 
+/// The authored spellings of every [`AiIntent`], shared by the goal and
+/// directive builders so a pressure is named one way everywhere.
+const INTENT_SPELLINGS: &[(&str, AiIntent)] = &[
+    ("routine", AiIntent::Routine),
+    ("order", AiIntent::Order),
+    ("muster", AiIntent::Muster),
+    ("obligation", AiIntent::Obligation),
+    ("resources", AiIntent::Resources),
+    ("standing", AiIntent::Standing),
+    ("claim", AiIntent::Claim),
+];
+
+fn parse_intent(raw: &str) -> Option<AiIntent> {
+    INTENT_SPELLINGS
+        .iter()
+        .find(|(name, _)| *name == raw)
+        .map(|(_, intent)| *intent)
+}
+
+fn define_goal(state: &mut BuilderState, map: Map) {
+    let Some(mut f) = Fields::begin(state, map) else {
+        return;
+    };
+    let title = f.moved_to_table("title", "goal");
+    let summary = f.moved_to_table("summary", "goal");
+
+    let Some(favour_names) = f.string_list("favours") else {
+        return;
+    };
+    if favour_names.is_empty() {
+        f.error("a goal must favour at least one pressure");
+        return;
+    }
+    let mut favours = Vec::with_capacity(favour_names.len());
+    for name in &favour_names {
+        let Some(intent) = parse_intent(name) else {
+            f.error(format!(
+                "unknown favoured pressure '{name}' (expected {})",
+                INTENT_SPELLINGS
+                    .iter()
+                    .map(|(n, _)| *n)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ));
+            return;
+        };
+        favours.push(intent);
+    }
+
+    let Some(favour_bonus) = f.opt_int("favour_bonus", 0) else {
+        return;
+    };
+    // A goal aims at coarse things only, like a plan.
+    let Some(target) = f.opt_enum(
+        "target",
+        &[
+            ("none", AssignmentTargetKind::None),
+            ("organisation", AssignmentTargetKind::Organisation),
+            ("province", AssignmentTargetKind::Province),
+        ],
+        AssignmentTargetKind::None,
+    ) else {
+        return;
+    };
+    let Some(max_days) = f.req_int("max_days") else {
+        return;
+    };
+    if !(1..=1_000_000).contains(&max_days) {
+        f.error(format!("max_days must be 1..=1000000, got {max_days}"));
+        return;
+    }
+    let Some(cooldown_days) = f.opt_int("cooldown_days", 0) else {
+        return;
+    };
+    if !(0..=1_000_000).contains(&cooldown_days) {
+        f.error(format!(
+            "cooldown_days must be 0..=1000000, got {cooldown_days}"
+        ));
+        return;
+    }
+
+    let trigger = match f.take_raw("trigger") {
+        None => GoalRequires::default(),
+        Some(raw) => {
+            let Some(req) = goal_requires(&mut f, raw) else {
+                return;
+            };
+            req
+        }
+    };
+
+    let mut directives: Vec<DirectiveDef> = Vec::new();
+    if let Some(raw) = f.take_raw("directives") {
+        let Some(list) = raw.try_cast::<rhai::Array>() else {
+            f.error("directives must be a list");
+            return;
+        };
+        for entry in list {
+            let Some(directive) = goal_directive(&mut f, entry, target) else {
+                return;
+            };
+            directives.push(directive);
+        }
+    }
+
+    let (state, key) = f.finish();
+    if state.goals.contains_key(&key) {
+        state.error(Some(key.as_str()), "duplicate goal id");
+        return;
+    }
+    state.goals.insert(
+        key.clone(),
+        GoalDef {
+            key,
+            title,
+            summary,
+            trigger,
+            favours,
+            favour_bonus,
+            target,
+            directives,
+            max_days: max_days as u32,
+            cooldown_days: cooldown_days as u32,
+        },
+    );
+}
+
+/// Reads one of a goal's advisory directives.
+///
+/// A directive that carries the goal's target down needs the goal to
+/// have one — the same rule a plan step aiming at "plan" keeps.
+fn goal_directive(
+    f: &mut Fields,
+    entry: rhai::Dynamic,
+    goal_target: AssignmentTargetKind,
+) -> Option<DirectiveDef> {
+    let Some(map) = entry.try_cast::<Map>() else {
+        f.error("each directive must be a map");
+        return None;
+    };
+    warn_unknown_fields(f.state, &map, Some(f.key.as_str()), &["intent", "target"]);
+    let key_str = f.key_str();
+    let raw = req_str(f.state, Some(&key_str), &map, "intent")?;
+    let Some(intent) = parse_intent(&raw) else {
+        f.error(format!("unknown directive intent '{raw}'"));
+        return None;
+    };
+    let target = match map
+        .get("target")
+        .and_then(|v| v.clone().into_string().ok())
+        .as_deref()
+    {
+        None | Some("none") => DirectiveTarget::None,
+        Some("goal") => {
+            if goal_target == AssignmentTargetKind::None {
+                f.error("a directive aims at the goal's target, but the goal has none");
+                return None;
+            }
+            DirectiveTarget::GoalTarget
+        }
+        Some(other) => {
+            f.error(format!(
+                "unknown directive target '{other}' (expected none, goal)"
+            ));
+            return None;
+        }
+    };
+    Some(DirectiveDef { intent, target })
+}
+
+/// Reads a goal's trigger conditions.
+///
+/// Every field defaults to "do not care", the same contract
+/// [`plan_requires`] keeps.
+fn goal_requires(f: &mut Fields, raw: rhai::Dynamic) -> Option<GoalRequires> {
+    let Some(map) = raw.try_cast::<Map>() else {
+        f.error("goal conditions must be a map");
+        return None;
+    };
+    warn_unknown_fields(
+        f.state,
+        &map,
+        Some(f.key.as_str()),
+        &[
+            "min_wealth",
+            "min_manpower",
+            "min_legitimacy",
+            "has_army",
+            "dominant_claimant",
+            "has_vassals",
+            "is_vassal",
+        ],
+    );
+    let int = |name: &str| map.get(name).and_then(|v| v.as_int().ok());
+    let flag = |name: &str| map.get(name).and_then(|v| v.as_bool().ok());
+    Some(GoalRequires {
+        min_wealth: int("min_wealth"),
+        min_manpower: int("min_manpower"),
+        min_legitimacy: int("min_legitimacy").map(|v| v as i32),
+        has_army: flag("has_army"),
+        dominant_claimant: flag("dominant_claimant").unwrap_or(false),
+        has_vassals: flag("has_vassals"),
+        is_vassal: flag("is_vassal"),
+    })
+}
+
 fn define_obligation(state: &mut BuilderState, map: Map) {
     let Some(mut f) = Fields::begin(state, map) else {
         return;
@@ -2201,5 +2410,6 @@ pub(super) fn loading_engine(state: Arc<Mutex<BuilderState>>) -> Engine {
     register!("define_obligation", define_obligation);
     register!("define_event", define_event);
     register!("define_plan", define_plan);
+    register!("define_goal", define_goal);
     engine
 }

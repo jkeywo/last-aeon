@@ -175,6 +175,7 @@ pub fn load_content(
         obligations: builder.obligations,
         events: builder.events,
         plans: builder.plans,
+        goals: builder.goals,
         scenario: builder.scenario,
         asts,
         content_hash: content_hash(&sources),
