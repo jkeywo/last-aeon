@@ -134,8 +134,8 @@ entities:
 
   - milestone: m8-directives-to-vassals
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "M8.3: A Liege Directs Its Vassals"
       summary: >-
         An active goal presses directives on the house's vassals: a
@@ -155,10 +155,34 @@ entities:
         - characters-are-the-acting-unit
     implementation:
       paths:
+        - crates/aeon_sim/src/goals.rs
         - crates/aeon_sim/src/agency.rs
         - crates/aeon_sim/src/politics.rs
-        - crates/aeon_sim/src/snapshot.rs
+      tests:
+        - crates/aeon_sim/tests/goals.rs
       status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/goals.rs
+        summary: >-
+          A liege that forms a directive-pressing ambition lifts exactly
+          the pressure it directs in its vassal's scoring and no other; the
+          directive is visible as what it is; a house with no liege
+          receives nothing; and the wish lapses the moment the ambition
+          ends.
+      - kind: manual-review
+        reference: crates/aeon_sim/src/goals.rs
+        summary: >-
+          Directives are derived, not stored — a directive exists exactly
+          while the liege holds the goal that presses it, so it needs no
+          resource of its own, cannot drift after a restore, and lapses for
+          free when the goal ends. This is simpler than the separate
+          Directives resource the declaration imagined and delivers the
+          same advisory behaviour. directives_on is the one source both the
+          scoring bonus and the player's view (M8.4) read; the bonus is a
+          fixed, modest constant, felt less keenly than a house's own
+          ambition and never binding. vassals_of adds the forward view the
+          child-to-parent hierarchy does not store.
 
   - milestone: m8-the-player-in-the-hierarchy
     core:

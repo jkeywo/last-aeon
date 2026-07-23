@@ -309,7 +309,11 @@ pub fn score_intents(world: &World, actor: CharacterId, authority: OrgId) -> Vec
     // among.
     if crate::access::org_head(world, authority) == Some(actor) {
         for intent in &mut intents {
+            // The house's own ambition, and the wish its liege presses on
+            // it: both lift the pressures they name, and a vassal weighs
+            // its liege's directive without ever being bound by it.
             intent.score += crate::goals::favour_bonus(world, authority, intent.intent);
+            intent.score += crate::goals::directive_bonus(world, authority, intent.intent);
         }
     }
 

@@ -908,6 +908,22 @@ pub fn great_house_of(world: &World, start: OrgId) -> OrgId {
     current
 }
 
+/// The houses that declare `liege` as their direct liege, in stable ID
+/// order.
+///
+/// The forward view the hierarchy does not store: `liege` points a child
+/// at its parent, so finding a parent's children means asking every
+/// house. Bounded naturally by the cast; walked in ID order so a liege's
+/// vassals are enumerated the same way every time.
+pub fn vassals_of(world: &World, liege: OrgId) -> Vec<OrgId> {
+    crate::access::org_ids(world)
+        .into_iter()
+        .filter(|org| {
+            crate::access::org(world, *org).is_some_and(|r| !r.defunct && r.liege == Some(liege))
+        })
+        .collect()
+}
+
 pub fn answers_to(world: &World, start: OrgId, liege: OrgId) -> Option<u32> {
     let index = world.get_resource::<PoliticsIndex>()?;
     let mut current = start;

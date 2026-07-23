@@ -18,7 +18,9 @@ use std::collections::BTreeMap;
 
 use aeon_core::calendar::GameDate;
 use aeon_data::ContentKey;
-use aeon_data::model::{AiIntent, AssignmentTargetKind, GoalRequires, HouseTier, OrgKind};
+use aeon_data::model::{
+    AiIntent, AssignmentTargetKind, DirectiveTarget, GoalRequires, HouseTier, OrgKind,
+};
 use bevy::prelude::{Resource, World};
 use serde::{Deserialize, Serialize};
 
@@ -88,6 +90,59 @@ pub fn active_target(world: &World, authority: OrgId) -> Option<AssignmentTarget
         .get_resource::<Goals>()
         .and_then(|goals| goals.active.get(&authority))
         .map(|active| active.target)
+}
+
+/// How strongly an advisory directive lifts the pressure it names in a
+/// vassal head's scoring. Fixed and modest: a directive is a wish, felt
+/// less keenly than a house's own ambition, and it never compels.
+pub const DIRECTIVE_BONUS: i64 = 25;
+
+/// The directives a vassal currently receives from its liege.
+///
+/// Each is an intent the liege wants felt more keenly, and — when the
+/// directive carries the goal's own target — what it is aimed at.
+/// Derived, not stored: a directive exists exactly while the liege holds
+/// the goal that presses it, so it needs no record of its own and cannot
+/// drift after a restore. A house with no liege, or a liege whose goal
+/// presses no directives, receives nothing.
+pub fn directives_on(world: &World, vassal: OrgId) -> Vec<(AiIntent, Option<AssignmentTarget>)> {
+    let Some(liege) = crate::access::org(world, vassal).and_then(|r| r.liege) else {
+        return Vec::new();
+    };
+    let Some(goals) = world.get_resource::<Goals>() else {
+        return Vec::new();
+    };
+    let Some(active) = goals.active.get(&liege) else {
+        return Vec::new();
+    };
+    let content = world.resource::<ContentDb>().0.clone();
+    let Some(def) = content.goals.get(&active.def) else {
+        return Vec::new();
+    };
+    def.directives
+        .iter()
+        .map(|directive| {
+            let target = match directive.target {
+                DirectiveTarget::None => None,
+                DirectiveTarget::GoalTarget => Some(active.target),
+            };
+            (directive.intent, target)
+        })
+        .collect()
+}
+
+/// The bonus a vassal feels on a pressure because its liege directs it
+/// there. Zero unless the liege's active goal presses a matching
+/// directive.
+pub fn directive_bonus(world: &World, vassal: OrgId, intent: AiIntent) -> i64 {
+    if directives_on(world, vassal)
+        .iter()
+        .any(|(pressed, _)| *pressed == intent)
+    {
+        DIRECTIVE_BONUS
+    } else {
+        0
+    }
 }
 
 /// Whether a goal's trigger holds for a house.
