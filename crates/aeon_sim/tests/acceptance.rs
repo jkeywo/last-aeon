@@ -297,14 +297,14 @@ fn an_autonomous_house_pursues_the_claim_as_a_campaign() {
     // each out from under Draksha and Meloch, and Veyrin's head is left
     // the dominant claimant with a campaign worth adopting.
     use aeon_sim::order::adjust_order;
-    let mournhollow =
-        h.world_mut().resource::<aeon_sim::MapIndex>().province_keys[&key("mournhollow")];
-    let sable_steppe =
-        h.world_mut().resource::<aeon_sim::MapIndex>().province_keys[&key("sable-steppe")];
+    let sallow_march =
+        h.world_mut().resource::<aeon_sim::MapIndex>().province_keys[&key("sallow-march")];
+    let shattered_coast =
+        h.world_mut().resource::<aeon_sim::MapIndex>().province_keys[&key("shattered-coast")];
     for _ in 0..130 {
         h.advance_days(1);
-        adjust_order(h.world_mut(), mournhollow, -1000);
-        adjust_order(h.world_mut(), sable_steppe, -1000);
+        adjust_order(h.world_mut(), sallow_march, -1000);
+        adjust_order(h.world_mut(), shattered_coast, -1000);
     }
     {
         let world = h.world_mut();

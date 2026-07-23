@@ -396,6 +396,7 @@ ui.hover.no-house,Shown in a character's hover summary when they belong to no ho
 ui.hover.org,A house's hover summary. {titles} is how many titles it holds.,"[{name} — {standing}
 Head: {head} · {titles} titles held]"
 ui.hover.org.resources,"The stores line of a house's hover summary. W, M, S and I abbreviate wealth, manpower, supplies and influence; influence is shown against legitimacy.",[W {wealth} · M {manpower} · S {supplies} · I {influence}/{legitimacy}]
+ui.house.great,"A great house's name in lists and labels: a house that has at least one vassal. {name} is its plain name, e.g. 'House Veyrin'.",[Great {name}]
 ui.hover.standing.great,"A house's standing, in its hover summary: one of the great houses.",[great house]
 ui.hover.standing.imperial,"An organisation's standing, in its hover summary: the imperial government.",[Imperial government]
 ui.hover.standing.independent,"A house's standing, in its hover summary: answering to nobody.",[independent house]

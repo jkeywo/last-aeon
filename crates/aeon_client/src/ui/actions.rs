@@ -359,14 +359,28 @@ pub fn pick_target(
 ) {
     match kind {
         AssignmentTargetKind::Organisation => {
-            let mut items: Vec<(OrgId, String)> = politics
+            // A house is *great* when it is somebody's liege; that reads into
+            // the picker exactly as it does in the lists.
+            let great: std::collections::BTreeSet<OrgId> = data
+                .orgs
+                .iter()
+                .filter_map(|(record, _)| record.liege)
+                .collect();
+            let mut items: Vec<(OrgId, String, Option<egui::Color32>)> = politics
                 .orgs
                 .iter()
                 .filter(|(id, _)| **id != player_org)
                 .filter_map(|(id, entity)| {
                     let (record, _) = data.orgs.get(*entity).ok()?;
                     let def = content.organisations.get(&record.key)?;
-                    Some((*id, def.name.clone()))
+                    let name = if great.contains(id) {
+                        strings.format("ui.house.great", &[("name", &def.name)])
+                    } else {
+                        def.name.clone()
+                    };
+                    let colour =
+                        crate::ui::lookup::readable_on_dark(def.color.0, def.color.1, def.color.2);
+                    Some((*id, name, Some(colour)))
                 })
                 .collect();
             items.sort_by(|a, b| a.1.cmp(&b.1));
@@ -452,7 +466,7 @@ fn filtered_list<T: Copy>(
     hint: &str,
     filter: &mut String,
     id_salt: &str,
-    items: &[(T, String)],
+    items: &[(T, String, Option<egui::Color32>)],
     selected: impl Fn(T) -> bool,
 ) -> Option<T> {
     ui.add(
@@ -466,11 +480,15 @@ fn filtered_list<T: Copy>(
         .max_height(160.0)
         .id_salt(id_salt)
         .show(ui, |ui| {
-            for (id, name) in items {
+            for (id, name, colour) in items {
                 if !needle.is_empty() && !name.to_lowercase().contains(&needle) {
                     continue;
                 }
-                if ui.selectable_label(selected(*id), name).clicked() {
+                let label = match colour {
+                    Some(c) => egui::RichText::new(name).color(*c),
+                    None => egui::RichText::new(name),
+                };
+                if ui.selectable_label(selected(*id), label).clicked() {
                     picked = Some(*id);
                 }
             }
@@ -487,10 +505,10 @@ fn province_picker(
     id_salt: &str,
     selected: impl Fn(ProvinceId) -> bool,
 ) -> Option<ProvinceId> {
-    let mut items: Vec<(ProvinceId, String)> = data
+    let mut items: Vec<(ProvinceId, String, Option<egui::Color32>)> = data
         .provinces
         .iter()
-        .map(|(record, name, _)| (record.id, name.0.clone()))
+        .map(|(record, name, _)| (record.id, name.0.clone(), None))
         .collect();
     items.sort_by(|a, b| a.1.cmp(&b.1));
     filtered_list(

@@ -22,7 +22,10 @@ pub fn kind_label_key(kind: BodyKind) -> &'static str {
 }
 
 /// Renders a link with a hover summary, returning whether it was clicked.
-pub fn linked(ui: &mut egui::Ui, label: &str, summary: &str) -> bool {
+///
+/// Takes `impl Into<WidgetText>` rather than `&str` so a caller can hand it
+/// a coloured [`egui::RichText`] — a house link carries its own colour.
+pub fn linked(ui: &mut egui::Ui, label: impl Into<egui::WidgetText>, summary: &str) -> bool {
     ui.link(label).on_hover_text(summary).clicked()
 }
 
@@ -92,12 +95,12 @@ pub fn draw_identity(
         .unwrap_or(egui::Color32::GRAY);
     swatch(ui, theme, colour);
 
-    if linked(ui, &lookup.org_name(org), &lookup.org_hover(org)) {
+    if linked(ui, lookup.org_rich(org), &lookup.org_hover(org)) {
         hit = Some(Selection::Org(org));
     }
     match head.filter(|id| lookup.chars.contains_key(id)) {
         Some(id) => {
-            if linked(ui, &lookup.char_name(id), &lookup.char_hover(id)) {
+            if linked(ui, lookup.char_name(id), &lookup.char_hover(id)) {
                 hit = Some(Selection::Character(id));
             }
         }

@@ -50,19 +50,19 @@ define_trait(#{ id: "profane",
 define_house(#{
     id: "veyrin",
     tier: "great", head: "casimir-veyrin", color: [178, 34, 52],
-    provinces: ["karvessa", "dreghal", "tolmaz", "veyrmark", "cindral"],
+    provinces: ["redwater", "sable-steppe", "consulate-fields", "vantar-deep", "emberwash"],
     wealth: 320, manpower: 3200, supplies: 520, legitimacy: 58,
 });
 define_house(#{
     id: "draksha",
     tier: "great", head: "zorka-draksha", color: [46, 92, 158],
-    provinces: ["palensk", "vhorruk", "sallow-march", "brakkenveld", "mournhollow"],
+    provinces: ["karvessa", "veyrmark", "sallow-march", "thassik", "greyspire"],
     wealth: 300, manpower: 3000, supplies: 500, legitimacy: 55,
 });
 define_house(#{
     id: "meloch",
     tier: "great", head: "avram-meloch", color: [58, 122, 62],
-    provinces: ["thassik", "ulmgorn", "redwater", "charhold", "sable-steppe"],
+    provinces: ["koszevny-flats", "old-anchorage", "pellamir", "virek-sound", "shattered-coast"],
     wealth: 310, manpower: 2900, supplies: 540, legitimacy: 56,
 });
 
@@ -70,49 +70,49 @@ define_house(#{
 define_house(#{
     id: "harrow",
     tier: "vassal", liege: "veyrin", head: "edrun-harrow", color: [188, 148, 60],
-    provinces: ["hyperions-rest", "tsarovka", "consulate-fields", "ostragard"],
+    provinces: ["tolmaz", "ostragard", "vhorruk", "mournhollow"],
     wealth: 160, manpower: 1400, supplies: 240, legitimacy: 48,
 });
 define_house(#{
     id: "vantar",
     tier: "vassal", liege: "veyrin", head: "perrin-vantar", color: [120, 150, 170],
-    provinces: ["greyspire", "vantar-deep"],
+    provinces: ["cindral", "ulmgorn"],
     wealth: 110, manpower: 900, supplies: 180, legitimacy: 40,
 });
 define_house(#{
     id: "koszev",
     tier: "vassal", liege: "draksha", head: "milena-koszev", color: [150, 120, 90],
-    provinces: ["koszevny-flats", "drossmark"],
+    provinces: ["dreghal", "palensk"],
     wealth: 90, manpower: 850, supplies: 150, legitimacy: 38,
 });
 define_house(#{
     id: "rusk",
     tier: "vassal", liege: "draksha", head: "tomasz-rusk", color: [90, 110, 120],
-    provinces: ["calders-folly", "shattered-coast"],
+    provinces: ["brakkenveld", "charhold"],
     wealth: 70, manpower: 700, supplies: 120, legitimacy: 34,
 });
 define_house(#{
     id: "emberlyn",
     tier: "vassal", liege: "meloch", head: "sorel-emberlyn", color: [200, 110, 60],
-    provinces: ["emberwash", "halveth"],
+    provinces: ["rustholt", "calders-folly"],
     wealth: 120, manpower: 950, supplies: 200, legitimacy: 42,
 });
 define_house(#{
     id: "skarn",
     tier: "vassal", liege: "meloch", head: "vael-skarn", color: [100, 100, 110],
-    provinces: ["skarnos", "old-anchorage"],
+    provinces: ["hyperions-rest", "halveth"],
     wealth: 100, manpower: 900, supplies: 190, legitimacy: 40,
 });
 define_house(#{
     id: "okonn",
     tier: "vassal", liege: "draksha", head: "petra-okonn", color: [122, 82, 148],
-    provinces: ["port-vesk", "tithe-pits", "cryon-basin"],
+    provinces: ["port-vesk", "tithe-pits", "stillmere"],
     wealth: 130, manpower: 1000, supplies: 210, legitimacy: 44,
 });
 define_house(#{
     id: "calder",
     tier: "vassal", liege: "veyrin", head: "ludo-calder", color: [80, 90, 100],
-    provinces: ["regolith-verge", "hollow-crown"],
+    provinces: ["regolith-verge", "silent-quarter"],
     wealth: 60, manpower: 600, supplies: 110, legitimacy: 32,
 });
 
@@ -120,13 +120,13 @@ define_house(#{
 define_house(#{
     id: "pell",
     tier: "independent", head: "casold-pell", color: [150, 150, 60],
-    provinces: ["pellamir", "rustholt", "virek-sound"],
+    provinces: ["tsarovka", "drossmark", "skarnos"],
     wealth: 140, manpower: 1200, supplies: 230, legitimacy: 46,
 });
 define_house(#{
     id: "szel",
     tier: "independent", head: "janos-szel", color: [96, 108, 116],
-    provinces: ["stillmere", "lanternfall", "silent-quarter"],
+    provinces: ["cryon-basin", "lanternfall", "hollow-crown"],
     wealth: 110, manpower: 1000, supplies: 200, legitimacy: 42,
 });
 
@@ -470,7 +470,7 @@ define_character(#{
 
 define_ship(#{
     id: "ember-crown", class: "capital",
-    owner: "veyrin", captain: "captain-vashk", location: "karvessa",
+    owner: "veyrin", captain: "captain-vashk", location: "redwater",
 });
 define_ship(#{
     id: "aurelias-writ", class: "capital",
@@ -478,11 +478,11 @@ define_ship(#{
 });
 define_ship(#{
     id: "draksha-lance", class: "capital",
-    owner: "draksha", captain: "captain-drozny", location: "palensk",
+    owner: "draksha", captain: "captain-drozny", location: "karvessa",
 });
 define_ship(#{
     id: "redwater-runner", class: "transport",
-    owner: "harrow", captain: "captain-lira", location: "hyperions-rest",
+    owner: "harrow", captain: "captain-lira", location: "tolmaz",
 });
 define_ship(#{
     id: "pale-lantern", class: "patrol",
@@ -496,62 +496,62 @@ define_ship(#{
 // --- Starting armies (every faction fields a standing force) ---
 define_army(#{
     id: "veyrin-first",
-    owner: "veyrin", general: "casimir-veyrin", province: "karvessa",
+    owner: "veyrin", general: "casimir-veyrin", province: "redwater",
     manpower: 1200, supplies: 260,
 });
 define_army(#{
     id: "veyrin-second",
-    owner: "veyrin", general: "aldric-veyrin", province: "dreghal",
+    owner: "veyrin", general: "aldric-veyrin", province: "consulate-fields",
     manpower: 800, supplies: 170,
 });
 define_army(#{
     id: "draksha-first",
-    owner: "draksha", general: "zorka-draksha", province: "palensk",
+    owner: "draksha", general: "zorka-draksha", province: "karvessa",
     manpower: 1100, supplies: 240,
 });
 define_army(#{
     id: "draksha-second",
-    owner: "draksha", general: "maruk-draksha", province: "vhorruk",
+    owner: "draksha", general: "maruk-draksha", province: "veyrmark",
     manpower: 900, supplies: 190,
 });
 define_army(#{
     id: "meloch-first",
-    owner: "meloch", general: "avram-meloch", province: "thassik",
+    owner: "meloch", general: "avram-meloch", province: "koszevny-flats",
     manpower: 1000, supplies: 220,
 });
 define_army(#{
     id: "meloch-second",
-    owner: "meloch", general: "tomasz-meloch", province: "ulmgorn",
+    owner: "meloch", general: "tomasz-meloch", province: "old-anchorage",
     manpower: 800, supplies: 170,
 });
 define_army(#{
     id: "harrow-guard",
-    owner: "harrow", general: "edrun-harrow", province: "hyperions-rest",
+    owner: "harrow", general: "edrun-harrow", province: "ostragard",
     manpower: 600, supplies: 140,
 });
 define_army(#{
     id: "vantar-levy",
-    owner: "vantar", general: "perrin-vantar", province: "greyspire",
+    owner: "vantar", general: "perrin-vantar", province: "cindral",
     manpower: 450, supplies: 100,
 });
 define_army(#{
     id: "koszev-levy",
-    owner: "koszev", general: "milena-koszev", province: "koszevny-flats",
+    owner: "koszev", general: "milena-koszev", province: "dreghal",
     manpower: 450, supplies: 100,
 });
 define_army(#{
     id: "rusk-levy",
-    owner: "rusk", general: "tomasz-rusk", province: "calders-folly",
+    owner: "rusk", general: "tomasz-rusk", province: "brakkenveld",
     manpower: 400, supplies: 90,
 });
 define_army(#{
     id: "emberlyn-levy",
-    owner: "emberlyn", general: "sorel-emberlyn", province: "emberwash",
+    owner: "emberlyn", general: "sorel-emberlyn", province: "rustholt",
     manpower: 500, supplies: 110,
 });
 define_army(#{
     id: "skarn-levy",
-    owner: "skarn", general: "vael-skarn", province: "skarnos",
+    owner: "skarn", general: "vael-skarn", province: "hyperions-rest",
     manpower: 500, supplies: 110,
 });
 define_army(#{
@@ -566,12 +566,12 @@ define_army(#{
 });
 define_army(#{
     id: "pell-host",
-    owner: "pell", general: "casold-pell", province: "pellamir",
+    owner: "pell", general: "casold-pell", province: "tsarovka",
     manpower: 650, supplies: 150,
 });
 define_army(#{
     id: "szel-reavers",
-    owner: "szel", general: "janos-szel", province: "stillmere",
+    owner: "szel", general: "janos-szel", province: "cryon-basin",
     manpower: 550, supplies: 120,
 });
 define_army(#{

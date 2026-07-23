@@ -92,7 +92,7 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                     ui.label(strings.text("ui.inspector.province.held-by"));
                     match holder {
                         Some(TitleHolder::Org(org)) => {
-                            if linked(ui, &ctx.lookup.org_name(org), &ctx.lookup.org_hover(org)) {
+                            if linked(ui, ctx.lookup.org_rich(org), &ctx.lookup.org_hover(org)) {
                                 out.view.selected = Some(Selection::Org(org));
                             }
                         }
@@ -195,7 +195,7 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                         ui.horizontal(|ui| {
                             if linked(
                                 ui,
-                                &strings.format(
+                                strings.format(
                                     "ui.inspector.province.army",
                                     &[("army", &army.name), ("men", &army.manpower.to_string())],
                                 ),
@@ -215,7 +215,7 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                         ui.horizontal(|ui| {
                             if linked(
                                 ui,
-                                &strings
+                                strings
                                     .format("ui.inspector.province.ship", &[("ship", &ship.name)]),
                                 strings.text("ui.inspector.province.ship.hover"),
                             ) {
@@ -321,11 +321,7 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
         }
         Some(Selection::Org(id)) => {
             if let Some((record, resources)) = ctx.lookup.orgs.get(&id).copied() {
-                let def = ctx.content.organisations.get(&record.key);
-                ui.strong(
-                    def.map(|d| d.name.as_str())
-                        .unwrap_or_else(|| strings.text("ui.inspector.unknown")),
-                );
+                ui.label(ctx.lookup.org_rich(id).strong());
                 match (record.kind, record.tier) {
                     (OrgKind::SanctoraImperim, _) => {
                         ui.label(strings.text("ui.inspector.org.imperial"));
@@ -340,7 +336,7 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                                 Some(liege) => {
                                     if linked(
                                         ui,
-                                        &ctx.lookup.org_name(liege),
+                                        ctx.lookup.org_rich(liege),
                                         &ctx.lookup.org_hover(liege),
                                     ) {
                                         out.view.selected = Some(Selection::Org(liege));
@@ -456,7 +452,7 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                                 .on_hover_text(&detail);
                                 if linked(
                                     ui,
-                                    &ctx.lookup.org_name(other),
+                                    ctx.lookup.org_rich(other),
                                     &ctx.lookup.org_hover(other),
                                 ) {
                                     out.view.selected = Some(Selection::Org(other));
@@ -499,7 +495,7 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                 }
                 if let Some(org) = record.organisation {
                     ui.horizontal(|ui| {
-                        if linked(ui, &ctx.lookup.org_name(org), &ctx.lookup.org_hover(org)) {
+                        if linked(ui, ctx.lookup.org_rich(org), &ctx.lookup.org_hover(org)) {
                             out.view.selected = Some(Selection::Org(org));
                         }
                     });

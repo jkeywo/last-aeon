@@ -10,13 +10,14 @@
 //! maps are still built once per frame rather than queried per call, which
 //! is what made the closures worth having in the first place.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use aeon_core::calendar::GameDate;
 use aeon_data::ContentSet;
 use aeon_data::model::{HouseTier, OrgKind};
 use aeon_sim::presence::{CharacterLocation, Location};
 use aeon_sim::{BodyId, CharacterId, OrgId, ProvinceId, TextDb, TitleHolder};
+use bevy_egui::egui;
 
 use crate::ui::data::{CharMap, OrgMap, PanelData};
 
@@ -41,6 +42,13 @@ pub struct Lookup<'a> {
     /// Counted once rather than per hover: the summary for a house is built
     /// every time the pointer crosses a link to it.
     pub titles_held: BTreeMap<OrgId, usize>,
+    /// The organisations that are somebody's liege — i.e. hold at least one
+    /// vassal, which is what makes a house *great*.
+    ///
+    /// Derived from the liege pointers rather than from the authored tier so
+    /// the label answers the literal question ("has a vassal") a player is
+    /// asking when they read "Great House".
+    pub great_houses: BTreeSet<OrgId>,
 }
 
 impl<'a> Lookup<'a> {
@@ -57,6 +65,11 @@ impl<'a> Lookup<'a> {
                 *titles_held.entry(org).or_default() += 1;
             }
         }
+        let great_houses: BTreeSet<OrgId> = data
+            .orgs
+            .iter()
+            .filter_map(|(record, _)| record.liege)
+            .collect();
         Self {
             content,
             strings,
@@ -82,6 +95,7 @@ impl<'a> Lookup<'a> {
                 .map(|(record, name, _)| (record.id, name.0.as_str()))
                 .collect(),
             titles_held,
+            great_houses,
         }
     }
 
@@ -92,6 +106,46 @@ impl<'a> Lookup<'a> {
             .and_then(|(record, _)| self.content.organisations.get(&record.key))
             .map(|def| def.name.clone())
             .unwrap_or_else(|| id.to_string())
+    }
+
+    /// Whether an organisation holds at least one vassal — a *great house*.
+    pub fn is_great_house(&self, id: OrgId) -> bool {
+        self.great_houses.contains(&id)
+    }
+
+    /// An organisation's name as it should read in a list or label: a great
+    /// house is prefixed, so "House Veyrin" becomes "Great House Veyrin".
+    pub fn org_display(&self, id: OrgId) -> String {
+        let name = self.org_name(id);
+        if self.is_great_house(id) {
+            self.strings.format("ui.house.great", &[("name", &name)])
+        } else {
+            name
+        }
+    }
+
+    /// An organisation's own map colour, lifted if need be so it stays
+    /// legible as text on the dark panels.
+    ///
+    /// The swatch beside a name is drawn in the raw authored colour; a run
+    /// of text is not, because the darkest house colours (near-black greys)
+    /// would be unreadable on the panel ground. The lift preserves hue and
+    /// only raises brightness to a floor.
+    pub fn org_colour(&self, id: OrgId) -> egui::Color32 {
+        let (r, g, b) = self
+            .orgs
+            .get(&id)
+            .and_then(|(record, _)| self.content.organisations.get(&record.key))
+            .map(|def| def.color)
+            .unwrap_or((150, 150, 150));
+        readable_on_dark(r, g, b)
+    }
+
+    /// An organisation's name, ready to draw: the display name in the house
+    /// colour. Every list and link goes through this so the two features
+    /// (the prefix and the tint) are applied in exactly one place.
+    pub fn org_rich(&self, id: OrgId) -> egui::RichText {
+        egui::RichText::new(self.org_display(id)).color(self.org_colour(id))
     }
 
     /// A character's name, or empty if they are unknown.
@@ -184,7 +238,7 @@ impl<'a> Lookup<'a> {
         let Some((record, resources)) = self.orgs.get(&id).copied() else {
             return String::new();
         };
-        let name = self.org_name(id);
+        let name = self.org_display(id);
         let standing = match (record.kind, record.tier) {
             (OrgKind::SanctoraImperim, _) => {
                 self.strings.text("ui.hover.standing.imperial").to_owned()
@@ -233,4 +287,25 @@ impl<'a> Lookup<'a> {
         }
         summary
     }
+}
+
+/// Lifts a colour toward white until it is bright enough to read as text on
+/// the dark panels, leaving already-bright colours untouched.
+///
+/// The house palette runs from vivid heraldry to near-black service greys;
+/// the greys are the ones that would vanish. Blending toward white raises
+/// perceived luminance to a floor while keeping the hue, so a house is still
+/// recognisably its own colour.
+pub(crate) fn readable_on_dark(r: u8, g: u8, b: u8) -> egui::Color32 {
+    // Rec. 601 luma, the same weighting eyes give the channels.
+    let luma = 0.299 * f32::from(r) + 0.587 * f32::from(g) + 0.114 * f32::from(b);
+    const FLOOR: f32 = 150.0;
+    if luma >= FLOOR {
+        return egui::Color32::from_rgb(r, g, b);
+    }
+    // Solve lift t in `luma + t*(255 - luma) = FLOOR`, then blend each
+    // channel the same fraction toward white.
+    let t = ((FLOOR - luma) / (255.0 - luma)).clamp(0.0, 1.0);
+    let lift = |c: u8| (f32::from(c) + t * (255.0 - f32::from(c))).round() as u8;
+    egui::Color32::from_rgb(lift(r), lift(g), lift(b))
 }

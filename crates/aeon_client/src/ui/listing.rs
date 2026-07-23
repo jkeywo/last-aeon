@@ -31,9 +31,8 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
             ui.add_space(8.0);
             ui.heading(strings.text("ui.listing.houses"));
             ui.separator();
-            for (org_id, (record, _)) in &ctx.lookup.orgs {
-                let def = ctx.content.organisations.get(&record.key);
-                let label = def.map(|d| d.name.clone()).unwrap_or_default();
+            for org_id in ctx.lookup.orgs.keys() {
+                let label = ctx.lookup.org_rich(*org_id);
                 let selected = out.view.selected == Some(Selection::Org(*org_id));
                 if ui.selectable_label(selected, label).clicked() {
                     out.view.selected = Some(Selection::Org(*org_id));
@@ -69,7 +68,7 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                         ui.horizontal(|ui| {
                             if linked(
                                 ui,
-                                &format!("{} ({}) — {place}", ship.name, strings.text(class)),
+                                format!("{} ({}) — {place}", ship.name, strings.text(class)),
                                 strings.text("ui.listing.ship.hover"),
                             ) {
                                 out.view.selected = Some(Selection::Ship(ship.id));
@@ -110,7 +109,7 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                             // are given.
                             if linked(
                                 ui,
-                                &format!(
+                                format!(
                                     "{} — {} men, {} supplies — {place}",
                                     army.name, army.manpower, army.supplies
                                 ),
