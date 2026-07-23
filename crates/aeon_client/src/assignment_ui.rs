@@ -6,13 +6,14 @@
 //! and assignments listings are dockable panels of their own. What is left here
 //! is the shared state those surfaces read and write.
 
-use std::collections::BTreeSet;
+use std::collections::{BTreeSet, HashSet};
 
 use aeon_data::ContentKey;
 use aeon_sim::command::submit_command;
+use aeon_sim::state::ContentDb;
 use aeon_sim::{
-    ArmyId, AssignmentTarget, CharacterId, LogChannel, LogEntry, OrgId, PendingPopups,
-    PlayerCommand, ShipId,
+    ArmyId, AssignmentTarget, CharacterId, CharacterRecord, LogChannel, LogEntry, OrgId,
+    PendingPopups, PlayerCommand, ShipId,
 };
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
@@ -148,10 +149,24 @@ pub fn auto_pause_on_popups(
 ///
 /// These float above every panel, so they need no place in the layout and
 /// keep their own system.
+///
+/// Answering a popup queues an [`PlayerCommand::AnswerPopup`] that only
+/// applies on the next day tick — but a popup pauses the campaign, so that
+/// tick will not come until the player resumes. To keep the click from
+/// looking inert, `answered` records ids the player has chosen so the window
+/// is dismissed at once; the choice stays pending, and the sim clears the
+/// popup from [`PendingPopups`] for real when the command lands.
+///
+/// The window names the matter — the assignment or event's title, and the
+/// character it turns on — above the situation text, so the player can see
+/// what has landed and who it concerns before reading the body.
 pub fn draw_popups(
     mut contexts: EguiContexts,
     popups: Option<Res<PendingPopups>>,
+    content: Option<Res<ContentDb>>,
+    characters: Query<&CharacterRecord>,
     mut queue: ResMut<UiCommandQueue>,
+    mut answered: Local<HashSet<u64>>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -159,26 +174,67 @@ pub fn draw_popups(
     let Some(popups) = popups else {
         return;
     };
-    if let Some(popup) = popups.popups.first() {
-        egui::Window::new("A Matter Requires Your Attention")
-            .collapsible(false)
-            .resizable(false)
-            .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
-            .show(ctx, |ui| {
-                ui.label(&popup.text);
+
+    // Forget ids the sim has since applied and removed, so the set stays
+    // bounded and a reused id is never mistaken for one already answered.
+    answered.retain(|id| popups.popups.iter().any(|p| p.id == *id));
+
+    // Show the first popup the player has not already answered.
+    let Some(popup) = popups.popups.iter().find(|p| !answered.contains(&p.id)) else {
+        return;
+    };
+
+    // The matter's name lives in content, keyed the same whether it was
+    // raised by an assignment result or a contextual event.
+    let heading = content.as_ref().and_then(|content| {
+        let set = &content.0;
+        set.assignments
+            .get(&popup.assignment)
+            .map(|def| def.title.clone())
+            .or_else(|| {
+                set.events
+                    .get(&popup.assignment)
+                    .map(|def| def.title.clone())
+            })
+    });
+    // Who it turns on: the leader who acted, else the character it fell to.
+    let subject = popup
+        .roles
+        .leader
+        .or(popup.roles.target)
+        .and_then(|id| characters.iter().find(|record| record.id == id))
+        .map(|record| record.name.clone());
+
+    egui::Window::new("A Matter Requires Your Attention")
+        .collapsible(false)
+        .resizable(false)
+        .anchor(egui::Align2::CENTER_CENTER, [0.0, 0.0])
+        .show(ctx, |ui| {
+            if let Some(heading) = &heading {
+                ui.heading(heading);
+            }
+            if let Some(subject) = &subject {
+                ui.weak(subject);
+            }
+            if heading.is_some() || subject.is_some() {
                 ui.separator();
-                ui.horizontal(|ui| {
-                    for (choice_id, label) in &popup.choices {
-                        if ui.button(label).clicked() {
-                            queue.0.push(PlayerCommand::AnswerPopup {
-                                popup: popup.id,
-                                choice: choice_id.clone(),
-                            });
-                        }
+            }
+            ui.label(&popup.text);
+            ui.separator();
+            ui.horizontal(|ui| {
+                for (choice_id, label) in &popup.choices {
+                    if ui.button(label).clicked() {
+                        queue.0.push(PlayerCommand::AnswerPopup {
+                            popup: popup.id,
+                            choice: choice_id.clone(),
+                        });
+                        // Dismiss now; the effect lands on the next tick.
+                        answered.insert(popup.id);
+                        break;
                     }
-                });
+                }
             });
-    }
+        });
 }
 
 #[cfg(test)]
