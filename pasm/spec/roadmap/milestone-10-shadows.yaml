@@ -127,8 +127,8 @@ entities:
 
   - milestone: m10-sabotage
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "M10.3: A Fire in the Works"
       summary: >-
         Intrigue aimed at a place rather than a person: to throw a
@@ -142,11 +142,32 @@ entities:
         - Where there is something built to break, sabotage can break it, at the same risk of exposure.
       references:
         - provincial-order-system
+        - the-goods-economy
     implementation:
       paths:
-        - assets/content/core/administration.rhai
+        - crates/aeon_data/src/effect.rs
+        - crates/aeon_sim/src/assignments.rs
+        - assets/content/core/intrigue.rhai
         - assets/text/strings.csv
+      tests:
+        - crates/aeon_sim/tests/intrigue.rs
       status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/intrigue.rs
+        summary: >-
+          A wreck-and-disorder action pulls down a province's most recent
+          building and stirs it toward disorder, both through the resolved
+          province role.
+      - kind: manual-review
+        reference: assets/content/core/intrigue.rhai
+        summary: >-
+          Disorder needs no new engine — foment-unrest reuses the order
+          effect against a rival's province. Wrecking a building leans on
+          the economy of Milestone 9 for something to break, so one small
+          wreck effect pulls down the province's most recently raised
+          building. Both are exposure-risking intrigue, ai_available:false
+          like the knife, and both swear a grievance when caught.
 
   - milestone: m10-schemes-in-grand-strategy
     core:

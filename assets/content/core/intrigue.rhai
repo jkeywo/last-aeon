@@ -71,3 +71,53 @@ fn abduction_exposed(ctx) {
         debtor: "owner-head", creditor: "target-head", weight: 25,
         origin: "a kidnapping, botched and exposed" }]
 }
+
+// Sabotage: work aimed at a place rather than a person. To throw a
+// rival's province into disorder, or to wreck what it has built.
+
+define_assignment(#{
+    id: "foment-unrest",
+    category: "consequential",
+    duration_days: 30,
+    skill: "intrigue",
+    difficulty: 10,
+    target: "province",
+    risks: ["scandal", "capture"],
+    ai_available: false,
+    requires: #{ target_holder: "other" },
+    results: #{
+        success: #{ weight: 500, log: true, effect_fn: "unrest_stirred" },
+        failure: #{ weight: 350 },
+        disaster: #{ weight: 150, popup: true, log: true, effect_fn: "sabotage_exposed" },
+    },
+});
+fn unrest_stirred(ctx) {
+    [#{ kind: "order", scope: "target-province", amount: -250 }]
+}
+
+define_assignment(#{
+    id: "sabotage-works",
+    category: "consequential",
+    duration_days: 40,
+    skill: "intrigue",
+    difficulty: 13,
+    target: "province",
+    risks: ["scandal", "capture"],
+    ai_available: false,
+    requires: #{ target_holder: "other" },
+    results: #{
+        success: #{ weight: 450, popup: true, log: true, effect_fn: "works_wrecked" },
+        failure: #{ weight: 350 },
+        disaster: #{ weight: 200, popup: true, log: true, effect_fn: "sabotage_exposed" },
+    },
+});
+fn works_wrecked(ctx) {
+    [#{ kind: "wreck" },
+     #{ kind: "order", scope: "target-province", amount: -80 }]
+}
+
+fn sabotage_exposed(ctx) {
+    [#{ kind: "obligation", action: "create", obligation: "grievance",
+        debtor: "owner-head", creditor: "target-head", weight: 20,
+        origin: "a hand caught in the works" }]
+}

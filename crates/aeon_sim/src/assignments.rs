@@ -1335,6 +1335,19 @@ pub fn apply_effects(
                     apply_risk(world, who, *tag, date);
                 }
             }
+            ScriptEffect::Wreck => {
+                // Pull down what the target province most recently built.
+                if let Some(province) = roles.province
+                    && let Some(entity) = world
+                        .resource::<crate::map::MapIndex>()
+                        .provinces
+                        .get(&province)
+                        .copied()
+                    && let Some(mut buildings) = world.get_mut::<crate::trade::Buildings>(entity)
+                {
+                    buildings.0.pop();
+                }
+            }
             ScriptEffect::Construct { building } => {
                 // Raise the building on the province the work was aimed
                 // at. Only what content defines can be built.

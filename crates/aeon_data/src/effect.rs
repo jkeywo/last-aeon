@@ -94,6 +94,10 @@ pub enum ScriptEffect {
         /// The condition laid on them.
         tag: crate::model::RiskTag,
     },
+    /// Wreck the most recently raised building on the assignment's target
+    /// province, if it has one. The saboteur's answer to what a rival has
+    /// built.
+    Wreck,
 }
 
 /// A assignment-context role an authored effect may address.
@@ -429,6 +433,9 @@ pub fn parse_effects(value: Dynamic) -> Result<Vec<ScriptEffect>, EffectParseErr
                         expected: "injury, capture, scandal, incapacity, or death".to_owned(),
                     })?;
                 effects.push(ScriptEffect::Condition { target, tag });
+            }
+            "wreck" => {
+                effects.push(ScriptEffect::Wreck);
             }
             other => {
                 return Err(EffectParseError::UnknownKind {

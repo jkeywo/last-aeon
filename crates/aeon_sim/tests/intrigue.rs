@@ -138,3 +138,55 @@ fn a_harmed_target_is_kept_from_leading() {
         "the injured cannot take up new work"
     );
 }
+
+#[test]
+fn wrecking_pulls_down_a_building_and_stirs_disorder() {
+    use aeon_data::ScriptEffect;
+    use aeon_data::model::RiskTag;
+    use aeon_sim::MapIndex;
+    use aeon_sim::assignments::{AssignmentRoles, apply_effects};
+    use aeon_sim::order::{ORDER_START, province_order};
+    use aeon_sim::trade::Buildings;
+
+    let mut h = host(93);
+    let beta = h.world_mut().resource::<MapIndex>().province_keys[&key("beta")];
+    let _ = RiskTag::Injury; // keep the import honest across edits
+
+    // Plant a building on Beta to wreck.
+    {
+        let entity = h.world_mut().resource::<MapIndex>().provinces[&beta];
+        h.world_mut()
+            .get_mut::<Buildings>(entity)
+            .unwrap()
+            .0
+            .push(key("nonesuch"));
+    }
+
+    // Apply the wreck-and-disorder effects as a resolved province action.
+    let roles = AssignmentRoles {
+        province: Some(beta),
+        ..Default::default()
+    };
+    apply_effects(
+        h.world_mut(),
+        &[
+            ScriptEffect::Wreck,
+            ScriptEffect::Order {
+                scope: aeon_data::effect::OrderScope::TargetProvince,
+                amount: -80,
+            },
+        ],
+        &roles,
+        None,
+    );
+
+    let entity = h.world_mut().resource::<MapIndex>().provinces[&beta];
+    assert!(
+        h.world_mut().get::<Buildings>(entity).unwrap().0.is_empty(),
+        "the building is pulled down"
+    );
+    assert!(
+        province_order(h.world_mut(), beta).order < ORDER_START,
+        "and the province is stirred toward disorder"
+    );
+}

@@ -703,3 +703,8 @@ assignment.abduct.title,Title of the abduction assignment.,[Have Them Taken]
 assignment.abduct.summary,One-line summary of abduction.,[Send an agent to seize a rival and hold them out of the game.]
 assignment.abduct.success.popup-text,Popup when an abduction succeeds.,"[The mark is taken, and will trouble no one for a long while.]"
 assignment.abduct.disaster.popup-text,Popup when an abduction is exposed.,"[The seizure was bungled and traced to you; a grievance is sworn against your house.]"
+assignment.foment-unrest.title,Title of the foment-unrest sabotage assignment.,[Foment Unrest]
+assignment.foment-unrest.summary,One-line summary of fomenting unrest.,[Stir a rival's province toward disorder.]
+assignment.sabotage-works.title,Title of the sabotage-works assignment.,[Sabotage the Works]
+assignment.sabotage-works.summary,One-line summary of sabotaging works.,[Wreck what a rival's province has built.]
+assignment.sabotage-works.success.popup-text,Popup when sabotage succeeds.,[Your agents did their work; the building lies in ruins.]
