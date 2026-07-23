@@ -79,6 +79,8 @@ entities:
           directs. The tag fixes the duration, so the effect carries no
           days of its own; RiskTag gains a parse shared with the builder.
           Everything after this is authored content.
+
+  - milestone: m10-assassination-and-abduction
     core:
       status: proposed
       confidence: provisional
