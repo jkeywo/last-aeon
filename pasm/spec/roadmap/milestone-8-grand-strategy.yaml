@@ -186,8 +186,8 @@ entities:
 
   - milestone: m8-the-player-in-the-hierarchy
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "M8.4: The Player Directs, and Is Directed"
       summary: >-
         The player joins the same chain. A new command lets them press a
@@ -208,9 +208,33 @@ entities:
     implementation:
       paths:
         - crates/aeon_sim/src/command.rs
+        - crates/aeon_sim/src/goals.rs
         - crates/aeon_client/src/ui/inspector.rs
+        - crates/aeon_client/src/ui/data.rs
         - assets/text/strings.csv
+      tests:
+        - crates/aeon_sim/tests/goals.rs
       status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/goals.rs
+        summary: >-
+          The player may press a directive on a house that answers
+          directly to them and withdraw it again, and the vassal feels
+          exactly what was asked; a directive aimed at a house that does
+          not answer to the player is refused; and a hand-issued directive
+          is campaign state that rides a snapshot.
+      - kind: manual-review
+        reference: crates/aeon_sim/src/command.rs
+        summary: >-
+          IssueDirective and ClearDirective are the first commands
+          authorised by the chain of command rather than by ownership —
+          answers_to == Some(1), re-checked at apply time like every other
+          command. A hand-issued directive has no goal behind it, so it is
+          stored in IssuedDirectives (snapshot 14) and merged into the same
+          directives_on the AI reads; the inspector surfaces both
+          directions — what the player's liege asks, shown as information,
+          and the wish the player may press on a vassal.
 
   - milestone: m8-authored-goals
     core:

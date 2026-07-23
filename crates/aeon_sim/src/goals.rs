@@ -97,38 +97,68 @@ pub fn active_target(world: &World, authority: OrgId) -> Option<AssignmentTarget
 /// less keenly than a house's own ambition, and it never compels.
 pub const DIRECTIVE_BONUS: i64 = 25;
 
+/// A directive issued to a vassal by hand rather than derived from a
+/// goal — how the player presses a wish on a house that answers to them.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IssuedDirective {
+    /// The house that issued it.
+    pub from: OrgId,
+    /// The pressure the issuer wants felt more keenly.
+    pub intent: AiIntent,
+    /// What it is aimed at, if anything.
+    pub target: Option<AssignmentTarget>,
+}
+
+/// Directives standing by hand, one per vassal, keyed by the vassal they
+/// are pressed on.
+///
+/// A goal's directives are derived from goal state and need no storage;
+/// a hand-issued directive has no goal behind it, so it is kept here. One
+/// per vassal: issuing a new one replaces the last.
+#[derive(Resource, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct IssuedDirectives {
+    /// The standing directive on each vassal, by vassal.
+    pub by_vassal: BTreeMap<OrgId, IssuedDirective>,
+}
+
 /// The directives a vassal currently receives from its liege.
 ///
 /// Each is an intent the liege wants felt more keenly, and — when the
-/// directive carries the goal's own target — what it is aimed at.
-/// Derived, not stored: a directive exists exactly while the liege holds
-/// the goal that presses it, so it needs no record of its own and cannot
-/// drift after a restore. A house with no liege, or a liege whose goal
-/// presses no directives, receives nothing.
+/// directive carries the goal's own target — what it is aimed at. Two
+/// sources merge here: the directives a liege's active goal presses,
+/// derived and lapsing for free when the goal ends, and any standing
+/// directive issued by hand. A house with no liege, or a liege pressing
+/// nothing, receives nothing.
 pub fn directives_on(world: &World, vassal: OrgId) -> Vec<(AiIntent, Option<AssignmentTarget>)> {
     let Some(liege) = crate::access::org(world, vassal).and_then(|r| r.liege) else {
         return Vec::new();
     };
-    let Some(goals) = world.get_resource::<Goals>() else {
-        return Vec::new();
-    };
-    let Some(active) = goals.active.get(&liege) else {
-        return Vec::new();
-    };
-    let content = world.resource::<ContentDb>().0.clone();
-    let Some(def) = content.goals.get(&active.def) else {
-        return Vec::new();
-    };
-    def.directives
-        .iter()
-        .map(|directive| {
-            let target = match directive.target {
-                DirectiveTarget::None => None,
-                DirectiveTarget::GoalTarget => Some(active.target),
-            };
-            (directive.intent, target)
-        })
-        .collect()
+    let mut pressed: Vec<(AiIntent, Option<AssignmentTarget>)> = Vec::new();
+
+    // Derived from the liege's active goal.
+    if let Some(goals) = world.get_resource::<Goals>()
+        && let Some(active) = goals.active.get(&liege)
+    {
+        let content = world.resource::<ContentDb>().0.clone();
+        if let Some(def) = content.goals.get(&active.def) {
+            for directive in &def.directives {
+                let target = match directive.target {
+                    DirectiveTarget::None => None,
+                    DirectiveTarget::GoalTarget => Some(active.target),
+                };
+                pressed.push((directive.intent, target));
+            }
+        }
+    }
+
+    // Pressed by hand, and only from this vassal's own liege.
+    if let Some(issued) = world.get_resource::<IssuedDirectives>()
+        && let Some(directive) = issued.by_vassal.get(&vassal)
+        && directive.from == liege
+    {
+        pressed.push((directive.intent, directive.target));
+    }
+    pressed
 }
 
 /// The bonus a vassal feels on a pressure because its liege directs it
@@ -405,6 +435,19 @@ pub fn capture(world: &World) -> Goals {
 
 /// Restores goal state from a snapshot.
 pub fn restore(world: &mut World, state: &Goals) {
+    world.insert_resource(state.clone());
+}
+
+/// Captures hand-issued directives for a snapshot.
+pub fn capture_issued(world: &World) -> IssuedDirectives {
+    world
+        .get_resource::<IssuedDirectives>()
+        .cloned()
+        .unwrap_or_default()
+}
+
+/// Restores hand-issued directives from a snapshot.
+pub fn restore_issued(world: &mut World, state: &IssuedDirectives) {
     world.insert_resource(state.clone());
 }
 

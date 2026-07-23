@@ -5,7 +5,7 @@
 //! handed, so an arm can be read — and changed — without reference to its
 //! neighbours.
 
-use aeon_data::model::{HouseTier, OrgKind};
+use aeon_data::model::{AiIntent, HouseTier, OrgKind};
 use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
 use aeon_sim::obligations::ObligationRecord;
 use aeon_sim::order::ORDER_MAX;
@@ -393,6 +393,74 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                     &[("count", &held.to_string())],
                 ));
 
+                // Directives: advisory wishes up and down the chain of
+                // command. What the player's liege asks of them is shown as
+                // information; a house that answers to the player can be
+                // asked, and remains free to do otherwise.
+                if let Some(player) = ctx.player_org {
+                    if id == player {
+                        let mut wishes: Vec<AiIntent> = Vec::new();
+                        if let Some(liege) = record.liege {
+                            if let Some(active) = ctx.goals.and_then(|g| g.active.get(&liege))
+                                && let Some(def) = ctx.content.goals.get(&active.def)
+                            {
+                                wishes.extend(def.directives.iter().map(|d| d.intent));
+                            }
+                            if let Some(issued) =
+                                ctx.issued_directives.and_then(|d| d.by_vassal.get(&id))
+                                && issued.from == liege
+                            {
+                                wishes.push(issued.intent);
+                            }
+                        }
+                        if !wishes.is_empty() {
+                            ui.separator();
+                            ui.label(strings.text("ui.inspector.org.liege-asks"));
+                            for intent in wishes {
+                                ui.label(strings.text(directive_intent_key(intent)));
+                            }
+                        }
+                    } else if record.liege == Some(player) {
+                        ui.separator();
+                        ui.label(strings.text("ui.inspector.org.ask-of-them"));
+                        let current = ctx
+                            .issued_directives
+                            .and_then(|d| d.by_vassal.get(&id).copied());
+                        ui.label(match &current {
+                            Some(dir) => strings.text(directive_intent_key(dir.intent)),
+                            None => strings.text("ui.inspector.org.no-directive"),
+                        });
+                        ui.horizontal(|ui| {
+                            for intent in [
+                                AiIntent::Muster,
+                                AiIntent::Order,
+                                AiIntent::Standing,
+                                AiIntent::Resources,
+                            ] {
+                                if ui
+                                    .button(strings.text(directive_intent_key(intent)))
+                                    .clicked()
+                                {
+                                    out.queue.0.push(PlayerCommand::IssueDirective {
+                                        vassal: id,
+                                        intent,
+                                        target: None,
+                                    });
+                                }
+                            }
+                        });
+                        if current.is_some()
+                            && ui
+                                .button(strings.text("ui.inspector.org.clear-directive"))
+                                .clicked()
+                        {
+                            out.queue
+                                .0
+                                .push(PlayerCommand::ClearDirective { vassal: id });
+                        }
+                    }
+                }
+
                 // Standing obligations: what this house is
                 // bound by, kept apart from what it feels.
                 if let Some(ledger) = &ctx.data.obligations {
@@ -716,5 +784,18 @@ fn draw_standing_orders(
                 army,
                 orders: aeon_sim::warfare::StandingOrders(wanted),
             });
+    }
+}
+
+/// The string-table key naming the pressure a directive presses.
+fn directive_intent_key(intent: AiIntent) -> &'static str {
+    match intent {
+        AiIntent::Muster => "ui.directive.muster",
+        AiIntent::Order => "ui.directive.order",
+        AiIntent::Standing => "ui.directive.standing",
+        AiIntent::Resources => "ui.directive.resources",
+        AiIntent::Obligation => "ui.directive.obligation",
+        AiIntent::Claim => "ui.directive.claim",
+        AiIntent::Routine => "ui.directive.routine",
     }
 }

@@ -109,6 +109,8 @@ pub fn draw_panels(
         player_head,
         log: log.as_deref(),
         plans: data.plans.as_deref(),
+        goals: data.goals.as_deref(),
+        issued_directives: data.issued_directives.as_deref(),
     };
     let mut out = PanelOut {
         view: &mut view,

@@ -114,4 +114,10 @@ pub struct PanelData<'w, 's> {
     /// Plans autonomous characters are pursuing. Absent until a
     /// campaign starts.
     pub plans: Option<Res<'w, aeon_sim::plans::Plans>>,
+    /// Grand-strategy ambitions houses hold. Absent until a campaign
+    /// starts.
+    pub goals: Option<Res<'w, aeon_sim::goals::Goals>>,
+    /// Directives issued to vassals by hand. Absent until a campaign
+    /// starts.
+    pub issued_directives: Option<Res<'w, aeon_sim::goals::IssuedDirectives>>,
 }

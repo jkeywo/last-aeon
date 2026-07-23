@@ -88,6 +88,23 @@ pub enum PlayerCommand {
         /// The officer taking command; `None` relinquishes it.
         captain: Option<CharacterId>,
     },
+    /// Presses an advisory directive on a house that answers directly to
+    /// the player. A wish, not an order: it lifts the pressure it names in
+    /// the vassal head's own scoring, and the vassal remains free to do
+    /// otherwise. Issuing a new one replaces the last.
+    IssueDirective {
+        /// The vassal the directive is pressed on.
+        vassal: crate::ids::OrgId,
+        /// The pressure the player wants the vassal to feel more keenly.
+        intent: aeon_data::model::AiIntent,
+        /// What it is aimed at, if anything.
+        target: Option<AssignmentTarget>,
+    },
+    /// Withdraws the standing directive on one of the player's vassals.
+    ClearDirective {
+        /// The vassal whose directive is withdrawn.
+        vassal: crate::ids::OrgId,
+    },
 }
 
 /// A command bound to its execution day and order.
@@ -113,6 +130,10 @@ pub enum CommandRejection {
     /// A assignment-related command was refused.
     #[error(transparent)]
     Assignment(#[from] AssignmentRejection),
+    /// A directive was aimed at a house that does not answer directly to
+    /// the player.
+    #[error("that house does not answer directly to you")]
+    NotYourVassal,
 }
 
 /// Commands accepted but not yet applied, sorted by `(day, seq)`.
@@ -314,6 +335,20 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
                 Err(AssignmentRejection::BadAssignment.into())
             }
         }
+        // A directive is authorised by the chain of command, not by
+        // ownership: the player may press one on a house that answers
+        // directly to them, and on no other.
+        PlayerCommand::IssueDirective { vassal, .. } | PlayerCommand::ClearDirective { vassal } => {
+            let org = world
+                .get_resource::<PlayerHouse>()
+                .and_then(|p| p.0)
+                .ok_or(AssignmentRejection::NoPlayerOrg)?;
+            if crate::politics::answers_to(world, *vassal, org) == Some(1) {
+                Ok(())
+            } else {
+                Err(CommandRejection::NotYourVassal)
+            }
+        }
     }
 }
 
@@ -390,6 +425,34 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
                 && let Some(mut record) = world.get_mut::<crate::forces::ArmyRecord>(entity)
             {
                 record.standing_order = orders.clone();
+            }
+        }
+        PlayerCommand::IssueDirective {
+            vassal,
+            intent,
+            target,
+        } => {
+            // Re-check authority: the hierarchy may have shifted since
+            // submission. The log still records the attempt.
+            if let Some(org) = world.get_resource::<PlayerHouse>().and_then(|p| p.0)
+                && crate::politics::answers_to(world, *vassal, org) == Some(1)
+            {
+                world
+                    .resource_mut::<crate::goals::IssuedDirectives>()
+                    .by_vassal
+                    .insert(
+                        *vassal,
+                        crate::goals::IssuedDirective {
+                            from: org,
+                            intent: *intent,
+                            target: *target,
+                        },
+                    );
+            }
+        }
+        PlayerCommand::ClearDirective { vassal } => {
+            if let Some(mut issued) = world.get_resource_mut::<crate::goals::IssuedDirectives>() {
+                issued.by_vassal.remove(vassal);
             }
         }
     }

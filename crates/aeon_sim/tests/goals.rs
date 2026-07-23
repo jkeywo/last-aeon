@@ -232,6 +232,7 @@ define_body(#{ id: "world", kind: "planet", radius_km: 6000 });
 define_province(#{ id: "alpha", body: "world", latitude_mdeg: 0, longitude_mdeg: 0 });
 define_province(#{ id: "beta", body: "world", latitude_mdeg: 10000, longitude_mdeg: 10000 });
 define_province(#{ id: "gamma", body: "world", latitude_mdeg: -10000, longitude_mdeg: -10000 });
+define_province(#{ id: "delta", body: "world", latitude_mdeg: 20000, longitude_mdeg: 20000 });
 
 define_house(#{
     id: "ash", tier: "great", head: "aron-ash", color: [200, 60, 60],
@@ -245,6 +246,11 @@ define_house(#{
     id: "cedar", tier: "vassal", liege: "birch", head: "cyra-cedar", color: [60, 200, 60],
     provinces: ["gamma"], wealth: 200, manpower: 1000, supplies: 200, legitimacy: 45,
 });
+// Dale answers to Ash, the player: the house the player may direct.
+define_house(#{
+    id: "dale", tier: "vassal", liege: "ash", head: "dorn-dale", color: [200, 200, 60],
+    provinces: ["delta"], wealth: 200, manpower: 1000, supplies: 200, legitimacy: 45,
+});
 
 define_character(#{ id: "aron-ash", gender: "male", birth_year: 370, organisation: "ash",
     skills: #{ command: 8, diplomacy: 12, intrigue: 4, stewardship: 7 } });
@@ -252,6 +258,8 @@ define_character(#{ id: "bela-birch", gender: "female", birth_year: 372, organis
     skills: #{ command: 6, diplomacy: 9, intrigue: 8, stewardship: 5 } });
 define_character(#{ id: "cyra-cedar", gender: "female", birth_year: 378, organisation: "cedar",
     skills: #{ command: 5, diplomacy: 6, intrigue: 5, stewardship: 6 } });
+define_character(#{ id: "dorn-dale", gender: "male", birth_year: 379, organisation: "dale",
+    skills: #{ command: 6, diplomacy: 5, intrigue: 4, stewardship: 7 } });
 
 // Only a liege with vassals adopts this, and it presses a muster
 // directive on them. Its trigger is one no vassal or player meets.
@@ -352,5 +360,74 @@ fn a_directive_lapses_when_its_ambition_ends() {
         aeon_sim::goals::directive_bonus(h.world_mut(), cedar, AiIntent::Muster),
         0,
         "a finished ambition stops steering the vassals it once moved"
+    );
+}
+
+#[test]
+fn the_player_may_direct_a_house_that_answers_to_them() {
+    use aeon_sim::PlayerCommand;
+
+    let mut h = hier_host(53);
+    let dale = org(&mut h, "dale"); // the player's own vassal
+    let birch = org(&mut h, "birch"); // a great house, not the player's
+
+    // A house that does not answer directly to the player cannot be
+    // directed, however the player asks.
+    assert!(
+        h.submit(PlayerCommand::IssueDirective {
+            vassal: birch,
+            intent: AiIntent::Muster,
+            target: None,
+        })
+        .is_err(),
+        "a directive may only be pressed on a house that answers to you"
+    );
+
+    // The player's own vassal can be directed, and the wish reaches it.
+    h.submit(PlayerCommand::IssueDirective {
+        vassal: dale,
+        intent: AiIntent::Order,
+        target: None,
+    })
+    .expect("the player may direct their own vassal");
+    h.advance_days(2);
+
+    assert_eq!(
+        aeon_sim::goals::directive_bonus(h.world_mut(), dale, AiIntent::Order),
+        aeon_sim::goals::DIRECTIVE_BONUS,
+        "the vassal feels what its liege has asked"
+    );
+
+    // And the player can withdraw it.
+    h.submit(PlayerCommand::ClearDirective { vassal: dale })
+        .expect("the player may withdraw a directive");
+    h.advance_days(2);
+    assert_eq!(
+        aeon_sim::goals::directive_bonus(h.world_mut(), dale, AiIntent::Order),
+        0,
+        "a withdrawn directive stops steering"
+    );
+}
+
+#[test]
+fn a_hand_issued_directive_survives_a_snapshot() {
+    use aeon_sim::PlayerCommand;
+
+    let mut h = hier_host(54);
+    let dale = org(&mut h, "dale");
+    h.submit(PlayerCommand::IssueDirective {
+        vassal: dale,
+        intent: AiIntent::Resources,
+        target: None,
+    })
+    .unwrap();
+    h.advance_days(2);
+
+    let snapshot = h.snapshot();
+    let mut restored = SimHost::restore_with_content(snapshot, hier_content()).unwrap();
+    assert_eq!(
+        aeon_sim::goals::directive_bonus(restored.world_mut(), dale, AiIntent::Resources),
+        aeon_sim::goals::DIRECTIVE_BONUS,
+        "a hand-issued directive is campaign state, and rides the snapshot"
     );
 }

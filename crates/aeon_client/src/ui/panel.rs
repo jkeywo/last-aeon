@@ -57,6 +57,10 @@ pub struct PanelCtx<'a, 'w, 's> {
     pub log: Option<&'a MessageLog>,
     /// Plans autonomous characters are pursuing, if a campaign is running.
     pub plans: Option<&'a aeon_sim::plans::Plans>,
+    /// Grand-strategy ambitions houses hold, if a campaign is running.
+    pub goals: Option<&'a aeon_sim::goals::Goals>,
+    /// Directives issued to vassals by hand, if a campaign is running.
+    pub issued_directives: Option<&'a aeon_sim::goals::IssuedDirectives>,
 }
 
 /// Everything a panel writes.
