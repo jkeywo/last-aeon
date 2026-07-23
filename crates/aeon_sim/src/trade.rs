@@ -17,11 +17,43 @@
 use std::collections::BTreeMap;
 
 use aeon_data::ContentKey;
-use bevy::prelude::World;
+use bevy::prelude::{Component, World};
+use serde::{Deserialize, Serialize};
 
-use crate::ids::{BodyId, OrgId};
+use crate::ids::{BodyId, OrgId, ProvinceId};
 use crate::map::{MapIndex, ProvinceRecord};
 use crate::state::ContentDb;
+
+/// The buildings a province has raised, in the order they were built.
+///
+/// A per-province component, persisted like provincial order: buildings
+/// are dynamic state, raised during play, so they ride the snapshot.
+#[derive(Component, Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Buildings(pub Vec<ContentKey>);
+
+/// The extra monthly wealth a province's buildings add to its output.
+pub fn building_wealth_bonus(world: &World, province: ProvinceId) -> i64 {
+    let (Some(db), Some(index)) = (
+        world.get_resource::<ContentDb>(),
+        world.get_resource::<MapIndex>(),
+    ) else {
+        return 0;
+    };
+    let content = db.0.clone();
+    let Some(buildings) = index
+        .provinces
+        .get(&province)
+        .and_then(|entity| world.get::<Buildings>(*entity))
+    else {
+        return 0;
+    };
+    buildings
+        .0
+        .iter()
+        .filter_map(|key| content.buildings.get(key))
+        .map(|def| def.adds_wealth)
+        .sum()
+}
 
 /// The net monthly balance of every good on a body: production less
 /// consumption, summed across the body's provinces.
@@ -54,6 +86,17 @@ pub fn body_balance(world: &World, body: BodyId) -> BTreeMap<ContentKey, i64> {
         }
         for (good, rate) in &def.consumes {
             *net.entry(good.clone()).or_default() -= *rate;
+        }
+        // What the province's buildings add to the balance.
+        if let Some(buildings) = world.get::<Buildings>(*entity) {
+            for building in buildings.0.iter().filter_map(|k| content.buildings.get(k)) {
+                for (good, rate) in &building.produces {
+                    *net.entry(good.clone()).or_default() += *rate;
+                }
+                for (good, rate) in &building.consumes {
+                    *net.entry(good.clone()).or_default() -= *rate;
+                }
+            }
         }
     }
     net

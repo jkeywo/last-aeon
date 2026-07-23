@@ -686,3 +686,4 @@ goal.take-the-planet.title,Goal title: pressing the planetary paramountcy.,[Take
 goal.take-the-planet.summary,One-line summary of the take-the-planet ambition.,[Bend everything toward pressing a claim to the Paramountcy.]
 goal.conquer-a-neighbour.title,Goal title: conquering a weaker neighbour.,[Conquer a Neighbour]
 goal.conquer-a-neighbour.summary,One-line summary of the conquer ambition.,[Arm against a weaker rival and call the vassals to muster.]
+ui.inspector.province.buildings,Inspector heading over the buildings a province has raised.,[Built:]

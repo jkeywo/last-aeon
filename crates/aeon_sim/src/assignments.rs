@@ -1328,6 +1328,22 @@ pub fn apply_effects(
                     }
                 }
             },
+            ScriptEffect::Construct { building } => {
+                // Raise the building on the province the work was aimed
+                // at. Only what content defines can be built.
+                if let Some(province) = roles.province
+                    && let Ok(key) = ContentKey::new(building)
+                    && world.resource::<ContentDb>().0.buildings.contains_key(&key)
+                    && let Some(entity) = world
+                        .resource::<crate::map::MapIndex>()
+                        .provinces
+                        .get(&province)
+                        .copied()
+                    && let Some(mut buildings) = world.get_mut::<crate::trade::Buildings>(entity)
+                {
+                    buildings.0.push(key);
+                }
+            }
         }
     }
 }

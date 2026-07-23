@@ -138,6 +138,19 @@ pub(super) fn validate_cross_references(
         }
     }
 
+    // Buildings: every good they produce or consume must be defined.
+    for (key, building) in &builder.buildings {
+        for good in building.produces.keys().chain(building.consumes.keys()) {
+            if !builder.goods.contains_key(good) {
+                findings.push((
+                    String::new(),
+                    Some(key.to_string()),
+                    format!("good '{good}' is not defined"),
+                ));
+            }
+        }
+    }
+
     validate_political_references(builder, &mut findings);
     validate_plans(builder, &mut findings);
 

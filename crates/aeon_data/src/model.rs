@@ -343,6 +343,33 @@ pub struct GoodDef {
     pub value: i64,
 }
 
+/// A building a province may raise to change what it makes.
+///
+/// Built over time at a cost, a building adds to a province's plain
+/// wealth output and to its production and consumption of goods — the one
+/// lever, beyond who holds the ground, over what a place is worth.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BuildingDef {
+    /// The building's stable content key.
+    pub key: ContentKey,
+    /// Player-facing name.
+    pub name: String,
+    /// One-sentence player-facing summary.
+    pub summary: String,
+    /// Wealth spent to begin construction.
+    pub wealth_cost: i64,
+    /// Supplies spent to begin construction.
+    pub supplies_cost: i64,
+    /// Days the construction takes.
+    pub build_days: u32,
+    /// Added to the province's monthly wealth output once built.
+    pub adds_wealth: i64,
+    /// Added monthly production of each good once built.
+    pub produces: BTreeMap<ContentKey, i64>,
+    /// Added monthly consumption of each good once built.
+    pub consumes: BTreeMap<ContentKey, i64>,
+}
+
 /// A province on a body.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ProvinceDef {
@@ -396,6 +423,8 @@ pub struct ContentSet {
     pub bodies: BTreeMap<ContentKey, BodyDef>,
     /// Traded commodities by key.
     pub goods: BTreeMap<ContentKey, GoodDef>,
+    /// Buildings a province may raise, by key.
+    pub buildings: BTreeMap<ContentKey, BuildingDef>,
     /// Provinces by key.
     pub provinces: BTreeMap<ContentKey, ProvinceDef>,
     /// Trait definitions by key.
@@ -437,6 +466,7 @@ impl ContentSet {
         self.assignments == other.assignments
             && self.bodies == other.bodies
             && self.goods == other.goods
+            && self.buildings == other.buildings
             && self.provinces == other.provinces
             && self.traits == other.traits
             && self.name_pools == other.name_pools

@@ -19,8 +19,8 @@ use rhai::{Engine, Map};
 use crate::key::ContentKey;
 use crate::model::{
     AiIntent, ArmyDef, AssignmentCategory, AssignmentDef, AssignmentRequires, AssignmentTargetKind,
-    BodyDef, BodyKind, CharacterDef, DirectiveDef, DirectiveTarget, EventChoiceDef, EventDef,
-    EventFamily, EventRequires, Gender, GoalDef, GoalRequires, GoodDef, GoverningSkill,
+    BodyDef, BodyKind, BuildingDef, CharacterDef, DirectiveDef, DirectiveTarget, EventChoiceDef,
+    EventDef, EventFamily, EventRequires, Gender, GoalDef, GoalRequires, GoodDef, GoverningSkill,
     HolderRelation, HouseTier, MilitaryOp, NamePoolDef, ObligationDef, ObligationKind, OfficeDef,
     OrgDef, OrgKind, OutcomeDef, OutcomeKind, PlanArmySelector, PlanDef, PlanMethodDef,
     PlanRequires, PlanStepAction, PlanStepDef, PlanTargetSelector, PopupChoiceDef, ProvinceDef,
@@ -37,6 +37,7 @@ pub(super) struct BuilderState {
     pub(super) assignments: BTreeMap<ContentKey, AssignmentDef>,
     pub(super) bodies: BTreeMap<ContentKey, BodyDef>,
     pub(super) goods: BTreeMap<ContentKey, GoodDef>,
+    pub(super) buildings: BTreeMap<ContentKey, BuildingDef>,
     pub(super) provinces: BTreeMap<ContentKey, ProvinceDef>,
     pub(super) traits: BTreeMap<ContentKey, TraitDef>,
     pub(super) name_pools: BTreeMap<ContentKey, NamePoolDef>,
@@ -67,6 +68,7 @@ impl BuilderState {
             assignments: std::mem::take(&mut self.assignments),
             bodies: std::mem::take(&mut self.bodies),
             goods: std::mem::take(&mut self.goods),
+            buildings: std::mem::take(&mut self.buildings),
             provinces: std::mem::take(&mut self.provinces),
             traits: std::mem::take(&mut self.traits),
             name_pools: std::mem::take(&mut self.name_pools),
@@ -1117,6 +1119,52 @@ fn define_good(state: &mut BuilderState, map: Map) {
     state
         .goods
         .insert(key.clone(), GoodDef { key, name, value });
+}
+
+fn define_building(state: &mut BuilderState, map: Map) {
+    let Some(mut f) = Fields::begin(state, map) else {
+        return;
+    };
+    let name = f.moved_to_table("name", "building");
+    let summary = f.moved_to_table("summary", "building");
+    let Some(build_days) = f.req_int("build_days") else {
+        return;
+    };
+    if !(1..=100_000).contains(&build_days) {
+        f.error(format!("build_days must be 1..=100000, got {build_days}"));
+        return;
+    }
+    let (Some(wealth_cost), Some(supplies_cost), Some(adds_wealth)) = (
+        f.opt_int("wealth_cost", 0),
+        f.opt_int("supplies_cost", 0),
+        f.opt_int("adds_wealth", 0),
+    ) else {
+        return;
+    };
+    let (Some(produces), Some(consumes)) =
+        (goods_map(&mut f, "produces"), goods_map(&mut f, "consumes"))
+    else {
+        return;
+    };
+    let (state, key) = f.finish();
+    if state.buildings.contains_key(&key) {
+        state.error(Some(key.as_str()), "duplicate building id");
+        return;
+    }
+    state.buildings.insert(
+        key.clone(),
+        BuildingDef {
+            key,
+            name,
+            summary,
+            wealth_cost,
+            supplies_cost,
+            build_days: build_days as u32,
+            adds_wealth,
+            produces,
+            consumes,
+        },
+    );
 }
 
 /// Reads an authored map of good keys to monthly rates.
@@ -2464,6 +2512,7 @@ pub(super) fn loading_engine(state: Arc<Mutex<BuilderState>>) -> Engine {
     register!("define_assignment", define_assignment);
     register!("define_body", define_body);
     register!("define_good", define_good);
+    register!("define_building", define_building);
     register!("define_province", define_province);
     register!("define_scenario", define_scenario);
     register!("define_trait", define_trait);

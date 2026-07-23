@@ -895,3 +895,81 @@ define_province(#{
         report.findings
     );
 }
+
+#[test]
+fn loads_a_building_and_a_construct_effect() {
+    use aeon_data::{ScriptEffect, ScriptHost};
+
+    let script = r#"
+define_body(#{ id: "the-world", kind: "planet", radius_km: 6400 });
+define_good(#{ id: "grain", value: 2 });
+define_building(#{
+    id: "granary", build_days: 60,
+    wealth_cost: 40, supplies_cost: 10,
+    adds_wealth: 5, produces: #{ grain: 15 },
+});
+define_assignment(#{
+    id: "raise-a-granary", category: "consequential",
+    duration_days: 60, skill: "stewardship", difficulty: 6, target: "province",
+    results: #{
+        success: #{ weight: 900, effect_fn: "built" },
+        failure: #{ weight: 100 },
+    },
+});
+fn built(ctx) { [#{ kind: "construct", building: "granary" }] }
+"#;
+    let (set, report) = load_content(
+        &[source("system/buildings.rhai", script)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(
+        !report.has_errors(),
+        "unexpected findings: {:?}",
+        report.findings
+    );
+    let set = set.expect("valid buildings content loads");
+    let granary = &set.buildings[&aeon_data::ContentKey::new("granary").unwrap()];
+    assert_eq!(granary.adds_wealth, 5);
+    assert_eq!(
+        granary.produces[&aeon_data::ContentKey::new("grain").unwrap()],
+        15
+    );
+
+    // The construct effect parses to the typed variant.
+    let host = ScriptHost::new();
+    let fn_ref = set.assignments[&aeon_data::ContentKey::new("raise-a-granary").unwrap()].results
+        [&aeon_data::model::OutcomeKind::Success]
+        .effect_fn
+        .clone()
+        .unwrap();
+    let effects = host
+        .call_effect_fn(&set, &fn_ref, rhai::Map::new())
+        .unwrap();
+    assert_eq!(
+        effects,
+        vec![ScriptEffect::Construct {
+            building: "granary".to_owned()
+        }]
+    );
+}
+
+#[test]
+fn a_building_consuming_an_undefined_good_fails_to_load() {
+    let script = r#"
+define_body(#{ id: "the-world", kind: "planet", radius_km: 6400 });
+define_building(#{ id: "smokehouse", build_days: 30, consumes: #{ mystery: 3 } });
+"#;
+    let (set, report) = load_content(
+        &[source("system/buildings.rhai", script)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|f| f.message.contains("good 'mystery' is not defined")),
+        "findings: {:?}",
+        report.findings
+    );
+}

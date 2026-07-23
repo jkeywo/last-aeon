@@ -78,6 +78,13 @@ pub enum ScriptEffect {
         /// Signed change, in order points.
         amount: i32,
     },
+    /// Raise a building on the assignment's target province.
+    Construct {
+        /// The building to raise. A content key, resolved when applied;
+        /// like a log's message key, it is authored inside a function
+        /// body where no definition id is in scope.
+        building: String,
+    },
 }
 
 /// A assignment-context role an authored effect may address.
@@ -374,6 +381,18 @@ pub fn parse_effects(value: Dynamic) -> Result<Vec<ScriptEffect>, EffectParseErr
                     scope,
                     amount: amount as i32,
                 });
+            }
+            "construct" => {
+                let building = map
+                    .get("building")
+                    .and_then(|v| v.clone().into_string().ok())
+                    .ok_or_else(|| EffectParseError::BadField {
+                        index,
+                        kind: kind.clone(),
+                        field: "building".to_owned(),
+                        expected: "string".to_owned(),
+                    })?;
+                effects.push(ScriptEffect::Construct { building });
             }
             other => {
                 return Err(EffectParseError::UnknownKind {

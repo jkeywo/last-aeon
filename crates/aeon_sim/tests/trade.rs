@@ -177,3 +177,162 @@ fn the_goods_economy_replays_and_survives_a_snapshot() {
         "and continue identically afterwards"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Buildings
+// ---------------------------------------------------------------------------
+
+const BUILD_FIXTURE: &str = r#"
+define_scenario(#{
+    id: "fixture", start_year: 411, start_month: 1, start_day: 1,
+    player_house: "ash",
+});
+define_name_pool(#{ id: "names", male: ["Bram"], female: ["Yeva"] });
+
+define_body(#{ id: "world", kind: "planet", radius_km: 6000 });
+define_good(#{ id: "grain", value: 2 });
+
+// Alpha eats grain and grows none: the world is in want until a granary
+// is raised.
+define_province(#{ id: "alpha", body: "world",
+                   latitude_mdeg: 0, longitude_mdeg: 0,
+                   wealth_output: 0, manpower_output: 0, supplies_output: 0,
+                   consumes: #{ grain: 10 } });
+
+define_building(#{
+    id: "granary", build_days: 20,
+    wealth_cost: 0, supplies_cost: 0,
+    adds_wealth: 5, produces: #{ grain: 15 },
+});
+define_assignment(#{
+    id: "raise-a-granary", category: "consequential",
+    duration_days: 20, skill: "stewardship", difficulty: 2, target: "province",
+    requires: #{ target_holder: "own" },
+    results: #{
+        success: #{ weight: 999, effect_fn: "built" },
+        failure: #{ weight: 1 },
+    },
+});
+fn built(ctx) { [#{ kind: "construct", building: "granary" }] }
+
+define_house(#{
+    id: "ash", tier: "great",
+    head: "aron-ash", color: [200, 60, 60], provinces: ["alpha"],
+    wealth: 500, manpower: 5000, supplies: 800, legitimacy: 60,
+});
+define_character(#{
+    id: "aron-ash", gender: "male",
+    birth_year: 370, organisation: "ash",
+    skills: #{ command: 8, diplomacy: 6, intrigue: 4, stewardship: 16 },
+});
+"#;
+
+fn build_host(seed: u64) -> SimHost {
+    let (set, report) = load_content(
+        &[ContentSource {
+            path: "fixture.rhai".to_owned(),
+            source: BUILD_FIXTURE.to_owned(),
+        }],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(!report.has_errors(), "findings: {:?}", report.findings);
+    SimHost::new_with_content(
+        CampaignConfig {
+            name: "Build Trial".to_owned(),
+            seed,
+            start_date: CalendarDate {
+                year: 411,
+                month: 1,
+                day: 1,
+            }
+            .to_date()
+            .unwrap(),
+        },
+        Arc::new(set.unwrap()),
+    )
+}
+
+#[test]
+fn a_raised_building_changes_the_balance_and_the_wealth() {
+    use aeon_sim::{AssignmentTarget, PlayerCommand};
+
+    let mut h = build_host(71);
+    let world = h.world_mut().resource::<MapIndex>().body_keys[&key("world")];
+    let alpha = province(&mut h, "alpha");
+    let aron = h.world_mut().resource::<PoliticsIndex>().character_keys
+        [&ContentKey::new("aron-ash").unwrap()];
+
+    assert!(
+        aeon_sim::trade::body_in_want(h.world_mut(), world),
+        "the world starts hungry, with no grain grown"
+    );
+
+    // The player raises a granary on Alpha; it may take a couple of tries
+    // if the work happens to fail, so keep asking until it stands.
+    let built = ContentKey::new("granary").unwrap();
+    for _ in 0..6 {
+        let has = {
+            let entity = h.world_mut().resource::<MapIndex>().provinces[&alpha];
+            h.world_mut()
+                .get::<aeon_sim::trade::Buildings>(entity)
+                .is_some_and(|b| b.0.contains(&built))
+        };
+        if has {
+            break;
+        }
+        let _ = h.submit(PlayerCommand::StartAssignment {
+            assignment: ContentKey::new("raise-a-granary").unwrap(),
+            leader: aron,
+            target: AssignmentTarget::Province(alpha),
+        });
+        h.advance_days(22);
+    }
+
+    let entity = h.world_mut().resource::<MapIndex>().provinces[&alpha];
+    assert!(
+        h.world_mut()
+            .get::<aeon_sim::trade::Buildings>(entity)
+            .is_some_and(|b| b.0.contains(&built)),
+        "the granary should stand after the work is seen through"
+    );
+    // Grain now nets +5 (15 grown less 10 eaten), so the want is answered,
+    // and the province's wealth output has risen with it.
+    assert_eq!(
+        aeon_sim::trade::body_balance(h.world_mut(), world)[&key("grain")],
+        5
+    );
+    assert!(!aeon_sim::trade::body_in_want(h.world_mut(), world));
+    assert_eq!(
+        aeon_sim::trade::building_wealth_bonus(h.world_mut(), alpha),
+        5
+    );
+}
+
+#[test]
+fn a_raised_building_survives_a_snapshot() {
+    let mut h = build_host(72);
+    let alpha = province(&mut h, "alpha");
+    let entity = h.world_mut().resource::<MapIndex>().provinces[&alpha];
+    // Plant the building directly, then round-trip.
+    h.world_mut()
+        .get_mut::<aeon_sim::trade::Buildings>(entity)
+        .unwrap()
+        .0
+        .push(ContentKey::new("granary").unwrap());
+    let content = h
+        .world_mut()
+        .resource::<aeon_sim::state::ContentDb>()
+        .0
+        .clone();
+
+    let snapshot = h.snapshot();
+    let mut restored = SimHost::restore_with_content(snapshot, content).unwrap();
+    let restored_entity = restored.world_mut().resource::<MapIndex>().provinces[&alpha];
+    assert!(
+        restored
+            .world_mut()
+            .get::<aeon_sim::trade::Buildings>(restored_entity)
+            .is_some_and(|b| b.0.contains(&ContentKey::new("granary").unwrap())),
+        "a raised building is campaign state and rides the snapshot"
+    );
+}

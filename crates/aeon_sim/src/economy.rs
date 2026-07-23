@@ -114,11 +114,14 @@ pub fn monthly_economy(world: &mut World) {
                 crate::order::province_order(world, province).order,
             );
             let scaled = |amount: i64| -> i64 { amount * factor / 1000 };
+            // A province's plain wealth, plus whatever its buildings add.
+            let base_wealth =
+                def.wealth_output + crate::trade::building_wealth_bonus(world, province);
             let entry = income.entry(org).or_default();
             entry.0 += scaled(if blockaded {
-                def.wealth_output / 2
+                base_wealth / 2
             } else {
-                def.wealth_output
+                base_wealth
             });
             entry.1 += scaled(def.manpower_output);
             entry.2 += scaled(def.supplies_output);

@@ -175,6 +175,23 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                     }
                 }
 
+                // What the province has raised.
+                if let Some((_, buildings)) = ctx
+                    .data
+                    .buildings
+                    .iter()
+                    .find(|(record, _)| record.id == id)
+                    && !buildings.0.is_empty()
+                {
+                    ui.separator();
+                    ui.label(strings.text("ui.inspector.province.buildings"));
+                    for building in &buildings.0 {
+                        if let Some(def) = ctx.content.buildings.get(building) {
+                            ui.label(&def.name).on_hover_text(&def.summary);
+                        }
+                    }
+                }
+
                 // Forces standing at this province.
                 let armies_here: Vec<&ArmyRecord> = ctx
                     .data

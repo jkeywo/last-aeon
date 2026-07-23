@@ -164,6 +164,7 @@ pub fn load_content(
         assignments: builder.assignments,
         bodies: builder.bodies,
         goods: builder.goods,
+        buildings: builder.buildings,
         provinces: builder.provinces,
         traits: builder.traits,
         name_pools: builder.name_pools,

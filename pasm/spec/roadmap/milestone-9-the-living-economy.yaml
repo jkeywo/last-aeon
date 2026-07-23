@@ -83,8 +83,8 @@ entities:
 
   - milestone: m9-buildings
     core:
-      status: proposed
-      confidence: provisional
+      status: accepted
+      confidence: confirmed
       title: "M9.2: Buildings Change What a Place Makes"
       summary: >-
         A building is authored content; a province holds the ones it has
@@ -107,8 +107,34 @@ entities:
         - crates/aeon_data/src/model.rs
         - crates/aeon_sim/src/assignments.rs
         - crates/aeon_sim/src/economy.rs
+        - crates/aeon_sim/src/trade.rs
+        - crates/aeon_sim/src/map.rs
         - crates/aeon_client/src/ui/inspector.rs
+      tests:
+        - crates/aeon_sim/tests/trade.rs
+        - crates/aeon_data/tests/loading.rs
       status: declared
+    evidence:
+      - kind: test
+        reference: crates/aeon_sim/tests/trade.rs
+        summary: >-
+          The player raises a granary through the ordinary assignment
+          pipeline; the province gains the building, the world's grain
+          balance rises by what the granary makes, the want is answered,
+          the wealth output climbs, and the building rides a snapshot.
+          Loading refuses a building that names an undefined good, and the
+          construct effect parses to its typed variant.
+      - kind: manual-review
+        reference: crates/aeon_sim/src/trade.rs
+        summary: >-
+          A building is added only through a new construct effect, applied
+          on the assignment's target province — the same validated
+          pipeline every action takes, extending the effect vocabulary in
+          the one place it is defined, parsed, and applied. Buildings are
+          dynamic state, so they persist as a per-province component
+          (snapshot 15) mirroring provincial order, and they feed both the
+          goods balance and the monthly wealth. Content stays free to
+          author what a place can build.
 
   - milestone: m9-trade-routes
     core:

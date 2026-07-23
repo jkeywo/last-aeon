@@ -102,6 +102,7 @@ pub struct PanelData<'w, 's> {
     /// player who starts an assignment while paused sees it at once.
     pub pending: Option<Res<'w, aeon_sim::command::PendingCommands>>,
     pub order: Query<'w, 's, (&'static ProvinceRecord, &'static ProvincialOrder)>,
+    pub buildings: Query<'w, 's, (&'static ProvinceRecord, &'static aeon_sim::trade::Buildings)>,
     pub obligations: Option<Res<'w, Obligations>>,
     pub availability: Res<'w, AvailabilityView>,
     pub offers: Res<'w, OfferView>,

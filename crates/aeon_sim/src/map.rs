@@ -94,6 +94,9 @@ pub struct MapState {
     /// Provincial order in ID order; absent entries take the default.
     #[serde(default)]
     pub order: Vec<(ProvinceId, crate::order::ProvincialOrder)>,
+    /// Buildings raised per province, in ID order; absent entries have none.
+    #[serde(default)]
+    pub buildings: Vec<(ProvinceId, crate::trade::Buildings)>,
 }
 
 fn spawn_body(world: &mut World, id: BodyId, def: &BodyDef, parent: Option<BodyId>) -> Entity {
@@ -127,6 +130,7 @@ fn spawn_province(world: &mut World, id: ProvinceId, def: &ProvinceDef, body: Bo
                 longitude_mdeg: def.longitude_mdeg,
             },
             crate::order::ProvincialOrder::default(),
+            crate::trade::Buildings::default(),
         ))
         .id()
 }
@@ -186,6 +190,16 @@ pub fn capture_map(world: &World) -> MapState {
                         .map(|state| (*id, *state))
                 })
                 .collect(),
+            buildings: index
+                .provinces
+                .iter()
+                .filter_map(|(id, entity)| {
+                    world
+                        .get::<crate::trade::Buildings>(*entity)
+                        .filter(|b| !b.0.is_empty())
+                        .map(|b| (*id, b.clone()))
+                })
+                .collect(),
         },
     }
 }
@@ -229,6 +243,12 @@ pub fn restore_map(world: &mut World, state: &MapState, content: &ContentSet) {
     for (id, order) in &state.order {
         if let Some(entity) = index.provinces.get(id) {
             world.entity_mut(*entity).insert(*order);
+        }
+    }
+    // And any buildings raised over the campaign.
+    for (id, buildings) in &state.buildings {
+        if let Some(entity) = index.provinces.get(id) {
+            world.entity_mut(*entity).insert(buildings.clone());
         }
     }
 
