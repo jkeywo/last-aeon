@@ -69,6 +69,11 @@
       <div class="sub">Loading the local system&hellip;</div>
     </div>
     <link data-trunk rel="rust" data-bin="last_aeons" />
+    <!-- Runtime assets the client fetches (skybox, model, map textures,
+         shaders). The simulation's own content is embedded in the binary;
+         these are the presentation files loaded through the asset server,
+         so trunk must copy them into dist for the web build to find them. -->
+    <link data-trunk rel="copy-dir" href="assets" />
     <script>
       // Remove the loading overlay once the Bevy canvas has been created
       // and sized. The wasm bundle is large, so this can take a moment.
