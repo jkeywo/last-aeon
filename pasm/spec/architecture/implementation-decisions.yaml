@@ -1640,3 +1640,30 @@ entities:
         - deterministic-campaign-simulation
         - hand-rolled-deterministic-rng
         - rng-stream-labels-are-identities-not-names
+
+  - decision: script-host-is-the-fleets
+    core:
+      status: accepted
+      confidence: confirmed
+      title: The Sandbox Is Extracted; The Vocabulary Stays
+      summary: >-
+        The Rhai sandbox profile, the framed content hash, and the
+        context-in call seam move to vellum-script, extracted from this
+        game as the fleet's deterministic script host. What stays here is
+        the vocabulary: which builder functions the loading engine
+        registers, the shape of the context a call receives, and how a
+        returned value becomes typed effects — one game's content model,
+        not a general mechanism. A pure extraction, proven rather than
+        asserted: the content hash and every acceptance replay hash are
+        byte-identical across the change.
+      rationale:
+        - >-
+          The sandbox's value is in what it *refuses*, and every refusal has
+          a reason that is easy to lose when the next game writes its own:
+          building deny-by-default from a raw engine rather than stripping a
+          full one, absent wall clock, dummy module resolver, disabled eval,
+          hard limits, integer-only arithmetic. Those reasons are now
+          written once, with tests that fail if a capability creeps back in.
+      references:
+        - deterministic-campaign-simulation
+        - fleet-foundation-adoption

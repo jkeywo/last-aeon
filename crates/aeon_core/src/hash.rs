@@ -30,6 +30,12 @@ impl StateHash {
     pub fn as_u64(&self) -> u64 {
         self.0
     }
+
+    /// Wrap an already-computed fleet digest — for a hash produced by a
+    /// shared crate over its own framing (see `aeon_data`'s content hash).
+    pub const fn from_u64(digest: u64) -> Self {
+        Self(digest)
+    }
 }
 
 /// Hashes a canonical byte serialisation.
