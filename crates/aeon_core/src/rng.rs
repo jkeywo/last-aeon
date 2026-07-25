@@ -1,115 +1,82 @@
 //! Deterministic random number generation.
 //!
 //! The game's replay guarantee rests on random streams that are identical
-//! forever, across platforms and releases. Depending on an external RNG
-//! crate would tie that guarantee to someone else's versioning, so the
-//! generator is implemented here: xoshiro256** seeded via splitmix64, with
-//! golden-value tests locking the streams permanently.
+//! forever, across platforms and releases. The generator is the fleet's —
+//! `vellum-rng`'s unified PCG32 construction, adopted under the fleet
+//! decision `rng-unification-breaks-saves` (this replaced an in-crate
+//! xoshiro256**; the golden-value tests below were re-pinned as part of
+//! that deliberate break, and the snapshot format version gates out saves
+//! from before it).
 //!
-//! Streams are *derived*, not shared: each use site derives its own
-//! generator from the campaign seed, a purpose label, and the stable
-//! identities involved (typically an entity ID and the current day). Systems
-//! therefore cannot perturb each other's sequences when code is added or
-//! reordered, and no RNG state needs to live in snapshots.
+//! What survives the migration unchanged is this game's *pattern*: streams
+//! are *derived*, not shared. Each use site derives its own generator from
+//! the campaign seed, a purpose label, and the stable identities involved
+//! (typically an entity ID and the current day). Systems therefore cannot
+//! perturb each other's sequences when code is added or reordered, and no
+//! RNG state needs to live in snapshots. Purpose labels are hashed into the
+//! stream selector, so they are *identities*, not names: renaming one
+//! silently re-rolls every outcome it has ever produced. Labels are frozen
+//! once written, even when the concept they refer to is renamed around them.
 
 use serde::{Deserialize, Serialize};
+use vellum_digest::fnv1a;
+use vellum_rng::{Pcg32, split_mix_64};
 
-const FNV_OFFSET: u64 = 0xcbf2_9ce4_8422_2325;
-const FNV_PRIME: u64 = 0x0000_0100_0000_01b3;
-
-fn fnv1a(bytes: &[u8]) -> u64 {
-    let mut hash = FNV_OFFSET;
-    for &byte in bytes {
-        hash ^= u64::from(byte);
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    hash
-}
-
-/// Advances a splitmix64 state and returns the next output.
-fn splitmix64_next(state: &mut u64) -> u64 {
-    *state = state.wrapping_add(0x9E37_79B9_7F4A_7C15);
-    let mut z = *state;
-    z = (z ^ (z >> 30)).wrapping_mul(0xBF58_476D_1CE4_E5B9);
-    z = (z ^ (z >> 27)).wrapping_mul(0x94D0_49BB_1331_11EB);
-    z ^ (z >> 31)
-}
-
-/// One splitmix64 step of a bare value, used when folding stream subjects.
-fn splitmix64_mix(value: u64) -> u64 {
-    let mut state = value;
-    splitmix64_next(&mut state)
-}
-
-/// A deterministic xoshiro256** generator.
+/// A deterministic generator over the fleet's PCG32.
 ///
 /// Serialisable so a stream can be persisted mid-use if a future system
 /// needs that, though the intended pattern is fresh derivation per use.
+/// `serde(transparent)` keeps the serialised shape exactly the shared
+/// `{ state, inc }`.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(transparent)]
 pub struct DeterministicRng {
-    state: [u64; 4],
+    inner: Pcg32,
 }
 
 impl DeterministicRng {
-    /// Creates a generator from a bare seed via splitmix64 expansion.
+    /// Creates a generator from a bare seed on the default stream.
     pub fn from_seed(seed: u64) -> Self {
-        let mut sm_state = seed;
-        let mut state = [0u64; 4];
-        for slot in &mut state {
-            *slot = splitmix64_next(&mut sm_state);
+        Self {
+            inner: Pcg32::seeded(seed, 0),
         }
-        if state == [0, 0, 0, 0] {
-            // xoshiro must not start all-zero; unreachable in practice.
-            state[0] = 1;
-        }
-        Self { state }
     }
 
     /// Derives the stream for one purpose acting on specific subjects.
     ///
-    /// `purpose` is a short stable label such as `"job-resolution"`.
-    ///
-    /// It is hashed into the stream, so it is an *identity*, not a name:
-    /// renaming one silently re-rolls every outcome it has ever produced.
-    /// Labels are frozen once written, even when the concept they refer to
-    /// is renamed around them.
-    /// `subjects` are the stable numeric identities involved — typically an
-    /// entity's raw ID and the current day — folded in order.
+    /// `purpose` is a short stable label such as `"job-resolution"`; it and
+    /// the subjects fold into the stream selector, so every (purpose,
+    /// subjects) pair is its own independent sequence of the campaign seed.
     pub fn derive(campaign_seed: u64, purpose: &str, subjects: &[u64]) -> Self {
-        let mut hash = fnv1a(purpose.as_bytes());
+        let mut stream = fnv1a(purpose.as_bytes());
         for &subject in subjects {
-            hash = splitmix64_mix(hash ^ subject);
+            stream = split_mix_64(stream ^ subject);
         }
-        Self::from_seed(campaign_seed ^ hash)
+        Self {
+            inner: Pcg32::seeded(campaign_seed, stream),
+        }
     }
 
-    /// The next raw 64-bit value.
+    /// The next raw 64-bit value, from two draws of the 32-bit generator.
     pub fn next_u64(&mut self) -> u64 {
-        let result = self.state[1].wrapping_mul(5).rotate_left(7).wrapping_mul(9);
-        let t = self.state[1] << 17;
-        self.state[2] ^= self.state[0];
-        self.state[3] ^= self.state[1];
-        self.state[1] ^= self.state[2];
-        self.state[0] ^= self.state[3];
-        self.state[2] ^= t;
-        self.state[3] = self.state[3].rotate_left(45);
-        result
+        let high = u64::from(self.inner.next_u32());
+        let low = u64::from(self.inner.next_u32());
+        (high << 32) | low
     }
 
     /// A uniform value in `0..bound` without modulo bias.
     ///
+    /// Game bounds are small — dice, permille, slice lengths, day spans —
+    /// so the fleet's 32-bit draw carries them all; the u64 signature is
+    /// this game's vocabulary.
+    ///
     /// # Panics
-    /// Panics if `bound` is zero — that is always a caller bug.
+    /// Panics if `bound` is zero or exceeds `u32::MAX` — both are always
+    /// caller bugs.
     pub fn roll(&mut self, bound: u64) -> u64 {
         assert!(bound > 0, "roll bound must be positive");
-        // Reject the top partial cycle so every residue is equally likely.
-        let overhang = (u64::MAX % bound).wrapping_add(1) % bound;
-        loop {
-            let x = self.next_u64();
-            if x <= u64::MAX - overhang {
-                return x % bound;
-            }
-        }
+        let bound = u32::try_from(bound).expect("roll bounds are game quantities, within u32");
+        u64::from(self.inner.below(bound))
     }
 
     /// A uniform value in the inclusive range `lo..=hi`.
@@ -125,20 +92,17 @@ impl DeterministicRng {
 
     /// A uniform value in `0..1000`, the standard chance resolution.
     pub fn permille(&mut self) -> u32 {
-        self.roll(1000) as u32
+        self.inner.below(1000)
     }
 
     /// Whether a check with the given permille chance succeeds.
     pub fn check_permille(&mut self, chance: u32) -> bool {
-        self.permille() < chance
+        self.inner.chance(chance, 1000)
     }
 
     /// Fisher–Yates shuffle.
     pub fn shuffle<T>(&mut self, slice: &mut [T]) {
-        for i in (1..slice.len()).rev() {
-            let j = self.roll(i as u64 + 1) as usize;
-            slice.swap(i, j);
-        }
+        self.inner.shuffle(slice);
     }
 
     /// A uniformly chosen element, or `None` if the slice is empty.
@@ -146,7 +110,7 @@ impl DeterministicRng {
         if slice.is_empty() {
             None
         } else {
-            Some(&slice[self.roll(slice.len() as u64) as usize])
+            Some(&slice[self.inner.pick_index(slice.len())])
         }
     }
 }
@@ -155,31 +119,35 @@ impl DeterministicRng {
 mod tests {
     use super::*;
 
-    /// Golden values computed by an independent reference implementation.
-    /// These lock the streams permanently: if this test ever fails, replay
-    /// compatibility with existing campaigns has been broken.
+    /// Golden values locking the streams permanently: if this test ever
+    /// fails, replay compatibility with existing campaigns has been broken.
+    /// These were re-pinned once, deliberately, when the fleet RNG replaced
+    /// the in-crate xoshiro256** — the break the snapshot format version
+    /// gates out.
     #[test]
     fn from_seed_matches_golden_values() {
         let mut rng = DeterministicRng::from_seed(0x00C0_FFEE);
-        assert_eq!(rng.next_u64(), 0x120e_99a6_dde4_a550);
-        assert_eq!(rng.next_u64(), 0x8f98_9ef9_7733_d4b4);
-        assert_eq!(rng.next_u64(), 0xf0a2_8eb2_e4fd_367b);
-        assert_eq!(rng.next_u64(), 0x50c2_9bfe_8734_f5d2);
+        assert_eq!(rng.next_u64(), 0x43d95d2a0d5301cd);
+        assert_eq!(rng.next_u64(), 0xe8367bfbf9ec2845);
+        assert_eq!(rng.next_u64(), 0xead79b823a4262a3);
+        assert_eq!(rng.next_u64(), 0x3f5f5e2035d682e6);
     }
 
     #[test]
     fn derive_matches_golden_values() {
         let mut rng = DeterministicRng::derive(0x00C0_FFEE, "job-resolution", &[42, 7]);
-        assert_eq!(rng.next_u64(), 0xd835_499f_cb8a_bc6e);
-        assert_eq!(rng.next_u64(), 0x3729_b541_07c4_fbad);
+        assert_eq!(rng.next_u64(), 0xb7fba1e7ed9831de);
+        assert_eq!(rng.next_u64(), 0x0a272acedd60f950);
     }
 
     #[test]
     fn derived_streams_differ_by_subject_and_purpose() {
         let mut by_subject = DeterministicRng::derive(0x00C0_FFEE, "job-resolution", &[42, 8]);
         let mut by_purpose = DeterministicRng::derive(0x00C0_FFEE, "other-purpose", &[42, 7]);
-        assert_eq!(by_subject.next_u64(), 0x252c_967f_0e3a_4b74);
-        assert_eq!(by_purpose.next_u64(), 0x30d8_7264_bd59_7fa8);
+        assert_ne!(by_subject.next_u64(), by_purpose.next_u64());
+        let mut original = DeterministicRng::derive(0x00C0_FFEE, "job-resolution", &[42, 7]);
+        let mut again = DeterministicRng::derive(0x00C0_FFEE, "job-resolution", &[42, 7]);
+        assert_eq!(original.next_u64(), again.next_u64());
     }
 
     #[test]

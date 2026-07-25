@@ -21,6 +21,7 @@ state). The setting canon lives under `the_last_aeons/` (worldspec).
 | Client | `crates/aeon_client` (bin `last_aeons`) — native + web presentation; all UI is egui |
 | Dev CLI | `crates/aeon_tools` (bin `aeon`) — validate-content, headless runs, replay verify/accept |
 | Game data | Rhai under `assets/content/`, embedded at compile time by `aeon_client/build.rs`; display text in `assets/text/strings.csv` |
+| Shared crates | vellum-rng (the derived-streams pattern over the fleet PCG32), vellum-digest (state + content hashes), vellum-strings (CSV + interpolation); vellum-corpus deliberately not adopted — see fleet-foundation-adoption in the spec |
 | Architecture model | PASM — YAML spec under `pasm/spec/`, tool pinned from vellum |
 | CI | fleet-ci caller (`.github/workflows/ci.yml`) → pasm gates, clippy `-D warnings`, tests, content validation, replay acceptance, Trunk build, Pages deploy |
 
