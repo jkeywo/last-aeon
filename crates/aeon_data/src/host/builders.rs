@@ -2492,7 +2492,7 @@ fn define_office(state: &mut BuilderState, map: Map) {
 
 /// Builds the loading engine with `define_*` functions bound to `state`.
 pub(super) fn loading_engine(state: Arc<Mutex<BuilderState>>) -> Engine {
-    let mut engine = super::sandboxed_engine();
+    let mut engine = vellum_script::sandbox();
 
     let print_state = state.clone();
     engine.on_print(move |text| {

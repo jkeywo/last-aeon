@@ -7,11 +7,14 @@
 //! - the *runtime* engine has no builder functions and never re-runs top
 //!   level; it only calls named functions retained in the compiled ASTs.
 //!
-//! The sandbox is deny-by-default for anything nondeterministic or
-//! stateful: no imports, no `eval`, no wall-clock, integer-only arithmetic
-//! (the crate builds Rhai with `no_float`), and hard operation, size, and
-//! recursion limits. Scripts read the context they are handed and return
-//! effect data; they cannot reach simulation state at all.
+//! The sandbox itself is the fleet's — `vellum-script`, extracted from this
+//! game — and stays deny-by-default for anything nondeterministic or
+//! stateful: no imports, no `eval`, no wall-clock, integer-only arithmetic,
+//! and hard operation, size, and recursion limits. What remains here is the
+//! *vocabulary*: which builder functions a loading engine registers, the
+//! shape of the context a call receives, and how a returned value becomes
+//! typed effects. Scripts read the context they are handed and return effect
+//! data; they cannot reach simulation state at all.
 //!
 //! The pieces live in submodules: [`builders`] turns authored maps into
 //! validated definitions, [`validate`] runs the cross-reference pass once
@@ -25,8 +28,7 @@ mod validate;
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Arc, Mutex};
 
-use aeon_core::hash::hash_bytes;
-use rhai::{AST, Dynamic, Engine, Map, Scope};
+use rhai::{AST, Dynamic, Engine, Map};
 
 use crate::effect::{EffectParseError, ScriptEffect, parse_effects};
 use crate::model::{ContentSet, ScriptFnRef};
@@ -46,53 +48,19 @@ pub struct ContentSource {
     pub source: String,
 }
 
-/// Builds a sandboxed engine from an allow-list of language packages.
-///
-/// Starting from a raw engine means capabilities are opt-in: no wall-clock
-/// (`timestamp` is simply absent), no I/O, no imports, no `eval`, and hard
-/// operation, size, and recursion limits. Only deterministic language
-/// features are registered.
-fn sandboxed_engine() -> Engine {
-    use rhai::packages::{
-        ArithmeticPackage, BasicArrayPackage, BasicFnPackage, BasicIteratorPackage,
-        BasicMapPackage, BasicMathPackage, BasicStringPackage, LanguageCorePackage, LogicPackage,
-        MoreStringPackage, Package,
-    };
-
-    let mut engine = Engine::new_raw();
-    engine.register_global_module(LanguageCorePackage::new().as_shared_module());
-    engine.register_global_module(ArithmeticPackage::new().as_shared_module());
-    engine.register_global_module(LogicPackage::new().as_shared_module());
-    engine.register_global_module(BasicStringPackage::new().as_shared_module());
-    engine.register_global_module(MoreStringPackage::new().as_shared_module());
-    engine.register_global_module(BasicIteratorPackage::new().as_shared_module());
-    engine.register_global_module(BasicArrayPackage::new().as_shared_module());
-    engine.register_global_module(BasicMapPackage::new().as_shared_module());
-    engine.register_global_module(BasicMathPackage::new().as_shared_module());
-    engine.register_global_module(BasicFnPackage::new().as_shared_module());
-
-    engine.set_module_resolver(rhai::module_resolvers::DummyModuleResolver::new());
-    engine.disable_symbol("eval");
-    engine.set_max_operations(5_000_000);
-    engine.set_max_call_levels(64);
-    engine.set_max_string_size(65_536);
-    engine.set_max_array_size(65_536);
-    engine.set_max_map_size(65_536);
-    engine.set_max_expr_depths(128, 64);
-    engine
-}
-
 /// Hashes the sorted source files; binds snapshots to exact content.
+///
+/// The framing (path, length, then bytes) is the fleet's, so a character
+/// moved across a file boundary still changes the hash.
 fn content_hash(sources: &[ContentSource]) -> aeon_core::hash::StateHash {
-    let mut buffer = Vec::new();
-    for source in sources {
-        buffer.extend_from_slice(source.path.as_bytes());
-        buffer.push(0);
-        buffer.extend_from_slice(&(source.source.len() as u64).to_le_bytes());
-        buffer.extend_from_slice(source.source.as_bytes());
-        buffer.push(0);
-    }
-    hash_bytes(&buffer)
+    let shared: Vec<vellum_script::ScriptSource> = sources
+        .iter()
+        .map(|source| vellum_script::ScriptSource {
+            path: source.path.clone(),
+            source: source.source.clone(),
+        })
+        .collect();
+    aeon_core::hash::StateHash::from_u64(vellum_script::content_hash(&shared))
 }
 
 /// Loads and validates a content set from source files.
@@ -221,12 +189,11 @@ pub struct ScriptHost {
 }
 
 impl ScriptHost {
-    /// Builds the runtime host.
+    /// Builds the runtime host on the fleet's quiet sandbox.
     pub fn new() -> Self {
-        let mut engine = sandboxed_engine();
-        engine.on_print(|_| {});
-        engine.on_debug(|_, _, _| {});
-        Self { engine }
+        Self {
+            engine: vellum_script::quiet_sandbox(),
+        }
     }
 
     /// Calls a named effect function with a read-only context, returning
@@ -250,17 +217,15 @@ impl ScriptHost {
             .ok_or_else(|| ScriptError::UnknownFile {
                 path: fn_ref.path.clone(),
             })?;
-        let mut scope = Scope::new();
-        // eval_ast(false): the file's top level ran once at load time;
-        // runtime calls invoke retained functions only.
-        let options = rhai::CallFnOptions::new().eval_ast(false);
-        let result: Dynamic = self
-            .engine
-            .call_fn_with_options(options, &mut scope, ast, &fn_ref.name, (context,))
-            .map_err(|err| ScriptError::Runtime {
-                path: fn_ref.path.clone(),
-                message: err.to_string(),
-            })?;
+        // The shared seam calls a retained function without re-running the
+        // file's top level, which ran once at load time.
+        let result: Dynamic =
+            vellum_script::call_fn(&self.engine, ast, &fn_ref.path, &fn_ref.name, context)
+                .map_err(|err| match err {
+                    vellum_script::CallError::Runtime { path, message } => {
+                        ScriptError::Runtime { path, message }
+                    }
+                })?;
         parse_effects(result).map_err(|source| ScriptError::BadEffects {
             path: fn_ref.path.clone(),
             source,

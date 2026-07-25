@@ -9,6 +9,7 @@ repository.workspace = true
 
 [dependencies]
 vellum-strings = { workspace = true }
+vellum-script = { workspace = true }
 aeon_core = { workspace = true }
 rhai = { workspace = true }
 serde = { workspace = true }
