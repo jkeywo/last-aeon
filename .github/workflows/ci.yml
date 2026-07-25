@@ -1,3 +1,8 @@
+# Fleet CI caller — the workflow itself lives in vellum, pinned to a rev like
+# every other vellum dependency; a bump PR moves this rev together with the
+# pyproject pin. Jobs: pasm validate + scan (gates), fmt / clippy -D warnings /
+# tests plus content validation and replay acceptance, Trunk web build, Pages
+# deploy on main pushes.
 name: CI
 
 on:
@@ -5,84 +10,27 @@ on:
     branches: [main]
   pull_request:
 
-env:
-  CARGO_TERM_COLOR: always
-
-# Allow the Pages deploy job to publish, and serialise deploys.
+# The deploy job inside fleet-ci needs pages + id-token; a called workflow can
+# only narrow what the caller grants.
 permissions:
   contents: read
   pages: write
   id-token: write
 
 concurrency:
-  group: pages-${{ github.ref }}
-  cancel-in-progress: false
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  spec:
-    name: PASM model validation
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: astral-sh/setup-uv@v6
-      - name: Validate the PASM model
-        run: uv run pasm validate
-
-  rust:
-    name: Format, lint, and test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - name: Install Bevy system dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
-      - uses: Swatinem/rust-cache@v2
-      - name: Check formatting
-        run: cargo fmt --all --check
-      - name: Lint
-        run: cargo clippy --workspace --all-targets -- -D warnings
-      - name: Test
-        run: cargo test --workspace
-      - name: Validate authored content
-        run: cargo run -p aeon_tools -- validate-content
-      - name: Acceptance replay verification
-        run: cargo run -p aeon_tools -- accept
-
-  wasm:
-    name: Build the web client
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-      - uses: Swatinem/rust-cache@v2
-      - name: Add the wasm target
-        run: rustup target add wasm32-unknown-unknown
-      - name: Install trunk
-        # Built from source rather than a third-party action, so the
-        # wasm job carries no Node-runtime dependency of its own; the
-        # rust-cache above keeps the compiled binary between runs.
-        run: cargo install --locked trunk
-      - name: Build the release web bundle
-        working-directory: crates/aeon_client
-        # The site is served from a repository subpath on GitHub Pages, so
-        # the asset URLs must be prefixed with the repository name.
-        run: trunk build --release --public-url /last-aeon/
-      - name: Upload the Pages artifact
-        uses: actions/upload-pages-artifact@v3
-        with:
-          path: crates/aeon_client/dist
-
-  deploy:
-    name: Deploy to GitHub Pages
-    # Only publish the playable build from the default branch.
-    if: github.ref == 'refs/heads/main'
-    needs: [spec, rust, wasm]
-    runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
-    steps:
-      - name: Deploy
-        id: deployment
-        uses: actions/deploy-pages@v4
+  fleet:
+    uses: jkeywo/vellum/.github/workflows/fleet-ci.yml@efdb2d034e07baadd93e3cbf257ba8b3a3a571a9
+    with:
+      # Bevy's audio/input need alsa/udev on ubuntu, and winit's Wayland
+      # backend needs wayland/xkbcommon. The wasm job shares them for
+      # host-compiled build scripts.
+      apt-packages: libasound2-dev libudev-dev libwayland-dev libxkbcommon-dev
+      extra-check-commands: |
+        cargo run -p aeon_tools -- validate-content
+        cargo run -p aeon_tools -- accept
+      wasm-mode: trunk
+      trunk-working-directory: crates/aeon_client

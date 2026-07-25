@@ -1,16 +1,23 @@
+# Development tooling for The Last Aeons. Ships no Python of its own; exists
+# to pull PASM. What stays here is pasm/spec — the model of *this* codebase.
 [project]
-name = "pasm"
+name = "last-aeon-tooling"
 version = "0.1.0"
-description = "Portable executable architecture model tooling for The Last Aeons."
+description = "Development tooling for The Last Aeons: the PASM architecture model."
 requires-python = ">=3.11"
-dependencies = ["pyyaml>=6.0"]
+dependencies = [
+  # PASM lives in the fleet's shared repository (a subdirectory of vellum),
+  # pinned to a rev: the scanner's findings are a gate, so which version
+  # produced them matters. Bumping the rev is part of a vellum bump PR — see
+  # vellum's docs/handbook/bump-workflow.md.
+  "pasm @ git+https://github.com/jkeywo/vellum@efdb2d034e07baadd93e3cbf257ba8b3a3a571a9#subdirectory=pasm",
+]
 
-[project.scripts]
-pasm = "pasm.cli.main:main"
+[tool.uv]
+package = false
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = ["pasm"]
+# Local override against a sibling vellum checkout — uncomment for local
+# work, re-comment before committing. The committed state always resolves
+# the pinned rev.
+# [tool.uv.sources]
+# pasm = { path = "../vellum/pasm", editable = true }
