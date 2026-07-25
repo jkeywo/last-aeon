@@ -265,85 +265,18 @@ pub fn placeholders_in(template: &str) -> Vec<String> {
     names
 }
 
-fn fill(key: &str, template: &str, args: &[(&str, &str)]) -> String {
-    let mut out = String::with_capacity(template.len());
-    let mut rest = template;
-    while let Some(open) = rest.find('{') {
-        out.push_str(&rest[..open]);
-        let after = &rest[open + 1..];
-        let Some(close) = after.find('}') else {
-            // An unclosed brace is literal text, not a placeholder.
-            out.push_str(&rest[open..]);
-            return out;
-        };
-        let name = &after[..close];
-        let value = args
-            .iter()
-            .find(|(arg, _)| *arg == name)
-            .map(|(_, value)| *value)
-            .unwrap_or_else(|| panic!("string '{key}' needs placeholder '{{{name}}}'"));
-        out.push_str(value);
-        rest = &after[close + 1..];
-    }
-    out.push_str(rest);
-    out
+fn fill(_key: &str, template: &str, args: &[(&str, &str)]) -> String {
+    // The fleet's interpolation (`vellum-strings`): a missing argument
+    // leaves the `{name}` visible — pointing at the bug on screen instead of
+    // crashing a release — and trips a debug assertion so it never survives
+    // development. Substituted values are never rescanned.
+    vellum_strings::interpolate(template, args)
 }
 
-/// Parses an RFC 4180 subset: quoted fields, `""` for a literal quote,
-/// commas and newlines allowed inside quotes, CRLF or LF line endings.
+/// Parses the string-table CSV — the fleet's RFC 4180 subset reader from
+/// `vellum-strings`, error adapted to this crate's report vocabulary.
 fn parse_csv(source: &str) -> Result<Vec<Vec<String>>, String> {
-    let mut records = Vec::new();
-    let mut record = Vec::new();
-    let mut field = String::new();
-    let mut quoted = false;
-    let mut field_started = false;
-    let mut chars = source.chars().peekable();
-
-    while let Some(c) = chars.next() {
-        if quoted {
-            match c {
-                '"' if chars.peek() == Some(&'"') => {
-                    chars.next();
-                    field.push('"');
-                }
-                '"' => quoted = false,
-                _ => field.push(c),
-            }
-            continue;
-        }
-        match c {
-            '"' if !field_started => {
-                quoted = true;
-                field_started = true;
-            }
-            '"' => return Err("a quote may only open a field".to_owned()),
-            ',' => {
-                record.push(core::mem::take(&mut field));
-                field_started = false;
-            }
-            '\r' if chars.peek() == Some(&'\n') => {}
-            '\n' | '\r' => {
-                record.push(core::mem::take(&mut field));
-                records.push(core::mem::take(&mut record));
-                field_started = false;
-            }
-            _ => {
-                field.push(c);
-                field_started = true;
-            }
-        }
-    }
-
-    if quoted {
-        return Err("the file ends inside a quoted field".to_owned());
-    }
-    // A trailing newline leaves nothing behind; anything else is a last
-    // record without one.
-    if !field.is_empty() || !record.is_empty() {
-        record.push(field);
-        records.push(record);
-    }
-    Ok(records)
+    vellum_strings::parse_csv(source).map_err(|error| error.to_string())
 }
 
 #[cfg(test)]
@@ -441,10 +374,21 @@ mod tests {
         table("ui.a,C.,[A]\n").text("ui.missing");
     }
 
+    /// The fleet's interpolation semantics: an unfilled placeholder trips a
+    /// debug assertion during development, and in a release build stays
+    /// *visible* — `{holder}` on screen points at the bug, where the old
+    /// release panic took the whole client down over a copy slip.
     #[test]
-    #[should_panic(expected = "needs placeholder '{holder}'")]
-    fn panics_on_an_unfilled_placeholder() {
-        table("ui.a,C.,[Held by {holder}]\n").format("ui.a", &[]);
+    #[cfg_attr(
+        debug_assertions,
+        should_panic(expected = "no argument for placeholder")
+    )]
+    fn an_unfilled_placeholder_is_caught_in_debug_and_visible_in_release() {
+        let text = table("ui.a,C.,[Held by {holder}]\n").format("ui.a", &[]);
+        #[cfg(not(debug_assertions))]
+        assert_eq!(text, "[Held by {holder}]");
+        #[cfg(debug_assertions)]
+        let _ = text;
     }
 
     #[test]

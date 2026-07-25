@@ -22,8 +22,12 @@ use crate::state::{CampaignIds, CampaignMeta, CampaignSeed, ContentDb};
 ///
 /// Bump on any change to [`CampaignState`]'s serialised shape, and provide a
 /// migration for every version a release has ever written. No release has
-/// shipped yet, so pre-release bumps carry no migrations.
-pub const SNAPSHOT_FORMAT_VERSION: u32 = 16;
+/// shipped yet, so pre-release bumps carry no migrations. Version 17 is the
+/// fleet foundation adoption (vellum's `rng-unification-breaks-saves`): the
+/// RNG became the fleet PCG32 construction and the state hash became the
+/// fleet FNV-1a digest, so every version 16 campaign both replays
+/// differently and carries a hash this build no longer parses.
+pub const SNAPSHOT_FORMAT_VERSION: u32 = 17;
 
 /// The complete authoritative campaign state.
 ///
@@ -80,7 +84,7 @@ pub struct CampaignState {
 pub struct CampaignSnapshot {
     /// The snapshot format version this was written with.
     pub format_version: u32,
-    /// SHA-256 of the canonical serialisation of `state`.
+    /// The fleet digest (FNV-1a 64) of the canonical serialisation of `state`.
     pub state_hash: StateHash,
     /// The captured state.
     pub state: CampaignState,

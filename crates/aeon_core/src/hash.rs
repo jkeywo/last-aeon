@@ -1,73 +1,63 @@
 //! Canonical state hashing.
 //!
-//! Replay verification compares campaign states by SHA-256 over a canonical
-//! serialisation. SHA-256 is defined identically everywhere, so a hash
-//! computed in a native test, a wasm build, and CI must agree — any
-//! divergence is a determinism bug, which is exactly what the hash exists
-//! to catch.
+//! Replay verification compares campaign states by the fleet's digest —
+//! FNV-1a 64 from `vellum-digest` — over a canonical serialisation. The
+//! digest is defined identically everywhere, so a hash computed in a native
+//! test, a wasm build, and CI must agree; any divergence is a determinism
+//! bug, which is exactly what the hash exists to catch.
+//!
+//! This replaced SHA-256 under the fleet decision recorded in vellum's spec:
+//! the hash is a determinism fingerprint, not a security boundary — the
+//! threat is accident, not forgery — and the swap dropped the `sha2`
+//! dependency from the wasm build. Snapshots written before the swap are
+//! refused by the format version gate (and their 64-character digests no
+//! longer even parse), never misread.
 
 use core::fmt;
 use core::str::FromStr;
 
 use serde::{Deserialize, Deserializer, Serialize, Serializer};
-use sha2::{Digest, Sha256};
 
-/// A SHA-256 digest of a canonical state serialisation.
+/// An FNV-1a 64 digest of a canonical state serialisation.
 ///
 /// Serialises as a lowercase hex string so it stays readable inside RON
 /// snapshots and CLI output.
 #[derive(Copy, Clone, PartialEq, Eq, Hash, Debug)]
-pub struct StateHash([u8; 32]);
+pub struct StateHash(u64);
 
 impl StateHash {
-    /// The raw digest bytes.
-    pub fn as_bytes(&self) -> &[u8; 32] {
-        &self.0
+    /// The raw digest value.
+    pub fn as_u64(&self) -> u64 {
+        self.0
     }
 }
 
 /// Hashes a canonical byte serialisation.
 pub fn hash_bytes(bytes: &[u8]) -> StateHash {
-    let digest = Sha256::digest(bytes);
-    StateHash(digest.into())
+    StateHash(vellum_digest::fnv1a(bytes))
 }
 
 impl fmt::Display for StateHash {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for byte in &self.0 {
-            write!(f, "{byte:02x}")?;
-        }
-        Ok(())
+        write!(f, "{:016x}", self.0)
     }
 }
 
-/// A string that is not a 64-character lowercase hex digest.
+/// A string that is not a 16-character lowercase hex digest.
 #[derive(Debug, PartialEq, Eq, thiserror::Error)]
-#[error("state hashes are 64 lowercase hex characters")]
+#[error("state hashes are 16 lowercase hex characters")]
 pub struct InvalidStateHash;
 
 impl FromStr for StateHash {
     type Err = InvalidStateHash;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.len() != 64 {
+        if s.len() != 16 || s.bytes().any(|b| !matches!(b, b'0'..=b'9' | b'a'..=b'f')) {
             return Err(InvalidStateHash);
         }
-        let mut bytes = [0u8; 32];
-        for (i, chunk) in s.as_bytes().chunks_exact(2).enumerate() {
-            let high = hex_value(chunk[0]).ok_or(InvalidStateHash)?;
-            let low = hex_value(chunk[1]).ok_or(InvalidStateHash)?;
-            bytes[i] = (high << 4) | low;
-        }
-        Ok(StateHash(bytes))
-    }
-}
-
-fn hex_value(c: u8) -> Option<u8> {
-    match c {
-        b'0'..=b'9' => Some(c - b'0'),
-        b'a'..=b'f' => Some(c - b'a' + 10),
-        _ => None,
+        u64::from_str_radix(s, 16)
+            .map(StateHash)
+            .map_err(|_| InvalidStateHash)
     }
 }
 
@@ -89,12 +79,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn matches_the_published_sha256_test_vector() {
-        let hash = hash_bytes(b"abc");
-        assert_eq!(
-            hash.to_string(),
-            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
-        );
+    fn matches_the_published_fnv1a_test_vector() {
+        // The canonical FNV-1a 64 vectors, so this really is the fleet's
+        // digest and not merely self-consistent.
+        assert_eq!(hash_bytes(b"").to_string(), "cbf29ce484222325");
+        assert_eq!(hash_bytes(b"a").to_string(), "af63dc4c8601ec8c");
     }
 
     #[test]
@@ -110,8 +99,11 @@ mod tests {
     #[test]
     fn rejects_malformed_strings() {
         assert!("zz".parse::<StateHash>().is_err());
+        assert!("CBF29CE484222325".parse::<StateHash>().is_err());
+        // A pre-migration 64-character SHA-256 digest no longer parses:
+        // old snapshots are refused, never misread.
         assert!(
-            "ZA7816BF8F01CFEA414140DE5DAE2223B00361A396177A9CB410FF61F20015AD"
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
                 .parse::<StateHash>()
                 .is_err()
         );

@@ -25,7 +25,13 @@ rhai = { version = "1.25", features = ["sync", "no_float"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ron = "0.12"
-sha2 = "0.10"
+# The fleet's shared foundation, pinned to a rev like every vellum
+# dependency; bumping it is a PR whose diff touches only manifests and
+# lockfiles. For local work against a checkout, use a gitignored
+# .cargo/config.toml [patch] — never added to the committed one.
+vellum-digest = { git = "https://github.com/jkeywo/vellum", rev = "efdb2d034e07baadd93e3cbf257ba8b3a3a571a9" }
+vellum-rng = { git = "https://github.com/jkeywo/vellum", rev = "efdb2d034e07baadd93e3cbf257ba8b3a3a571a9" }
+vellum-strings = { git = "https://github.com/jkeywo/vellum", rev = "efdb2d034e07baadd93e3cbf257ba8b3a3a571a9" }
 thiserror = "2"
 clap = { version = "4", features = ["derive"] }
 
