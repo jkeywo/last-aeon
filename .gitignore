@@ -35,3 +35,10 @@ pasm-reports/
 
 # Runtime autosave written by the client
 last-aeons-autosave.ron
+# Python tooling (fleet canon: vellum templates/gitignore-snippets.md)
+.venv/
+*.egg-info/
+.uv-cache*/
+
+# Runtime debris
+*.log
