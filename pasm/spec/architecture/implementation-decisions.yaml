@@ -1607,3 +1607,36 @@ entities:
         - plans-are-authored-campaigns
         - grand-strategy-goals
         - agency-intents-are-authored-on-jobs
+
+  - decision: fleet-foundation-adoption
+    core:
+      status: accepted
+      confidence: confirmed
+      title: The Fleet Foundation Replaces the In-Crate Twins, Breaking Saves Once
+      summary: >-
+        Three vellum crates replaced in-crate implementations under the
+        fleet's rng-unification-breaks-saves decision. The RNG became the
+        fleet PCG32 construction — the derived-streams pattern survives
+        unchanged, with purpose labels and subjects folding into the stream
+        selector, but the generator underneath is no longer xoshiro256** —
+        and the golden-value tests were re-pinned once, deliberately. The
+        state hash became the fleet FNV-1a digest, dropping sha2 from the
+        wasm build: it is a determinism fingerprint, not a security
+        boundary, and a pre-migration 64-character digest no longer even
+        parses. The string table's CSV reader and placeholder interpolation
+        became vellum-strings, adopting the fleet semantics that an
+        unfilled placeholder stays visible in release rather than crashing
+        the client. SNAPSHOT_FORMAT_VERSION bumped to 17 so every earlier
+        campaign is refused rather than misread; the acceptance round-trip
+        reproduces the final state exactly under the new construction.
+      rationale:
+        - >-
+          vellum-corpus is deliberately not adopted: the acceptance check is
+          one deterministic snapshot-replay round-trip, not a seeded batch,
+          and driving a single case through a batch driver adds machinery
+          without evidence. A multi-seed acceptance batch is the natural
+          corpus consumer here if one is ever wanted.
+      references:
+        - deterministic-campaign-simulation
+        - hand-rolled-deterministic-rng
+        - rng-stream-labels-are-identities-not-names
