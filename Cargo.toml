@@ -29,10 +29,10 @@ ron = "0.12"
 # dependency; bumping it is a PR whose diff touches only manifests and
 # lockfiles. For local work against a checkout, use a gitignored
 # .cargo/config.toml [patch] — never added to the committed one.
-vellum-digest = { git = "https://github.com/jkeywo/vellum", rev = "41d2e6274a7d0d0ddc1c0c0aca3db3cbd2760471" }
-vellum-rng = { git = "https://github.com/jkeywo/vellum", rev = "41d2e6274a7d0d0ddc1c0c0aca3db3cbd2760471" }
-vellum-strings = { git = "https://github.com/jkeywo/vellum", rev = "41d2e6274a7d0d0ddc1c0c0aca3db3cbd2760471" }
-vellum-script = { git = "https://github.com/jkeywo/vellum", rev = "41d2e6274a7d0d0ddc1c0c0aca3db3cbd2760471" }
+vellum-digest = { git = "https://github.com/jkeywo/vellum", rev = "61cf506e096854a3e05e1a19369deb0901d298d5" }
+vellum-rng = { git = "https://github.com/jkeywo/vellum", rev = "61cf506e096854a3e05e1a19369deb0901d298d5" }
+vellum-strings = { git = "https://github.com/jkeywo/vellum", rev = "61cf506e096854a3e05e1a19369deb0901d298d5" }
+vellum-script = { git = "https://github.com/jkeywo/vellum", rev = "61cf506e096854a3e05e1a19369deb0901d298d5" }
 thiserror = "2"
 clap = { version = "4", features = ["derive"] }
 

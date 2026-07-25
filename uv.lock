@@ -11,12 +11,12 @@ dependencies = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "pasm", git = "https://github.com/jkeywo/vellum?subdirectory=pasm&rev=41d2e6274a7d0d0ddc1c0c0aca3db3cbd2760471" }]
+requires-dist = [{ name = "pasm", git = "https://github.com/jkeywo/vellum?subdirectory=pasm&rev=61cf506e096854a3e05e1a19369deb0901d298d5" }]
 
 [[package]]
 name = "pasm"
 version = "0.1.0"
-source = { git = "https://github.com/jkeywo/vellum?subdirectory=pasm&rev=41d2e6274a7d0d0ddc1c0c0aca3db3cbd2760471#41d2e6274a7d0d0ddc1c0c0aca3db3cbd2760471" }
+source = { git = "https://github.com/jkeywo/vellum?subdirectory=pasm&rev=61cf506e096854a3e05e1a19369deb0901d298d5#61cf506e096854a3e05e1a19369deb0901d298d5" }
 dependencies = [
     { name = "pyyaml" },
 ]

@@ -5902,7 +5902,7 @@ dependencies = [
 [[package]]
 name = "vellum-digest"
 version = "0.1.0"
-source = "git+https://github.com/jkeywo/vellum?rev=41d2e6274a7d0d0ddc1c0c0aca3db3cbd2760471#41d2e6274a7d0d0ddc1c0c0aca3db3cbd2760471"
+source = "git+https://github.com/jkeywo/vellum?rev=61cf506e096854a3e05e1a19369deb0901d298d5#61cf506e096854a3e05e1a19369deb0901d298d5"
 dependencies = [
  "base64",
  "postcard",
@@ -5912,7 +5912,7 @@ dependencies = [
 [[package]]
 name = "vellum-rng"
 version = "0.1.0"
-source = "git+https://github.com/jkeywo/vellum?rev=41d2e6274a7d0d0ddc1c0c0aca3db3cbd2760471#41d2e6274a7d0d0ddc1c0c0aca3db3cbd2760471"
+source = "git+https://github.com/jkeywo/vellum?rev=61cf506e096854a3e05e1a19369deb0901d298d5#61cf506e096854a3e05e1a19369deb0901d298d5"
 dependencies = [
  "serde",
 ]
@@ -5920,7 +5920,7 @@ dependencies = [
 [[package]]
 name = "vellum-script"
 version = "0.1.0"
-source = "git+https://github.com/jkeywo/vellum?rev=41d2e6274a7d0d0ddc1c0c0aca3db3cbd2760471#41d2e6274a7d0d0ddc1c0c0aca3db3cbd2760471"
+source = "git+https://github.com/jkeywo/vellum?rev=61cf506e096854a3e05e1a19369deb0901d298d5#61cf506e096854a3e05e1a19369deb0901d298d5"
 dependencies = [
  "rhai",
  "vellum-digest",
@@ -5929,7 +5929,7 @@ dependencies = [
 [[package]]
 name = "vellum-strings"
 version = "0.1.0"
-source = "git+https://github.com/jkeywo/vellum?rev=41d2e6274a7d0d0ddc1c0c0aca3db3cbd2760471#41d2e6274a7d0d0ddc1c0c0aca3db3cbd2760471"
+source = "git+https://github.com/jkeywo/vellum?rev=61cf506e096854a3e05e1a19369deb0901d298d5#61cf506e096854a3e05e1a19369deb0901d298d5"
 
 [[package]]
 name = "version_check"
