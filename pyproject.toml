@@ -10,7 +10,7 @@ dependencies = [
   # pinned to a rev: the scanner's findings are a gate, so which version
   # produced them matters. Bumping the rev is part of a vellum bump PR — see
   # vellum's docs/handbook/bump-workflow.md.
-  "pasm @ git+https://github.com/jkeywo/vellum@61cf506e096854a3e05e1a19369deb0901d298d5#subdirectory=pasm",
+  "pasm @ git+https://github.com/jkeywo/vellum@172c388bc53697c80869b4a7a6e4c47eaa868bfd#subdirectory=pasm",
 ]
 
 [tool.uv]

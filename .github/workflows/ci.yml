@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   fleet:
-    uses: jkeywo/vellum/.github/workflows/fleet-ci.yml@61cf506e096854a3e05e1a19369deb0901d298d5
+    uses: jkeywo/vellum/.github/workflows/fleet-ci.yml@172c388bc53697c80869b4a7a6e4c47eaa868bfd
     with:
       # Bevy's audio/input need alsa/udev on ubuntu, and winit's Wayland
       # backend needs wayland/xkbcommon. The wasm job shares them for

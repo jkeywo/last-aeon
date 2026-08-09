@@ -74,3 +74,16 @@ land). A vellum bump PR aligns every pin and touches nothing else. Local
 override etiquette: vellum `docs/handbook/local-dev.md` — never committed
 active. Note: this repo's committed `.cargo/config.toml` carries real wasm
 rustflags; a vellum `[patch]` must never be added to it.
+
+## AI-origin decisions
+
+A decision you (an agent) make while working is marked in the spec:
+`origin: ai` on the entity you originated, or a literal `[ai] ` prefix on the
+rationale bullet you wrote. Unmarked decisions are the human's. AI-origin
+items may be revised without asking when evidence warrants — say so in the
+commit. Never alter an unmarked decision without asking, and never remove a
+marker: ratification is the human deleting it after reviewing
+
+```bash
+uv run pasm review pasm/spec
+```
