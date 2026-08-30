@@ -11,7 +11,7 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::key::ContentKey;
 use crate::model::{
     AssignmentDef, AssignmentTargetKind, BodyKind, HouseTier, OrgKind, OutcomeKind, PlanStepAction,
-    PlanTargetSelector, ShipClass, TitleKindDef,
+    PlanTargetSelector, ShipClass, SituationSubjectKind, SituationVisibilityDef, TitleKindDef,
 };
 
 use super::builders::BuilderState;
@@ -24,12 +24,32 @@ pub(super) fn validate_cross_references(
     // Assignments: mandatory results, effect functions must exist in their file.
     let mut findings: Vec<(String, Option<String>, String)> = Vec::new();
     for (key, assignment) in &builder.assignments {
-        for required in [OutcomeKind::Success, OutcomeKind::Failure] {
-            if !assignment.results.contains_key(&required) {
+        let required: &[OutcomeKind] = if assignment.guaranteed {
+            &[OutcomeKind::Success]
+        } else {
+            &[OutcomeKind::Success, OutcomeKind::Failure]
+        };
+        for required in required {
+            if !assignment.results.contains_key(required) {
                 findings.push((
                     fn_ref_path(assignment),
                     Some(key.to_string()),
                     format!("assignments must define a {required:?} result"),
+                ));
+            }
+        }
+        if assignment.guaranteed {
+            for unexpected in assignment
+                .results
+                .keys()
+                .filter(|kind| **kind != OutcomeKind::Success)
+            {
+                findings.push((
+                    fn_ref_path(assignment),
+                    Some(key.to_string()),
+                    format!(
+                        "guaranteed assignments may define only a Success result, found {unexpected:?}"
+                    ),
                 ));
             }
         }
@@ -153,6 +173,7 @@ pub(super) fn validate_cross_references(
 
     validate_political_references(builder, &mut findings);
     validate_plans(builder, &mut findings);
+    validate_situations(builder, fn_names, &mut findings);
 
     for (path, key, message) in findings {
         builder.report.error(&path, key.as_deref(), message);
@@ -442,6 +463,67 @@ fn validate_plans(builder: &BuilderState, findings: &mut Vec<(String, Option<Str
 
     for (key, plan) in &builder.plans {
         for method in &plan.methods {
+            for (where_, requirements) in
+                std::iter::once((format!("method '{}'", method.id), &method.requires)).chain(
+                    method.steps.iter().filter_map(|step| {
+                        step.skip_if.as_ref().map(|requirements| {
+                            (format!("step '{}' skip_if", step.id), requirements)
+                        })
+                    }),
+                )
+            {
+                let ratios = [
+                    (
+                        "min_target_branch_manpower_permille",
+                        requirements.min_target_branch_manpower_permille,
+                    ),
+                    (
+                        "max_target_branch_manpower_permille",
+                        requirements.max_target_branch_manpower_permille,
+                    ),
+                ];
+                for (field, value) in ratios {
+                    if value.is_some() && plan.target != AssignmentTargetKind::Organisation {
+                        err(
+                            key,
+                            format!(
+                                "{where_}: '{field}' compares an organisation target, but the plan targets {:?}",
+                                plan.target
+                            ),
+                        );
+                    }
+                    if value.is_some_and(|value| !(0..=10_000).contains(&value)) {
+                        err(
+                            key,
+                            format!("{where_}: '{field}' must be between 0 and 10000"),
+                        );
+                    }
+                }
+                if requirements
+                    .min_target_branch_manpower_permille
+                    .is_some_and(|min| {
+                        requirements
+                            .max_target_branch_manpower_permille
+                            .is_some_and(|max| min > max)
+                    })
+                {
+                    err(
+                        key,
+                        format!("{where_}: minimum target branch manpower ratio exceeds maximum"),
+                    );
+                }
+                if requirements.war_has_enemy_province.is_some()
+                    && plan.target != AssignmentTargetKind::War
+                {
+                    err(
+                        key,
+                        format!(
+                            "{where_}: 'war_has_enemy_province' needs an exact war target, but the plan targets {:?}",
+                            plan.target
+                        ),
+                    );
+                }
+            }
             for step in &method.steps {
                 match &step.action {
                     PlanStepAction::Assignment {
@@ -465,6 +547,9 @@ fn validate_plans(builder: &BuilderState, findings: &mut Vec<(String, Option<Str
                                 PlanTargetSelector::PlanTarget => plan.target,
                                 PlanTargetSelector::WorstHolding => AssignmentTargetKind::Province,
                                 PlanTargetSelector::TargetHead => AssignmentTargetKind::Character,
+                                PlanTargetSelector::LowestEnemyProvinceInWar => {
+                                    AssignmentTargetKind::OwnArmyAndProvince
+                                }
                             };
                             if *target == PlanTargetSelector::PlanTarget
                                 && plan.target == AssignmentTargetKind::None
@@ -484,6 +569,16 @@ fn validate_plans(builder: &BuilderState, findings: &mut Vec<(String, Option<Str
                                     format!(
                                         "step '{}' aims at the target's head, so the plan must \
                                          target an organisation",
+                                        step.id
+                                    ),
+                                );
+                            } else if *target == PlanTargetSelector::LowestEnemyProvinceInWar
+                                && plan.target != AssignmentTargetKind::War
+                            {
+                                err(
+                                    key,
+                                    format!(
+                                        "step '{}' selects an enemy province in a war, so the plan must target a war",
                                         step.id
                                     ),
                                 );
@@ -562,6 +657,217 @@ fn validate_plans(builder: &BuilderState, findings: &mut Vec<(String, Option<Str
         let mut trail: Vec<&ContentKey> = Vec::new();
         if let Some(message) = plan_depth_problem(builder, key, &mut trail) {
             err(key, message);
+        }
+    }
+}
+
+/// Cross-reference validation for authored Situations and the definitions
+/// that enable them.
+fn validate_situations(
+    builder: &BuilderState,
+    fn_names: &BTreeMap<String, BTreeSet<String>>,
+    findings: &mut Vec<(String, Option<String>, String)>,
+) {
+    {
+        let mut attachment =
+            |owner: &ContentKey, expected: SituationSubjectKind, situations: &[ContentKey]| {
+                let mut seen = BTreeSet::new();
+                for situation in situations {
+                    if !seen.insert(situation) {
+                        findings.push((
+                            String::new(),
+                            Some(owner.to_string()),
+                            format!("Situation '{situation}' is attached more than once"),
+                        ));
+                    }
+                    match builder.situations.get(situation) {
+                        None => findings.push((
+                            String::new(),
+                            Some(owner.to_string()),
+                            format!("Situation '{situation}' is not defined"),
+                        )),
+                        Some(def) if def.source != expected => findings.push((
+                            String::new(),
+                            Some(owner.to_string()),
+                            format!(
+                                "Situation '{situation}' expects a {:?} source, not {:?}",
+                                def.source, expected
+                            ),
+                        )),
+                        Some(_) => {}
+                    }
+                }
+            };
+
+        if let Some(scenario) = &builder.scenario {
+            attachment(
+                &scenario.key,
+                SituationSubjectKind::Scenario,
+                &scenario.situations,
+            );
+        }
+        for (key, title) in &builder.titles {
+            attachment(key, SituationSubjectKind::Title, &title.situations);
+        }
+        for (key, obligation) in &builder.obligations {
+            attachment(
+                key,
+                SituationSubjectKind::Obligation,
+                &obligation.situations,
+            );
+        }
+    }
+
+    for (key, situation) in &builder.situations {
+        let mut error = |path: String, message: String| {
+            findings.push((path, Some(key.to_string()), message));
+        };
+
+        if !matches!(
+            situation.source,
+            SituationSubjectKind::Scenario
+                | SituationSubjectKind::Title
+                | SituationSubjectKind::Obligation
+        ) {
+            let source = format!("{:?}", situation.source).to_ascii_lowercase();
+            error(
+                situation.trigger_fn.path.clone(),
+                format!(
+                    "Situation source kind '{source}' cannot be attached; use source: \"scenario\" \
+                     plus a typed binding for runtime-only subjects"
+                ),
+            );
+        }
+
+        for (role, fn_ref) in std::iter::once(("trigger_fn", &situation.trigger_fn))
+            .chain(std::iter::once(("projection_fn", &situation.projection_fn)))
+            .chain(situation.outcomes.iter().filter_map(|outcome| {
+                outcome
+                    .predicate_fn
+                    .as_ref()
+                    .map(|function| ("when_fn", function))
+            }))
+        {
+            let exists = fn_names
+                .get(&fn_ref.path)
+                .is_some_and(|names| names.contains(&fn_ref.name));
+            if !exists {
+                error(
+                    fn_ref.path.clone(),
+                    format!(
+                        "{role} '{}' is not defined in this file (function references are file-local)",
+                        fn_ref.name
+                    ),
+                );
+            }
+        }
+
+        if situation.bindings.contains_key("source") {
+            error(
+                situation.trigger_fn.path.clone(),
+                "binding name 'source' is reserved for the authored attachment".to_owned(),
+            );
+        }
+
+        if situation.stages.is_empty() {
+            error(
+                situation.trigger_fn.path.clone(),
+                "Situations must declare at least one stage".to_owned(),
+            );
+        }
+        let mut stage_ids = BTreeSet::new();
+        for stage in &situation.stages {
+            if !stage_ids.insert(&stage.key) {
+                error(
+                    situation.trigger_fn.path.clone(),
+                    format!("duplicate Situation stage id '{}'", stage.key),
+                );
+            }
+        }
+
+        let mut action_ids = BTreeSet::new();
+        for action in &situation.actions {
+            if !action_ids.insert(&action.key) {
+                error(
+                    situation.trigger_fn.path.clone(),
+                    format!("duplicate Situation action id '{}'", action.key),
+                );
+            }
+            if !builder.assignments.contains_key(&action.assignment) {
+                error(
+                    situation.trigger_fn.path.clone(),
+                    format!(
+                        "Situation action '{}' names undefined assignment '{}'",
+                        action.key, action.assignment
+                    ),
+                );
+            }
+        }
+
+        let mut outcome_ids = BTreeSet::new();
+        let fallback_indices: Vec<usize> = situation
+            .outcomes
+            .iter()
+            .enumerate()
+            .filter_map(|(index, outcome)| outcome.predicate_fn.is_none().then_some(index))
+            .collect();
+        for outcome in &situation.outcomes {
+            if !outcome_ids.insert(&outcome.key) {
+                error(
+                    situation.trigger_fn.path.clone(),
+                    format!("duplicate Situation outcome id '{}'", outcome.key),
+                );
+            }
+        }
+        if fallback_indices.len() != 1 {
+            error(
+                situation.trigger_fn.path.clone(),
+                format!(
+                    "Situations must declare exactly one fallback outcome, found {}",
+                    fallback_indices.len()
+                ),
+            );
+        } else if fallback_indices[0] + 1 != situation.outcomes.len() {
+            error(
+                situation.trigger_fn.path.clone(),
+                "the fallback outcome must be last".to_owned(),
+            );
+        }
+
+        if let SituationVisibilityDef::Bound(audience) = &situation.visibility {
+            if audience.is_empty() {
+                error(
+                    situation.trigger_fn.path.clone(),
+                    "a private Situation audience must name at least one binding".to_owned(),
+                );
+            }
+            let mut seen = BTreeSet::new();
+            for binding in audience {
+                if !seen.insert(binding) {
+                    error(
+                        situation.trigger_fn.path.clone(),
+                        format!("audience binding '{binding}' is repeated"),
+                    );
+                }
+                let kind = if binding == "source" {
+                    Some(situation.source)
+                } else {
+                    situation.bindings.get(binding).copied()
+                };
+                match kind {
+                    None => error(
+                        situation.trigger_fn.path.clone(),
+                        format!("audience binding '{binding}' is not declared"),
+                    ),
+                    Some(SituationSubjectKind::Character | SituationSubjectKind::Organisation) => {}
+                    Some(other) => error(
+                        situation.trigger_fn.path.clone(),
+                        format!(
+                            "audience binding '{binding}' is {other:?}; audiences must bind characters or organisations"
+                        ),
+                    ),
+                }
+            }
         }
     }
 }

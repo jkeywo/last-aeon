@@ -94,6 +94,45 @@ fn assignment_for(
     assignments_for(world, intent, expected).into_iter().next()
 }
 
+/// An authored assignment key that lets a plan-bearing pressure enter the
+/// existing scorer even when the assignment itself is deliberately not
+/// available to the one-shot AI path. The plan still starts every real step
+/// through the ordinary assignment gate.
+fn plan_signal_assignment(world: &World, intent: AiIntent) -> Option<ContentKey> {
+    world
+        .get_resource::<ContentDb>()?
+        .0
+        .assignments
+        .values()
+        .find(|def| def.ai_intent == intent)
+        .map(|def| def.key.clone())
+}
+
+/// The declared claimant with strictly more realm territory than this
+/// authority, highest realm total first and lowest stable organisation ID on
+/// a tie.
+fn leading_claimant_ahead(world: &World, authority: OrgId) -> Option<OrgId> {
+    let (title, body) = crate::crisis::paramountcy(world)?;
+    let own = crate::crisis::realm_province_count_on(world, body, authority);
+    let rivals: Vec<(u32, OrgId)> = crate::crisis::claims_for(world, title)
+        .into_iter()
+        .filter_map(|claim| {
+            let org = crate::crisis::claimant_eligibility(world, title, claim.claimant).ok()?;
+            (org != authority).then_some((
+                crate::crisis::realm_province_count_on(world, body, org),
+                org,
+            ))
+        })
+        .collect();
+    select_leading_claimant_ahead(own, rivals)
+}
+
+fn select_leading_claimant_ahead(own: u32, mut rivals: Vec<(u32, OrgId)>) -> Option<OrgId> {
+    rivals.retain(|(held, _)| *held > own);
+    rivals.sort_by(|left, right| right.0.cmp(&left.0).then(left.1.cmp(&right.1)));
+    rivals.first().map(|(_, org)| *org)
+}
+
 /// A house's resource position.
 fn resources(world: &World, org: OrgId) -> Option<OrgResources> {
     crate::access::org_entity(world, org)
@@ -265,28 +304,55 @@ pub fn score_intents(world: &World, actor: CharacterId, authority: OrgId) -> Vec
         }
     }
 
-    // ---- A claim worth pressing ----
-    // A paramountcy claim is the house's, but only its head may weigh
-    // pressing it: anyone else acting here would commit the house to a
-    // crisis they have no standing to declare.
+    // ---- The authored planetary ambition ----
+    // A goal favouring the claim pressure exposes the next legal part of the
+    // claimant loop to the ordinary plan scorer. No content key is named
+    // here: the goal supplies the intent, plan requirements choose the
+    // campaign, and every step remains an ordinary assignment or standing
+    // order.
     if crate::access::org_head(world, authority) == Some(actor)
-        && let Some(body) = world
-            .get_resource::<crate::map::MapIndex>()
-            .and_then(|index| index.provinces.values().next().copied())
-            .and_then(|entity| world.get::<crate::map::ProvinceRecord>(entity))
-            .map(|record| record.body)
-        && crate::crisis::dominant_claimant(world, body) == Some(authority)
-        && let Some(assignment) = assignment_for(world, AiIntent::Claim, AssignmentTargetKind::None)
+        && crate::goals::favours(world, authority, AiIntent::Claim)
+        && let Some((title, body)) = crate::crisis::paramountcy(world)
+        && crate::crisis::claimant_eligibility(world, title, actor).is_ok()
     {
-        intents.push(ScoredIntent {
-            intent: AiIntent::Claim,
-            assignment,
-            target: AssignmentTarget::None,
-            score: 120,
-            reason: strings.text("sim.intent.claim-ready").to_owned(),
-            subject: Some(LogSubject::Org(authority)),
-            explains: true,
-        });
+        let has_claim = crate::crisis::has_claim(world, title, actor);
+        let active_war = has_claim
+            .then(|| crate::crisis::claimant_war_blocker(world, title, actor))
+            .flatten();
+        let dominant = crate::crisis::dominant_claimant(world, body) == Some(authority);
+        let next = if !has_claim {
+            Some((AiIntent::Claim, AssignmentTarget::None))
+        } else if let Some(war) = active_war {
+            Some((AiIntent::Claim, AssignmentTarget::War(war)))
+        } else if dominant {
+            Some((AiIntent::Claim, AssignmentTarget::None))
+        } else if let Some(leader) = leading_claimant_ahead(world, authority) {
+            let ready =
+                crate::plans::branch_manpower_ratio_permille(world, authority, leader) >= 750;
+            Some((
+                if ready {
+                    AiIntent::Claim
+                } else {
+                    AiIntent::Muster
+                },
+                AssignmentTarget::Org(leader),
+            ))
+        } else {
+            None
+        };
+        if let Some((intent, target)) = next
+            && let Some(assignment) = plan_signal_assignment(world, intent)
+        {
+            intents.push(ScoredIntent {
+                intent,
+                assignment,
+                target,
+                score: 140,
+                reason: strings.text("sim.intent.claim-ready").to_owned(),
+                subject: Some(LogSubject::Org(authority)),
+                explains: true,
+            });
+        }
     }
 
     // With nothing pressing, a house still attends to ordinary business.
@@ -397,6 +463,16 @@ pub fn characters_act(world: &mut World) {
         if world
             .get_resource::<crate::plans::Plans>()
             .is_some_and(|plans| plans.active.contains_key(&actor))
+        {
+            continue;
+        }
+        // A plan is a new commitment, just like its first assignment. Do not
+        // adopt one while unrelated work already occupies the actor: a
+        // routine assignment may retry indefinitely, leaving the new plan
+        // waiting forever on a leader who was never free to undertake it.
+        if crate::assignments::leader_availability(world, authority, actor, date)
+            .blocks_assignment(AssignmentTarget::None)
+            .is_some()
         {
             continue;
         }
@@ -530,6 +606,16 @@ pub fn household_acts(world: &mut World) {
         let idle: Vec<crate::ids::CharacterId> = crate::access::living_character_ids(world)
             .into_iter()
             .filter(|who| crate::access::organisation_of(world, *who) == Some(org))
+            // Adopting a plan commits the character even before its first
+            // assignment starts. Without this reservation, the household
+            // pass can give a newly planned actor unrelated free work on the
+            // same monthly pulse and leave the plan permanently waiting on
+            // its own leader.
+            .filter(|who| {
+                !world
+                    .get_resource::<crate::plans::Plans>()
+                    .is_some_and(|plans| plans.active.contains_key(who))
+            })
             .filter(|who| {
                 matches!(
                     crate::assignments::leader_availability(world, org, *who, date),
@@ -574,6 +660,9 @@ pub fn household_acts(world: &mut World) {
                             org: Some(org),
                             subject: Some(LogSubject::Character(who)),
                             channel: LogChannel::Assignments,
+                            situations: Vec::new(),
+                            war: None,
+                            audience: crate::assignments::LogAudience::Public,
                         },
                     );
                     break;
@@ -641,5 +730,22 @@ mod tests {
             (650..=850).contains(&heavy_picks),
             "heavy pressure picked {heavy_picks} of 1000"
         );
+    }
+
+    #[test]
+    fn a_trailing_claimant_challenges_the_leader_with_stable_ties() {
+        let low_id = OrgId::from_raw(2).unwrap();
+        let high_id = OrgId::from_raw(3).unwrap();
+        let weaker = OrgId::from_raw(4).unwrap();
+        assert_eq!(
+            select_leading_claimant_ahead(2, vec![(3, weaker), (5, high_id), (5, low_id)]),
+            Some(low_id)
+        );
+    }
+
+    #[test]
+    fn a_tied_claimant_does_not_start_a_challenge() {
+        let rival = OrgId::from_raw(2).unwrap();
+        assert_eq!(select_leading_claimant_ahead(5, vec![(5, rival)]), None);
     }
 }

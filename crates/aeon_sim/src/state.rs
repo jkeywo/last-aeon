@@ -79,5 +79,8 @@ pub fn start_campaign_with_content(
     crate::forces::spawn_from_content(world, &content);
     crate::obligations::seed_from_content(world, &content);
     crate::assignments::init_assignments(world);
+    crate::crisis::init_paramount_claims(world);
+    crate::wars::init_wars(world);
     world.insert_resource(ContentDb(content));
+    crate::situations::evaluate(world);
 }

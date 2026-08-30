@@ -17,7 +17,46 @@ use aeon_sim::{
 fn repository_content() -> Arc<ContentSet> {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/content");
     let sources = aeon_data::fs::read_content_dir(&root).expect("assets/content readable");
-    let (set, report) = load_content(&sources, &aeon_data::StringTable::blank());
+    let (strings, report) = aeon_data::fs::read_string_table(&root).expect("strings readable");
+    assert!(
+        !report.has_errors(),
+        "string findings: {:?}",
+        report.findings
+    );
+    let (set, report) = load_content(&sources, &strings.expect("valid string table"));
+    assert!(set.is_some(), "content loads: {:?}", report.findings);
+    Arc::new(set.unwrap())
+}
+
+/// The authored deck with one deterministic runtime-only Situation fault.
+///
+/// Content validation can prove that the named function exists, but only a
+/// live semantic world can prove that it returns a projection map. Pointing
+/// the Consular projection at its (valid) trigger function exercises that
+/// boundary without adding test-only content to the production deck.
+fn repository_content_with_consular_projection_error() -> Arc<ContentSet> {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/content");
+    let mut sources = aeon_data::fs::read_content_dir(&root).expect("assets/content readable");
+    let situations = sources
+        .iter_mut()
+        .find(|source| source.path.ends_with("situations.rhai"))
+        .expect("authored Situations source");
+    let projection = "projection_fn: \"consular_vacancy_projection\"";
+    assert!(
+        situations.source.contains(projection),
+        "the acceptance fault must replace the authored Consular projection"
+    );
+    situations.source = situations
+        .source
+        .replace(projection, "projection_fn: \"consular_vacancy_instances\"");
+
+    let (strings, report) = aeon_data::fs::read_string_table(&root).expect("strings readable");
+    assert!(
+        !report.has_errors(),
+        "string findings: {:?}",
+        report.findings
+    );
+    let (set, report) = load_content(&sources, &strings.expect("valid string table"));
     assert!(set.is_some(), "content loads: {:?}", report.findings);
     Arc::new(set.unwrap())
 }
@@ -282,90 +321,433 @@ fn the_enhanced_campaign_replays_from_a_mid_campaign_snapshot() {
     );
 }
 
-/// Milestone 5 acceptance: on the real authored scenario, some autonomous
-/// head adopts the claim campaign and carries it through to the declare
-/// step, in order, without a single scripted nudge.
+/// Snapshot 18 acceptance for the connected Situation and formal-war slice.
+///
+/// Focused tests own the individual rules. This test keeps one deliberately
+/// dense campaign state alive across the same serialise, restore, and continue
+/// path as acceptance: the complete authored Situation deck, a runtime fault,
+/// simultaneous wars, internal-war adoption, a concluded occurrence and its
+/// resolution, exact provenance, and a still-running war-bound operation.
+#[test]
+fn snapshot_18_replays_connected_situations_and_formal_wars() {
+    use std::collections::BTreeSet;
+
+    use aeon_sim::assignments::{ActiveAssignment, AssignmentsIndex, MessageLog};
+    use aeon_sim::situations::{
+        SituationInstanceKey, SituationOccurrence, SituationState, SituationSubject, active_cards,
+        evaluate,
+    };
+    use aeon_sim::wars::{
+        WarConclusionKind, WarSideId, Wars, adopt_side, conclude_war, declare_war,
+    };
+
+    fn war_situation(
+        host: &mut SimHost,
+        war: aeon_sim::WarId,
+    ) -> (SituationInstanceKey, SituationOccurrence) {
+        let active = host
+            .world_mut()
+            .resource::<SituationState>()
+            .active
+            .values()
+            .find(|active| {
+                active.key.definition == key("formal-war")
+                    && active.key.bindings.get("war") == Some(&SituationSubject::War(war))
+            })
+            .cloned()
+            .expect("formal war has one active Situation");
+        (active.key.clone(), active.occurrence())
+    }
+
+    let content = repository_content_with_consular_projection_error();
+    assert_eq!(
+        content.situations.keys().cloned().collect::<BTreeSet<_>>(),
+        [
+            key("consular-vacancy"),
+            key("favour-debt"),
+            key("formal-war"),
+            key("planetary-succession"),
+        ]
+        .into_iter()
+        .collect(),
+        "acceptance runs the complete four-definition authored deck"
+    );
+
+    let mut original = scenario_host(Arc::clone(&content), 18_1818);
+    let opening_definitions: BTreeSet<_> = original
+        .world_mut()
+        .resource::<SituationState>()
+        .active
+        .keys()
+        .map(|instance| instance.definition.clone())
+        .collect();
+    assert_eq!(
+        opening_definitions,
+        [key("planetary-succession"), key("favour-debt")]
+            .into_iter()
+            .collect(),
+        "every applicable non-war Situation is live on day one"
+    );
+
+    // The authored Consul begins in office. Exercise the same vacancy path
+    // that a campaign reaches when that character dies, completing the
+    // non-war deck while the campaign is still on its opening date.
+    let consul = {
+        let world = original.world_mut();
+        let title = world.resource::<PoliticsIndex>().title_keys[&key("consul-of-the-sector")];
+        match aeon_sim::access::title(world, title)
+            .expect("authored Consular title")
+            .holder
+        {
+            aeon_sim::politics::TitleHolder::Character(holder) => holder,
+            holder => panic!("the authored Consul should begin in office, got {holder:?}"),
+        }
+    };
+    let opening_date = original.date();
+    aeon_sim::politics::process_death(original.world_mut(), consul, opening_date);
+    evaluate(original.world_mut());
+    let consul_occurrence = {
+        let state = original.world_mut().resource::<SituationState>();
+        let (instance, active) = state
+            .active
+            .iter()
+            .find(|(instance, _)| instance.definition == key("consular-vacancy"))
+            .expect("Consular Vacancy is attached on day one");
+        assert!(
+            state.runtime_errors.contains_key(instance),
+            "the malformed live projection is unavailable"
+        );
+        active.occurrence()
+    };
+    assert!(
+        original
+            .world_mut()
+            .resource::<MessageLog>()
+            .entries
+            .iter()
+            .any(|entry| entry.situations.contains(&consul_occurrence)),
+        "the runtime fault is permanently tagged to its exact lifecycle"
+    );
+
+    let harrow = org_id(&mut original, "harrow");
+    let vantar = org_id(&mut original, "vantar");
+    let veyrin = org_id(&mut original, "veyrin");
+    let draksha = org_id(&mut original, "draksha");
+
+    // The first occurrence is an internal sibling conflict. Its common liege
+    // explicitly adopts Harrow's side, freezing that decision in the ledger.
+    let internal = declare_war(
+        original.world_mut(),
+        harrow,
+        vantar,
+        key("acceptance-internal-war"),
+    )
+    .expect("the sibling branches may fight");
+    evaluate(original.world_mut());
+    let (internal_situation, internal_occurrence) = war_situation(&mut original, internal);
+    adopt_side(original.world_mut(), internal, veyrin, WarSideId::Attacker)
+        .expect("the common liege may explicitly adopt Harrow's side");
+
+    // A second occurrence overlaps the first and remains active across the
+    // snapshot, carrying an operation launched from its Situation card.
+    let active_war = declare_war(
+        original.world_mut(),
+        harrow,
+        draksha,
+        key("acceptance-simultaneous-war"),
+    )
+    .expect("a distinct opposing branch permits a simultaneous war");
+    evaluate(original.world_mut());
+    let (active_situation, active_occurrence) = war_situation(&mut original, active_war);
+    assert_eq!(
+        original.world_mut().resource::<Wars>().active().count(),
+        2,
+        "both formal-war occurrences were simultaneously active"
+    );
+
+    conclude_war(
+        original.world_mut(),
+        internal,
+        WarConclusionKind::NegotiatedPeace,
+    )
+    .expect("the adopted internal war may conclude as a whole");
+    evaluate(original.world_mut());
+    let resolution = original
+        .world_mut()
+        .resource::<SituationState>()
+        .resolutions
+        .iter()
+        .find(|notice| notice.situation == internal_situation)
+        .cloned()
+        .expect("the concluded war leaves a resolution");
+    assert_eq!(resolution.occurrence(), internal_occurrence);
+    assert!(
+        original
+            .world_mut()
+            .resource::<MessageLog>()
+            .entries
+            .iter()
+            .any(|entry| {
+                entry.war == Some(internal) && entry.situations.contains(&internal_occurrence)
+            }),
+        "the concluded occurrence retains exact war and Situation provenance"
+    );
+
+    let siege = active_cards(original.world_mut())
+        .into_iter()
+        .find(|card| card.active.key == active_situation)
+        .and_then(|card| card.projection)
+        .and_then(|projection| {
+            projection
+                .actions
+                .into_iter()
+                .find(|action| action.id == key("besiege"))
+        })
+        .expect("the player's active formal war offers a concrete siege");
+    let start = original
+        .submit(PlayerCommand::StartSituationAssignment {
+            situation: active_situation.clone(),
+            action: siege.id,
+            leader: siege.leader.expect("the army general is projected"),
+            target: siege.target,
+            war: Some(active_war),
+        })
+        .expect("the projected war action is authoritatively valid");
+    while original.date() < start.day {
+        original.advance_days(1);
+    }
+    let operation = {
+        let world = original.world_mut();
+        world
+            .resource::<AssignmentsIndex>()
+            .assignments
+            .values()
+            .filter_map(|entity| world.get::<ActiveAssignment>(*entity))
+            .find(|assignment| assignment.origin_situation.as_ref() == Some(&active_occurrence))
+            .cloned()
+            .expect("the Situation action starts one exact war-bound operation")
+    };
+    assert_eq!(operation.war, Some(active_war));
+    assert_eq!(operation.def, key("besiege"));
+
+    // Leave a meaningful player command pending in the snapshot. Both copies
+    // will apply that exact envelope during continuation.
+    let dismissal = original
+        .submit(PlayerCommand::DismissSituationResolution {
+            resolution: resolution.id,
+        })
+        .expect("the resolution may be dismissed");
+    assert!(dismissal.day > original.date());
+
+    let snapshot = original.snapshot();
+    assert_eq!(snapshot.format_version, 18);
+    assert_eq!(
+        snapshot
+            .state
+            .situations
+            .active
+            .keys()
+            .map(|instance| instance.definition.clone())
+            .collect::<BTreeSet<_>>(),
+        [
+            key("consular-vacancy"),
+            key("favour-debt"),
+            key("formal-war"),
+            key("planetary-succession"),
+        ]
+        .into_iter()
+        .collect(),
+        "all four authored Situation kinds are connected at the midpoint"
+    );
+    assert_eq!(snapshot.state.wars.records.len(), 2);
+    let internal_record = &snapshot.state.wars.records[&internal];
+    assert_eq!(internal_record.adoption_history.len(), 1);
+    assert_eq!(
+        internal_record.adoption_history[0].side,
+        WarSideId::Attacker
+    );
+    assert_eq!(
+        internal_record.conclusion.expect("concluded war").kind,
+        WarConclusionKind::NegotiatedPeace
+    );
+    assert!(snapshot.state.wars.records[&active_war].active());
+    assert!(
+        snapshot
+            .state
+            .assignments
+            .assignments
+            .iter()
+            .any(|assignment| {
+                assignment.id == operation.id
+                    && assignment.war == Some(active_war)
+                    && assignment.origin_situation.as_ref() == Some(&active_occurrence)
+            })
+    );
+    assert!(
+        snapshot
+            .state
+            .situations
+            .resolutions
+            .iter()
+            .any(|notice| notice.id == resolution.id)
+    );
+    assert!(
+        snapshot
+            .state
+            .situations
+            .runtime_errors
+            .keys()
+            .any(|instance| instance.definition == key("consular-vacancy"))
+    );
+    assert!(
+        snapshot
+            .state
+            .pending_commands
+            .iter()
+            .any(|envelope| envelope == &dismissal)
+    );
+
+    let midpoint_hash = original.state_hash();
+    let bytes = persistence::snapshot_to_ron(&snapshot).expect("Snapshot 18 serialises");
+    let decoded = persistence::snapshot_from_ron(&bytes).expect("Snapshot 18 deserialises");
+    let mut replayed =
+        SimHost::restore_with_content(decoded, content).expect("Snapshot 18 restores");
+    assert_eq!(
+        replayed.state_hash(),
+        midpoint_hash,
+        "restore reproduces the complete connected midpoint"
+    );
+
+    original.advance_days(10);
+    replayed.advance_days(10);
+    assert_eq!(
+        replayed.state_hash(),
+        original.state_hash(),
+        "the Snapshot-18 Situation and formal-war state continues identically"
+    );
+    for host in [&mut original, &mut replayed] {
+        assert!(
+            host.applied_commands().contains(&dismissal),
+            "the snapshotted dismissal was applied"
+        );
+        assert!(
+            host.world_mut()
+                .resource::<SituationState>()
+                .resolutions
+                .iter()
+                .all(|notice| notice.id != resolution.id)
+        );
+        assert!(
+            host.world_mut()
+                .resource::<SituationState>()
+                .runtime_errors
+                .keys()
+                .any(|instance| instance.definition == key("consular-vacancy"))
+        );
+        let world = host.world_mut();
+        assert!(
+            world
+                .resource::<AssignmentsIndex>()
+                .assignments
+                .values()
+                .filter_map(|entity| world.get::<ActiveAssignment>(*entity))
+                .any(|assignment| {
+                    assignment.id == operation.id
+                        && assignment.war == Some(active_war)
+                        && assignment.origin_situation.as_ref() == Some(&active_occurrence)
+                }),
+            "the exact war-bound siege remains in flight"
+        );
+    }
+}
+
+/// On the real authored scenario, an eligible autonomous head can adopt the
+/// planetary ambition immediately, declare a personal claim through the
+/// ordinary one-day assignment, and press it through the ordinary long-running
+/// assignment once their complete realm is dominant. The press remains
+/// probabilistic; acceptance proves the autonomous attempt, not that this seed
+/// must win the title.
 #[test]
 fn an_autonomous_house_pursues_the_claim_as_a_campaign() {
+    use aeon_sim::goals::Goals;
     use aeon_sim::plans::Plans;
 
     let content = repository_content();
     let mut h = scenario_host(content, 31337);
-
-    // The authored crisis opens contested — Veyrin, Draksha and Meloch
-    // each hold five provinces, so nobody may press. Revolt one holding
-    // each out from under Draksha and Meloch, and Veyrin's head is left
-    // the dominant claimant with a campaign worth adopting.
-    use aeon_sim::order::adjust_order;
-    let sallow_march =
-        h.world_mut().resource::<aeon_sim::MapIndex>().province_keys[&key("sallow-march")];
-    let shattered_coast =
-        h.world_mut().resource::<aeon_sim::MapIndex>().province_keys[&key("shattered-coast")];
-    for _ in 0..130 {
-        h.advance_days(1);
-        adjust_order(h.world_mut(), sallow_march, -1000);
-        adjust_order(h.world_mut(), shattered_coast, -1000);
-    }
-    {
+    let (veyrin, veyrin_head, title, body) = {
         let world = h.world_mut();
-        let body = aeon_sim::crisis::paramountcy(world)
-            .map(|(_, b)| b)
-            .expect("paramountcy");
-        assert_eq!(
-            aeon_sim::crisis::dominant_claimant(world, body),
-            Some(world.resource::<PoliticsIndex>().org_keys[&key("veyrin")]),
-            "the nudge should leave Veyrin dominant"
-        );
-    }
+        let veyrin = world.resource::<PoliticsIndex>().org_keys[&key("veyrin")];
+        let veyrin_head = aeon_sim::access::org_head(world, veyrin).unwrap();
+        let (title, body) = aeon_sim::crisis::paramountcy(world).expect("paramountcy");
+        (veyrin, veyrin_head, title, body)
+    };
+    assert_eq!(
+        aeon_sim::crisis::dominant_claimant(h.world_mut(), body),
+        Some(veyrin),
+        "the authored complete realm makes Veyrin the initial leader"
+    );
 
-    let claim = key("press-the-claim");
-    let mut adopted = false;
-    let mut deepest_step = 0usize;
-    let mut finished = false;
-    for _ in 0..240 {
-        h.advance_days(15);
-        let plans = h.world_mut().resource::<Plans>().clone();
-        for plan in plans.active.values() {
-            if plan.def == claim {
-                adopted = true;
-                deepest_step = deepest_step.max(plan.step);
-            }
+    let ambition = key("take-the-planet");
+    let campaign = key("press-the-claim");
+    let declaration = key("declare-paramount-claim");
+    let press = key("press-claim");
+    let mut adopted_ambition = false;
+    let mut chose_declare_method = false;
+    let mut chose_press_method = false;
+    let mut ran_declaration = false;
+    let mut held_personal_claim = false;
+    let mut ran_press = false;
+
+    for _ in 0..720 {
+        h.advance_days(1);
+        let world = h.world_mut();
+        adopted_ambition |= world
+            .resource::<Goals>()
+            .active
+            .get(&veyrin)
+            .is_some_and(|goal| goal.def == ambition);
+        if let Some(plan) = world.resource::<Plans>().active.get(&veyrin_head)
+            && plan.def == campaign
+        {
+            chose_declare_method |= plan.method == "declare";
+            chose_press_method |= plan.method == "press-after-peace";
         }
-        if plans.cooldowns.keys().any(|(_, def)| *def == claim) {
-            finished = true;
-        }
-        if finished && deepest_step + 1 >= 5 {
+        let active_assignments: Vec<_> = world
+            .resource::<aeon_sim::AssignmentsIndex>()
+            .assignments
+            .values()
+            .filter_map(|entity| world.get::<aeon_sim::ActiveAssignment>(*entity))
+            .filter(|assignment| assignment.owner == veyrin)
+            .map(|assignment| assignment.def.clone())
+            .collect();
+        ran_declaration |= active_assignments.contains(&declaration);
+        ran_press |= active_assignments.contains(&press);
+        held_personal_claim |= world
+            .resource::<aeon_sim::crisis::ParamountClaims>()
+            .entries
+            .contains_key(&(title, veyrin_head));
+        if adopted_ambition
+            && chose_declare_method
+            && chose_press_method
+            && ran_declaration
+            && held_personal_claim
+            && ran_press
+        {
             break;
         }
     }
-    assert!(adopted, "some head should adopt the claim campaign");
-    assert!(
-        deepest_step >= 2,
-        "the campaign should get past funding and mustering; deepest step seen was {deepest_step}"
-    );
-    assert!(
-        finished,
-        "the campaign should end, by completion or honest abandonment"
-    );
 
-    // Milestone 6: a declared war is an armed one. The campaign's arm
-    // step points the claimant head's own force at the doctrine, so by
-    // the time the claim has been pressed, some Veyrin army stands under
-    // standing orders it was not authored with.
-    let world = h.world_mut();
-    let veyrin = world.resource::<PoliticsIndex>().org_keys[&key("veyrin")];
-    let armed = {
-        let forces = world.resource::<aeon_sim::ForcesIndex>().clone();
-        forces
-            .armies
-            .values()
-            .filter_map(|e| world.get::<aeon_sim::ArmyRecord>(*e))
-            .filter(|a| a.owner == veyrin)
-            .any(|a| !a.standing_order.is_empty())
-    };
     assert!(
-        armed,
-        "the campaign that declared the war should have armed it"
+        adopted_ambition,
+        "Veyrin should adopt the planetary ambition"
+    );
+    assert!(
+        chose_declare_method && ran_declaration && held_personal_claim,
+        "the autonomous loop should declare a personal claim through its authored method"
+    );
+    assert!(
+        chose_press_method && ran_press,
+        "the autonomous loop should return through the zero-cooldown press method"
     );
 }
 
@@ -481,12 +863,26 @@ fn the_scenario_worlds_trade_grain_across_the_gulf() {
             .unwrap()
     };
     let picket = h.world_mut().resource::<aeon_sim::ForcesIndex>().ship_keys[&key("pale-lantern")];
+    let harrow = h.world_mut().resource::<aeon_sim::PoliticsIndex>().org_keys[&key("harrow")];
+    let defender = aeon_sim::warfare::province_holder(h.world_mut(), route.sink)
+        .expect("the delivery dock has a holder");
+    let war =
+        aeon_sim::wars::active_war_between(h.world_mut(), harrow, defender).unwrap_or_else(|| {
+            aeon_sim::wars::declare_war(h.world_mut(), harrow, defender, key("trade-blockade"))
+                .expect("the fixture may create an exact blockade war")
+        });
     {
         let entity = h.world_mut().resource::<aeon_sim::ForcesIndex>().ships[&picket];
-        h.world_mut()
+        let mut ship = h
+            .world_mut()
             .get_mut::<aeon_sim::ShipRecord>(entity)
-            .unwrap()
-            .blockading = Some(route.sink);
+            .unwrap();
+        ship.owner = harrow;
+        ship.location = aeon_sim::forces::ShipLocation::Docked(route.sink);
+        ship.blockading = Some(aeon_sim::forces::Blockade {
+            province: route.sink,
+            war,
+        });
     }
     assert_eq!(
         aeon_sim::trade::route_relief(h.world_mut(), vesk, &grain),

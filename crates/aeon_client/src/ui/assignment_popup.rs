@@ -148,6 +148,9 @@ pub fn draw_assignment_popup(
                 }
                 AssignmentTargetKind::Character | AssignmentTargetKind::None => {}
                 AssignmentTargetKind::OwnArmy => {}
+                // A war is occurrence-stable context supplied by a Situation
+                // action. It is never picked from a standalone global list.
+                AssignmentTargetKind::War | AssignmentTargetKind::WarSide => {}
             }
 
             draw_forecast(

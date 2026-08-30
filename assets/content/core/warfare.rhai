@@ -3,6 +3,50 @@
 // engine-owned. Content declares pacing, costs, risks, and flavour.
 
 define_assignment(#{
+    id: "declare-formal-war",
+    ai_intent: "claim",
+    category: "consequential",
+    duration_days: 7,
+    guaranteed: true,
+    skill: "diplomacy",
+    difficulty: 0,
+    target: "organisation",
+    ai_available: true,
+    results: #{
+        success: #{
+            weight: 1000, log: true,
+            effect_fn: "formal_war_declared",
+        },
+    },
+});
+
+fn formal_war_declared(ctx) {
+    [#{ kind: "declare-war" }]
+}
+
+define_assignment(#{
+    id: "adopt-formal-war",
+    ai_intent: "claim",
+    category: "consequential",
+    duration_days: 7,
+    guaranteed: true,
+    skill: "diplomacy",
+    difficulty: 0,
+    target: "war-side",
+    ai_available: true,
+    results: #{
+        success: #{
+            weight: 1000, log: true,
+            effect_fn: "formal_war_adopted",
+        },
+    },
+});
+
+fn formal_war_adopted(ctx) {
+    [#{ kind: "adopt-war" }]
+}
+
+define_assignment(#{
     id: "march",
     category: "consequential",
     duration_days: 5,
@@ -168,28 +212,21 @@ define_assignment(#{
     duration_days: 20,
     skill: "diplomacy",
     difficulty: 12,
-    target: "organisation",
+    target: "war",
     influence_cost: 10,
     ai_available: false,
-    requires: #{ owner_threatened: true },
     results: #{
         success: #{
             weight: 550, log: true,
-            effect_fn: "standdown_success",
+            effect_fn: "formal_war_concluded",
         },
         failure: #{ weight: 400 },
         disaster: #{
             weight: 50, log: true,
-            effect_fn: "standdown_disaster",
         },
     },
 });
 
-fn standdown_success(ctx) {
-    [#{ kind: "opinion", from: "target-head", toward: "owner-head", amount: 15, days: 720, reason: "standdown" },
-     #{ kind: "opinion", from: "owner-head", toward: "target-head", amount: 15, days: 720, reason: "standdown" }]
-}
-
-fn standdown_disaster(ctx) {
-    [#{ kind: "opinion", from: "target-head", toward: "owner-head", amount: -10, days: 720, reason: "spurned-overture" }]
+fn formal_war_concluded(ctx) {
+    [#{ kind: "conclude-war" }]
 }

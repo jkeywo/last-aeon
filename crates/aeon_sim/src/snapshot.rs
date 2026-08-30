@@ -22,12 +22,11 @@ use crate::state::{CampaignIds, CampaignMeta, CampaignSeed, ContentDb};
 ///
 /// Bump on any change to [`CampaignState`]'s serialised shape, and provide a
 /// migration for every version a release has ever written. No release has
-/// shipped yet, so pre-release bumps carry no migrations. Version 17 is the
-/// fleet foundation adoption (vellum's `rng-unification-breaks-saves`): the
-/// RNG became the fleet PCG32 construction and the state hash became the
-/// fleet FNV-1a digest, so every version 16 campaign both replays
-/// differently and carries a hash this build no longer parses.
-pub const SNAPSHOT_FORMAT_VERSION: u32 = 17;
+/// shipped yet, so pre-release bumps carry no migrations. Version 18 adds
+/// personal Paramount claims, occurrence-identified formal wars, and authored
+/// Situation lifecycle/resolution state; version 17 is refused rather than
+/// being assigned identities it never recorded.
+pub const SNAPSHOT_FORMAT_VERSION: u32 = 18;
 
 /// The complete authoritative campaign state.
 ///
@@ -71,6 +70,15 @@ pub struct CampaignState {
     /// Directives issued to vassals by hand, keyed by vassal.
     #[serde(default)]
     pub issued_directives: crate::goals::IssuedDirectives,
+    /// Explicit personal claims on vacant Paramount titles.
+    #[serde(default)]
+    pub paramount_claims: crate::crisis::ParamountClaims,
+    /// Active and concluded occurrence-identified formal wars.
+    #[serde(default)]
+    pub wars: crate::wars::Wars,
+    /// Authored Situation lifecycles, notices, and diagnostics.
+    #[serde(default)]
+    pub situations: crate::situations::SituationState,
     /// Next command sequence number.
     pub next_command_seq: u64,
     /// Commands accepted but not yet applied, in `(day, seq)` order.
@@ -167,6 +175,9 @@ pub fn capture_state(world: &World) -> CampaignState {
         plans: crate::plans::capture(world),
         goals: crate::goals::capture(world),
         issued_directives: crate::goals::capture_issued(world),
+        paramount_claims: crate::crisis::capture_paramount_claims(world),
+        wars: crate::wars::capture_wars(world),
+        situations: crate::situations::capture(world),
         next_command_seq: log.next_seq,
         pending_commands: world.resource::<PendingCommands>().entries().to_vec(),
         applied_commands: log.applied.clone(),
@@ -232,6 +243,9 @@ pub fn restore_state(world: &mut World, state: CampaignState) {
     crate::plans::restore(world, &state.plans);
     crate::goals::restore(world, &state.goals);
     crate::goals::restore_issued(world, &state.issued_directives);
+    crate::crisis::restore_paramount_claims(world, &state.paramount_claims);
+    crate::wars::restore_wars(world, &state.wars);
+    crate::situations::restore(world, &state.situations);
 }
 
 /// Respawns the content-bound half of a restore against hash-verified

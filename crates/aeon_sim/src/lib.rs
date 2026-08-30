@@ -42,20 +42,25 @@ pub mod persistence;
 pub mod plans;
 pub mod politics;
 pub mod presence;
+pub mod script_world;
+pub mod situations;
 pub mod snapshot;
 pub mod state;
 pub mod text;
 pub mod trade;
 pub mod warfare;
+pub mod wars;
 
 use bevy::app::{App, Plugin};
 
 pub use assignments::{
     ActiveAssignment, AssignmentRejection, AssignmentTarget, AssignmentsIndex, LeaderAvailability,
-    LogChannel, LogEntry, LogSubject, MessageLog, PendingPopups, Post, leader_availability,
-    request_cancel, start_assignment, target_allowed,
+    LogAudience, LogChannel, LogEntry, LogSubject, MessageLog, PendingPopups, Post,
+    leader_availability, request_cancel, start_assignment, target_allowed,
 };
-pub use clock::{CampaignClock, DailyTick, MonthlyPulse, TickSet, YearlyPulse, advance_one_day};
+pub use clock::{
+    CampaignClock, DailyTick, MonthlyPulse, SettledDay, TickSet, YearlyPulse, advance_one_day,
+};
 pub use command::{CommandEnvelope, CommandRejection, PlayerCommand};
 pub use config::CampaignConfig;
 pub use economy::OrgResources;
@@ -64,7 +69,7 @@ pub use forces::{ArmyRecord, ForcesIndex, ShipRecord};
 pub use forecast::{AssignmentForecast, ForecastResult, ForecastRisk, Permille};
 pub use host::SimHost;
 pub use ids::{
-    ArmyId, AssignmentId, BodyId, CharacterId, OfficeId, OrgId, ProvinceId, ShipId, TitleId,
+    ArmyId, AssignmentId, BodyId, CharacterId, OfficeId, OrgId, ProvinceId, ShipId, TitleId, WarId,
 };
 pub use map::{BodyRecord, DisplayName, GeoPosition, MapIndex, ProvinceRecord};
 pub use obligations::{ObligationKind, ObligationRecord, ObligationStatus, Obligations};
@@ -74,8 +79,18 @@ pub use politics::{
     TitleHolder, TitleKind, TitleRecord, answers_to, opinion_between,
 };
 pub use presence::{CharacterLocation, Location};
+pub use situations::{
+    ActiveSituation, SituationAction, SituationCard, SituationError, SituationInstanceKey,
+    SituationLink, SituationMetric, SituationMetricValue, SituationOccurrence,
+    SituationParticipantGroup, SituationProjection, SituationResolution, SituationRuntimeIssue,
+    SituationSource, SituationState, SituationSubject, action_war, active_cards,
+    forecast_for_action, log_audience, situation_war, validate_opening, visible_to_player,
+};
 pub use snapshot::{CampaignSnapshot, CampaignState, SNAPSHOT_FORMAT_VERSION, SnapshotError};
 pub use text::TextDb;
+pub use wars::{
+    WarAdoption, WarConclusion, WarConclusionKind, WarError, WarRecord, WarSide, WarSideId, Wars,
+};
 
 /// Root plugin installing the authoritative simulation into a Bevy [`App`].
 ///
@@ -102,10 +117,13 @@ impl Plugin for AeonSimPlugin {
         order::install(app);
         obligations::install(app);
         events::install(app);
+        wars::install(app);
+        crisis::install(app);
         warfare::install(app);
         plans::install(app);
         goals::install(app);
         trade::install(app);
+        situations::install(app);
     }
 }
 

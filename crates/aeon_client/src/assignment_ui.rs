@@ -107,6 +107,9 @@ impl Default for LogFilter {
 impl LogFilter {
     /// Whether an entry passes the current filter.
     pub fn admits(&self, entry: &LogEntry, player_org: Option<OrgId>) -> bool {
+        if !entry.audience.visible_to(player_org) {
+            return false;
+        }
         if !self.channels.contains(&entry.channel) {
             return false;
         }
@@ -292,5 +295,20 @@ mod tests {
             &entry(LogChannel::Assignments, "House Veyrin marches", Some(1)),
             None
         ));
+    }
+
+    #[test]
+    fn private_entries_are_limited_to_their_audience_but_spectators_see_all() {
+        let harrow = OrgId::from_raw(1).unwrap();
+        let veyrin = OrgId::from_raw(2).unwrap();
+        let outsider = OrgId::from_raw(3).unwrap();
+        let private = entry(LogChannel::Events, "A favour is called", Some(1))
+            .for_audience(aeon_sim::LogAudience::organisations([harrow, veyrin]));
+        let filter = LogFilter::default();
+
+        assert!(filter.admits(&private, Some(harrow)));
+        assert!(filter.admits(&private, Some(veyrin)));
+        assert!(!filter.admits(&private, Some(outsider)));
+        assert!(filter.admits(&private, None));
     }
 }

@@ -7,7 +7,8 @@ use std::sync::Arc;
 use aeon_core::calendar::CalendarDate;
 use aeon_data::{ContentKey, ContentSet, load_content};
 use aeon_sim::crisis::{
-    claim_paramountcy, collect_tithes, dominant_claimant, paramountcy, province_counts_on,
+    ParamountClaimError, collect_tithes, declare_claim, dominant_claimant, paramountcy,
+    press_claim, province_counts_on, realm_province_counts_on,
 };
 use aeon_sim::economy::OrgResources;
 use aeon_sim::politics::{TitleHolder, TitleRecord};
@@ -128,8 +129,8 @@ fn the_paramountcy_starts_vacant_and_contested() {
     assert_eq!(record.holder, TitleHolder::Vacant, "vacant at start");
     assert!(matches!(record.kind, TitleKind::Paramount(_)));
 
-    // The three great houses each hold five planetary provinces, so no
-    // house dominates and none can yet claim.
+    // The three great houses each directly hold five planetary provinces,
+    // while the approved dominance test also counts transitive vassals.
     let counts = province_counts_on(world, body);
     let veyrin = index.org_keys[&key("veyrin")];
     let draksha = index.org_keys[&key("draksha")];
@@ -137,57 +138,45 @@ fn the_paramountcy_starts_vacant_and_contested() {
     assert_eq!(counts[&veyrin], 5);
     assert_eq!(counts[&draksha], 5);
     assert_eq!(counts[&meloch], 5);
-    assert_eq!(dominant_claimant(world, body), None, "contested at start");
+    let realm_counts = realm_province_counts_on(world, body);
+    assert_eq!(realm_counts[&veyrin], 11);
+    assert_eq!(realm_counts[&draksha], 9);
+    assert_eq!(realm_counts[&meloch], 9);
+    assert_eq!(
+        dominant_claimant(world, body),
+        Some(veyrin),
+        "Veyrin's whole realm leads at the opening"
+    );
 }
 
 #[test]
-fn a_dominant_house_can_claim_the_paramountcy() {
+fn a_dominant_head_can_declare_and_press_the_paramountcy() {
     let mut h = scenario_host(2);
     let (title_id, body) = paramountcy(h.world_mut()).unwrap();
-
-    // Hand the player house (Harrow) enough planetary provinces to strictly
-    // dominate: transfer a rival great house's holdings to it.
-    let harrow = org(&mut h, "harrow");
     let veyrin = org(&mut h, "veyrin");
-    {
-        let world = h.world_mut();
-        let index = world.resource::<PoliticsIndex>().clone();
-        // Move every Veyrin planetary province to Harrow.
-        let veyrin_titles: Vec<_> = index
-            .titles
-            .values()
-            .filter(|e| {
-                world
-                    .get::<TitleRecord>(**e)
-                    .is_some_and(|t| t.holder == TitleHolder::Org(veyrin))
-            })
-            .copied()
-            .collect();
-        for entity in veyrin_titles {
-            world.get_mut::<TitleRecord>(entity).unwrap().holder = TitleHolder::Org(harrow);
-        }
-    }
+    let claimant = aeon_sim::access::org_head(h.world_mut(), veyrin).unwrap();
 
-    // Harrow now dominates the planet and the claim succeeds.
-    assert_eq!(dominant_claimant(h.world_mut(), body), Some(harrow));
-    assert!(claim_paramountcy(h.world_mut(), harrow));
+    assert_eq!(dominant_claimant(h.world_mut(), body), Some(veyrin));
+    declare_claim(h.world_mut(), title_id, claimant).unwrap();
+    press_claim(h.world_mut(), title_id, claimant).unwrap();
 
     let world = h.world_mut();
     let index = world.resource::<PoliticsIndex>();
     let record = world.get::<TitleRecord>(index.titles[&title_id]).unwrap();
-    assert_eq!(record.holder, TitleHolder::Org(harrow));
-
-    // A second claim on the now-held title does nothing.
-    assert!(!claim_paramountcy(h.world_mut(), harrow));
+    assert_eq!(record.holder, TitleHolder::Character(claimant));
 }
 
 #[test]
-fn a_non_dominant_house_cannot_claim() {
+fn a_non_dominant_head_can_declare_but_cannot_press() {
     let mut h = scenario_host(3);
-    let veyrin = org(&mut h, "veyrin");
-    // Great houses are tied 5-5-5, so even a great house cannot claim.
-    assert!(!claim_paramountcy(h.world_mut(), veyrin));
+    let pell = org(&mut h, "pell");
+    let claimant = aeon_sim::access::org_head(h.world_mut(), pell).unwrap();
     let (title_id, _) = paramountcy(h.world_mut()).unwrap();
+    declare_claim(h.world_mut(), title_id, claimant).unwrap();
+    assert_eq!(
+        press_claim(h.world_mut(), title_id, claimant),
+        Err(ParamountClaimError::NotDominant)
+    );
     let world = h.world_mut();
     let index = world.resource::<PoliticsIndex>();
     assert_eq!(

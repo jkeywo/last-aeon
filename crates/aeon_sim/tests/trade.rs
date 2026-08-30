@@ -364,13 +364,23 @@ define_province(#{ id: "luna", body: "moon",
 
 define_house(#{
     id: "ash", tier: "great",
-    head: "aron-ash", color: [200, 60, 60], provinces: ["alpha", "luna"],
+    head: "aron-ash", color: [200, 60, 60], provinces: ["alpha"],
     wealth: 500, manpower: 5000, supplies: 800, legitimacy: 60,
+});
+define_house(#{
+    id: "birch", tier: "great",
+    head: "bela-birch", color: [60, 60, 200], provinces: ["luna"],
+    wealth: 400, manpower: 2000, supplies: 400, legitimacy: 50,
 });
 define_character(#{
     id: "aron-ash", gender: "male",
     birth_year: 370, organisation: "ash",
     skills: #{ command: 8, diplomacy: 12, intrigue: 4, stewardship: 7 },
+});
+define_character(#{
+    id: "bela-birch", gender: "female",
+    birth_year: 372, organisation: "birch",
+    skills: #{ command: 4, diplomacy: 9, intrigue: 8, stewardship: 5 },
 });
 
 // A transport to ply the route, and a patrol boat to blockade with.
@@ -449,6 +459,10 @@ fn a_blockade_cuts_the_line() {
     let route = grain_route(&mut h);
     aeon_sim::trade::set_route(h.world_mut(), hauler, route);
     assert!(!aeon_sim::trade::body_in_want(h.world_mut(), moon));
+    let ash = org(&mut h, "ash");
+    let birch = org(&mut h, "birch");
+    let war = aeon_sim::wars::declare_war(h.world_mut(), ash, birch, key("trade-war"))
+        .expect("fixture sides may declare war");
 
     // The picket blockades the delivery dock; the line is cut and the
     // want returns.
@@ -457,7 +471,10 @@ fn a_blockade_cuts_the_line() {
         h.world_mut()
             .get_mut::<aeon_sim::ShipRecord>(entity)
             .unwrap()
-            .blockading = Some(luna);
+            .blockading = Some(aeon_sim::forces::Blockade {
+            province: luna,
+            war,
+        });
     }
     assert!(
         aeon_sim::trade::body_in_want(h.world_mut(), moon),

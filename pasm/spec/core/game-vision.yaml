@@ -135,6 +135,27 @@ entities:
         - The contested title makes the struggle for the planet an immediate political problem rather than a distant expansion goal.
       references: [great-houses-contest-the-planet, legal-holdings-and-obligations, title-based-territorial-politics]
 
+  - decision: paramountcy-is-personally-claimed-by-independent-heads
+    core:
+      status: accepted
+      confidence: confirmed
+      title: The Paramountcy Is a Personal, Declared Claim
+      summary: >-
+        While the planetary paramount title is vacant, any living adult head
+        of an independent dynastic house may personally declare a claim,
+        however tenuous. A claim belongs to that head rather than their house:
+        death, replacement, submission to a liege, or renunciation ends it,
+        and an heir must declare anew. The successful claimant holds the title
+        personally; it is vacated rather than inherited when they die.
+      rationale:
+        - Explicit personal claims make the claimant field a set of characters who chose to enter the crisis, not a score that silently appoints houses.
+        - Requiring independence makes a paramount claim an assertion of sovereign authority while leaving every independent house free to attempt it.
+      references:
+        - planetary-paramount-title-is-contested
+        - organisation-head
+        - mvp-vassal-allegiance-and-independents
+        - title-based-territorial-politics
+
   - decision: planetary-succession-crisis-origin
     core:
       status: accepted
@@ -802,6 +823,28 @@ entities:
         - crates/aeon_sim/tests/warfare.rs
       status: declared
 
+  - component: formal-war-system
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Persistent Formal Wars
+      summary: >-
+        A formal war is an authoritative, occurrence-identified conflict
+        between two explicit organisation sides. It records its cause,
+        leaders, participating branches, adoption history, dates, and
+        conclusion; military operations bind to the exact active war whose
+        sides make their owner and target enemies. Raids remain possible
+        without formal war as deniable, operation-local hostility.
+      references:
+        - military-operation-system
+        - job-based-operational-warfare
+        - legal-holdings-and-obligations
+        - deterministic-campaign-simulation
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+
   - decision: job-based-operational-warfare
     core:
       status: accepted
@@ -1061,6 +1104,75 @@ entities:
       tests:
         - crates/aeon_sim/tests/assignments.rs
       status: declared
+
+  - component: situation-system
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Authored, Simulation-Fed Situation System
+      summary: >-
+        A Situation is a player-visible, authored wrapper around a continuing
+        political or strategic problem. A reusable definition may produce
+        zero, one, or many structurally identified instances; its script
+        declares triggers, stages, fixed presentation blocks, warnings,
+        actions, audiences, and ordered resolutions over live authoritative
+        facts. Situations explain and operate on existing systems without
+        replacing assignments, events, titles, obligations, wars, or their
+        underlying state.
+      references:
+        - job-result-event-system
+        - notable-result-message-log
+        - deterministic-campaign-simulation
+        - scripts-emit-validated-effects-only
+    architecture:
+      kind: presentation-and-information
+      classification: interface
+      authority: derived
+
+  - decision: situations-are-authored-shells-over-simulation-facts
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Situations Are Authored Shells over Simulation Facts
+      summary: >-
+        Situations are defined in Rhai and query deterministic, authoritative
+        facts through the same stable semantic world interface available to
+        other scripts. Content authors decide what facts activate an instance
+        and how it is presented; scripts never receive raw ECS reflection,
+        mutate state directly, or duplicate the progress tracked by
+        assignments, events, titles, obligations, appointments, or wars.
+      rationale:
+        - The authored shell makes important ongoing content visible and
+          comprehensible rather than allowing it to disappear into the log.
+        - Deriving tracker values from existing facts preserves one source of
+          truth, deterministic replay, and the scripted command boundary.
+      references:
+        - situation-system
+        - scripted-content-with-ci-validation
+        - deterministic-seed-and-command-replay
+        - scripts-emit-validated-effects-only
+
+  - decision: formal-wars-use-the-situation-surface
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Formal Wars Are Presented as Situations
+      summary: >-
+        Each active formal war creates one public instance of the reusable
+        Formal War Situation. That instance is the sole full player-facing
+        war surface: it explains both sides and operations, launches eligible
+        war assignments, raises warnings, links permanent history, and leaves
+        a dismissible conclusion when the war ends. Map and organisation
+        views may show compact war links, but there is no parallel war panel
+        or inspector.
+      rationale:
+        - Formal wars are long-running, multi-party conflicts with stages, actions, warnings, and conclusions, which is exactly the Situation abstraction.
+        - One surface prevents an authoritative war ledger and a separate client-specific war model from drifting apart.
+      references:
+        - formal-war-system
+        - situation-system
+        - situations-are-authored-shells-over-simulation-facts
+        - notable-result-message-log
 
   - decision: result-level-popups
     core:

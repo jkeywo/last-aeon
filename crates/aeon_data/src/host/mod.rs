@@ -146,6 +146,7 @@ pub fn load_content(
         events: builder.events,
         plans: builder.plans,
         goals: builder.goals,
+        situations: builder.situations,
         scenario: builder.scenario,
         asts,
         content_hash: content_hash(&sources),
@@ -196,6 +197,35 @@ impl ScriptHost {
         }
     }
 
+    /// Calls a retained named function with a read-only context.
+    ///
+    /// This is the common pure-script seam used by typed callers. It does
+    /// not interpret the return value: effects, Situation bindings, fixed
+    /// presentation blocks, and outcome predicates each validate their own
+    /// vocabulary after the sandboxed call completes.
+    pub fn call_dynamic_fn(
+        &self,
+        set: &ContentSet,
+        fn_ref: &ScriptFnRef,
+        context: Map,
+    ) -> Result<Dynamic, ScriptError> {
+        let ast = set
+            .asts
+            .get(&fn_ref.path)
+            .ok_or_else(|| ScriptError::UnknownFile {
+                path: fn_ref.path.clone(),
+            })?;
+        // The shared seam calls a retained function without re-running the
+        // file's top level, which ran once at load time.
+        vellum_script::call_fn(&self.engine, ast, &fn_ref.path, &fn_ref.name, context).map_err(
+            |err| match err {
+                vellum_script::CallError::Runtime { path, message } => {
+                    ScriptError::Runtime { path, message }
+                }
+            },
+        )
+    }
+
     /// Calls a named effect function with a read-only context, returning
     /// its validated effects.
     ///
@@ -211,21 +241,7 @@ impl ScriptHost {
         fn_ref: &ScriptFnRef,
         context: Map,
     ) -> Result<Vec<ScriptEffect>, ScriptError> {
-        let ast = set
-            .asts
-            .get(&fn_ref.path)
-            .ok_or_else(|| ScriptError::UnknownFile {
-                path: fn_ref.path.clone(),
-            })?;
-        // The shared seam calls a retained function without re-running the
-        // file's top level, which ran once at load time.
-        let result: Dynamic =
-            vellum_script::call_fn(&self.engine, ast, &fn_ref.path, &fn_ref.name, context)
-                .map_err(|err| match err {
-                    vellum_script::CallError::Runtime { path, message } => {
-                        ScriptError::Runtime { path, message }
-                    }
-                })?;
+        let result = self.call_dynamic_fn(set, fn_ref, context)?;
         parse_effects(result).map_err(|source| ScriptError::BadEffects {
             path: fn_ref.path.clone(),
             source,

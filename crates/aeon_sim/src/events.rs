@@ -366,6 +366,7 @@ fn fire(world: &mut World, key: &ContentKey, subject: EventSubject) {
                 .map(|choice| (choice.id.clone(), choice.label.clone()))
                 .collect(),
             roles: roles.clone(),
+            origin_situation: None,
         });
     }
 

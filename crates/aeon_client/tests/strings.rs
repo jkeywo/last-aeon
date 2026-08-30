@@ -215,6 +215,7 @@ fn no_row_in_the_table_goes_unread() {
     named.absorb(key_shaped_literals(&data_src()));
     named.exact.extend(aeon_data::text_keys(&shipped_content()));
     named.exact.extend(message_keys_in_content());
+    named.exact.extend(label_keys_in_content());
 
     let orphans: Vec<&str> = strings
         .0
@@ -303,6 +304,27 @@ fn message_keys_in_content() -> BTreeSet<String> {
     let mut found = BTreeSet::new();
     for source in sources {
         for piece in source.source.split("message_key:").skip(1) {
+            if let Some(open) = piece.find('"')
+                && let Some(close) = piece[open + 1..].find('"')
+            {
+                found.insert(piece[open + 1..open + 1 + close].to_owned());
+            }
+        }
+    }
+    found
+}
+
+/// Rows named by generic projection blocks rather than definition IDs.
+///
+/// Situation metrics are intentionally an open vocabulary. Their
+/// `label_key` values therefore live in Rhai projection data and cannot be
+/// derived by [`aeon_data::text_keys`], just like effect message keys.
+fn label_keys_in_content() -> BTreeSet<String> {
+    let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/content");
+    let sources = aeon_data::fs::read_content_dir(&root).expect("content directory readable");
+    let mut found = BTreeSet::new();
+    for source in sources {
+        for piece in source.source.split("label_key:").skip(1) {
             if let Some(open) = piece.find('"')
                 && let Some(close) = piece[open + 1..].find('"')
             {

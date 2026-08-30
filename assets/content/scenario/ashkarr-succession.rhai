@@ -12,6 +12,7 @@ define_scenario(#{
     id: "ashkarr-succession",
     start_year: 411, start_month: 1, start_day: 1,
     player_house: "harrow",
+    situations: ["formal-war"],
 });
 
 define_name_pool(#{
@@ -143,12 +144,14 @@ define_organisation(#{
 define_title(#{
     id: "paramountcy-of-ashkarr",
     kind: "paramount", body: "ashkarr",
+    situations: ["planetary-succession"],
     // Vacant and contested: the last paramount died without an heir, and
     // no great house yet holds more of the planet than its rivals.
 });
 define_title(#{
     id: "consul-of-the-sector",
     kind: "consul", holder_character: "consul-aurelia-veth",
+    situations: ["consular-vacancy"],
 });
 define_office(#{
     id: "starbase-commander",
@@ -595,6 +598,7 @@ define_army(#{
 define_obligation(#{
     id: "harrow-owes-veyrin",
     kind: "favour", debtor: "harrow", creditor: "veyrin", weight: 30,
+    situations: ["favour-debt"],
     origin: "Veyrin gold paid the Harrow levies through the last dearth",
 });
 define_obligation(#{

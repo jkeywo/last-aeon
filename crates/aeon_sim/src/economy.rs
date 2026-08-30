@@ -59,7 +59,14 @@ pub fn effective_legitimacy(world: &World, org: OrgId) -> i32 {
         .unwrap_or(0);
     let holds_paramountcy = index.titles.values().any(|entity| {
         world.get::<TitleRecord>(*entity).is_some_and(|t| {
-            matches!(t.kind, TitleKind::Paramount(_)) && t.holder == TitleHolder::Org(org)
+            matches!(t.kind, TitleKind::Paramount(_))
+                && match t.holder {
+                    TitleHolder::Org(holder) => holder == org,
+                    TitleHolder::Character(holder) => {
+                        crate::access::organisation_of(world, holder) == Some(org)
+                    }
+                    TitleHolder::Vacant => false,
+                }
         })
     });
     let bonus = if holds_paramountcy {
@@ -105,7 +112,9 @@ pub fn monthly_economy(world: &mut World) {
                     forces.ships.values().any(|ship_entity| {
                         world
                             .get::<crate::forces::ShipRecord>(*ship_entity)
-                            .is_some_and(|ship| ship.blockading == Some(province))
+                            .is_some_and(|ship| {
+                                crate::warfare::active_blockade_at(world, ship, province)
+                            })
                     })
                 });
             // A province yields in proportion to its order: a compliant

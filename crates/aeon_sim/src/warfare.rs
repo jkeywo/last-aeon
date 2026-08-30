@@ -21,8 +21,8 @@ use crate::assignments::{
     ActiveAssignment, AssignmentTarget, AssignmentsIndex, LogChannel, LogEntry,
 };
 use crate::clock::{CampaignClock, DailyTick, TickSet};
-use crate::forces::{ArmyRecord, ForcesIndex, ShipRecord};
-use crate::ids::{ArmyId, OrgId, ProvinceId};
+use crate::forces::{ArmyRecord, Blockade, ForcesIndex, ShipLocation, ShipRecord};
+use crate::ids::{ArmyId, OrgId, ProvinceId, WarId};
 use crate::politics::{PoliticsIndex, TitleHolder, TitleKind, TitleRecord};
 use crate::state::ContentDb;
 use crate::text::TextDb;
@@ -83,9 +83,73 @@ pub fn province_holder(world: &World, province: ProvinceId) -> Option<OrgId> {
     }
 }
 
+/// Whether a ship is maintaining an active, exactly war-bound blockade of
+/// `province` against its current holder.
+pub fn active_blockade_at(world: &World, ship: &ShipRecord, province: ProvinceId) -> bool {
+    let Some(blockade) = ship.blockading else {
+        return false;
+    };
+    blockade.province == province
+        && ship.location == ShipLocation::Docked(province)
+        && province_holder(world, province)
+            .is_some_and(|holder| crate::wars::opposed_in(world, blockade.war, ship.owner, holder))
+}
+
+/// Hostile manpower in a province and the owner of its strongest hostile
+/// army (lowest stable army ID on ties).
+///
+/// Unlike [`crate::forces::garrison_in`], this deliberately filters before
+/// choosing the strongest army. A large friendly or peaceful force therefore
+/// cannot hide a smaller army that is an enemy in a live formal war.
+pub fn hostile_garrison_in(
+    world: &World,
+    province: ProvinceId,
+    defender: OrgId,
+) -> (i64, Option<OrgId>) {
+    let Some(forces) = world.get_resource::<ForcesIndex>() else {
+        return (0, None);
+    };
+    let mut total = 0;
+    let mut strongest: Option<(i64, OrgId)> = None;
+    for entity in forces.armies.values() {
+        let Some(army) = world.get::<ArmyRecord>(*entity) else {
+            continue;
+        };
+        if army.location != province
+            || crate::wars::active_war_between(world, army.owner, defender).is_none()
+        {
+            continue;
+        }
+        total += army.manpower;
+        if strongest.is_none_or(|(men, _)| army.manpower > men) {
+            strongest = Some((army.manpower, army.owner));
+        }
+    }
+    (total, strongest.map(|(_, owner)| owner))
+}
+
+fn owned_army_entity(world: &World, owner: OrgId, army: ArmyId) -> Option<bevy::prelude::Entity> {
+    let entity = crate::access::army_entity(world, army)?;
+    (world.get::<ArmyRecord>(entity)?.owner == owner).then_some(entity)
+}
+
+fn owned_ship_entity(
+    world: &World,
+    owner: OrgId,
+    ship: crate::ids::ShipId,
+) -> Option<bevy::prelude::Entity> {
+    let entity = crate::access::ship_entity(world, ship)?;
+    (world.get::<ShipRecord>(entity)?.owner == owner).then_some(entity)
+}
+
 /// The defending army in a province: the largest garrison belonging to
 /// the province holder (lowest ID on ties).
-fn defending_army(world: &World, province: ProvinceId, attacker: OrgId) -> Option<ArmyId> {
+fn defending_army(
+    world: &World,
+    province: ProvinceId,
+    attacker: OrgId,
+    war: Option<WarId>,
+) -> Option<ArmyId> {
     let holder = province_holder(world, province)?;
     if holder == attacker {
         return None;
@@ -96,7 +160,11 @@ fn defending_army(world: &World, province: ProvinceId, attacker: OrgId) -> Optio
         .iter()
         .filter_map(|(id, entity)| {
             let army = world.get::<ArmyRecord>(*entity)?;
-            (army.owner == holder && army.location == province).then_some((-(army.manpower), *id))
+            let defends = match war {
+                Some(war) => crate::wars::opposed_in(world, war, attacker, army.owner),
+                None => army.owner == holder,
+            };
+            (defends && army.location == province).then_some((-(army.manpower), *id))
         })
         .min()
         .map(|(_, id)| id)
@@ -259,50 +327,77 @@ fn log(world: &mut World, org: OrgId, text: String) {
     );
 }
 
+fn log_operation(world: &mut World, assignment: &ActiveAssignment, text: String) {
+    let entry = crate::assignments::assignment_log_entry(
+        world,
+        assignment,
+        LogEntry::line(text, LogChannel::Military).by(Some(assignment.owner)),
+    );
+    crate::access::log(world, entry);
+}
+
 /// Applies a military operation when its assignment succeeds. Returns `false`
 /// when the operation was defeated (the assignment reports failure instead).
 pub fn apply_military_op(world: &mut World, op: MilitaryOp, assignment: &ActiveAssignment) -> bool {
     let date = world.resource::<CampaignClock>().date;
     match (op, assignment.target) {
         (MilitaryOp::Move, AssignmentTarget::ArmyToProvince(army, destination)) => {
-            if let Some(entity) = crate::access::army_entity(world, army)
-                && let Some(mut record) = world.get_mut::<ArmyRecord>(entity)
-            {
-                record.location = destination;
-            }
+            let Some(entity) = owned_army_entity(world, assignment.owner, army) else {
+                return false;
+            };
+            let Some(mut record) = world.get_mut::<ArmyRecord>(entity) else {
+                return false;
+            };
+            record.location = destination;
             true
         }
         (MilitaryOp::Resupply, AssignmentTarget::OwnArmy(army)) => {
-            if let Some(entity) = crate::access::army_entity(world, army) {
-                let need = {
-                    let record = world.get::<ArmyRecord>(entity);
-                    record.map(|a| (1 + a.manpower / 1000) * 6).unwrap_or(0)
-                };
-                let org_entity =
-                    crate::access::org_entity(world, assignment.owner).expect("indexed");
-                let drawn = world
-                    .get_mut::<crate::economy::OrgResources>(org_entity)
-                    .map(|mut r| {
-                        let drawn = need.min(r.supplies);
-                        r.supplies -= drawn;
-                        drawn
-                    })
-                    .unwrap_or(0);
-                if let Some(mut record) = world.get_mut::<ArmyRecord>(entity) {
-                    record.supplies += drawn;
-                }
-            }
+            let Some(entity) = owned_army_entity(world, assignment.owner, army) else {
+                return false;
+            };
+            let need = world
+                .get::<ArmyRecord>(entity)
+                .map(|army| (1 + army.manpower / 1000) * 6)
+                .unwrap_or(0);
+            let Some(org_entity) = crate::access::org_entity(world, assignment.owner) else {
+                return false;
+            };
+            let drawn = world
+                .get_mut::<crate::economy::OrgResources>(org_entity)
+                .map(|mut resources| {
+                    let drawn = need.min(resources.supplies);
+                    resources.supplies -= drawn;
+                    drawn
+                })
+                .unwrap_or(0);
+            let Some(mut record) = world.get_mut::<ArmyRecord>(entity) else {
+                return false;
+            };
+            record.supplies += drawn;
             true
         }
-        (MilitaryOp::Patrol, AssignmentTarget::OwnArmy(_)) => true,
+        (MilitaryOp::Patrol, AssignmentTarget::OwnArmy(army)) => {
+            owned_army_entity(world, assignment.owner, army).is_some()
+        }
         (MilitaryOp::Besiege, AssignmentTarget::ArmyToProvince(army, target)) => {
-            // March to the walls; a defending garrison must be beaten first.
-            if let Some(entity) = crate::access::army_entity(world, army)
-                && let Some(mut record) = world.get_mut::<ArmyRecord>(entity)
-            {
-                record.location = target;
+            let Some(army_entity) = owned_army_entity(world, assignment.owner, army) else {
+                return false;
+            };
+            let Some(war) = assignment.war else {
+                return false;
+            };
+            let Some(holder) = province_holder(world, target) else {
+                return false;
+            };
+            if !crate::wars::opposed_in(world, war, assignment.owner, holder) {
+                return false;
             }
-            if let Some(defender) = defending_army(world, target, assignment.owner) {
+            // March to the walls; a defending garrison must be beaten first.
+            let Some(mut record) = world.get_mut::<ArmyRecord>(army_entity) else {
+                return false;
+            };
+            record.location = target;
+            if let Some(defender) = defending_army(world, target, assignment.owner, Some(war)) {
                 let engagement = resolve_engagement(world, army, defender, date);
                 if !engagement.attacker_won {
                     return false;
@@ -325,15 +420,19 @@ pub fn apply_military_op(world: &mut World, op: MilitaryOp, assignment: &ActiveA
                 let line = world
                     .resource::<TextDb>()
                     .format("sim.warfare.fallen-to-siege", &[("place", &name)]);
-                log(world, assignment.owner, line);
+                log_operation(world, assignment, line);
             }
             // Conquest breeds resentment: the province starts its new
             // allegiance badly out of order.
             crate::order::reset_order(world, target, crate::order::ORDER_AFTER_CONQUEST);
+            prune_stale_blockades(world);
             true
         }
         (MilitaryOp::Raid, AssignmentTarget::ArmyToProvince(army, target)) => {
-            if let Some(defender) = defending_army(world, target, assignment.owner) {
+            if owned_army_entity(world, assignment.owner, army).is_none() {
+                return false;
+            }
+            if let Some(defender) = defending_army(world, target, assignment.owner, None) {
                 let engagement = resolve_engagement(world, army, defender, date);
                 if !engagement.attacker_won {
                     return false;
@@ -363,30 +462,46 @@ pub fn apply_military_op(world: &mut World, op: MilitaryOp, assignment: &ActiveA
             true
         }
         (MilitaryOp::Blockade, AssignmentTarget::ShipToProvince(ship, target)) => {
-            let Some(entity) = crate::access::ship_entity(world, ship) else {
+            let Some(war) = assignment.war else {
                 return false;
             };
-            // A ship without an officer aboard cannot hold a station.
-            let captain = world.get::<ShipRecord>(entity).and_then(|s| s.captain);
-            let Some(captain) = captain else {
+            let Some(holder) = province_holder(world, target) else {
                 return false;
             };
+            if !crate::wars::opposed_in(world, war, assignment.owner, holder) {
+                return false;
+            }
+            let Some(entity) = owned_ship_entity(world, assignment.owner, ship) else {
+                return false;
+            };
+            // The officer who accepted the operation must still command the
+            // exact ship when it reaches station. A replacement cannot inherit
+            // another character's completed assignment.
+            let captain = world
+                .get::<ShipRecord>(entity)
+                .and_then(|ship| ship.captain);
+            if captain != Some(assignment.leader) {
+                return false;
+            }
             if let Some(mut record) = world.get_mut::<ShipRecord>(entity) {
                 record.location = crate::forces::ShipLocation::Docked(target);
-                record.blockading = Some(target);
+                record.blockading = Some(Blockade {
+                    province: target,
+                    war,
+                });
             }
             // A blockade is only as tight as the officer keeping it. The
             // captain's command decides how hard the province feels it.
             let command = crate::forecast::governing_skill(
                 world,
-                captain,
+                assignment.leader,
                 aeon_data::model::GoverningSkill::Command,
             );
             let bite = BLOCKADE_ORDER_LOSS + command.clamp(0, 20);
             crate::order::adjust_order(world, target, -bite);
             true
         }
-        _ => true,
+        _ => false,
     }
 }
 
@@ -418,14 +533,46 @@ pub fn threatened_holdings(world: &World, owner: OrgId) -> Vec<ProvinceId> {
             let Some(def) = content.assignments.get(&assignment.def) else {
                 continue;
             };
-            if let (
-                Some(MilitaryOp::Besiege | MilitaryOp::Raid),
-                AssignmentTarget::ArmyToProvince(_, target),
-            ) = (def.military_op, assignment.target)
+            let target = match (def.military_op, assignment.target) {
+                (
+                    Some(MilitaryOp::Besiege | MilitaryOp::Raid),
+                    AssignmentTarget::ArmyToProvince(_, target),
+                ) => Some((target, def.military_op == Some(MilitaryOp::Raid))),
+                (Some(MilitaryOp::Blockade), AssignmentTarget::ShipToProvince(ship, target)) => {
+                    owned_ship_entity(world, assignment.owner, ship)
+                        .and_then(|entity| world.get::<ShipRecord>(entity))
+                        .is_some_and(|ship| ship.captain == Some(assignment.leader))
+                        .then_some((target, false))
+                }
+                _ => None,
+            };
+            if let Some((target, deniable)) = target
                 && held.contains(&target)
+                && (deniable
+                    || assignment.war.is_some_and(|war| {
+                        province_holder(world, target).is_some_and(|holder| {
+                            crate::wars::opposed_in(world, war, assignment.owner, holder)
+                        })
+                    }))
                 && !threatened.contains(&target)
             {
                 threatened.push(target);
+            }
+        }
+    }
+    if let Some(forces) = world.get_resource::<ForcesIndex>() {
+        for entity in forces.ships.values() {
+            let Some(ship) = world.get::<ShipRecord>(*entity) else {
+                continue;
+            };
+            let Some(blockade) = ship.blockading else {
+                continue;
+            };
+            if held.contains(&blockade.province)
+                && active_blockade_at(world, ship, blockade.province)
+                && !threatened.contains(&blockade.province)
+            {
+                threatened.push(blockade.province);
             }
         }
     }
@@ -550,14 +697,37 @@ fn standing_target(
 
 /// Whether a force belonging to anyone but `owner` stands in `province`.
 fn hostile_force_in(world: &World, owner: OrgId, province: ProvinceId) -> bool {
-    let Some(forces) = world.get_resource::<ForcesIndex>() else {
-        return false;
-    };
-    forces.armies.values().any(|entity| {
-        world
-            .get::<ArmyRecord>(*entity)
-            .is_some_and(|army| army.location == province && army.owner != owner)
-    })
+    hostile_garrison_in(world, province, owner).0 > 0
+}
+
+/// Removes blockade markers that no longer describe an effective blockade.
+///
+/// In particular, a title transfer can put ship and holder on the same side
+/// while the exact war continues. Keeping that marker would let a later title
+/// transfer silently reactivate an old blockade, so stale state is erased.
+pub fn prune_stale_blockades(world: &mut World) {
+    let stale: Vec<_> = world
+        .get_resource::<ForcesIndex>()
+        .map(|forces| {
+            forces
+                .ships
+                .values()
+                .copied()
+                .filter(|entity| {
+                    world.get::<ShipRecord>(*entity).is_some_and(|ship| {
+                        ship.blockading.is_some_and(|blockade| {
+                            !active_blockade_at(world, ship, blockade.province)
+                        })
+                    })
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    for entity in stale {
+        if let Some(mut ship) = world.get_mut::<ShipRecord>(entity) {
+            ship.blockading = None;
+        }
+    }
 }
 
 pub(crate) fn install(app: &mut App) {
@@ -566,6 +736,12 @@ pub(crate) fn install(app: &mut App) {
         standing_orders
             .in_set(TickSet::Simulation)
             .after(crate::assignments::resolve_due_assignments),
+    );
+    app.add_systems(
+        DailyTick,
+        prune_stale_blockades
+            .in_set(TickSet::Cleanup)
+            .after(crate::wars::collapse_invalid_wars),
     );
 }
 

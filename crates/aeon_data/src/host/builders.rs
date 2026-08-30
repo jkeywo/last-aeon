@@ -24,8 +24,9 @@ use crate::model::{
     HolderRelation, HouseTier, MilitaryOp, NamePoolDef, ObligationDef, ObligationKind, OfficeDef,
     OrgDef, OrgKind, OutcomeDef, OutcomeKind, PlanArmySelector, PlanDef, PlanMethodDef,
     PlanRequires, PlanStepAction, PlanStepDef, PlanTargetSelector, PopupChoiceDef, ProvinceDef,
-    RiskTag, ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SkillsDef, StageDef, TitleDef,
-    TitleHolderDef, TitleKindDef, TitleNeed, TraitDef, Urgency,
+    RiskTag, ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SituationActionDef, SituationDef,
+    SituationOutcomeDef, SituationStageDef, SituationSubjectKind, SituationVisibilityDef,
+    SkillsDef, StageDef, TitleDef, TitleHolderDef, TitleKindDef, TitleNeed, TraitDef, Urgency,
 };
 use crate::report::{ContentReport, Severity};
 
@@ -51,6 +52,7 @@ pub(super) struct BuilderState {
     pub(super) events: BTreeMap<ContentKey, EventDef>,
     pub(super) plans: BTreeMap<ContentKey, PlanDef>,
     pub(super) goals: BTreeMap<ContentKey, GoalDef>,
+    pub(super) situations: BTreeMap<ContentKey, SituationDef>,
     pub(super) scenario: Option<ScenarioDef>,
 }
 
@@ -82,6 +84,7 @@ impl BuilderState {
             events: std::mem::take(&mut self.events),
             plans: std::mem::take(&mut self.plans),
             goals: std::mem::take(&mut self.goals),
+            situations: std::mem::take(&mut self.situations),
             scenario: self.scenario.take(),
         }
     }
@@ -548,6 +551,9 @@ fn define_assignment(state: &mut BuilderState, map: Map) {
     ) else {
         return;
     };
+    let Some(guaranteed) = f.opt_bool("guaranteed", false) else {
+        return;
+    };
     let Some(duration_days) = f.req_int("duration_days") else {
         return;
     };
@@ -582,6 +588,8 @@ fn define_assignment(state: &mut BuilderState, map: Map) {
             ("character", AssignmentTargetKind::Character),
             ("organisation", AssignmentTargetKind::Organisation),
             ("province", AssignmentTargetKind::Province),
+            ("war", AssignmentTargetKind::War),
+            ("war-side", AssignmentTargetKind::WarSide),
             ("own-army", AssignmentTargetKind::OwnArmy),
             (
                 "own-army-and-province",
@@ -709,6 +717,7 @@ fn define_assignment(state: &mut BuilderState, map: Map) {
             title,
             summary,
             category,
+            guaranteed,
             duration_days: duration_days as u32,
             skill,
             difficulty: difficulty as i32,
@@ -1259,6 +1268,269 @@ fn define_province(state: &mut BuilderState, map: Map) {
     );
 }
 
+fn situation_subject_kind(raw: &str) -> Option<SituationSubjectKind> {
+    match raw {
+        "scenario" => Some(SituationSubjectKind::Scenario),
+        "body" => Some(SituationSubjectKind::Body),
+        "province" => Some(SituationSubjectKind::Province),
+        "character" => Some(SituationSubjectKind::Character),
+        "organisation" => Some(SituationSubjectKind::Organisation),
+        "title" => Some(SituationSubjectKind::Title),
+        "office" => Some(SituationSubjectKind::Office),
+        "army" => Some(SituationSubjectKind::Army),
+        "ship" => Some(SituationSubjectKind::Ship),
+        "assignment" => Some(SituationSubjectKind::Assignment),
+        "obligation" => Some(SituationSubjectKind::Obligation),
+        "war" => Some(SituationSubjectKind::War),
+        _ => None,
+    }
+}
+
+fn situation_bindings(f: &mut Fields<'_>) -> Option<BTreeMap<String, SituationSubjectKind>> {
+    let Some(raw) = f.take_raw("bindings") else {
+        return Some(BTreeMap::new());
+    };
+    let Some(map) = raw.try_cast::<Map>() else {
+        f.error("field 'bindings' must be a map from binding names to subject kinds");
+        return None;
+    };
+    let mut bindings = BTreeMap::new();
+    for (name, value) in map {
+        let name = name.to_string();
+        if ContentKey::new(&name).is_err() {
+            f.error(format!(
+                "Situation binding '{name}' must be a kebab-case identifier"
+            ));
+            return None;
+        }
+        let Ok(raw_kind) = value.into_string() else {
+            f.error(format!(
+                "Situation binding '{name}' must name a subject kind"
+            ));
+            return None;
+        };
+        let Some(kind) = situation_subject_kind(&raw_kind) else {
+            f.error(format!(
+                "unknown Situation subject kind '{raw_kind}' for binding '{name}'"
+            ));
+            return None;
+        };
+        bindings.insert(name, kind);
+    }
+    Some(bindings)
+}
+
+fn situation_visibility(f: &mut Fields<'_>) -> Option<SituationVisibilityDef> {
+    let Some(raw) = f.take_raw("audience") else {
+        return Some(SituationVisibilityDef::Public);
+    };
+    let Some(array) = raw.try_cast::<rhai::Array>() else {
+        f.error("field 'audience' must be an array of binding names");
+        return None;
+    };
+    let mut bindings = Vec::with_capacity(array.len());
+    for value in array {
+        let Ok(binding) = value.into_string() else {
+            f.error("field 'audience' entries must be binding-name strings");
+            return None;
+        };
+        bindings.push(binding);
+    }
+    Some(SituationVisibilityDef::Bound(bindings))
+}
+
+fn situation_stages(f: &mut Fields<'_>) -> Option<Vec<SituationStageDef>> {
+    let keys = f.key_list("stages")?;
+    Some(
+        keys.into_iter()
+            .map(|key| SituationStageDef {
+                key,
+                title: String::new(),
+                summary: String::new(),
+                warning: None,
+            })
+            .collect(),
+    )
+}
+
+fn situation_actions(f: &mut Fields<'_>) -> Option<Vec<SituationActionDef>> {
+    let Some(raw) = f.take_raw("actions") else {
+        return Some(Vec::new());
+    };
+    let Some(array) = raw.try_cast::<rhai::Array>() else {
+        f.error("field 'actions' must be an array of maps");
+        return None;
+    };
+    let definition = f.key_str();
+    let mut actions = Vec::with_capacity(array.len());
+    for value in array {
+        let Some(map) = value.try_cast::<Map>() else {
+            f.error("field 'actions' entries must be maps");
+            return None;
+        };
+        warn_unknown_fields(
+            f.state,
+            &map,
+            Some(&definition),
+            &["id", "assignment", "label"],
+        );
+        reject_authored_text(f.state, &definition, &map, "label");
+        let raw_id = req_str(f.state, Some(&definition), &map, "id")?;
+        let id = match ContentKey::new(&raw_id) {
+            Ok(id) => id,
+            Err(error) => {
+                f.error(format!("action id '{raw_id}': {error}"));
+                return None;
+            }
+        };
+        let raw_assignment = req_str(f.state, Some(&definition), &map, "assignment")?;
+        let assignment = match ContentKey::new(&raw_assignment) {
+            Ok(assignment) => assignment,
+            Err(error) => {
+                f.error(format!("action '{id}' assignment: {error}"));
+                return None;
+            }
+        };
+        actions.push(SituationActionDef {
+            key: id,
+            assignment,
+            label: String::new(),
+        });
+    }
+    Some(actions)
+}
+
+fn situation_outcomes(f: &mut Fields<'_>) -> Option<Vec<SituationOutcomeDef>> {
+    let Some(raw) = f.take_raw("outcomes") else {
+        return Some(Vec::new());
+    };
+    let Some(array) = raw.try_cast::<rhai::Array>() else {
+        f.error("field 'outcomes' must be an array of maps");
+        return None;
+    };
+    let definition = f.key_str();
+    let path = f.state.current_path.clone();
+    let mut outcomes = Vec::with_capacity(array.len());
+    for value in array {
+        let Some(map) = value.try_cast::<Map>() else {
+            f.error("field 'outcomes' entries must be maps");
+            return None;
+        };
+        warn_unknown_fields(
+            f.state,
+            &map,
+            Some(&definition),
+            &["id", "when_fn", "fallback", "text"],
+        );
+        reject_authored_text(f.state, &definition, &map, "text");
+        let raw_id = req_str(f.state, Some(&definition), &map, "id")?;
+        let id = match ContentKey::new(&raw_id) {
+            Ok(id) => id,
+            Err(error) => {
+                f.error(format!("outcome id '{raw_id}': {error}"));
+                return None;
+            }
+        };
+        let when_fn = opt_str(f.state, Some(&definition), &map, "when_fn")?;
+        let fallback = opt_bool(f.state, Some(&definition), &map, "fallback", false)?;
+        let predicate_fn = match (when_fn, fallback) {
+            (Some(_), true) => {
+                f.error(format!(
+                    "outcome '{id}' must declare either when_fn or fallback, not both"
+                ));
+                return None;
+            }
+            (None, false) => {
+                f.error(format!(
+                    "outcome '{id}' must declare when_fn or fallback: true"
+                ));
+                return None;
+            }
+            (Some(name), false) => Some(ScriptFnRef {
+                path: path.clone(),
+                name,
+            }),
+            (None, true) => None,
+        };
+        outcomes.push(SituationOutcomeDef {
+            key: id,
+            predicate_fn,
+            text: String::new(),
+        });
+    }
+    Some(outcomes)
+}
+
+fn define_situation(state: &mut BuilderState, map: Map) {
+    let Some(mut f) = Fields::begin(state, map) else {
+        return;
+    };
+    let title = f.moved_to_table("title", "situation");
+    let summary = f.moved_to_table("summary", "situation");
+    let Some(source) = f.req_str("source") else {
+        return;
+    };
+    let Some(source) = situation_subject_kind(&source) else {
+        f.error(format!("unknown Situation source kind '{source}'"));
+        return;
+    };
+    let (Some(bindings), Some(trigger_name), Some(projection_name)) = (
+        situation_bindings(&mut f),
+        f.req_str("trigger_fn"),
+        f.req_str("projection_fn"),
+    ) else {
+        return;
+    };
+    let (Some(priority), Some(log_activation), Some(visibility)) = (
+        f.opt_int("priority", 0),
+        f.opt_bool("log_activation", false),
+        situation_visibility(&mut f),
+    ) else {
+        return;
+    };
+    let Ok(priority) = i32::try_from(priority) else {
+        f.error("field 'priority' must fit a signed 32-bit integer");
+        return;
+    };
+    let (Some(stages), Some(actions), Some(outcomes)) = (
+        situation_stages(&mut f),
+        situation_actions(&mut f),
+        situation_outcomes(&mut f),
+    ) else {
+        return;
+    };
+    let path = f.state.current_path.clone();
+    let (state, key) = f.finish();
+    if state.situations.contains_key(&key) {
+        state.error(Some(key.as_str()), "duplicate Situation id");
+        return;
+    }
+    state.situations.insert(
+        key.clone(),
+        SituationDef {
+            key,
+            title,
+            summary,
+            source,
+            bindings,
+            trigger_fn: ScriptFnRef {
+                path: path.clone(),
+                name: trigger_name,
+            },
+            projection_fn: ScriptFnRef {
+                path,
+                name: projection_name,
+            },
+            priority,
+            log_activation,
+            visibility,
+            stages,
+            actions,
+            outcomes,
+        },
+    );
+}
+
 fn define_scenario(state: &mut BuilderState, map: Map) {
     let Some(mut f) = Fields::begin(state, map) else {
         return;
@@ -1278,6 +1550,9 @@ fn define_scenario(state: &mut BuilderState, map: Map) {
     let Some(player_house) = f.opt_key("player_house") else {
         return;
     };
+    let Some(situations) = f.key_list("situations") else {
+        return;
+    };
     let (state, key) = f.finish();
     if state.scenario.is_some() {
         state.error(
@@ -1293,6 +1568,7 @@ fn define_scenario(state: &mut BuilderState, map: Map) {
         start_month: start_month as u8,
         start_day: start_day as u8,
         player_house,
+        situations,
     });
 }
 
@@ -1853,6 +2129,7 @@ fn define_plan(state: &mut BuilderState, map: Map) {
             ("none", AssignmentTargetKind::None),
             ("organisation", AssignmentTargetKind::Organisation),
             ("province", AssignmentTargetKind::Province),
+            ("war", AssignmentTargetKind::War),
         ],
         AssignmentTargetKind::None,
     ) else {
@@ -2044,10 +2321,14 @@ fn plan_step(f: &mut Fields, entry: rhai::Dynamic) -> Option<PlanStepDef> {
                 Some("plan") => PlanTargetSelector::PlanTarget,
                 Some("worst-holding") => PlanTargetSelector::WorstHolding,
                 Some("target-head") => PlanTargetSelector::TargetHead,
+                Some("lowest-enemy-province-in-war") => {
+                    PlanTargetSelector::LowestEnemyProvinceInWar
+                }
                 Some(other) => {
                     f.error(format!(
                         "unknown step target '{other}' \
-                         (expected none, plan, worst-holding, target-head)"
+                         (expected none, plan, worst-holding, target-head, \
+                         lowest-enemy-province-in-war)"
                     ));
                     return None;
                 }
@@ -2116,6 +2397,10 @@ fn plan_requires(f: &mut Fields, raw: rhai::Dynamic) -> Option<PlanRequires> {
             "has_army",
             "target_owes_favour",
             "dominant_claimant",
+            "has_paramount_claim",
+            "min_target_branch_manpower_permille",
+            "max_target_branch_manpower_permille",
+            "war_has_enemy_province",
         ],
     );
     let int = |name: &str| map.get(name).and_then(|v| v.as_int().ok());
@@ -2131,7 +2416,15 @@ fn plan_requires(f: &mut Fields, raw: rhai::Dynamic) -> Option<PlanRequires> {
         min_legitimacy: int("min_legitimacy").map(|v| v as i32),
         has_army: map.get("has_army").and_then(|v| v.as_bool().ok()),
         target_owes_favour: flag("target_owes_favour"),
-        dominant_claimant: flag("dominant_claimant"),
+        dominant_claimant: map.get("dominant_claimant").and_then(|v| v.as_bool().ok()),
+        has_paramount_claim: map
+            .get("has_paramount_claim")
+            .and_then(|v| v.as_bool().ok()),
+        min_target_branch_manpower_permille: int("min_target_branch_manpower_permille"),
+        max_target_branch_manpower_permille: int("max_target_branch_manpower_permille"),
+        war_has_enemy_province: map
+            .get("war_has_enemy_province")
+            .and_then(|v| v.as_bool().ok()),
     })
 }
 
@@ -2160,6 +2453,9 @@ fn define_goal(state: &mut BuilderState, map: Map) {
     };
     let title = f.moved_to_table("title", "goal");
     let summary = f.moved_to_table("summary", "goal");
+    let Some(priority) = f.opt_int("priority", 0) else {
+        return;
+    };
 
     let Some(favour_names) = f.string_list("favours") else {
         return;
@@ -2252,6 +2548,7 @@ fn define_goal(state: &mut BuilderState, map: Map) {
             title,
             summary,
             trigger,
+            priority,
             favours,
             favour_bonus,
             target,
@@ -2326,6 +2623,7 @@ fn goal_requires(f: &mut Fields, raw: rhai::Dynamic) -> Option<GoalRequires> {
             "dominant_claimant",
             "has_vassals",
             "is_vassal",
+            "can_claim_paramountcy",
         ],
     );
     let int = |name: &str| map.get(name).and_then(|v| v.as_int().ok());
@@ -2338,6 +2636,7 @@ fn goal_requires(f: &mut Fields, raw: rhai::Dynamic) -> Option<GoalRequires> {
         dominant_claimant: flag("dominant_claimant").unwrap_or(false),
         has_vassals: flag("has_vassals"),
         is_vassal: flag("is_vassal"),
+        can_claim_paramountcy: flag("can_claim_paramountcy").unwrap_or(false),
     })
 }
 
@@ -2383,6 +2682,9 @@ fn define_obligation(state: &mut BuilderState, map: Map) {
             }
         },
     };
+    let Some(situations) = f.key_list("situations") else {
+        return;
+    };
     let (state, key) = f.finish();
     if state.obligations.contains_key(&key) {
         state.error(Some(key.as_str()), "duplicate obligation id");
@@ -2398,6 +2700,7 @@ fn define_obligation(state: &mut BuilderState, map: Map) {
             origin,
             weight: weight.max(0) as i32,
             days,
+            situations,
         },
     );
 }
@@ -2442,6 +2745,9 @@ fn define_title(state: &mut BuilderState, map: Map) {
         (None, Some(character)) => TitleHolderDef::Character(character),
         (None, None) => TitleHolderDef::Vacant,
     };
+    let Some(situations) = f.key_list("situations") else {
+        return;
+    };
     let (state, key) = f.finish();
     if state.titles.contains_key(&key) {
         state.error(Some(key.as_str()), "duplicate title id");
@@ -2454,6 +2760,7 @@ fn define_title(state: &mut BuilderState, map: Map) {
             name,
             kind,
             holder,
+            situations,
         },
     );
 }
@@ -2516,6 +2823,7 @@ pub(super) fn loading_engine(state: Arc<Mutex<BuilderState>>) -> Engine {
     register!("define_good", define_good);
     register!("define_building", define_building);
     register!("define_province", define_province);
+    register!("define_situation", define_situation);
     register!("define_scenario", define_scenario);
     register!("define_trait", define_trait);
     register!("define_character", define_character);

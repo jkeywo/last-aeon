@@ -67,6 +67,8 @@ fn main() {
         .init_resource::<ui::picker::PickerState>()
         .init_resource::<ui::assignment_popup::AssignmentPopup>()
         .init_resource::<ui::dock::DockState>()
+        .init_resource::<ui::situations_panel::SituationPanelView>()
+        .init_resource::<ui::situations_panel::SituationUiState>()
         .init_resource::<loading::GameAssets>()
         .init_state::<title::Screen>()
         .init_resource::<title::TitleState>()
@@ -103,6 +105,7 @@ fn main() {
                 forecast_view::refresh_availability,
                 offer_view::refresh_offers,
                 forecast_view::refresh_forecast,
+                ui::situations_panel::refresh_situation_panel_view,
                 // The bake must observe the readout computed this frame.
                 (map_modes::refresh_map_readout, scene::refresh_globe_texture).chain(),
             )

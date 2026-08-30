@@ -250,9 +250,10 @@ fn validate_content(args: ValidateContentArgs) -> Result<ExitCode, String> {
     }
 
     println!(
-        "files: {}  assignments: {}  bodies: {}  provinces: {}  scenario: {}",
+        "files: {}  assignments: {}  situations: {}  bodies: {}  provinces: {}  scenario: {}",
         sources.len(),
         set.as_ref().map_or(0, |s| s.assignments.len()),
+        set.as_ref().map_or(0, |s| s.situations.len()),
         set.as_ref().map_or(0, |s| s.bodies.len()),
         set.as_ref().map_or(0, |s| s.provinces.len()),
         set.as_ref()
@@ -261,7 +262,26 @@ fn validate_content(args: ValidateContentArgs) -> Result<ExitCode, String> {
     );
     match set {
         Some(set) => {
-            println!("content-hash: {}", set.content_hash);
+            // Structural validation cannot exercise Situation trigger and
+            // projection functions because they query a live semantic world.
+            // Start the authored opening once so validate-content also fails
+            // on deterministic runtime errors before a player sees them.
+            let config = scenario_config(&set, 0, "content validation");
+            let content_hash = set.content_hash;
+            let mut host = SimHost::new_with_content(config, Arc::new(set));
+            let situation_errors = aeon_sim::situations::validate_opening(host.world_mut());
+            if !situation_errors.is_empty() {
+                for issue in situation_errors {
+                    eprintln!(
+                        "error: Situation '{}' failed in the opening campaign: {error}",
+                        issue.situation.definition,
+                        error = issue.error,
+                    );
+                }
+                return Ok(ExitCode::from(1));
+            }
+
+            println!("content-hash: {content_hash}");
             println!("content OK");
             Ok(ExitCode::SUCCESS)
         }

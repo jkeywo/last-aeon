@@ -170,6 +170,15 @@ pub fn draw_panel_icon(
             painter.circle_stroke(at(0.42, 0.42), r.width() * 0.3, stroke);
             line(at(0.64, 0.64), at(0.9, 0.9));
         }
+        // A warning pennant beside a continuing matter.
+        PanelKind::Situations => {
+            line(at(0.2, 0.1), at(0.2, 0.9));
+            painter.add(egui::Shape::convex_polygon(
+                vec![at(0.2, 0.12), at(0.88, 0.34), at(0.2, 0.56)],
+                colour,
+                egui::Stroke::NONE,
+            ));
+        }
         // Stacked rows: many things, listed.
         PanelKind::Listing => {
             for y in [0.2, 0.5, 0.8] {

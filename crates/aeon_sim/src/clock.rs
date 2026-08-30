@@ -23,6 +23,14 @@ pub struct MonthlyPulse;
 #[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
 pub struct YearlyPulse;
 
+/// Runs once after the day and every boundary pulse have fully settled.
+///
+/// Derived presentation systems use this schedule when they must observe
+/// the final authoritative state of the date rather than an intermediate
+/// point inside [`DailyTick`].
+#[derive(ScheduleLabel, Clone, Debug, PartialEq, Eq, Hash)]
+pub struct SettledDay;
+
 /// Fixed ordering of work within a [`DailyTick`].
 ///
 /// Explicit ordering is a determinism requirement, not a style preference:
@@ -52,6 +60,7 @@ pub(crate) fn install(app: &mut App) {
     app.add_schedule(Schedule::new(DailyTick));
     app.add_schedule(Schedule::new(MonthlyPulse));
     app.add_schedule(Schedule::new(YearlyPulse));
+    app.add_schedule(Schedule::new(SettledDay));
     app.configure_sets(
         DailyTick,
         (
@@ -84,4 +93,5 @@ pub fn advance_one_day(world: &mut World) {
     if new_date.is_year_start() {
         world.run_schedule(YearlyPulse);
     }
+    world.run_schedule(SettledDay);
 }

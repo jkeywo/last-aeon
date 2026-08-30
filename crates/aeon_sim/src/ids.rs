@@ -16,6 +16,7 @@ define_id_kind!(pub OfficeIdKind => "office");
 define_id_kind!(pub AssignmentIdKind => "assignment");
 define_id_kind!(pub ShipIdKind => "ship");
 define_id_kind!(pub ArmyIdKind => "army");
+define_id_kind!(pub WarIdKind => "war");
 
 /// Stable ID of a celestial body.
 pub type BodyId = Id<BodyIdKind>;
@@ -35,3 +36,5 @@ pub type AssignmentId = Id<AssignmentIdKind>;
 pub type ShipId = Id<ShipIdKind>;
 /// Stable ID of an army.
 pub type ArmyId = Id<ArmyIdKind>;
+/// Stable ID of one occurrence of a formal war.
+pub type WarId = Id<WarIdKind>;

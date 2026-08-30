@@ -242,7 +242,13 @@ entities:
     evidence:
       - kind: test
         reference: crates/aeon_sim/tests/warfare.rs
-        summary: Tests verify marches with road-time minimums, sieges that beat garrisons and transfer province titles, strong garrisons breaking weak sieges, raids moving wealth between organisations, blockades halving wealth output, standing orders creating reactive relief jobs that arrive in time to hold a province, HoldFast armies ignoring alarms, and full determinism with snapshot fidelity through battles.
+        summary: >-
+          At MVP completion tests verified marches with road-time minimums,
+          sieges and title transfer, raids, blockades, reactive relief
+          assignments, HoldFast, determinism, and snapshot fidelity. M2.5
+          retains those operation outcomes but supersedes generic siege and
+          blockade hostility with exact formal-war sides, while raids remain
+          deniable operation-local hostility.
 
   - milestone: mvp-authored-scenario
     core:
@@ -276,7 +282,15 @@ entities:
     evidence:
       - kind: test
         reference: crates/aeon_sim/tests/scenario.rs
-        summary: Tests verify the full authored field (14 organisations, all 41 provinces allocated exactly once, 6 ships, player House Harrow), the paramountcy starting vacant with the great houses tied five-five-five so none can claim, a dominant house successfully claiming, tithes moving a twentieth of each house's wealth to the Sanctora only, and a deterministic decade-long playthrough plus mid-campaign snapshot fidelity on the real repository content.
+        summary: >-
+          Tests verify the full authored field (14 organisations, all 41
+          provinces allocated exactly once, 6 ships, player House Harrow), the
+          vacant Paramountcy, direct great-house holdings of five-five-five,
+          Imperial tithes, and deterministic long-play snapshot fidelity. M2.5
+          preserves that authored opening but supersedes the old implicit
+          organisation claim: independent heads declare personally, and press
+          eligibility compares unequal whole realms including transitive
+          vassals.
 
   - milestone: mvp-acceptance-and-release
     core:

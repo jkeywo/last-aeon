@@ -138,7 +138,7 @@ fn is_blockaded(world: &World, province: ProvinceId) -> bool {
             forces.ships.values().any(|entity| {
                 world
                     .get::<crate::forces::ShipRecord>(*entity)
-                    .is_some_and(|ship| ship.blockading == Some(province))
+                    .is_some_and(|ship| crate::warfare::active_blockade_at(world, ship, province))
             })
         })
 }
@@ -320,6 +320,7 @@ pub fn run_trade_routes(world: &mut World) {
         }
         let days = crate::presence::travel_days(world, at, destination).max(1);
         if let Some(mut record) = world.get_mut::<crate::forces::ShipRecord>(*entity) {
+            record.blockading = None;
             record.location = crate::forces::ShipLocation::Transit {
                 to: destination,
                 arrives: date.add_days(days),

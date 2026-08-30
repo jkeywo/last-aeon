@@ -16,8 +16,9 @@ entities:
         campaign more reactive, legible, and strategically consequential. It
         introduces contextual events, provincial order, explicit political
         obligations, intent-driven AI, informative job forecasts, and map and
-        campaign-information improvements without expanding the authored map
-        scope, organisation roster, or campaign count.
+        campaign-information improvements, then adds authored Situations,
+        personal Paramount claims, and formal wars without expanding the
+        authored map scope, organisation roster, or campaign count.
       references:
         - mvp-vision
         - full-game-vision
@@ -29,6 +30,7 @@ entities:
         - intent-driven-organisation-agency
         - job-forecast-and-explanation-ui
         - strategic-map-intelligence-modes
+        - situation-system
 
   - milestone: m2-forecast-and-information-foundation
     core:
@@ -196,3 +198,59 @@ entities:
       - kind: test
         reference: crates/aeon_sim/tests/events.rs
         summary: Houses score the pressures they are actually under, notice a favour they could call in, and record in the log why they acted, while the pressure-to-job mapping stays authored on the job rather than named in the engine.
+
+  - milestone: m2-authored-situations
+    core:
+      status: accepted
+      confidence: confirmed
+      title: "M2.5: Authored Situations, Personal Paramountcy, and Formal Wars"
+      summary: >-
+        Add a reusable Rhai-authored Situation surface over a shared semantic
+        world view, then use it to make four live conflicts legible: Planetary
+        Succession, Consular Vacancy, the Veyrin favour debt, and one instance
+        per formal war. In the same vertical slice, replace the old implicit
+        organisation claim with explicit personal claims by independent house
+        heads, and replace proximity-based hostility with occurrence-identified
+        formal wars whose organisation branches can include internal conflicts
+        and explicit liege adoption. Snapshot format 18 carries the new state.
+      references:
+        - situation-system
+        - situations-are-authored-shells-over-simulation-facts
+        - situations-project-live-facts-into-authored-context
+        - situation-instances-have-structural-identity
+        - situation-lifecycle-leaves-dismissible-resolutions
+        - situation-actions-launch-authoritative-assignments
+        - situation-errors-are-visible-and-deterministic
+        - situations-own-one-dock-and-attention-links
+        - planetary-paramount-title-is-contested
+        - paramountcy-is-personally-claimed-by-independent-heads
+        - province-count-paramountcy-claim
+        - planetary-succession-crisis-origin
+        - consul-vacancy-is-a-contested-appointment
+        - imperial-appointment-contest
+        - formal-war-system
+        - formal-wars-use-the-situation-surface
+        - formal-wars-have-occurrence-stable-ledgers
+        - war-sides-freeze-branches-with-explicit-liege-adoption
+        - exact-war-identity-gates-hostility-and-operations
+        - claimant-war-blocks-paramount-press
+        - autonomous-paramount-claimants-fight-through-authored-plans
+        - situations-and-formal-wars-use-snapshot-18
+        - notable-result-message-log
+        - m2-contextual-events-and-obligations
+      goals:
+        - A define_situation builder, generic source references, typed binding keys, fixed presentation blocks, authored audiences, warnings, priorities, assignment actions, ordered outcomes, and mandatory fallback all validate before play; the opening campaign is evaluated by validate-content.
+        - Every Rhai call may read the same deterministic semantic ctx.world API, while existing scripts remain valid and no script can reflect over or mutate ECS.
+        - Situation triggers return zero or more active binding maps; active identity, activation dates, resolutions, and log-once diagnostics restore and replay identically while stages and warnings remain derived.
+        - End-of-day evaluation creates persistent non-pausing resolution cards and permanent explicitly tagged log entries; recurrence is a new lifecycle and dismissal is a validated logged command.
+        - The default right-dock panel orders resolutions, warnings, and remaining Situations deterministically; map AttentionItems focus warning Situations, spectators see all content without gameplay buttons, and unavailable actions show the authoritative reason.
+        - Planetary Succession remains active while the personal title is vacant even with no claimants, showing declared heads, whole-realm territory, military and political facts, claimant wars, press attempts, and a warning when a rival can press.
+        - Consular Vacancy derives candidates, authoritative scores, deadline, political assignments, and a final thirty-day warning from the existing contest, then resolves with the appointed Consul.
+        - The reusable private favour-debt Situation is enabled only by harrow-owes-veyrin, visible to Harrow, Veyrin, and spectators from day one, and resolves distinctly for fulfilment, repudiation, or fallback closure.
+        - Each active WarId produces one public Formal War Situation that is the only full war surface, showing frozen sides, current operations and blockades, tagged history, eligible actions, warnings, and a dismissible conclusion.
+        - Guaranteed one-day head-led assignments declare or renounce a personal claim; invalid heads, dependants, dead claimants, and inherited claims are refused, and the successful character personally holds a non-inherited Paramount title.
+        - Whole-realm province dominance includes every transitive vassal, compares against every rival realm, preserves the unequal opening field, and is revalidated with vacancy, claim, and rival-claimant-war state at both ends of the existing ninety-day press assignment.
+        - Guaranteed seven-day head-led assignments declare a war or adopt a vassal's side; internal branch partitioning is disjoint, membership otherwise freezes, and the existing twenty-day negotiation becomes probabilistic whole-war peace under the current side leader.
+        - Siege and blockade require an exact active opposing WarId; peace aborts bound assignments and blockades, peaceful foreign forces exert no occupation pressure, and deniable raids retain operation-local hostility and trigger defence.
+        - Autonomous take-the-planet claimants use ordinary authored goals, plans, assignments, and standing orders to declare, challenge a leading branch only at the seventy-five-percent manpower floor, fight deterministically selected targets, negotiate, and press after peace.
+        - Snapshot 18 and the acceptance replay cover personal claims, simultaneous and concluded wars, internal sides and adoption, war-bound operations, all four Situation kinds, persistent resolutions, provenance tags, errors, and identical continuation; version 17 is rejected without migration.

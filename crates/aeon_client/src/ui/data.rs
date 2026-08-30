@@ -21,7 +21,7 @@ use aeon_sim::forces::{ArmyRecord, ShipRecord};
 use aeon_sim::map::{BodyRecord, DisplayName, GeoPosition, ProvinceRecord};
 use aeon_sim::obligations::Obligations;
 use aeon_sim::order::ProvincialOrder;
-use aeon_sim::politics::{CharacterSkills, CharacterTraits, Lineage, OpinionLedger};
+use aeon_sim::politics::{CharacterSkills, CharacterTraits, Lineage, OfficeRecord, OpinionLedger};
 use aeon_sim::presence::CharacterLocation;
 use aeon_sim::{
     ActiveAssignment, CharacterId, CharacterRecord, OrgId, OrgRecord, TextDb, TitleRecord,
@@ -33,6 +33,7 @@ use crate::map_modes::MapReadout;
 use crate::offer_view::OfferView;
 use crate::ui::assignment_popup::AssignmentPopup;
 use crate::ui::dock::DockState;
+use crate::ui::situations_panel::{SituationPanelView, SituationUiState};
 use crate::ui::theme::UiTheme;
 use crate::view::MapMode;
 
@@ -52,6 +53,7 @@ pub struct AssignmentUi<'w> {
 pub struct MapUi<'w> {
     pub mode: ResMut<'w, MapMode>,
     pub dock: ResMut<'w, DockState>,
+    pub situation_ui: ResMut<'w, SituationUiState>,
 }
 
 /// Character lookup shared across the panel helpers.
@@ -95,6 +97,7 @@ pub struct PanelData<'w, 's> {
     pub characters: Query<'w, 's, CharacterQuery>,
     pub locations: Query<'w, 's, &'static CharacterLocation>,
     pub titles: Query<'w, 's, &'static TitleRecord>,
+    pub offices: Query<'w, 's, &'static OfficeRecord>,
     pub ships: Query<'w, 's, &'static ShipRecord>,
     pub armies: Query<'w, 's, &'static ArmyRecord>,
     pub active_assignments: Query<'w, 's, &'static ActiveAssignment>,
@@ -121,4 +124,6 @@ pub struct PanelData<'w, 's> {
     /// Directives issued to vassals by hand. Absent until a campaign
     /// starts.
     pub issued_directives: Option<Res<'w, aeon_sim::goals::IssuedDirectives>>,
+    /// Derived active Situation cards and undismissed resolutions.
+    pub situations: Res<'w, SituationPanelView>,
 }

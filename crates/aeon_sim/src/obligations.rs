@@ -15,6 +15,7 @@ use bevy::prelude::{IntoScheduleConfigs, Resource, World};
 use serde::{Deserialize, Serialize};
 
 use aeon_core::calendar::GameDate;
+use aeon_data::ContentKey;
 
 use crate::assignments::{LogChannel, LogEntry, LogSubject};
 use crate::clock::{CampaignClock, DailyTick, TickSet};
@@ -57,6 +58,9 @@ impl ObligationStatus {
 pub struct ObligationRecord {
     /// Stable id within the ledger.
     pub id: u64,
+    /// Authored definition that seeded this entry; dynamic entries have none.
+    #[serde(default)]
+    pub source: Option<ContentKey>,
     /// What kind of fact this is.
     pub kind: ObligationKind,
     /// The house that owes, or that is resented.
@@ -151,26 +155,51 @@ pub fn create(
     weight: i32,
     days: Option<i64>,
 ) -> u64 {
-    if debtor == creditor {
+    create_record(
+        world,
+        ObligationSeed {
+            source: None,
+            kind,
+            debtor,
+            creditor,
+            origin: origin.into(),
+            weight,
+            days,
+        },
+    )
+}
+
+struct ObligationSeed {
+    source: Option<ContentKey>,
+    kind: ObligationKind,
+    debtor: OrgId,
+    creditor: OrgId,
+    origin: String,
+    weight: i32,
+    days: Option<i64>,
+}
+
+fn create_record(world: &mut World, seed: ObligationSeed) -> u64 {
+    if seed.debtor == seed.creditor {
         return 0;
     }
     let date = world
         .get_resource::<CampaignClock>()
         .map(|clock| clock.date)
         .unwrap_or_else(|| GameDate::from_days(0));
-    let origin = origin.into();
     let mut ledger = world.get_resource_or_insert_with(Obligations::default);
     let id = ledger.next_id + 1;
     ledger.next_id = id;
     ledger.entries.push(ObligationRecord {
         id,
-        kind,
-        debtor,
-        creditor,
-        origin,
+        source: seed.source,
+        kind: seed.kind,
+        debtor: seed.debtor,
+        creditor: seed.creditor,
+        origin: seed.origin,
         created: date,
-        expires: days.map(|days| date.add_days(days)),
-        weight: weight.max(0),
+        expires: seed.days.map(|days| date.add_days(days)),
+        weight: seed.weight.max(0),
         status: ObligationStatus::Open,
     });
     id
@@ -256,24 +285,25 @@ pub fn expire_due(world: &mut World) {
 /// situation is identical across runs of the same scenario.
 pub fn seed_from_content(world: &mut World, content: &aeon_data::ContentSet) {
     let politics = world.resource::<crate::politics::PoliticsIndex>().clone();
-    let seeds: Vec<(ObligationKind, OrgId, OrgId, String, i32, Option<i64>)> = content
+    let seeds: Vec<ObligationSeed> = content
         .obligations
         .values()
         .filter_map(|def| {
             let debtor = *politics.org_keys.get(&def.debtor)?;
             let creditor = *politics.org_keys.get(&def.creditor)?;
-            Some((
-                def.kind,
+            Some(ObligationSeed {
+                source: Some(def.key.clone()),
+                kind: def.kind,
                 debtor,
                 creditor,
-                def.origin.clone(),
-                def.weight,
-                def.days,
-            ))
+                origin: def.origin.clone(),
+                weight: def.weight,
+                days: def.days,
+            })
         })
         .collect();
-    for (kind, debtor, creditor, origin, weight, days) in seeds {
-        create(world, kind, debtor, creditor, origin, weight, days);
+    for seed in seeds {
+        create_record(world, seed);
     }
 }
 
@@ -311,6 +341,7 @@ mod tests {
             ledger.next_id += 1;
             ledger.entries.push(ObligationRecord {
                 id: ledger.next_id,
+                source: None,
                 kind,
                 debtor: org(1),
                 creditor: org(2),
@@ -339,6 +370,7 @@ mod tests {
         };
         ledger.entries.push(ObligationRecord {
             id: 1,
+            source: None,
             kind: ObligationKind::Favour,
             debtor: org(1),
             creditor: org(2),

@@ -11,8 +11,8 @@ use std::collections::BTreeMap;
 
 use aeon_core::calendar::GameDate;
 use aeon_data::model::{
-    AssignmentCategory, AssignmentDef, AssignmentTargetKind, HolderRelation, OutcomeKind, RiskTag,
-    TitleNeed,
+    AssignmentCategory, AssignmentDef, AssignmentTargetKind, HolderRelation, OutcomeDef,
+    OutcomeKind, RiskTag, TitleNeed,
 };
 use aeon_data::{ContentKey, EffectRole, ScriptEffect, ScriptHost};
 use bevy::app::App;
@@ -20,7 +20,7 @@ use bevy::prelude::{Component, Entity, IntoScheduleConfigs, Resource, World};
 use serde::{Deserialize, Serialize};
 
 use crate::clock::{CampaignClock, DailyTick, MonthlyPulse, TickSet};
-use crate::ids::{ArmyId, AssignmentId, CharacterId, OrgId, ProvinceId, ShipId};
+use crate::ids::{ArmyId, AssignmentId, CharacterId, OrgId, ProvinceId, ShipId, WarId};
 use crate::politics::{CampaignOver, OpinionEntry, OpinionLedger, PlayerHouse, process_death};
 use crate::state::{CampaignIds, ContentDb};
 use crate::text::TextDb;
@@ -36,6 +36,10 @@ pub enum AssignmentTarget {
     Org(OrgId),
     /// A province.
     Province(ProvinceId),
+    /// One occurrence-stable formal war.
+    War(WarId),
+    /// One exact side of one occurrence-stable formal war.
+    WarSide(WarId, crate::wars::WarSideId),
     /// One of the owner's armies.
     OwnArmy(ArmyId),
     /// One of the owner's armies marching on a province.
@@ -57,6 +61,10 @@ pub struct ActiveAssignment {
     pub leader: CharacterId,
     /// What it acts on.
     pub target: AssignmentTarget,
+    /// Exact formal war authorising this assignment, when any.
+    pub war: Option<WarId>,
+    /// Situation action that launched this assignment, when any.
+    pub origin_situation: Option<crate::situations::SituationOccurrence>,
     /// The day it (re)started.
     pub started: GameDate,
     /// The day it resolves.
@@ -161,6 +169,40 @@ impl LogChannel {
     }
 }
 
+/// Which organisations may read a permanent log entry.
+///
+/// Spectators are deliberately handled by presentation and may read every
+/// entry. An empty private audience therefore remains hidden from ordinary
+/// players while still being available to debugging and replay inspection.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LogAudience {
+    /// Every player may read the entry.
+    #[default]
+    Public,
+    /// Only these organisations may read the entry, in stable-ID order.
+    Organisations(Vec<OrgId>),
+}
+
+impl LogAudience {
+    /// A stable private audience with duplicate organisations removed.
+    pub fn organisations(organisations: impl IntoIterator<Item = OrgId>) -> Self {
+        let mut organisations: Vec<_> = organisations.into_iter().collect();
+        organisations.sort();
+        organisations.dedup();
+        Self::Organisations(organisations)
+    }
+
+    /// Whether an ordinary player may read the entry. Spectators see all.
+    pub fn visible_to(&self, player: Option<OrgId>) -> bool {
+        match (self, player) {
+            (_, None) | (Self::Public, Some(_)) => true,
+            (Self::Organisations(organisations), Some(player)) => {
+                organisations.binary_search(&player).is_ok()
+            }
+        }
+    }
+}
+
 /// One notable-result log entry.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct LogEntry {
@@ -176,6 +218,15 @@ pub struct LogEntry {
     /// The stream this entry belongs to.
     #[serde(default)]
     pub channel: LogChannel,
+    /// Exact Situation lifecycles this entry belongs to.
+    #[serde(default)]
+    pub situations: Vec<crate::situations::SituationOccurrence>,
+    /// Exact formal war this entry belongs to, when any.
+    #[serde(default)]
+    pub war: Option<WarId>,
+    /// Authored audience captured when the line was written.
+    #[serde(default)]
+    pub audience: LogAudience,
 }
 
 impl LogEntry {
@@ -187,6 +238,9 @@ impl LogEntry {
             org: None,
             subject: None,
             channel,
+            situations: Vec::new(),
+            war: None,
+            audience: LogAudience::Public,
         }
     }
 
@@ -207,6 +261,53 @@ impl LogEntry {
         self.subject = Some(subject);
         self
     }
+
+    /// Tags this entry as permanent history for an exact Situation lifecycle.
+    pub fn for_situation(mut self, situation: crate::situations::SituationOccurrence) -> Self {
+        match self.situations.binary_search(&situation) {
+            Ok(_) => {}
+            Err(index) => self.situations.insert(index, situation),
+        }
+        self
+    }
+
+    /// Tags this entry as permanent history for one exact formal war.
+    pub fn for_war(mut self, war: WarId) -> Self {
+        self.war = Some(war);
+        self
+    }
+
+    /// Captures the organisations allowed to read this entry.
+    pub fn for_audience(mut self, audience: LogAudience) -> Self {
+        self.audience = audience;
+        self
+    }
+
+    fn for_optional_war(self, war: Option<WarId>) -> Self {
+        match war {
+            Some(war) => self.for_war(war),
+            None => self,
+        }
+    }
+}
+
+/// Adds the provenance and authored audience carried by an assignment.
+///
+/// This is shared with engine-owned operation logs so a siege line and its
+/// eventual assignment result cannot disagree about which war or private
+/// Situation lifecycle produced them.
+pub(crate) fn assignment_log_entry(
+    world: &World,
+    assignment: &ActiveAssignment,
+    entry: LogEntry,
+) -> LogEntry {
+    let mut entry = entry.for_optional_war(assignment.war);
+    if let Some(origin) = &assignment.origin_situation {
+        entry = entry
+            .for_situation(origin.clone())
+            .for_audience(crate::situations::log_audience(world, &origin.situation));
+    }
+    entry
 }
 
 /// The notable-result message log: selective ongoing awareness of the
@@ -234,6 +335,9 @@ pub struct PendingPopup {
     pub choices: Vec<(ContentKey, String)>,
     /// Roles resolved at resolution time, for choice effects.
     pub roles: AssignmentRoles,
+    /// Situation action which led to this result, when any.
+    #[serde(default)]
+    pub origin_situation: Option<crate::situations::SituationOccurrence>,
 }
 
 /// Popups awaiting player answers.
@@ -252,6 +356,9 @@ pub struct ScriptRuntime(pub ScriptHost);
 /// The characters standing behind each script-effect role for one assignment.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct AssignmentRoles {
+    /// Assignment definition whose effects are being applied, when any.
+    #[serde(default)]
+    pub assignment: Option<ContentKey>,
     /// `leader`.
     pub leader: Option<CharacterId>,
     /// `target` (a character target, or the target org's head).
@@ -269,6 +376,12 @@ pub struct AssignmentRoles {
     /// The province the assignment acted on, for province-scoped effects.
     #[serde(default)]
     pub province: Option<ProvinceId>,
+    /// Exact formal war named by the assignment, for war effects and choices.
+    #[serde(default)]
+    pub war: Option<WarId>,
+    /// Exact formal-war side named by the assignment, when any.
+    #[serde(default)]
+    pub war_side: Option<crate::wars::WarSideId>,
 }
 
 /// What a role resolution starts from.
@@ -306,6 +419,7 @@ impl AssignmentRoles {
             None => Vec::new(),
         };
         AssignmentRoles {
+            assignment: None,
             leader: seed.leader.or(owner_head),
             target: seed.target,
             target_head: seed.target_head,
@@ -316,6 +430,8 @@ impl AssignmentRoles {
             consul: crate::access::consul(world),
             sanctora,
             province: seed.province,
+            war: None,
+            war_side: None,
         }
     }
 
@@ -363,6 +479,15 @@ pub enum AssignmentRejection {
     /// The target does not match the definition's target kind.
     #[error("the assignment's target is missing or of the wrong kind")]
     BadTarget,
+    /// The leader's personal Paramount claim does not meet the assignment rule.
+    #[error("the personal Paramount claim requirements are not met")]
+    ParamountClaimUnavailable,
+    /// The named formal-war action is not presently available.
+    #[error("that formal-war action is not presently available")]
+    FormalWarUnavailable,
+    /// Only a formal war's current side leader may negotiate whole-war peace.
+    #[error("only a current side leader may negotiate this war")]
+    NotWarLeader,
     /// No such popup or choice.
     #[error("no such popup or choice")]
     BadPopupAnswer,
@@ -392,6 +517,11 @@ impl AssignmentRejection {
             AssignmentRejection::AlreadyAssigned => "sim.refusal.already-assigned",
             AssignmentRejection::LeaderIndisposed => "sim.refusal.leader-indisposed",
             AssignmentRejection::BadTarget => "sim.refusal.bad-target",
+            AssignmentRejection::ParamountClaimUnavailable => {
+                "sim.refusal.paramount-claim-unavailable"
+            }
+            AssignmentRejection::FormalWarUnavailable => "sim.refusal.formal-war-unavailable",
+            AssignmentRejection::NotWarLeader => "sim.refusal.not-war-leader",
             AssignmentRejection::BadPopupAnswer => "sim.refusal.bad-popup-answer",
             AssignmentRejection::BadAssignment => "sim.refusal.bad-assignment",
             AssignmentRejection::CannotAfford => "sim.refusal.cannot-afford",
@@ -653,6 +783,12 @@ fn target_valid(
             id != owner && crate::access::org_entity(world, id).is_some()
         }
         (AssignmentTargetKind::Province, AssignmentTarget::Province(id)) => province_known(id),
+        (AssignmentTargetKind::War, AssignmentTarget::War(id)) => {
+            crate::wars::is_active_war(world, id)
+        }
+        (AssignmentTargetKind::WarSide, AssignmentTarget::WarSide(id, _)) => {
+            crate::wars::is_active_war(world, id)
+        }
         (AssignmentTargetKind::OwnArmy, AssignmentTarget::OwnArmy(army)) => {
             owned_army(world, owner, army)
         }
@@ -704,6 +840,58 @@ pub fn request_cancel(world: &mut World, assignment: AssignmentId) {
     }
 }
 
+/// Immediately aborts every assignment authorised by one concluded war.
+///
+/// Peace is an authoritative boundary, so this deliberately bypasses authored
+/// interruption phases and their effects: a siege cannot finish storming after
+/// the exact conflict that made it hostile has ended.
+pub fn abort_assignments_for_war(world: &mut World, war: WarId) {
+    let assignments: Vec<(AssignmentId, Entity, ActiveAssignment)> = world
+        .get_resource::<AssignmentsIndex>()
+        .map(|index| {
+            index
+                .assignments
+                .iter()
+                .filter_map(|(id, entity)| {
+                    world
+                        .get::<ActiveAssignment>(*entity)
+                        .filter(|active| active.war == Some(war))
+                        .cloned()
+                        .map(|active| (*id, *entity, active))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    for (id, entity, active) in assignments {
+        let title = world
+            .get_resource::<ContentDb>()
+            .and_then(|content| content.0.assignments.get(&active.def))
+            .map(|def| def.title.clone())
+            .unwrap_or_else(|| active.def.to_string());
+        let war_label = war.raw().to_string();
+        let text = world.resource::<TextDb>().format(
+            "sim.war.assignment-ended",
+            &[("assignment", &title), ("war", &war_label)],
+        );
+        crate::access::log(
+            world,
+            assignment_log_entry(
+                world,
+                &active,
+                LogEntry::line(text, LogChannel::Military)
+                    .by(Some(active.owner))
+                    .about(LogSubject::Character(active.leader)),
+            ),
+        );
+        world.despawn(entity);
+        world
+            .resource_mut::<AssignmentsIndex>()
+            .assignments
+            .remove(&id);
+        crate::plans::note_dropped(world, id);
+    }
+}
+
 /// Ends an assignment that has been called off, running the phase's own
 /// account of what that costs.
 fn end_interrupted(
@@ -736,7 +924,13 @@ fn end_interrupted(
             runtime.0.call_effect_fn(&content, &on_interrupt, ctx)
         };
         if let Ok(effects) = effects {
-            apply_effects(world, &effects, &roles, Some(active.owner));
+            apply_effects_with_origin(
+                world,
+                &effects,
+                &roles,
+                Some(active.owner),
+                active.origin_situation.as_ref(),
+            );
         }
     }
     log_interrupted(world, active, def, stage);
@@ -766,16 +960,15 @@ fn log_interrupted(
         "sim.assignment.called-off",
         &[("assignment", name), ("stage", &phase)],
     );
-    let _ = date;
     crate::access::log(
         world,
-        LogEntry {
-            date: world.resource::<CampaignClock>().date,
-            text,
-            org: Some(active.owner),
-            subject: Some(LogSubject::Character(active.leader)),
-            channel: LogChannel::Assignments,
-        },
+        assignment_log_entry(
+            world,
+            active,
+            LogEntry::new(date, text, LogChannel::Assignments)
+                .by(Some(active.owner))
+                .about(LogSubject::Character(active.leader)),
+        ),
     );
 }
 
@@ -970,6 +1163,107 @@ pub fn validate_start(
     leader: CharacterId,
     target: AssignmentTarget,
 ) -> Result<(), AssignmentRejection> {
+    let war = match target {
+        AssignmentTarget::War(war) | AssignmentTarget::WarSide(war, _) => Some(war),
+        _ => None,
+    };
+    validate_start_in_war(world, org, def_key, leader, target, war)
+}
+
+/// Revalidates an authored strategic transition against the current world.
+///
+/// This is deliberately narrower than [`validate_start_in_war`]: it is pure,
+/// does not inspect costs, and does not ask whether the leader is available.
+/// The leader of a resolving assignment is necessarily busy with that same
+/// assignment. Both command validation and completion use this boundary so a
+/// long-running action cannot retain permission after its prerequisites change.
+pub(crate) fn validate_strategic_transition(
+    world: &World,
+    org: OrgId,
+    def_key: &ContentKey,
+    leader: CharacterId,
+    target: AssignmentTarget,
+    war: Option<WarId>,
+) -> Result<(), AssignmentRejection> {
+    match def_key.as_str() {
+        "declare-paramount-claim" => {
+            let available = crate::crisis::paramountcy(world).is_some_and(|(title, _)| {
+                crate::crisis::claimant_eligibility(world, title, leader) == Ok(org)
+                    && !crate::crisis::has_claim(world, title, leader)
+            });
+            if !available {
+                return Err(AssignmentRejection::ParamountClaimUnavailable);
+            }
+        }
+        "renounce-paramount-claim" => {
+            let available = crate::crisis::paramountcy(world)
+                .is_some_and(|(title, _)| crate::crisis::has_claim(world, title, leader));
+            if !available {
+                return Err(AssignmentRejection::ParamountClaimUnavailable);
+            }
+        }
+        "press-claim" => {
+            let available = crate::crisis::paramountcy(world).is_some_and(|(title, body)| {
+                crate::crisis::claimant_eligibility(world, title, leader) == Ok(org)
+                    && crate::crisis::has_claim(world, title, leader)
+                    && crate::crisis::dominant_claimant(world, body) == Some(org)
+                    && crate::crisis::claimant_war_blocker(world, title, leader).is_none()
+            });
+            if !available {
+                return Err(AssignmentRejection::ParamountClaimUnavailable);
+            }
+        }
+        "declare-formal-war" => {
+            let AssignmentTarget::Org(defender) = target else {
+                return Err(AssignmentRejection::FormalWarUnavailable);
+            };
+            let defender_stands = crate::access::org_head(world, defender)
+                .and_then(|head| crate::access::character(world, head))
+                .is_some_and(|head| head.alive());
+            if crate::access::org_head(world, org) != Some(leader)
+                || defender == org
+                || !defender_stands
+                || crate::wars::active_war_between(world, org, defender).is_some()
+            {
+                return Err(AssignmentRejection::FormalWarUnavailable);
+            }
+        }
+        "adopt-formal-war" => {
+            let AssignmentTarget::WarSide(target_war, side) = target else {
+                return Err(AssignmentRejection::FormalWarUnavailable);
+            };
+            let may_adopt = crate::access::org_head(world, org) == Some(leader)
+                && war == Some(target_war)
+                && crate::wars::can_adopt_side(world, target_war, org, side);
+            if !may_adopt {
+                return Err(AssignmentRejection::FormalWarUnavailable);
+            }
+        }
+        "negotiate" => {
+            let Some(war) = war else {
+                return Err(AssignmentRejection::NotWarLeader);
+            };
+            if crate::access::org_head(world, org) != Some(leader)
+                || !crate::wars::can_negotiate(world, war, org)
+            {
+                return Err(AssignmentRejection::NotWarLeader);
+            }
+        }
+        _ => {}
+    }
+    Ok(())
+}
+
+/// Validates a start while retaining the exact formal war behind a composite
+/// siege or blockade target.
+pub fn validate_start_in_war(
+    world: &World,
+    org: OrgId,
+    def_key: &ContentKey,
+    leader: CharacterId,
+    target: AssignmentTarget,
+    war: Option<WarId>,
+) -> Result<(), AssignmentRejection> {
     if world.get_resource::<CampaignOver>().is_some() {
         return Err(AssignmentRejection::CampaignOver);
     }
@@ -981,6 +1275,36 @@ pub fn validate_start(
     leader_eligible(world, org, leader, date, target)?;
     if !target_valid(world, def, org, target) {
         return Err(AssignmentRejection::BadTarget);
+    }
+    match target {
+        AssignmentTarget::War(target_war) | AssignmentTarget::WarSide(target_war, _)
+            if war != Some(target_war) =>
+        {
+            return Err(AssignmentRejection::FormalWarUnavailable);
+        }
+        _ => {}
+    }
+    validate_strategic_transition(world, org, def_key, leader, target, war)?;
+    if matches!(
+        def.military_op,
+        Some(aeon_data::model::MilitaryOp::Besiege | aeon_data::model::MilitaryOp::Blockade)
+    ) {
+        let province = match target {
+            AssignmentTarget::ArmyToProvince(_, province)
+            | AssignmentTarget::ShipToProvince(_, province) => province,
+            _ => return Err(AssignmentRejection::BadTarget),
+        };
+        let Some(war) = war else {
+            return Err(AssignmentRejection::BadTarget);
+        };
+        let Some(defender) = crate::warfare::province_holder(world, province) else {
+            return Err(AssignmentRejection::BadTarget);
+        };
+        if !crate::wars::is_active_war(world, war)
+            || !crate::wars::opposed_in(world, war, org, defender)
+        {
+            return Err(AssignmentRejection::BadTarget);
+        }
     }
     // A ship is ordered by its captain, nobody else — the same rule
     // armies have always had for their general.
@@ -1021,6 +1345,25 @@ pub fn start_assignment(
     leader: CharacterId,
     target: AssignmentTarget,
 ) -> AssignmentId {
+    let war = match target {
+        AssignmentTarget::War(war) | AssignmentTarget::WarSide(war, _) => Some(war),
+        _ => None,
+    };
+    start_assignment_in_war(world, org, def_key, leader, target, war)
+}
+
+/// Starts a validated assignment with an optional exact formal-war context.
+///
+/// Composite military targets cannot themselves carry a [`WarId`], so
+/// Situation actions use this path to retain the war that authorised them.
+pub fn start_assignment_in_war(
+    world: &mut World,
+    org: OrgId,
+    def_key: &ContentKey,
+    leader: CharacterId,
+    target: AssignmentTarget,
+    war: Option<WarId>,
+) -> AssignmentId {
     let date = world.resource::<CampaignClock>().date;
     let (duration, costs) = {
         let content = world.resource::<ContentDb>().0.clone();
@@ -1049,6 +1392,8 @@ pub fn start_assignment(
             owner: org,
             leader,
             target,
+            war,
+            origin_situation: None,
             started: date,
             completes: date.add_days(duration),
             cancel_requested: false,
@@ -1058,6 +1403,30 @@ pub fn start_assignment(
         .resource_mut::<AssignmentsIndex>()
         .assignments
         .insert(id, entity);
+    id
+}
+
+/// Starts a validated assignment with exact Situation provenance.
+pub fn start_assignment_from_situation(
+    world: &mut World,
+    org: OrgId,
+    def_key: &ContentKey,
+    leader: CharacterId,
+    target: AssignmentTarget,
+    situation: crate::situations::SituationInstanceKey,
+) -> AssignmentId {
+    let war = crate::situations::action_war(&situation, target);
+    let origin = world
+        .get_resource::<crate::situations::SituationState>()
+        .and_then(|state| state.active.get(&situation))
+        .map(crate::situations::ActiveSituation::occurrence)
+        .expect("validated Situation action has an active lifecycle");
+    let id = start_assignment_in_war(world, org, def_key, leader, target, war);
+    if let Some(entity) = crate::access::assignment_entity(world, id)
+        && let Some(mut active) = world.get_mut::<ActiveAssignment>(entity)
+    {
+        active.origin_situation = Some(origin);
+    }
     id
 }
 
@@ -1096,7 +1465,7 @@ fn resolve_roles(world: &World, assignment: &ActiveAssignment) -> AssignmentRole
         },
     };
 
-    AssignmentRoles::resolve(
+    let mut roles = AssignmentRoles::resolve(
         world,
         RoleSeed {
             owner: Some(assignment.owner),
@@ -1105,7 +1474,14 @@ fn resolve_roles(world: &World, assignment: &ActiveAssignment) -> AssignmentRole
             target_head,
             province,
         },
-    )
+    );
+    roles.assignment = Some(assignment.def.clone());
+    roles.war = assignment.war;
+    roles.war_side = match assignment.target {
+        AssignmentTarget::WarSide(_, side) => Some(side),
+        _ => None,
+    };
+    roles
 }
 
 /// The read-only context map every effect function receives.
@@ -1117,6 +1493,7 @@ fn resolve_roles(world: &World, assignment: &ActiveAssignment) -> AssignmentRole
 /// - `result`: the result kind or the chosen option, as text
 /// - `leader`: the leading character's display name, possibly empty
 /// - `target`: what the action acted on, as a display label, possibly empty
+/// - `world`: a copied stable semantic view of authoritative game concepts
 pub(crate) fn effect_context(
     world: &World,
     source: &ContentKey,
@@ -1135,6 +1512,10 @@ pub(crate) fn effect_context(
             .into(),
     );
     ctx.insert("target".into(), target_label.into());
+    ctx.insert(
+        "world".into(),
+        crate::script_world::context_value(world).into(),
+    );
     ctx
 }
 
@@ -1144,6 +1525,25 @@ fn target_name(world: &World, target: AssignmentTarget) -> String {
         AssignmentTarget::Character(id) => crate::access::character_name(world, id),
         AssignmentTarget::Org(org) => crate::access::org_name(world, org),
         AssignmentTarget::Province(id) => crate::access::province_name(world, id),
+        AssignmentTarget::War(id) => world
+            .resource::<TextDb>()
+            .format("sim.war.label", &[("war", &id.raw().to_string())]),
+        AssignmentTarget::WarSide(id, side) => {
+            let war = world
+                .resource::<TextDb>()
+                .format("sim.war.label", &[("war", &id.raw().to_string())]);
+            let side_key = match side {
+                crate::wars::WarSideId::Attacker => "sim.war.side.attacker",
+                crate::wars::WarSideId::Defender => "sim.war.side.defender",
+            };
+            world.resource::<TextDb>().format(
+                "sim.war.side-target",
+                &[
+                    ("war", &war),
+                    ("side", world.resource::<TextDb>().text(side_key)),
+                ],
+            )
+        }
         AssignmentTarget::OwnArmy(army) => crate::access::army(world, army)
             .map(|record| record.name.clone())
             .unwrap_or_default(),
@@ -1257,8 +1657,53 @@ pub fn apply_effects(
                 }
             }
             ScriptEffect::ClaimParamountcy => {
-                if let Some(owner) = owner {
-                    crate::crisis::claim_paramountcy(world, owner);
+                if let (Some((title, _)), Some(claimant)) =
+                    (crate::crisis::paramountcy(world), roles.leader)
+                {
+                    let _ = crate::crisis::press_claim(world, title, claimant);
+                }
+            }
+            ScriptEffect::DeclareParamountClaim => {
+                if let (Some((title, _)), Some(claimant)) =
+                    (crate::crisis::paramountcy(world), roles.leader)
+                {
+                    let _ = crate::crisis::declare_claim(world, title, claimant);
+                }
+            }
+            ScriptEffect::RenounceParamountClaim => {
+                if let (Some((title, _)), Some(claimant)) =
+                    (crate::crisis::paramountcy(world), roles.leader)
+                {
+                    let _ = crate::crisis::renounce_claim(world, title, claimant);
+                }
+            }
+            ScriptEffect::DeclareWar => {
+                let defender = roles
+                    .target_head
+                    .and_then(|target| crate::access::organisation_of(world, target));
+                if let (Some(attacker), Some(defender)) = (owner, defender) {
+                    let cause = roles.assignment.clone().unwrap_or_else(|| {
+                        ContentKey::new("formal-war").expect("static content key")
+                    });
+                    let _ = crate::wars::declare_war(world, attacker, defender, cause);
+                }
+            }
+            ScriptEffect::AdoptWar => {
+                if let (Some(adopter), Some(war), Some(side)) = (owner, roles.war, roles.war_side)
+                    && crate::wars::can_adopt_side(world, war, adopter, side)
+                {
+                    let _ = crate::wars::adopt_side(world, war, adopter, side);
+                }
+            }
+            ScriptEffect::ConcludeWar => {
+                if let (Some(negotiator), Some(war)) = (owner, roles.war)
+                    && crate::wars::can_negotiate(world, war, negotiator)
+                {
+                    let _ = crate::wars::conclude_war(
+                        world,
+                        war,
+                        crate::wars::WarConclusionKind::NegotiatedPeace,
+                    );
                 }
             }
             ScriptEffect::CollectTithes => {
@@ -1368,6 +1813,39 @@ pub fn apply_effects(
     }
 }
 
+/// Applies effects and explicitly tags every log line they emit with the
+/// Situation action that caused them. Nested domain helpers may write their
+/// own lines, so tagging the appended slice keeps provenance complete without
+/// teaching each effect vocabulary entry about presentation lifecycles.
+fn apply_effects_with_origin(
+    world: &mut World,
+    effects: &[ScriptEffect],
+    roles: &AssignmentRoles,
+    owner: Option<OrgId>,
+    origin: Option<&crate::situations::SituationOccurrence>,
+) {
+    let audience = origin.map(|origin| crate::situations::log_audience(world, &origin.situation));
+    let first_new_log = world
+        .get_resource::<MessageLog>()
+        .map(|log| log.entries.len())
+        .unwrap_or_default();
+    apply_effects(world, effects, roles, owner);
+    let Some(mut log) = world.get_resource_mut::<MessageLog>() else {
+        return;
+    };
+    for entry in log.entries.iter_mut().skip(first_new_log) {
+        if let Some(war) = roles.war {
+            entry.war = Some(war);
+        }
+        if let Some(origin) = origin {
+            if let Err(index) = entry.situations.binary_search(origin) {
+                entry.situations.insert(index, origin.clone());
+            }
+            entry.audience = audience.clone().unwrap_or_default();
+        }
+    }
+}
+
 /// Applies one personal-risk consequence to a character. Public so event
 /// systems (and tests) can reuse the exact assignment-risk semantics.
 pub fn apply_risk(world: &mut World, leader: CharacterId, tag: RiskTag, date: GameDate) {
@@ -1470,10 +1948,21 @@ pub fn resolve_due_assignments(world: &mut World) {
         .collect();
 
     for (assignment_id, entity) in due {
-        let assignment = world
-            .get::<ActiveAssignment>(entity)
-            .expect("indexed")
-            .clone();
+        // Detach the assignment while it resolves. A successful peace effect
+        // aborts every *other* assignment authorised by that war, but the
+        // negotiation itself still needs to finish, report its outcome, and
+        // advance its plan. Later entries in `due` may have been despawned by
+        // that teardown, so stale due entries are simply skipped.
+        let indexed = world
+            .resource_mut::<AssignmentsIndex>()
+            .assignments
+            .remove(&assignment_id);
+        if indexed != Some(entity) {
+            continue;
+        }
+        let Some(assignment) = world.get::<ActiveAssignment>(entity).cloned() else {
+            continue;
+        };
         let content = world.resource::<ContentDb>().0.clone();
         let def = content.assignments[&assignment.def].clone();
 
@@ -1483,18 +1972,18 @@ pub fn resolve_due_assignments(world: &mut World) {
         if !leader_alive {
             crate::access::log(
                 world,
-                LogEntry::line(
-                    format!("'{}' was abandoned; its leader is gone.", def.title),
-                    LogChannel::Assignments,
-                )
-                .by(Some(assignment.owner))
-                .about(LogSubject::Character(assignment.leader)),
+                assignment_log_entry(
+                    world,
+                    &assignment,
+                    LogEntry::line(
+                        format!("'{}' was abandoned; its leader is gone.", def.title),
+                        LogChannel::Assignments,
+                    )
+                    .by(Some(assignment.owner))
+                    .about(LogSubject::Character(assignment.leader)),
+                ),
             );
             world.despawn(entity);
-            world
-                .resource_mut::<AssignmentsIndex>()
-                .assignments
-                .remove(&assignment_id);
             // A plan waiting on this assignment stops waiting; its own
             // abandon checks answer for the missing leader.
             crate::plans::note_dropped(world, assignment_id);
@@ -1514,17 +2003,43 @@ pub fn resolve_due_assignments(world: &mut World) {
         );
         let mut outcome = crate::forecast::resolve_outcome(&def, effectiveness, &mut rng);
         if matches!(outcome, OutcomeKind::Success | OutcomeKind::CriticalSuccess)
+            && validate_strategic_transition(
+                world,
+                assignment.owner,
+                &assignment.def,
+                assignment.leader,
+                assignment.target,
+                assignment.war,
+            )
+            .is_err()
+        {
+            outcome = OutcomeKind::Failure;
+        }
+        if matches!(outcome, OutcomeKind::Success | OutcomeKind::CriticalSuccess)
             && let Some(op) = def.military_op
             && !crate::warfare::apply_military_op(world, op, &assignment)
         {
             // The operation was defeated in the field.
             outcome = OutcomeKind::Failure;
         }
+        // Guaranteed transitions author only Success. Completion revalidation
+        // can still turn that outcome into Failure, in which case absence of
+        // an authored failure gets a generic failure log with no effects,
+        // rather than falling back to Success or panicking.
         let result = def
             .results
             .get(&outcome)
             .cloned()
-            .unwrap_or_else(|| def.results[&OutcomeKind::Failure].clone());
+            .or_else(|| def.results.get(&OutcomeKind::Failure).cloned())
+            .unwrap_or_else(|| OutcomeDef {
+                weight: 0,
+                popup: false,
+                popup_text: None,
+                choices: Vec::new(),
+                log: true,
+                log_text: None,
+                effect_fn: None,
+            });
 
         // Personal risks on bad outcomes.
         if matches!(outcome, OutcomeKind::Failure | OutcomeKind::Disaster) {
@@ -1564,15 +2079,25 @@ pub fn resolve_due_assignments(world: &mut World) {
                 runtime.0.call_effect_fn(&content, fn_ref, ctx)
             };
             match effects {
-                Ok(effects) => apply_effects(world, &effects, &roles, Some(assignment.owner)),
+                Ok(effects) => apply_effects_with_origin(
+                    world,
+                    &effects,
+                    &roles,
+                    Some(assignment.owner),
+                    assignment.origin_situation.as_ref(),
+                ),
                 Err(err) => {
                     crate::access::log(
                         world,
-                        LogEntry::line(
-                            format!("script error resolving '{}': {err}", def.title),
-                            LogChannel::Assignments,
-                        )
-                        .by(Some(assignment.owner)),
+                        assignment_log_entry(
+                            world,
+                            &assignment,
+                            LogEntry::line(
+                                format!("script error resolving '{}': {err}", def.title),
+                                LogChannel::Assignments,
+                            )
+                            .by(Some(assignment.owner)),
+                        ),
                     );
                 }
             }
@@ -1589,9 +2114,13 @@ pub fn resolve_due_assignments(world: &mut World) {
                 });
             crate::access::log(
                 world,
-                LogEntry::line(text, LogChannel::Assignments)
-                    .by(Some(assignment.owner))
-                    .about(LogSubject::Character(assignment.leader)),
+                assignment_log_entry(
+                    world,
+                    &assignment,
+                    LogEntry::line(text, LogChannel::Assignments)
+                        .by(Some(assignment.owner))
+                        .about(LogSubject::Character(assignment.leader)),
+                ),
             );
         }
 
@@ -1625,6 +2154,7 @@ pub fn resolve_due_assignments(world: &mut World) {
                 text,
                 choices,
                 roles: roles.clone(),
+                origin_situation: assignment.origin_situation.clone(),
             });
         }
 
@@ -1634,15 +2164,16 @@ pub fn resolve_due_assignments(world: &mut World) {
             && world.get_resource::<CampaignOver>().is_none();
         if restart {
             let duration = i64::from(def.duration_days);
-            let mut active = world.get_mut::<ActiveAssignment>(entity).expect("indexed");
-            active.started = date;
-            active.completes = date.add_days(duration);
+            if let Some(mut active) = world.get_mut::<ActiveAssignment>(entity) {
+                active.started = date;
+                active.completes = date.add_days(duration);
+                world
+                    .resource_mut::<AssignmentsIndex>()
+                    .assignments
+                    .insert(assignment_id, entity);
+            }
         } else {
             world.despawn(entity);
-            world
-                .resource_mut::<AssignmentsIndex>()
-                .assignments
-                .remove(&assignment_id);
             // A plan waiting on this assignment learns how it went.
             crate::plans::note_resolution(world, assignment_id, outcome);
         }
@@ -1709,7 +2240,13 @@ pub fn answer_popup(
         };
         if let Ok(effects) = effects {
             let player = world.get_resource::<PlayerHouse>().and_then(|p| p.0);
-            apply_effects(world, &effects, &popup.roles, player);
+            apply_effects_with_origin(
+                world,
+                &effects,
+                &popup.roles,
+                player,
+                popup.origin_situation.as_ref(),
+            );
         }
     }
 
@@ -1741,10 +2278,19 @@ pub struct AssignmentState {
     pub leader: CharacterId,
     /// Target.
     pub target: AssignmentTarget,
+    /// Exact formal war authorising the assignment, when any.
+    #[serde(default)]
+    pub war: Option<WarId>,
+    /// Situation action that launched it, when any.
+    #[serde(default)]
+    pub origin_situation: Option<crate::situations::SituationOccurrence>,
     /// Start day.
     pub started: GameDate,
     /// Resolution day.
     pub completes: GameDate,
+    /// Deferred cancellation request.
+    #[serde(default)]
+    pub cancel_requested: bool,
 }
 
 /// The complete serialised assignment world.
@@ -1775,8 +2321,11 @@ pub fn capture_assignments(world: &World) -> AssignmentsState {
                     owner: assignment.owner,
                     leader: assignment.leader,
                     target: assignment.target,
+                    war: assignment.war,
+                    origin_situation: assignment.origin_situation.clone(),
                     started: assignment.started,
                     completes: assignment.completes,
+                    cancel_requested: assignment.cancel_requested,
                 }
             })
             .collect(),
@@ -1802,9 +2351,11 @@ pub fn restore_assignments(world: &mut World, state: &AssignmentsState) {
                 owner: assignment.owner,
                 leader: assignment.leader,
                 target: assignment.target,
+                war: assignment.war,
+                origin_situation: assignment.origin_situation.clone(),
                 started: assignment.started,
                 completes: assignment.completes,
-                cancel_requested: false,
+                cancel_requested: assignment.cancel_requested,
             })
             .id();
         index.assignments.insert(assignment.id, entity);

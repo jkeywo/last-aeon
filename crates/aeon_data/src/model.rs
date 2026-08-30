@@ -146,6 +146,10 @@ pub enum AssignmentTargetKind {
     Organisation,
     /// Targets a province.
     Province,
+    /// Targets one persistent formal war.
+    War,
+    /// Targets one exact side of one persistent formal war.
+    WarSide,
     /// Targets one of the owner's armies.
     OwnArmy,
     /// Targets one of the owner's armies and a destination province.
@@ -227,6 +231,11 @@ pub struct AssignmentDef {
     pub summary: String,
     /// Routine or consequential.
     pub category: AssignmentCategory,
+    /// Whether this assignment deterministically resolves as Success.
+    ///
+    /// Guaranteed assignments still consume their authored time and costs;
+    /// they simply do not make an outcome draw.
+    pub guaranteed: bool,
     /// Base duration in days.
     pub duration_days: u32,
     /// The skill that governs the outcome.
@@ -422,6 +431,128 @@ pub struct ScenarioDef {
     pub start_day: u8,
     /// The house the player leads.
     pub player_house: Option<ContentKey>,
+    /// Reusable Situations this scenario enables.
+    pub situations: Vec<ContentKey>,
+}
+
+/// A semantic subject kind exposed to authored Situation scripts.
+///
+/// These are deliberately game concepts rather than ECS component names:
+/// the simulation may change how a character or war is stored without
+/// changing the content-facing contract.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SituationSubjectKind {
+    /// The authored scenario itself.
+    Scenario,
+    /// A celestial body.
+    Body,
+    /// A province.
+    Province,
+    /// A character.
+    Character,
+    /// A political organisation.
+    Organisation,
+    /// A legal title.
+    Title,
+    /// A revocable office.
+    Office,
+    /// An army.
+    Army,
+    /// A ship.
+    Ship,
+    /// A running assignment.
+    Assignment,
+    /// An entry in the political-obligation ledger.
+    Obligation,
+    /// A formal war.
+    War,
+}
+
+/// Who may see a Situation in an ordinary player campaign.
+///
+/// Spectator visibility is presentation policy and deliberately does not
+/// alter this authored audience.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum SituationVisibilityDef {
+    /// Every player may see the Situation.
+    Public,
+    /// Only the characters or organisations named by these bindings may see
+    /// it. Binding names are validated when content loads.
+    Bound(Vec<String>),
+}
+
+/// One authored stage a Situation projection may select.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SituationStageDef {
+    /// Stable stage key within the Situation.
+    pub key: ContentKey,
+    /// Player-facing stage title, filled from the string table.
+    pub title: String,
+    /// Player-facing stage summary, filled from the string table.
+    pub summary: String,
+    /// Optional attention warning, filled from the string table when present.
+    pub warning: Option<String>,
+}
+
+/// One assignment shortcut a Situation projection may offer.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SituationActionDef {
+    /// Stable action key within the Situation.
+    pub key: ContentKey,
+    /// The ordinary assignment flow this action opens.
+    pub assignment: ContentKey,
+    /// Player-facing action label, filled from the string table.
+    pub label: String,
+}
+
+/// One ordered way an ended Situation may resolve.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SituationOutcomeDef {
+    /// Stable outcome key within the Situation.
+    pub key: ContentKey,
+    /// Pure predicate selecting this outcome. `None` is the mandatory
+    /// fallback and must be the final outcome.
+    pub predicate_fn: Option<ScriptFnRef>,
+    /// Player-facing resolution text, filled from the string table.
+    pub text: String,
+}
+
+/// An authored shell over live authoritative simulation facts.
+///
+/// Trigger functions return zero or more typed binding maps. Projection
+/// functions select from the declared stages and actions. When an instance
+/// disappears, outcome predicates are tried in declaration order before the
+/// mandatory fallback.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SituationDef {
+    /// Stable Situation key.
+    pub key: ContentKey,
+    /// Player-facing title, filled from the string table.
+    pub title: String,
+    /// Player-facing summary, filled from the string table.
+    pub summary: String,
+    /// Kind of authored source allowed to enable this definition.
+    pub source: SituationSubjectKind,
+    /// Additional typed bindings returned by the trigger, by stable name.
+    pub bindings: BTreeMap<String, SituationSubjectKind>,
+    /// Pure function returning zero or more active instance bindings.
+    pub trigger_fn: ScriptFnRef,
+    /// Pure function returning the fixed presentation blocks for an instance.
+    pub projection_fn: ScriptFnRef,
+    /// Authored ordering priority; larger values appear first.
+    pub priority: i32,
+    /// Whether activation writes a permanent tagged log entry.
+    pub log_activation: bool,
+    /// Authored audience, public by default.
+    pub visibility: SituationVisibilityDef,
+    /// Stages the projection may select.
+    pub stages: Vec<SituationStageDef>,
+    /// Assignment shortcuts the projection may offer.
+    pub actions: Vec<SituationActionDef>,
+    /// Ordered resolutions, ending in one mandatory fallback.
+    pub outcomes: Vec<SituationOutcomeDef>,
 }
 
 /// A loaded, validated content database.
@@ -463,6 +594,8 @@ pub struct ContentSet {
     pub plans: BTreeMap<ContentKey, PlanDef>,
     /// Grand-strategy goals a house head may adopt, by key.
     pub goals: BTreeMap<ContentKey, GoalDef>,
+    /// Authored Situation definitions by key.
+    pub situations: BTreeMap<ContentKey, SituationDef>,
     /// The scenario, if this content set defines one.
     pub scenario: Option<ScenarioDef>,
     /// Compiled ASTs by content-relative path, for runtime function calls.
@@ -488,8 +621,11 @@ impl ContentSet {
             && self.offices == other.offices
             && self.ships == other.ships
             && self.armies == other.armies
+            && self.obligations == other.obligations
+            && self.events == other.events
             && self.plans == other.plans
             && self.goals == other.goals
+            && self.situations == other.situations
             && self.scenario == other.scenario
             && self.content_hash == other.content_hash
     }
@@ -643,6 +779,8 @@ pub struct TitleDef {
     pub kind: TitleKindDef,
     /// The starting holder: an organisation key, character key, or vacant.
     pub holder: TitleHolderDef,
+    /// Reusable Situations this title enables.
+    pub situations: Vec<ContentKey>,
 }
 
 /// What an authored title covers.
@@ -997,6 +1135,8 @@ pub struct ObligationDef {
     pub weight: i32,
     /// Days until it lapses; `None` never lapses.
     pub days: Option<i64>,
+    /// Reusable Situations this authored obligation enables.
+    pub situations: Vec<ContentKey>,
 }
 
 /// An authored plan: a goal a character may pursue over months, decomposed
@@ -1126,6 +1266,11 @@ pub enum PlanTargetSelector {
     /// to have an organisation target; a headless house leaves the step
     /// waiting.
     TargetHead,
+    /// The most disordered province held by the opposing side of the
+    /// plan's exact formal-war target. Produces an army-and-province target
+    /// using the acting character's own army; no such army or province
+    /// leaves the step waiting.
+    LowestEnemyProvinceInWar,
 }
 
 /// Declarative conditions gating a plan method or skipping a step.
@@ -1151,8 +1296,22 @@ pub struct PlanRequires {
     /// The plan's target organisation must owe the authority an open
     /// favour.
     pub target_owes_favour: bool,
-    /// The authority must be the dominant claimant of the crisis body.
-    pub dominant_claimant: bool,
+    /// Whether the authority must be the dominant claimant of the crisis
+    /// body. `None` does not care, while `Some(false)` lets authored plans
+    /// describe what to do while still trailing.
+    pub dominant_claimant: Option<bool>,
+    /// Whether the acting head must currently hold a personal Paramount
+    /// claim.
+    pub has_paramount_claim: Option<bool>,
+    /// The authority's complete prospective war branch must have at least
+    /// this many permille of an organisation target's raised manpower.
+    pub min_target_branch_manpower_permille: Option<i64>,
+    /// The authority's complete prospective war branch must have at most
+    /// this many permille of an organisation target's raised manpower.
+    pub max_target_branch_manpower_permille: Option<i64>,
+    /// Whether an exact formal-war target must still have at least one
+    /// province held by the opposing frozen side.
+    pub war_has_enemy_province: Option<bool>,
 }
 
 /// An authored grand-strategy goal: a house's standing ambition.
@@ -1174,6 +1333,9 @@ pub struct GoalDef {
     pub summary: String,
     /// When this ambition is attractive enough to adopt.
     pub trigger: GoalRequires,
+    /// Relative authored priority among simultaneously eligible ambitions.
+    /// Higher values are considered first; stable content key breaks ties.
+    pub priority: i64,
     /// The pressures pursuing this goal favours; each is lifted by
     /// `favour_bonus` in the head's scoring while the goal is active.
     pub favours: Vec<AiIntent>,
@@ -1238,6 +1400,9 @@ pub struct GoalRequires {
     pub has_vassals: Option<bool>,
     /// Whether the house must itself be (or not be) a vassal.
     pub is_vassal: Option<bool>,
+    /// The current head must pass the authoritative eligibility rules for
+    /// declaring a personal claim to the vacant Paramountcy.
+    pub can_claim_paramountcy: bool,
 }
 
 /// An authored office: a revocable appointment held by a character.

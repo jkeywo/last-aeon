@@ -252,6 +252,48 @@ fn muster_success(ctx) {
 // --- The planetary succession crisis ---
 
 define_assignment(#{
+    id: "declare-paramount-claim",
+    ai_intent: "claim",
+    category: "consequential",
+    duration_days: 1,
+    guaranteed: true,
+    skill: "diplomacy",
+    difficulty: 0,
+    ai_available: true,
+    results: #{
+        success: #{
+            weight: 1000, log: true,
+            effect_fn: "declare_paramount_claim",
+        },
+    },
+});
+
+fn declare_paramount_claim(ctx) {
+    [#{ kind: "declare-paramount-claim" }]
+}
+
+define_assignment(#{
+    id: "renounce-paramount-claim",
+    ai_intent: "claim",
+    category: "consequential",
+    duration_days: 1,
+    guaranteed: true,
+    skill: "diplomacy",
+    difficulty: 0,
+    ai_available: true,
+    results: #{
+        success: #{
+            weight: 1000, log: true,
+            effect_fn: "renounce_paramount_claim",
+        },
+    },
+});
+
+fn renounce_paramount_claim(ctx) {
+    [#{ kind: "renounce-paramount-claim" }]
+}
+
+define_assignment(#{
     id: "press-claim",
     ai_intent: "claim",
     category: "consequential",

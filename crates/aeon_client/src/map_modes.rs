@@ -17,8 +17,9 @@ use aeon_sim::forces::garrison_in;
 use aeon_sim::map::ProvinceRecord;
 use aeon_sim::order::{ORDER_MAX, ProvincialOrder, pressures, province_order};
 use aeon_sim::politics::great_house_of;
+use aeon_sim::situations::{SituationInstanceKey, active_cards, visible_to_player};
 use aeon_sim::state::ContentDb;
-use aeon_sim::warfare::province_holder;
+use aeon_sim::warfare::{hostile_garrison_in, province_holder};
 use aeon_sim::{
     BodyId, CampaignClock, OrgId, OrgRecord, PlayerHouse, PoliticsIndex, ProvinceId, TextDb,
     answers_to, opinion_between,
@@ -58,13 +59,20 @@ impl Default for ProvinceReadout {
     }
 }
 
-/// One entry in the situation strip: something demanding attention.
+/// What an entry in the attention strip focuses when chosen.
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
+pub enum AttentionTarget {
+    /// One authored continuing Situation.
+    Situation(SituationInstanceKey),
+    /// A province and the body whose map contains it.
+    Province { province: ProvinceId, body: BodyId },
+}
+
+/// One entry in the attention strip: something demanding attention.
 #[derive(Clone, Debug)]
-pub struct SituationItem {
-    /// The province concerned.
-    pub province: ProvinceId,
-    /// The body it sits on, so the view can focus it.
-    pub body: BodyId,
+pub struct AttentionItem {
+    /// The province or authored Situation concerned.
+    pub target: AttentionTarget,
     /// Short headline.
     pub headline: String,
     /// Fuller explanation on hover.
@@ -73,7 +81,7 @@ pub struct SituationItem {
     pub urgent: bool,
 }
 
-/// The readouts for the focused globe, plus the current threat list.
+/// The readouts for the focused globe, plus the current attention list.
 #[derive(Resource, Default)]
 pub struct MapReadout {
     key: Option<(BodyId, MapMode, GameDate)>,
@@ -82,7 +90,7 @@ pub struct MapReadout {
     /// The legend for the active mode, from worst to best.
     pub legend: Vec<(String, [u8; 3])>,
     /// Everything currently demanding the player's attention.
-    pub situation: Vec<SituationItem>,
+    pub attention: Vec<AttentionItem>,
 }
 
 /// Blends between two colours, `t` in 0..=1000.
@@ -154,13 +162,13 @@ pub fn refresh_map_readout(world: &mut World) {
     }
 
     let legend = legend_for(world, mode, &provinces);
-    let situation = situation_for(world, player, body);
+    let attention = attention_for(world, player, body);
 
     let mut readout = world.resource_mut::<MapReadout>();
     readout.key = Some(key);
     readout.provinces = readouts;
     readout.legend = legend;
-    readout.situation = situation;
+    readout.attention = attention;
 }
 
 /// An organisation's authored colour.
@@ -328,6 +336,9 @@ fn readout_for(
         }
         MapMode::Military => {
             let (men, owner) = garrison_in(world, province);
+            let hostile_men = player
+                .map(|player| hostile_garrison_in(world, province, player).0)
+                .unwrap_or(0);
             let best = all
                 .iter()
                 .map(|(id, _)| garrison_in(world, *id).0)
@@ -352,7 +363,7 @@ fn readout_for(
                     ),
                     _ => strings.text("ui.map-mode.military.hint.empty").to_owned(),
                 },
-                alert: !friendly && men > 0 && holder == player,
+                alert: hostile_men > 0 && holder == player,
             }
         }
         MapMode::PlayerRelations => {
@@ -530,21 +541,8 @@ fn legend_for(
     }
 }
 
-/// The owner of the strongest force in a province, when it is not the
-/// player's own.
-fn owner_of_hostile_force(world: &World, province: ProvinceId, player: OrgId) -> Option<OrgId> {
-    let (men, owner) = garrison_in(world, province);
-    match owner {
-        Some(owner) if men > 0 && owner != player => Some(owner),
-        _ => None,
-    }
-}
-
 /// Everything currently demanding the player's attention, worst first.
-fn situation_for(world: &World, player: Option<OrgId>, body: BodyId) -> Vec<SituationItem> {
-    let Some(player) = player else {
-        return Vec::new();
-    };
+fn attention_for(world: &World, player: Option<OrgId>, body: BodyId) -> Vec<AttentionItem> {
     let strings = world.resource::<TextDb>();
     let mut items = Vec::new();
 
@@ -558,13 +556,16 @@ fn situation_for(world: &World, player: Option<OrgId>, body: BodyId) -> Vec<Situ
         let holder = province_holder(world, province);
         let name = aeon_sim::access::province_name(world, province);
 
-        // Our own ground slipping out of our hands.
-        if holder == Some(player) {
+        // Our own ground slipping out of our hands. Spectators have no
+        // territorial attention, but still receive public Situation warnings.
+        if player.is_some_and(|player| holder == Some(player)) {
             let state = province_order(world, province);
             if let Some(days) = state.days_to_revolt() {
-                items.push(SituationItem {
-                    province,
-                    body: record.body,
+                items.push(AttentionItem {
+                    target: AttentionTarget::Province {
+                        province,
+                        body: record.body,
+                    },
                     headline: strings.format(
                         "ui.situation.revolt.headline",
                         &[("province", &name), ("days", &days.to_string())],
@@ -573,9 +574,11 @@ fn situation_for(world: &World, player: Option<OrgId>, body: BodyId) -> Vec<Situ
                     urgent: days <= 30,
                 });
             } else if state.order < aeon_sim::order::ORDER_START / 2 {
-                items.push(SituationItem {
-                    province,
-                    body: record.body,
+                items.push(AttentionItem {
+                    target: AttentionTarget::Province {
+                        province,
+                        body: record.body,
+                    },
                     headline: strings
                         .format("ui.situation.restive.headline", &[("province", &name)]),
                     detail: strings.format(
@@ -590,11 +593,15 @@ fn situation_for(world: &World, player: Option<OrgId>, body: BodyId) -> Vec<Situ
             }
 
             // Someone else's troops on our ground.
-            if let Some(occupier) = owner_of_hostile_force(world, province, player) {
-                let (men, _) = garrison_in(world, province);
-                items.push(SituationItem {
-                    province,
-                    body: record.body,
+            if let Some((men, occupier)) = player.and_then(|player| {
+                let (men, occupier) = hostile_garrison_in(world, province, player);
+                occupier.map(|occupier| (men, occupier))
+            }) {
+                items.push(AttentionItem {
+                    target: AttentionTarget::Province {
+                        province,
+                        body: record.body,
+                    },
                     headline: strings
                         .format("ui.situation.occupied.headline", &[("province", &name)]),
                     detail: strings.format(
@@ -611,11 +618,41 @@ fn situation_for(world: &World, player: Option<OrgId>, body: BodyId) -> Vec<Situ
         }
     }
 
-    // Urgent first, then by province, and keep the strip readable.
+    // Authored warnings join the old province alerts rather than replacing
+    // them. Clicking one focuses its full card in the Situations panel.
+    for card in active_cards(world) {
+        if !visible_to_player(world, &card.active.key) {
+            continue;
+        }
+        let Some(projection) = &card.projection else {
+            continue;
+        };
+        if !projection.warning {
+            continue;
+        }
+        let detail = world
+            .get_resource::<ContentDb>()
+            .and_then(|content| content.0.situations.get(&card.active.key.definition))
+            .and_then(|def| {
+                def.stages
+                    .iter()
+                    .find(|stage| stage.key == projection.stage)
+            })
+            .and_then(|stage| stage.warning.clone())
+            .unwrap_or_else(|| card.summary.clone());
+        items.push(AttentionItem {
+            target: AttentionTarget::Situation(card.active.key),
+            headline: card.title,
+            detail,
+            urgent: true,
+        });
+    }
+
+    // Urgent first, then by stable target identity, and keep the strip readable.
     items.sort_by(|a, b| {
         b.urgent
             .cmp(&a.urgent)
-            .then_with(|| a.province.cmp(&b.province))
+            .then_with(|| a.target.cmp(&b.target))
     });
     let _ = body;
     items.truncate(12);

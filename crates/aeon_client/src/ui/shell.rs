@@ -47,7 +47,11 @@ pub fn draw_panels(
         mut form,
         mut popup,
     } = assignment_ui;
-    let MapUi { mut mode, mut dock } = map_ui;
+    let MapUi {
+        mut mode,
+        mut dock,
+        mut situation_ui,
+    } = map_ui;
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
     };
@@ -94,7 +98,15 @@ pub fn draw_panels(
     );
 
     draw_search_results(ctx, &lookup, &data, &mut view, &mut search);
-    draw_overlays(ctx, theme, strings, &data.readout, &mut view);
+    draw_overlays(
+        ctx,
+        theme,
+        strings,
+        &data.readout,
+        &mut view,
+        &mut dock,
+        &mut situation_ui,
+    );
 
     let panel_ctx = PanelCtx {
         lookup: &lookup,
@@ -111,6 +123,7 @@ pub fn draw_panels(
         plans: data.plans.as_deref(),
         goals: data.goals.as_deref(),
         issued_directives: data.issued_directives.as_deref(),
+        situations: &data.situations,
     };
     let mut out = PanelOut {
         view: &mut view,
@@ -118,6 +131,7 @@ pub fn draw_panels(
         queue: &mut queue,
         popup: &mut popup,
         filter: &mut filter,
+        situation_ui: &mut situation_ui,
     };
 
     // Header verbs are collected and applied after drawing: a panel cannot

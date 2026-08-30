@@ -472,6 +472,8 @@ pub fn spawn_from_content(world: &mut World, content: &ContentSet) {
 
     world.insert_resource(index);
     world.insert_resource(PlayerHouse(player));
+    let date = world.resource::<CampaignClock>().date;
+    ensure_consul_contest(world, date);
 }
 
 // ---------------------------------------------------------------------------
@@ -782,6 +784,7 @@ pub fn restore_politics(world: &mut World, state: &PoliticsState, content: &Cont
 
     world.insert_resource(index);
     world.insert_resource(PlayerHouse(state.player_house));
+    world.remove_resource::<ConsulContest>();
     if let Some(contest) = &state.consul_contest {
         world.insert_resource(contest.clone());
     }
@@ -1007,7 +1010,7 @@ pub fn yearly_mortality(world: &mut World) {
 }
 
 /// Marks a character dead and resolves everything their death touches:
-/// widowhood, house succession, Consular vacancy, office vacancies.
+/// personal claims, widowhood, house succession, and political vacancies.
 pub fn process_death(world: &mut World, id: CharacterId, date: GameDate) {
     let entity = character_entity(world, id);
     {
@@ -1017,6 +1020,10 @@ pub fn process_death(world: &mut World, id: CharacterId, date: GameDate) {
         }
         record.death = Some(date);
     }
+
+    // Paramount claims are personal. Removing the dead head's declaration
+    // before succession makes it impossible for an heir to inherit implicitly.
+    crate::crisis::remove_claims_by(world, id);
 
     // Widow the spouse.
     let spouse = world.get::<Lineage>(entity).expect("indexed").spouse;
@@ -1118,6 +1125,10 @@ pub fn process_death(world: &mut World, id: CharacterId, date: GameDate) {
         office.holder = None;
         office.vacant_since = Some(date);
     }
+
+    // A candidate death can exhaust the contest without vacating the title
+    // itself. Re-evaluate after succession has made any new heads eligible.
+    ensure_consul_contest(world, date);
 }
 
 /// Legal heir order for a dynastic house after `dead` dies: children by
@@ -1206,13 +1217,8 @@ fn vacate_personal_title(world: &mut World, title_id: TitleId, date: GameDate) {
         title.holder = TitleHolder::Vacant;
         title.kind
     };
-    if kind == TitleKind::Consul && world.get_resource::<ConsulContest>().is_none() {
-        let candidates = consul_candidates(world);
-        world.insert_resource(ConsulContest {
-            title: title_id,
-            opened: date,
-            candidates,
-        });
+    if kind == TitleKind::Consul {
+        ensure_consul_contest(world, date);
     }
 }
 
@@ -1243,9 +1249,62 @@ fn consul_candidates(world: &World) -> Vec<CharacterId> {
     candidates
 }
 
-/// A candidate's standing in the Consular contest. Opinion terms let
-/// political assignments move the outcome.
-fn consul_score(world: &World, candidate: CharacterId, jitter: i64) -> i64 {
+/// Maintains the invariant that an authored, vacant Consul title has an open
+/// contest. A contest whose entire frozen candidate slate has died is restarted
+/// once a new eligible slate exists, giving that slate the full appointment
+/// period rather than leaving the title permanently vacant.
+fn ensure_consul_contest(world: &mut World, date: GameDate) {
+    let existing = world.get_resource::<ConsulContest>().cloned();
+    if let Some(contest) = existing {
+        let still_vacant = crate::access::title_entity(world, contest.title)
+            .and_then(|entity| world.get::<TitleRecord>(entity))
+            .is_some_and(|title| {
+                title.key.is_some()
+                    && title.kind == TitleKind::Consul
+                    && title.holder == TitleHolder::Vacant
+            });
+        if still_vacant {
+            let has_survivor = contest.candidates.iter().any(|candidate| {
+                crate::access::character(world, *candidate).is_some_and(|r| r.alive())
+            });
+            if has_survivor {
+                return;
+            }
+
+            let candidates = consul_candidates(world);
+            if !candidates.is_empty() {
+                world.insert_resource(ConsulContest {
+                    title: contest.title,
+                    opened: date,
+                    candidates,
+                });
+            }
+            return;
+        }
+        world.remove_resource::<ConsulContest>();
+    }
+
+    let vacant_title = {
+        let index = world.resource::<PoliticsIndex>();
+        index.titles.iter().find_map(|(id, entity)| {
+            world.get::<TitleRecord>(*entity).and_then(|title| {
+                (title.key.is_some()
+                    && title.kind == TitleKind::Consul
+                    && title.holder == TitleHolder::Vacant)
+                    .then_some(*id)
+            })
+        })
+    };
+    if let Some(title) = vacant_title {
+        world.insert_resource(ConsulContest {
+            title,
+            opened: date,
+            candidates: consul_candidates(world),
+        });
+    }
+}
+
+fn consul_base_score(world: &World, candidate: CharacterId) -> i64 {
     let skills = crate::access::on_character::<CharacterSkills>(world, candidate)
         .expect("indexed")
         .0;
@@ -1265,7 +1324,18 @@ fn consul_score(world: &World, candidate: CharacterId, jitter: i64) -> i64 {
         .map(|member| i64::from(opinion_between(world, *member, candidate)))
         .sum();
 
-    i64::from(skills.diplomacy) * 2 + i64::from(skills.stewardship) + opinion_sum + jitter
+    i64::from(skills.diplomacy) * 2 + i64::from(skills.stewardship) + opinion_sum
+}
+
+/// Exact deterministic standing in a Consular contest.
+///
+/// Opinion terms let political assignments move the outcome. The final jitter
+/// is derived from the frozen `"consul-appointment"` stream and the title and
+/// candidate identities, so every caller observes the same score as resolution.
+pub fn consul_score(world: &World, title: TitleId, candidate: CharacterId) -> i64 {
+    let mut rng =
+        crate::access::derived_rng(world, "consul-appointment", &[title.raw(), candidate.raw()]);
+    consul_base_score(world, candidate) + rng.roll_range(-10, 10)
 }
 
 /// Daily: resolves an open Consular contest once the Tsar's appointment
@@ -1275,6 +1345,7 @@ pub fn daily_appointments(world: &mut World) {
         return;
     }
     let date = world.resource::<CampaignClock>().date;
+    ensure_consul_contest(world, date);
 
     // Consular contest.
     if let Some(contest) = world.get_resource::<ConsulContest>().cloned()
@@ -1286,13 +1357,7 @@ pub fn daily_appointments(world: &mut World) {
             if !alive {
                 continue;
             }
-            let mut rng = crate::access::derived_rng(
-                world,
-                "consul-appointment",
-                &[contest.title.raw(), candidate.raw()],
-            );
-            let jitter = rng.roll_range(-10, 10);
-            let score = consul_score(world, *candidate, jitter);
+            let score = consul_score(world, contest.title, *candidate);
             // Ties resolve to the lower stable ID (strict comparison).
             if best.is_none_or(|(best_score, best_id)| {
                 score > best_score || (score == best_score && *candidate < best_id)
@@ -1318,8 +1383,9 @@ pub fn daily_appointments(world: &mut World) {
             }
         }
         // Contest closes even if no candidate survived; a later death
-        // reopens it.
+        // or this daily invariant reopens it.
         world.remove_resource::<ConsulContest>();
+        ensure_consul_contest(world, date);
     }
 
     // Office appointments: the Consul fills vacant Sanctora offices.

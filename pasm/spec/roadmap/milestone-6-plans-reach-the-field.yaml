@@ -1,7 +1,7 @@
 # Post-MVP implementation plan — Milestone 6
 #
 # Milestone 5 gave the simulation persons who plan, and recorded its own
-# unfinished business: the claim campaign ends where the war begins,
+# unfinished business: the claim campaign ended where armed rivalry began,
 # only heads hold plans, and a plan can aim at nothing but its own
 # target. This milestone is that recorded remainder — plans reach the
 # battlefield through the standing orders armies already obey, the
@@ -21,7 +21,7 @@ entities:
       summary: >-
         The three scope cuts Milestone 5 recorded become the work: a plan
         step can set an army's standing orders, so a campaign that
-        declares a war also arms the war it declared; household members
+        prepares for armed rivalry also arms its forces; household members
         below the head pursue small ambitions of their own, still never
         spending what is not theirs; and plan steps gain the few extra
         target selectors the authored campaigns actually need. Everything
@@ -47,7 +47,7 @@ entities:
         onto the authority's armies, instantly, as authored data — the
         same editable lists the player sets by hand, driving the same
         reactive military behaviour. The claim campaign grows a step that
-        readies its armies for the war the declaration invites, closing
+        readies its armies for the armed contest its declaration invites, closing
         the gap where the AI planned a war and never fought it. A plan
         never commands a battle; it points the army at the doctrine and
         the doctrine fights.
@@ -55,7 +55,7 @@ entities:
         - standing-orders-are-priority-lists
         - plans-are-authored-campaigns
       goals:
-        - A campaign that ends in a declaration leaves its armies under orders that answer what follows.
+        - A campaign that reaches a declaration leaves its armies under orders that answer what follows.
         - A standing order set by a plan is indistinguishable from one set by hand, because it is the same list on the same component.
         - No new RNG stream; setting orders is a deterministic act.
     implementation:
@@ -188,14 +188,15 @@ entities:
         a threatened holding by pointing the levy at it; and a small
         household ambition or two gives courtiers something of their own
         to want. A seed-pinned acceptance run proves a campaign that
-        declares a war also fights it, and the log tells the story
-        without a single scripted nudge.
+        declares its claim also prepares to fight, and the log tells the story
+        without a single scripted nudge. M2.5 extends that preparation into an
+        explicit formal-war declaration and exact WarId-bound operations.
       references:
         - plans-are-authored-campaigns
         - standing-orders-are-priority-lists
         - agency-intents-are-authored-on-jobs
       goals:
-        - An autonomous house visibly carries a claim from funding through declaration into armed readiness, for reasons it states.
+        - An autonomous house visibly carries its campaign through personal declaration, formal war, armed readiness, peace, and a valid press, for reasons it states.
         - Content alone drives every new behaviour; no engine change lands in this sub-milestone.
     implementation:
       paths:
@@ -208,11 +209,11 @@ entities:
       - kind: test
         reference: crates/aeon_sim/tests/acceptance.rs
         summary: >-
-          On the real scenario, once the opening tie is broken, Veyrin's
-          head carries the claim campaign through funding, mustering and
-          arming to a declaration, and by its end some Veyrin army stands
-          under standing orders it was not authored with — the declared
-          war is an armed one, unprompted.
+          The original acceptance proved that Veyrin's head could fund,
+          muster, arm, and declare through authored steps, leaving an army
+          under plan-selected standing orders. M2.5 supersedes the direct
+          opening-tie gate and turns the resulting rivalry into a persistent
+          formal war before the claimant may press.
       - kind: manual-review
         reference: assets/content/core/plans.rhai
         summary: >-

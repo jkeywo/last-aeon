@@ -64,6 +64,44 @@ define_province(#{
 });
 "#;
 
+const GOOD_SITUATION: &str = r#"
+define_assignment(#{
+    id: "negotiate-war",
+    category: "routine",
+    duration_days: 20,
+    skill: "diplomacy",
+    difficulty: 8,
+    target: "war",
+    results: #{ success: #{ weight: 700 }, failure: #{ weight: 300 } },
+});
+
+define_situation(#{
+    id: "formal-war",
+    source: "scenario",
+    bindings: #{ war: "war", side: "organisation" },
+    trigger_fn: "war_instances",
+    projection_fn: "war_projection",
+    priority: 50,
+    log_activation: true,
+    stages: ["open", "negotiating"],
+    actions: [#{ id: "negotiate", assignment: "negotiate-war" }],
+    outcomes: [
+        #{ id: "peace", when_fn: "ended_in_peace" },
+        #{ id: "ended", fallback: true },
+    ],
+});
+
+define_scenario(#{
+    id: "situation-test",
+    start_year: 411, start_month: 1, start_day: 1,
+    situations: ["formal-war"],
+});
+
+fn war_instances(ctx) { [#{ war: 17, side: 23 }] }
+fn war_projection(ctx) { #{ stage: "open" } }
+fn ended_in_peace(ctx) { false }
+"#;
+
 #[test]
 fn loads_a_valid_content_set() {
     let (set, report) = load_content(
@@ -151,6 +189,170 @@ fn effect_functions_run_against_read_context() {
 }
 
 #[test]
+fn situations_load_with_typed_bindings_actions_outcomes_and_attachments() {
+    let (set, report) = load_content(
+        &[source("core/situations.rhai", GOOD_SITUATION)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(
+        !report.has_errors(),
+        "unexpected findings: {:?}",
+        report.findings
+    );
+    let set = set.expect("valid Situation content loads");
+    let key = aeon_data::ContentKey::new("formal-war").unwrap();
+    let situation = &set.situations[&key];
+    assert_eq!(situation.priority, 50);
+    assert!(situation.log_activation);
+    assert_eq!(situation.stages.len(), 2);
+    assert_eq!(situation.actions[0].assignment.as_str(), "negotiate-war");
+    assert!(situation.outcomes.last().unwrap().predicate_fn.is_none());
+    assert_eq!(set.scenario.as_ref().unwrap().situations, vec![key.clone()]);
+
+    let returned = ScriptHost::new()
+        .call_dynamic_fn(&set, &situation.trigger_fn, rhai::Map::new())
+        .expect("raw Situation function returns through the shared host");
+    assert_eq!(returned.try_cast::<rhai::Array>().unwrap().len(), 1);
+
+    let keys = aeon_data::text_keys(&set);
+    assert!(keys.contains("situation.formal-war.title"));
+    assert!(keys.contains("situation.formal-war.stage.open.summary"));
+    assert!(keys.contains("situation.formal-war.action.negotiate.label"));
+    assert!(keys.contains("situation.formal-war.resolution.peace.text"));
+}
+
+#[test]
+fn situation_validation_rejects_bad_functions_actions_audiences_and_fallbacks() {
+    let bad = r#"
+define_situation(#{
+    id: "broken-situation",
+    source: "scenario",
+    bindings: #{ war: "war" },
+    trigger_fn: "missing_trigger",
+    projection_fn: "missing_projection",
+    audience: ["war"],
+    stages: ["open", "open"],
+    actions: [#{ id: "act", assignment: "missing-assignment" }],
+    outcomes: [
+        #{ id: "fallback-first", fallback: true },
+        #{ id: "conditional", when_fn: "missing_outcome" },
+    ],
+});
+define_scenario(#{
+    id: "bad-situation-test",
+    start_year: 411, start_month: 1, start_day: 1,
+    situations: ["broken-situation"],
+});
+"#;
+    let (set, report) = load_content(
+        &[source("bad/situations.rhai", bad)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    let messages: Vec<&str> = report
+        .findings
+        .iter()
+        .map(|finding| finding.message.as_str())
+        .collect();
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("trigger_fn"))
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("projection_fn"))
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("undefined assignment"))
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("audiences must bind"))
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("fallback outcome must be last"))
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("duplicate Situation stage"))
+    );
+}
+
+#[test]
+fn situation_attachments_validate_source_kind_and_definition() {
+    let bad = r#"
+define_situation(#{
+    id: "title-only",
+    source: "title",
+    trigger_fn: "none",
+    projection_fn: "view",
+    stages: ["open"],
+    outcomes: [#{ id: "ended", fallback: true }],
+});
+define_scenario(#{
+    id: "bad-attachment",
+    start_year: 411, start_month: 1, start_day: 1,
+    situations: ["title-only", "not-defined"],
+});
+fn none(ctx) { [] }
+fn view(ctx) { #{ stage: "open" } }
+"#;
+    let (set, report) = load_content(
+        &[source("bad/attachments.rhai", bad)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    assert!(report.findings.iter().any(|finding| {
+        finding
+            .message
+            .contains("expects a Title source, not Scenario")
+    }));
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|finding| finding.message.contains("'not-defined' is not defined"))
+    );
+}
+
+#[test]
+fn situation_validation_rejects_sources_without_attachment_support() {
+    let bad = r#"
+define_situation(#{
+    id: "war-sourced",
+    source: "war",
+    trigger_fn: "none",
+    projection_fn: "view",
+    stages: ["open"],
+    outcomes: [#{ id: "ended", fallback: true }],
+});
+fn none(ctx) { [] }
+fn view(ctx) { #{ stage: "open" } }
+"#;
+    let (set, report) = load_content(
+        &[source("bad/unsupported-source.rhai", bad)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    assert!(report.findings.iter().any(|finding| {
+        finding
+            .message
+            .contains("source kind 'war' cannot be attached")
+            && finding
+                .message
+                .contains("use source: \"scenario\" plus a typed binding")
+    }));
+}
+
+#[test]
 fn missing_mandatory_results_are_errors() {
     let bad = r#"
 define_assignment(#{
@@ -168,6 +370,56 @@ define_assignment(#{
             .iter()
             .any(|f| f.severity == Severity::Error && f.message.contains("Failure"))
     );
+}
+
+#[test]
+fn guaranteed_assignments_define_success_only() {
+    let good = r#"
+define_assignment(#{
+    id: "declare",
+    category: "routine",
+    guaranteed: true,
+    duration_days: 1,
+    skill: "diplomacy",
+    difficulty: 0,
+    results: #{ success: #{ weight: 1 } },
+});
+"#;
+    let (set, report) = load_content(
+        &[source("guaranteed.rhai", good)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(
+        !report.has_errors(),
+        "unexpected findings: {:?}",
+        report.findings
+    );
+    assert!(set.unwrap().assignments.values().next().unwrap().guaranteed);
+
+    let bad = r#"
+define_assignment(#{
+    id: "uncertain-declaration",
+    category: "routine",
+    guaranteed: true,
+    duration_days: 1,
+    skill: "diplomacy",
+    difficulty: 0,
+    results: #{
+        success: #{ weight: 1 },
+        failure: #{ weight: 1 },
+    },
+});
+"#;
+    let (set, report) = load_content(
+        &[source("bad-guaranteed.rhai", bad)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    assert!(report.findings.iter().any(|finding| {
+        finding
+            .message
+            .contains("guaranteed assignments may define only a Success result")
+    }));
 }
 
 #[test]

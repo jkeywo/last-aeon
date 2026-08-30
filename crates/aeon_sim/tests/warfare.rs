@@ -9,8 +9,8 @@ use aeon_sim::economy::OrgResources;
 use aeon_sim::forces::{ArmyRecord, ForcesIndex, ShipRecord, form_army};
 use aeon_sim::warfare::{StandingOrders, province_holder};
 use aeon_sim::{
-    ArmyId, AssignmentTarget, CampaignConfig, CharacterId, MessageLog, PlayerCommand,
-    PoliticsIndex, ProvinceId, SimHost,
+    ArmyId, AssignmentRejection, AssignmentTarget, CampaignConfig, CharacterId, CommandRejection,
+    MessageLog, PlayerCommand, PoliticsIndex, ProvinceId, SimHost, WarId,
 };
 
 const FIXTURE: &str = r#"
@@ -166,6 +166,42 @@ fn muster(h: &mut SimHost, owner: &str, general: &str, men: i64, at: &str) -> Ar
     form_army(h.world_mut(), owner, general, men, men / 5, at)
 }
 
+fn declare_test_war(h: &mut SimHost, attacker: &str, defender: &str) -> WarId {
+    let attacker = org(h, attacker);
+    let defender = org(h, defender);
+    aeon_sim::wars::declare_war(h.world_mut(), attacker, defender, key("fixture-war"))
+        .expect("fixture sides may declare war")
+}
+
+fn start_war_assignment(
+    h: &mut SimHost,
+    owner: &str,
+    assignment: &str,
+    leader: CharacterId,
+    target: AssignmentTarget,
+    war: WarId,
+) {
+    let owner = org(h, owner);
+    let assignment = key(assignment);
+    aeon_sim::assignments::validate_start_in_war(
+        h.world_mut(),
+        owner,
+        &assignment,
+        leader,
+        target,
+        Some(war),
+    )
+    .expect("fixture war assignment is valid");
+    aeon_sim::assignments::start_assignment_in_war(
+        h.world_mut(),
+        owner,
+        &assignment,
+        leader,
+        target,
+        Some(war),
+    );
+}
+
 #[test]
 fn marches_move_armies_and_take_road_time() {
     let mut h = host(1);
@@ -197,6 +233,24 @@ fn marches_move_armies_and_take_road_time() {
 }
 
 #[test]
+fn a_siege_command_without_its_exact_war_is_refused() {
+    let mut h = host(100);
+    let aron = char_id(&mut h, "aron-ash");
+    let army = muster(&mut h, "ash", "aron-ash", 1_000, "alpha");
+    let beta = province(&mut h, "beta");
+    let _war = declare_test_war(&mut h, "ash", "birch");
+
+    assert_eq!(
+        h.submit(PlayerCommand::StartAssignment {
+            assignment: key("besiege"),
+            leader: aron,
+            target: AssignmentTarget::ArmyToProvince(army, beta),
+        }),
+        Err(CommandRejection::Assignment(AssignmentRejection::BadTarget)),
+    );
+}
+
+#[test]
 fn sieges_take_provinces_after_beating_the_garrison() {
     let mut h = host(2);
     let aron = char_id(&mut h, "aron-ash");
@@ -205,14 +259,17 @@ fn sieges_take_provinces_after_beating_the_garrison() {
     let beta = province(&mut h, "beta");
     let ash = org(&mut h, "ash");
     let birch = org(&mut h, "birch");
+    let war = declare_test_war(&mut h, "ash", "birch");
 
     assert_eq!(province_holder(h.world_mut(), beta), Some(birch));
-    h.submit(PlayerCommand::StartAssignment {
-        assignment: key("besiege"),
-        leader: aron,
-        target: AssignmentTarget::ArmyToProvince(attacker, beta),
-    })
-    .unwrap();
+    start_war_assignment(
+        &mut h,
+        "ash",
+        "besiege",
+        aron,
+        AssignmentTarget::ArmyToProvince(attacker, beta),
+        war,
+    );
     h.advance_days(25);
 
     let world = h.world_mut();
@@ -238,13 +295,16 @@ fn a_strong_garrison_breaks_a_weak_siege() {
     let _defender = muster(&mut h, "birch", "bela-birch", 4000, "beta");
     let beta = province(&mut h, "beta");
     let birch = org(&mut h, "birch");
+    let war = declare_test_war(&mut h, "ash", "birch");
 
-    h.submit(PlayerCommand::StartAssignment {
-        assignment: key("besiege"),
-        leader: aron,
-        target: AssignmentTarget::ArmyToProvince(attacker, beta),
-    })
-    .unwrap();
+    start_war_assignment(
+        &mut h,
+        "ash",
+        "besiege",
+        aron,
+        AssignmentTarget::ArmyToProvince(attacker, beta),
+        war,
+    );
     h.advance_days(25);
 
     let world = h.world_mut();
@@ -304,6 +364,7 @@ fn blockades_halve_wealth_output() {
         let world = h.world_mut();
         world.resource::<ForcesIndex>().ship_keys[&key("ash-sloop")]
     };
+    let war = declare_test_war(&mut h, "ash", "birch");
 
     // A ship is ordered by the officer who commands it, so one must be
     // aboard before it can be sent anywhere.
@@ -313,18 +374,26 @@ fn blockades_halve_wealth_output() {
     })
     .unwrap();
     h.advance_days(2);
-    h.submit(PlayerCommand::StartAssignment {
-        assignment: key("blockade"),
-        leader: aron,
-        target: AssignmentTarget::ShipToProvince(sloop, beta),
-    })
-    .unwrap();
+    start_war_assignment(
+        &mut h,
+        "ash",
+        "blockade",
+        aron,
+        AssignmentTarget::ShipToProvince(sloop, beta),
+        war,
+    );
     h.advance_days(4);
     {
         let world = h.world_mut();
         let forces = world.resource::<ForcesIndex>();
         let ship = world.get::<ShipRecord>(forces.ships[&sloop]).unwrap();
-        assert_eq!(ship.blockading, Some(beta));
+        assert_eq!(
+            ship.blockading,
+            Some(aeon_sim::forces::Blockade {
+                province: beta,
+                war,
+            })
+        );
     }
 
     // Compare a blockaded month's wealth with the unblockaded baseline.
@@ -377,6 +446,7 @@ fn standing_orders_answer_threats_and_yield_to_bespoke_assignments() {
     let attacker = muster(&mut h, "ash", "aron-ash", 1000, "alpha");
     let defender = muster(&mut h, "birch", "bela-birch", 3000, "gamma");
     let beta = province(&mut h, "beta");
+    let war = declare_test_war(&mut h, "ash", "birch");
 
     // The defender guards Birch holdings from Gamma.
     {
@@ -389,12 +459,14 @@ fn standing_orders_answer_threats_and_yield_to_bespoke_assignments() {
     }
 
     // A siege on Beta triggers the alarm; the defender marches.
-    h.submit(PlayerCommand::StartAssignment {
-        assignment: key("besiege"),
-        leader: aron,
-        target: AssignmentTarget::ArmyToProvince(attacker, beta),
-    })
-    .unwrap();
+    start_war_assignment(
+        &mut h,
+        "ash",
+        "besiege",
+        aron,
+        AssignmentTarget::ArmyToProvince(attacker, beta),
+        war,
+    );
     h.advance_days(3);
 
     {
@@ -437,14 +509,17 @@ fn idle_armies_without_orders_do_not_react() {
     let attacker = muster(&mut h, "ash", "aron-ash", 1000, "alpha");
     let _defender = muster(&mut h, "birch", "bela-birch", 3000, "gamma");
     let beta = province(&mut h, "beta");
+    let war = declare_test_war(&mut h, "ash", "birch");
 
     // No standing order set: HoldFast is the default.
-    h.submit(PlayerCommand::StartAssignment {
-        assignment: key("besiege"),
-        leader: aron,
-        target: AssignmentTarget::ArmyToProvince(attacker, beta),
-    })
-    .unwrap();
+    start_war_assignment(
+        &mut h,
+        "ash",
+        "besiege",
+        aron,
+        AssignmentTarget::ArmyToProvince(attacker, beta),
+        war,
+    );
     h.advance_days(3);
 
     let world = h.world_mut();
@@ -473,12 +548,15 @@ fn warfare_is_deterministic_and_survives_snapshots() {
                 .standing_order = StandingOrders(vec![key("respond")]);
         }
         let beta = province(&mut h, "beta");
-        h.submit(PlayerCommand::StartAssignment {
-            assignment: key("besiege"),
-            leader: aron,
-            target: AssignmentTarget::ArmyToProvince(attacker, beta),
-        })
-        .unwrap();
+        let war = declare_test_war(&mut h, "ash", "birch");
+        start_war_assignment(
+            &mut h,
+            "ash",
+            "besiege",
+            aron,
+            AssignmentTarget::ArmyToProvince(attacker, beta),
+            war,
+        );
         h.advance_days(60);
         h
     };
@@ -507,16 +585,21 @@ fn a_ship_is_ordered_by_its_captain_and_nobody_else() {
         let key = key("ash-sloop");
         h.world_mut().resource::<ForcesIndex>().ship_keys[&key]
     };
+    let war = declare_test_war(&mut h, "ash", "birch");
+    let ash = org(&mut h, "ash");
 
     // The fixture's sloop has no captain, so nobody can order it.
-    let refused = h.submit(PlayerCommand::StartAssignment {
-        assignment: key("blockade"),
-        leader: aron,
-        target: AssignmentTarget::ShipToProvince(ship, beta),
-    });
-    assert!(
-        refused.is_err(),
-        "a ship without a captain has no order to give"
+    assert_eq!(
+        aeon_sim::assignments::validate_start_in_war(
+            h.world_mut(),
+            ash,
+            &key("blockade"),
+            aron,
+            AssignmentTarget::ShipToProvince(ship, beta),
+            Some(war),
+        ),
+        Err(AssignmentRejection::IneligibleLeader),
+        "a ship without a captain has no order to give",
     );
 
     // Put Aron aboard, and the same order stands.
@@ -532,12 +615,14 @@ fn a_ship_is_ordered_by_its_captain_and_nobody_else() {
         let record = world.get::<ShipRecord>(forces.ships[&ship]).unwrap();
         assert_eq!(record.captain, Some(aron), "the command was taken up");
     }
-    h.submit(PlayerCommand::StartAssignment {
-        assignment: key("blockade"),
-        leader: aron,
-        target: AssignmentTarget::ShipToProvince(ship, beta),
-    })
-    .expect("the captain may order their own ship");
+    start_war_assignment(
+        &mut h,
+        "ash",
+        "blockade",
+        aron,
+        AssignmentTarget::ShipToProvince(ship, beta),
+        war,
+    );
 }
 
 #[test]
@@ -620,4 +705,338 @@ fn captain_assignment_survives_a_snapshot() {
     let forces = world.resource::<ForcesIndex>().clone();
     let record = world.get::<ShipRecord>(forces.ships[&ship]).unwrap();
     assert_eq!(record.captain, Some(aron));
+}
+
+#[test]
+fn an_army_on_assignment_cannot_be_disbanded_and_a_missing_army_cannot_conquer() {
+    let mut h = host(41);
+    let aron = char_id(&mut h, "aron-ash");
+    let attacker = muster(&mut h, "ash", "aron-ash", 3_000, "alpha");
+    let beta = province(&mut h, "beta");
+    let birch = org(&mut h, "birch");
+    let war = declare_test_war(&mut h, "ash", "birch");
+    start_war_assignment(
+        &mut h,
+        "ash",
+        "besiege",
+        aron,
+        AssignmentTarget::ArmyToProvince(attacker, beta),
+        war,
+    );
+
+    assert_eq!(
+        h.submit(PlayerCommand::DisbandArmy { army: attacker }),
+        Err(CommandRejection::ForceCommitted),
+        "an active operation owns the force until it resolves",
+    );
+
+    // Simulate an exceptional loss outside the command path. Completion must
+    // fail safely rather than conquering without the army that was ordered.
+    aeon_sim::forces::disband_army(h.world_mut(), attacker);
+    h.advance_days(25);
+    assert_eq!(
+        province_holder(h.world_mut(), beta),
+        Some(birch),
+        "a vanished besieger cannot transfer the title",
+    );
+}
+
+#[test]
+fn an_operation_cannot_use_an_army_that_changed_owner() {
+    let mut h = host(42);
+    let aron = char_id(&mut h, "aron-ash");
+    let army = muster(&mut h, "ash", "aron-ash", 1_500, "alpha");
+    let beta = province(&mut h, "beta");
+    let (ash, birch) = (org(&mut h, "ash"), org(&mut h, "birch"));
+    let war = declare_test_war(&mut h, "ash", "birch");
+    start_war_assignment(
+        &mut h,
+        "ash",
+        "raid",
+        aron,
+        AssignmentTarget::ArmyToProvince(army, beta),
+        war,
+    );
+
+    let forces = h.world_mut().resource::<ForcesIndex>().clone();
+    h.world_mut()
+        .get_mut::<ArmyRecord>(forces.armies[&army])
+        .unwrap()
+        .owner = birch;
+    let wealth_before = {
+        let world = h.world_mut();
+        let politics = world.resource::<PoliticsIndex>().clone();
+        (
+            world
+                .get::<OrgResources>(politics.orgs[&ash])
+                .unwrap()
+                .wealth,
+            world
+                .get::<OrgResources>(politics.orgs[&birch])
+                .unwrap()
+                .wealth,
+        )
+    };
+
+    h.advance_days(6);
+    let world = h.world_mut();
+    let politics = world.resource::<PoliticsIndex>().clone();
+    assert_eq!(
+        (
+            world
+                .get::<OrgResources>(politics.orgs[&ash])
+                .unwrap()
+                .wealth,
+            world
+                .get::<OrgResources>(politics.orgs[&birch])
+                .unwrap()
+                .wealth,
+        ),
+        wealth_before,
+        "an army that no longer belongs to the assignment owner cannot loot",
+    );
+}
+
+#[test]
+fn a_ship_on_assignment_cannot_move_or_change_captain_and_keeps_its_leader_contract() {
+    let mut h = host(43);
+    let aron = char_id(&mut h, "aron-ash");
+    let alpha = province(&mut h, "alpha");
+    let beta = province(&mut h, "beta");
+    let ship = h.world_mut().resource::<ForcesIndex>().ship_keys[&key("ash-sloop")];
+    let war = declare_test_war(&mut h, "ash", "birch");
+    h.submit(PlayerCommand::SetShipCaptain {
+        ship,
+        captain: Some(aron),
+    })
+    .unwrap();
+    h.advance_days(2);
+    start_war_assignment(
+        &mut h,
+        "ash",
+        "blockade",
+        aron,
+        AssignmentTarget::ShipToProvince(ship, beta),
+        war,
+    );
+
+    assert_eq!(
+        h.submit(PlayerCommand::MoveShip {
+            ship,
+            destination: beta,
+        }),
+        Err(CommandRejection::ForceCommitted),
+    );
+    assert_eq!(
+        h.submit(PlayerCommand::SetShipCaptain {
+            ship,
+            captain: None,
+        }),
+        Err(CommandRejection::ForceCommitted),
+    );
+
+    // Exceptional state changes still revalidate at completion. The original
+    // leader no longer commands the hull, so the blockade does not happen.
+    let forces = h.world_mut().resource::<ForcesIndex>().clone();
+    h.world_mut()
+        .get_mut::<ShipRecord>(forces.ships[&ship])
+        .unwrap()
+        .captain = None;
+    h.advance_days(5);
+    let world = h.world_mut();
+    let record = world.get::<ShipRecord>(forces.ships[&ship]).unwrap();
+    assert_eq!(
+        record.location,
+        aeon_sim::forces::ShipLocation::Docked(alpha)
+    );
+    assert_eq!(record.blockading, None);
+}
+
+#[test]
+fn pending_and_effective_blockades_threaten_holdings_and_stale_markers_are_erased() {
+    let mut h = host(44);
+    let aron = char_id(&mut h, "aron-ash");
+    let beta = province(&mut h, "beta");
+    let (ash, birch) = (org(&mut h, "ash"), org(&mut h, "birch"));
+    let ship = h.world_mut().resource::<ForcesIndex>().ship_keys[&key("ash-sloop")];
+    let war = declare_test_war(&mut h, "ash", "birch");
+    h.submit(PlayerCommand::SetShipCaptain {
+        ship,
+        captain: Some(aron),
+    })
+    .unwrap();
+    h.advance_days(2);
+    start_war_assignment(
+        &mut h,
+        "ash",
+        "blockade",
+        aron,
+        AssignmentTarget::ShipToProvince(ship, beta),
+        war,
+    );
+    assert!(
+        aeon_sim::warfare::threatened_holdings(h.world_mut(), birch).contains(&beta),
+        "the exact-war blockade is a threat while still pending",
+    );
+
+    h.advance_days(5);
+    assert!(
+        aeon_sim::warfare::threatened_holdings(h.world_mut(), birch).contains(&beta),
+        "the effective blockade remains a threat after resolution",
+    );
+
+    // Put the blockader and holder on the same side without ending the war.
+    // Cleanup must erase, not merely ignore, the marker so it cannot revive.
+    let title_entity = {
+        let politics = h.world_mut().resource::<PoliticsIndex>();
+        let title = politics.province_titles[&beta];
+        politics.titles[&title]
+    };
+    h.world_mut()
+        .get_mut::<aeon_sim::TitleRecord>(title_entity)
+        .unwrap()
+        .holder = aeon_sim::TitleHolder::Org(ash);
+    h.advance_days(1);
+    let forces = h.world_mut().resource::<ForcesIndex>().clone();
+    assert_eq!(
+        h.world_mut()
+            .get::<ShipRecord>(forces.ships[&ship])
+            .unwrap()
+            .blockading,
+        None,
+    );
+
+    h.world_mut()
+        .get_mut::<aeon_sim::TitleRecord>(title_entity)
+        .unwrap()
+        .holder = aeon_sim::TitleHolder::Org(birch);
+    h.advance_days(1);
+    assert_eq!(
+        h.world_mut()
+            .get::<ShipRecord>(forces.ships[&ship])
+            .unwrap()
+            .blockading,
+        None,
+        "a later hostile holder does not reactivate the old blockade",
+    );
+}
+
+#[test]
+fn hostile_garrison_filtering_finds_a_small_enemy_behind_a_stronger_friendly_army() {
+    let mut h = host(45);
+    let ash = org(&mut h, "ash");
+    let birch = org(&mut h, "birch");
+    let alpha = province(&mut h, "alpha");
+    let _friendly = muster(&mut h, "ash", "aron-ash", 5_000, "alpha");
+    let _enemy = muster(&mut h, "birch", "bela-birch", 100, "alpha");
+
+    assert_eq!(
+        aeon_sim::warfare::hostile_garrison_in(h.world_mut(), alpha, ash),
+        (0, None),
+        "a foreign army is not hostile without a live formal war",
+    );
+    let war = declare_test_war(&mut h, "ash", "birch");
+    assert_eq!(
+        aeon_sim::warfare::hostile_garrison_in(h.world_mut(), alpha, ash),
+        (100, Some(birch)),
+        "filtering for live enemies happens before selecting the strongest",
+    );
+    aeon_sim::wars::negotiate_peace(h.world_mut(), war, ash).unwrap();
+    assert_eq!(
+        aeon_sim::warfare::hostile_garrison_in(h.world_mut(), alpha, ash),
+        (0, None),
+        "the alert clears as soon as the exact war ends",
+    );
+}
+
+#[test]
+fn formal_war_besiege_action_is_led_by_the_selected_armys_general() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/content");
+    let sources = aeon_data::fs::read_content_dir(&root).expect("repository content is readable");
+    let (set, report) = load_content(&sources, &aeon_data::StringTable::blank());
+    assert!(
+        set.is_some(),
+        "repository content must load: {:?}",
+        report.findings
+    );
+    let content = Arc::new(set.unwrap());
+    let scenario = content.scenario.clone().expect("scenario defined");
+    let mut h = SimHost::new_with_content(
+        CampaignConfig {
+            name: scenario.name,
+            seed: 46,
+            start_date: CalendarDate {
+                year: scenario.start_year,
+                month: scenario.start_month,
+                day: scenario.start_day,
+            }
+            .to_date()
+            .unwrap(),
+        },
+        content,
+    );
+    let player = h.world_mut().resource::<aeon_sim::PlayerHouse>().0.unwrap();
+    let replacement = char_id(&mut h, "kessarin-harrow");
+    let army = {
+        let world = h.world_mut();
+        let forces = world.resource::<ForcesIndex>();
+        forces
+            .armies
+            .iter()
+            .find_map(|(id, entity)| {
+                world
+                    .get::<ArmyRecord>(*entity)
+                    .is_some_and(|army| army.owner == player)
+                    .then_some(*id)
+            })
+            .expect("player has an army")
+    };
+    let army_entity = h.world_mut().resource::<ForcesIndex>().armies[&army];
+    h.world_mut()
+        .get_mut::<ArmyRecord>(army_entity)
+        .unwrap()
+        .general = replacement;
+
+    let enemy = org(&mut h, "vantar");
+    let war = aeon_sim::wars::declare_war(h.world_mut(), player, enemy, key("besiege-leader-war"))
+        .unwrap();
+    aeon_sim::situations::evaluate(h.world_mut());
+    let (instance, action) = aeon_sim::situations::active_cards(h.world_mut())
+        .into_iter()
+        .find(|card| {
+            card.active.key.definition == key("formal-war")
+                && card.active.key.bindings.get("war")
+                    == Some(&aeon_sim::situations::SituationSubject::War(war))
+        })
+        .and_then(|card| {
+            card.projection.and_then(|projection| {
+                projection
+                    .actions
+                    .into_iter()
+                    .find(|action| action.id == key("besiege"))
+                    .map(|action| (card.active.key, action))
+            })
+        })
+        .expect("player is offered a besiege action for the formal war");
+    assert!(
+        matches!(action.target, AssignmentTarget::ArmyToProvince(id, _) if id == army),
+        "the projected action uses the selected army",
+    );
+    assert_eq!(
+        action.leader,
+        Some(replacement),
+        "the army's general, not the player head, gives the siege order",
+    );
+    assert!(
+        aeon_sim::situations::forecast_for_action(
+            h.world_mut(),
+            &instance,
+            &action.id,
+            replacement,
+            action.target,
+        )
+        .unwrap()
+        .startable(),
+        "the projected leader is accepted by authoritative assignment validation",
+    );
 }

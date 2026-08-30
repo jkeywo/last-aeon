@@ -82,6 +82,20 @@ pub fn favour_bonus(world: &World, authority: OrgId, intent: AiIntent) -> i64 {
     }
 }
 
+/// Whether the house's active authored ambition names this pressure.
+pub fn favours(world: &World, authority: OrgId, intent: AiIntent) -> bool {
+    let Some(active) = world
+        .get_resource::<Goals>()
+        .and_then(|goals| goals.active.get(&authority))
+    else {
+        return false;
+    };
+    world
+        .get_resource::<ContentDb>()
+        .and_then(|content| content.0.goals.get(&active.def))
+        .is_some_and(|def| def.favours.contains(&intent))
+}
+
 /// The target of a house's active goal, if it has one.
 ///
 /// What a liege's directives carry down to its vassals.
@@ -231,9 +245,18 @@ fn trigger_met(world: &World, authority: OrgId, req: &GoalRequires) -> bool {
         return false;
     }
     if let Some(wanted) = req.is_vassal {
-        let is_vassal =
-            crate::access::org(world, authority).is_some_and(|r| r.tier == Some(HouseTier::Vassal));
+        let is_vassal = crate::access::org(world, authority).is_some_and(|r| r.liege.is_some());
         if is_vassal != wanted {
+            return false;
+        }
+    }
+    if req.can_claim_paramountcy {
+        let eligible = crate::crisis::paramountcy(world).is_some_and(|(title, _)| {
+            crate::access::org_head(world, authority).is_some_and(|head| {
+                crate::crisis::claimant_eligibility(world, title, head) == Ok(authority)
+            })
+        });
+        if !eligible {
             return false;
         }
     }
@@ -291,8 +314,8 @@ fn weakest_rival(world: &World, self_org: OrgId) -> Option<OrgId> {
 /// Called from the agency pass for the head of each standing non-player
 /// house. Adoption consumes one roll on the frozen `"grand-goal"` stream,
 /// subjects `[org, month]`, so a house does not seize on an ambition the
-/// first month it could; then it takes the first goal, in content-key
-/// order, whose trigger holds, is off cooldown, and can resolve a target.
+/// first month it could; then it takes the highest-priority eligible goal,
+/// with content-key order breaking a priority tie.
 pub fn maybe_adopt_goal(world: &mut World, head: CharacterId, authority: OrgId) {
     if world
         .get_resource::<Goals>()
@@ -310,17 +333,27 @@ pub fn maybe_adopt_goal(world: &mut World, head: CharacterId, authority: OrgId) 
     }
 
     let content = world.resource::<ContentDb>().0.clone();
-    let chosen = content.goals.values().find_map(|def| {
-        let off_cooldown = world
-            .resource::<Goals>()
-            .cooldowns
-            .get(&(authority, def.key.clone()))
-            .is_none_or(|until| date >= *until);
-        if !off_cooldown || !trigger_met(world, authority, &def.trigger) {
-            return None;
-        }
-        resolve_target(world, authority, def.target).map(|target| (def.key.clone(), target))
-    });
+    let mut eligible: Vec<_> = content
+        .goals
+        .values()
+        .filter_map(|def| {
+            let off_cooldown = world
+                .resource::<Goals>()
+                .cooldowns
+                .get(&(authority, def.key.clone()))
+                .is_none_or(|until| date >= *until);
+            if !off_cooldown || !trigger_met(world, authority, &def.trigger) {
+                return None;
+            }
+            resolve_target(world, authority, def.target)
+                .map(|target| (def.priority, def.key.clone(), target))
+        })
+        .collect();
+    eligible.sort_by(|left, right| right.0.cmp(&left.0).then(left.1.cmp(&right.1)));
+    let chosen = eligible
+        .into_iter()
+        .next()
+        .map(|(_, key, target)| (key, target));
     let Some((key, target)) = chosen else {
         return;
     };

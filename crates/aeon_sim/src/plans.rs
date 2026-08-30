@@ -32,12 +32,9 @@ use bevy::prelude::{Resource, World};
 use serde::{Deserialize, Serialize};
 
 use crate::agency::ScoredIntent;
-use crate::assignments::{
-    AssignmentTarget, AssignmentsIndex, LogChannel, LogEntry, LogSubject, start_assignment,
-    validate_start,
-};
+use crate::assignments::{AssignmentTarget, AssignmentsIndex, LogChannel, LogEntry, LogSubject};
 use crate::clock::CampaignClock;
-use crate::ids::{AssignmentId, CharacterId, OrgId};
+use crate::ids::{AssignmentId, CharacterId, OrgId, ProvinceId, WarId};
 use crate::politics::CampaignOver;
 use crate::state::ContentDb;
 use crate::text::TextDb;
@@ -180,18 +177,87 @@ pub fn requires_met(
             return false;
         }
     }
-    if req.dominant_claimant {
+    if let Some(wanted) = req.dominant_claimant {
         let dominant = world
-            .get_resource::<crate::map::MapIndex>()
-            .and_then(|index| index.provinces.values().next().copied())
-            .and_then(|entity| world.get::<crate::map::ProvinceRecord>(entity))
-            .map(|record| record.body)
-            .and_then(|body| crate::crisis::dominant_claimant(world, body));
-        if dominant != Some(authority) {
+            .get_resource::<crate::politics::PoliticsIndex>()
+            .and_then(|_| crate::crisis::paramountcy(world))
+            .and_then(|(_, body)| crate::crisis::dominant_claimant(world, body));
+        if (dominant == Some(authority)) != wanted {
+            return false;
+        }
+    }
+    if let Some(wanted) = req.has_paramount_claim {
+        let has = crate::crisis::paramountcy(world)
+            .and_then(|(title, _)| {
+                crate::access::org_head(world, authority)
+                    .map(|head| crate::crisis::has_claim(world, title, head))
+            })
+            .unwrap_or(false);
+        if has != wanted {
+            return false;
+        }
+    }
+    if req.min_target_branch_manpower_permille.is_some()
+        || req.max_target_branch_manpower_permille.is_some()
+    {
+        let AssignmentTarget::Org(target) = target else {
+            return false;
+        };
+        let ratio = branch_manpower_ratio_permille(world, authority, target);
+        if req
+            .min_target_branch_manpower_permille
+            .is_some_and(|minimum| ratio < minimum)
+            || req
+                .max_target_branch_manpower_permille
+                .is_some_and(|maximum| ratio > maximum)
+        {
+            return false;
+        }
+    }
+    if let Some(wanted) = req.war_has_enemy_province {
+        let AssignmentTarget::War(war) = target else {
+            return false;
+        };
+        let has_enemy_province = !enemy_provinces_in_war(world, authority, war).is_empty();
+        if has_enemy_province != wanted {
             return false;
         }
     }
     true
+}
+
+/// Raised army manpower in an organisation's complete current political
+/// branch. This is the branch a declaration would freeze if made now.
+pub fn branch_raised_manpower(world: &World, leader: OrgId) -> i64 {
+    let branch = crate::wars::vassal_branch(world, leader);
+    world
+        .get_resource::<crate::forces::ForcesIndex>()
+        .map(|forces| {
+            forces
+                .armies
+                .values()
+                .filter_map(|entity| world.get::<crate::forces::ArmyRecord>(*entity))
+                .filter(|army| branch.contains(&army.owner))
+                .map(|army| army.manpower.max(0))
+                .fold(0i64, i64::saturating_add)
+        })
+        .unwrap_or_default()
+}
+
+/// The first branch's raised manpower as permille of the second's.
+pub fn branch_manpower_ratio_permille(world: &World, own: OrgId, target: OrgId) -> i64 {
+    manpower_ratio_permille(
+        branch_raised_manpower(world, own),
+        branch_raised_manpower(world, target),
+    )
+}
+
+fn manpower_ratio_permille(own: i64, target: i64) -> i64 {
+    match (own.max(0), target.max(0)) {
+        (0, _) => 0,
+        (_, 0) => 10_000,
+        (own, target) => own.saturating_mul(1000) / target,
+    }
 }
 
 /// Flattens a plan's chosen method into step instances, expanding
@@ -299,13 +365,14 @@ pub fn try_adopt(
             }
         }
         let target = match (def.target, top.target) {
-            (AssignmentTargetKind::None, _) => AssignmentTarget::None,
+            (AssignmentTargetKind::None, AssignmentTarget::None) => AssignmentTarget::None,
             (AssignmentTargetKind::Organisation, AssignmentTarget::Org(org)) => {
                 AssignmentTarget::Org(org)
             }
             (AssignmentTargetKind::Province, AssignmentTarget::Province(province)) => {
                 AssignmentTarget::Province(province)
             }
+            (AssignmentTargetKind::War, AssignmentTarget::War(war)) => AssignmentTarget::War(war),
             _ => continue,
         };
         let off_cooldown = world
@@ -409,6 +476,7 @@ fn target_label(world: &World, target: AssignmentTarget) -> String {
     match target {
         AssignmentTarget::Org(org) => crate::access::org_name(world, org),
         AssignmentTarget::Province(province) => crate::access::province_name(world, province),
+        AssignmentTarget::War(war) => format!("War {}", war.raw()),
         _ => String::new(),
     }
 }
@@ -444,6 +512,7 @@ pub fn advance_plans(world: &mut World) {
             AssignmentTarget::Org(org) => {
                 crate::access::org(world, org).is_some_and(|r| !r.defunct)
             }
+            AssignmentTarget::War(war) => crate::wars::is_active_war(world, war),
             _ => true,
         };
         let out_of_time =
@@ -455,6 +524,21 @@ pub fn advance_plans(world: &mut World) {
         let authority = authority.expect("standing authority");
 
         if plan.current_assignment.is_some() {
+            continue;
+        }
+
+        // A method's declarative gate is rechecked immediately before every
+        // new step. This matters for strategic comparisons such as the
+        // claimant-war strength floor: adoption may have happened on the
+        // monthly pulse, but no declaration begins after the visible facts
+        // that authorised that method have ceased to hold.
+        let method_still_holds = def
+            .methods
+            .iter()
+            .find(|method| method.id == plan.method)
+            .is_some_and(|method| requires_met(world, authority, plan.target, &method.requires));
+        if !method_still_holds {
+            abandon(world, actor, date);
             continue;
         }
 
@@ -488,23 +572,56 @@ pub fn advance_plans(world: &mut World) {
                     // aims at what is true today. One that finds nothing
                     // waits like any blocked step.
                     let resolved = match target {
-                        PlanTargetSelector::None => Some(AssignmentTarget::None),
-                        PlanTargetSelector::PlanTarget => Some(plan.target),
-                        PlanTargetSelector::WorstHolding => {
-                            worst_holding(world, authority).map(AssignmentTarget::Province)
-                        }
+                        PlanTargetSelector::None => Some((AssignmentTarget::None, None)),
+                        PlanTargetSelector::PlanTarget => Some((
+                            plan.target,
+                            match plan.target {
+                                AssignmentTarget::War(war) => Some(war),
+                                _ => None,
+                            },
+                        )),
+                        PlanTargetSelector::WorstHolding => worst_holding(world, authority)
+                            .map(|province| (AssignmentTarget::Province(province), None)),
                         PlanTargetSelector::TargetHead => match plan.target {
-                            AssignmentTarget::Org(org) => {
-                                crate::access::org_head(world, org).map(AssignmentTarget::Character)
-                            }
+                            AssignmentTarget::Org(org) => crate::access::org_head(world, org)
+                                .map(|head| (AssignmentTarget::Character(head), None)),
+                            _ => None,
+                        },
+                        PlanTargetSelector::LowestEnemyProvinceInWar => match plan.target {
+                            AssignmentTarget::War(war) => lowest_enemy_province_in_war(
+                                world, actor, authority, war,
+                            )
+                            .map(|(army, province)| {
+                                (AssignmentTarget::ArmyToProvince(army, province), Some(war))
+                            }),
                             _ => None,
                         },
                     };
-                    let Some(target) = resolved else {
+                    let Some((target, war)) = resolved else {
                         break;
                     };
-                    if validate_start(world, authority, assignment, actor, target).is_ok() {
-                        let id = start_assignment(world, authority, assignment, actor, target);
+                    // Strategic transitions are permissions, not resource
+                    // waits. If the world has invalidated one (a rival war
+                    // began during a press, somebody else declared first,
+                    // or a war can no longer be adopted), release the actor
+                    // so the zero-cooldown goal loop can choose the plan that
+                    // matches the new state.
+                    if crate::assignments::validate_strategic_transition(
+                        world, authority, assignment, actor, target, war,
+                    )
+                    .is_err()
+                    {
+                        abandon(world, actor, date);
+                        break;
+                    }
+                    if crate::assignments::validate_start_in_war(
+                        world, authority, assignment, actor, target, war,
+                    )
+                    .is_ok()
+                    {
+                        let id = crate::assignments::start_assignment_in_war(
+                            world, authority, assignment, actor, target, war,
+                        );
                         world
                             .resource_mut::<Plans>()
                             .active
@@ -578,6 +695,43 @@ fn worst_holding(world: &World, authority: OrgId) -> Option<crate::ids::Province
                 *province,
             )
         })
+}
+
+/// The most disordered province held by the opposing frozen side of an
+/// exact war. Lowest stable province ID breaks an order tie.
+fn lowest_enemy_province_in_war(
+    world: &World,
+    actor: CharacterId,
+    authority: OrgId,
+    war: WarId,
+) -> Option<(crate::ids::ArmyId, ProvinceId)> {
+    let army = resolve_army(world, actor, authority, PlanArmySelector::Own)?;
+    enemy_provinces_in_war(world, authority, war)
+        .into_iter()
+        .min_by_key(|province| {
+            (
+                crate::order::province_order(world, *province).order,
+                *province,
+            )
+        })
+        .map(|province| (army, province))
+}
+
+fn enemy_provinces_in_war(world: &World, authority: OrgId, war: WarId) -> Vec<ProvinceId> {
+    let Some(record) = crate::wars::war(world, war) else {
+        return Vec::new();
+    };
+    if !record.active() {
+        return Vec::new();
+    }
+    let Some(own_side) = record.side_of(authority) else {
+        return Vec::new();
+    };
+    let enemies = &record.side(own_side.opposite()).members;
+    enemies
+        .iter()
+        .flat_map(|enemy| crate::order::held_provinces(world, *enemy))
+        .collect()
 }
 
 /// The one army an orders step is for, if it exists right now.
@@ -782,4 +936,21 @@ pub(crate) fn install(app: &mut bevy::prelude::App) {
             .after(crate::assignments::resolve_due_assignments)
             .before(crate::warfare::standing_orders),
     );
+}
+
+#[cfg(test)]
+mod tests {
+    use super::manpower_ratio_permille;
+
+    #[test]
+    fn claimant_strength_floor_is_exactly_seventy_five_percent() {
+        assert_eq!(manpower_ratio_permille(749, 1000), 749);
+        assert_eq!(manpower_ratio_permille(750, 1000), 750);
+    }
+
+    #[test]
+    fn an_unarmed_branch_never_qualifies_and_an_armed_branch_beats_none() {
+        assert_eq!(manpower_ratio_permille(0, 0), 0);
+        assert_eq!(manpower_ratio_permille(500, 0), 10_000);
+    }
 }

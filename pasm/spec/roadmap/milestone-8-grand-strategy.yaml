@@ -91,8 +91,8 @@ entities:
       title: "M8.2: A Goal Steers the House"
       summary: >-
         Monthly, a head whose house has no active goal adopts the one
-        whose trigger it clears — head-only, like the paramountcy claim it
-        already weighs alone. The goal lives in a resource keyed by the
+        whose trigger it clears — head-only, like the paramountcy claim the
+        current head must personally declare. The goal lives in a resource keyed by the
         house, not the person, so it survives succession: the plan dies
         with its leader, the ambition does not. While a goal is active it
         adds its bonus to every pressure it favours, so the existing
@@ -101,6 +101,7 @@ entities:
         of time, and says so.
       goals:
         - An ambition outlives the reign that formed it, and the next head may keep or abandon it.
+        - A take-the-planet ambition may survive succession, but each new head must make their own personal claim through the ordinary assignment flow.
         - A goal changes only what the head reaches for, never how an assignment is validated or resolved.
         - Goal selection consumes one roll on a new, frozen stream, and the whole layer replays identically.
       references:
@@ -251,7 +252,9 @@ entities:
         serve it and directing vassals to lend their weight. A seed-pinned
         acceptance run proves a great house adopts an ambition unprompted,
         pursues it through its own plans, and presses it on its vassals,
-        who visibly weight the directive. The spec records the milestone.
+        who visibly weight the directive. Under M2.5, take-the-planet also
+        drives the current head's personal declaration and a formal claimant
+        war when the authored manpower threshold permits it.
       goals:
         - An autonomous great house visibly pursues a multi-reign ambition and bends its vassals toward it, for reasons it states.
         - Becoming Consul is something a house can now work toward, not only fall into on a vacancy.
@@ -279,7 +282,8 @@ entities:
           Three shipped ambitions — win the Consulship, take the planet,
           conquer a neighbour — each favouring the pressures that serve it
           and directing vassals to lend their weight. Content alone drives
-          every behaviour; no engine change landed in this sub-milestone.
+          every behaviour at M8 completion; M2.5 later extends
+          take-the-planet with personal claims and formal-war-aware plans.
           Becoming Consul is now something a house works toward rather than
           only falls into, though it must still wait on a vacancy until the
           shadows of Milestone 10 can make one.

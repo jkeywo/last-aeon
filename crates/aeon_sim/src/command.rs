@@ -12,9 +12,11 @@ use bevy::app::App;
 use bevy::prelude::{IntoScheduleConfigs, Resource, World};
 use serde::{Deserialize, Serialize};
 
-use crate::assignments::{self, AssignmentRejection, AssignmentTarget};
+use crate::assignments::{
+    self, ActiveAssignment, AssignmentRejection, AssignmentTarget, AssignmentsIndex,
+};
 use crate::clock::{CampaignClock, DailyTick, TickSet};
-use crate::ids::{ArmyId, AssignmentId, CharacterId, ProvinceId, ShipId};
+use crate::ids::{ArmyId, AssignmentId, CharacterId, ProvinceId, ShipId, WarId};
 use crate::politics::PlayerHouse;
 use crate::presence::{self, Location};
 use crate::state::CampaignMeta;
@@ -41,6 +43,24 @@ pub enum PlayerCommand {
         leader: CharacterId,
         /// What the assignment acts on.
         target: AssignmentTarget,
+    },
+    /// Starts one of the assignment actions currently projected by a Situation.
+    StartSituationAssignment {
+        /// Exact structural Situation instance offering the action.
+        situation: crate::situations::SituationInstanceKey,
+        /// Authored action ID within the Situation definition.
+        action: ContentKey,
+        /// Character who will lead the ordinary authoritative assignment.
+        leader: CharacterId,
+        /// Concrete assignment target projected by the Situation.
+        target: AssignmentTarget,
+        /// Exact formal war authorising the action, when any.
+        war: Option<WarId>,
+    },
+    /// Dismisses one persistent Situation resolution notice.
+    DismissSituationResolution {
+        /// Monotonic notice ID.
+        resolution: u64,
     },
     /// Cancels one of the player's active assignments.
     CancelAssignment {
@@ -142,6 +162,15 @@ pub enum CommandRejection {
     /// A assignment-related command was refused.
     #[error(transparent)]
     Assignment(#[from] AssignmentRejection),
+    /// A Situation action or notice was no longer available.
+    #[error(transparent)]
+    Situation(#[from] crate::situations::SituationError),
+    /// No visible undismissed resolution has this ID.
+    #[error("no such visible Situation resolution")]
+    BadSituationResolution,
+    /// A movement, disbanding, or posting change would invalidate active work.
+    #[error("that force is committed to an active assignment")]
+    ForceCommitted,
     /// A directive was aimed at a house that does not answer directly to
     /// the player.
     #[error("that house does not answer directly to you")]
@@ -191,6 +220,48 @@ pub struct CommandLog {
     pub applied: Vec<CommandEnvelope>,
 }
 
+/// Whether an army is committed to an assignment that names it explicitly.
+///
+/// Commands are delayed, so callers use this both when accepting an order and
+/// when applying it. That closes the gap where a force could become committed
+/// after a destructive or movement command was queued.
+fn army_has_active_assignment(world: &World, army: ArmyId) -> bool {
+    world
+        .get_resource::<AssignmentsIndex>()
+        .is_some_and(|index| {
+            index.assignments.values().any(|entity| {
+                world
+                    .get::<ActiveAssignment>(*entity)
+                    .is_some_and(|assignment| {
+                        matches!(
+                            assignment.target,
+                            AssignmentTarget::OwnArmy(target)
+                                | AssignmentTarget::ArmyToProvince(target, _)
+                                if target == army
+                        )
+                    })
+            })
+        })
+}
+
+/// Whether a ship is committed to an assignment that names it explicitly.
+fn ship_has_active_assignment(world: &World, ship: ShipId) -> bool {
+    world
+        .get_resource::<AssignmentsIndex>()
+        .is_some_and(|index| {
+            index.assignments.values().any(|entity| {
+                world
+                    .get::<ActiveAssignment>(*entity)
+                    .is_some_and(|assignment| {
+                        matches!(
+                            assignment.target,
+                            AssignmentTarget::ShipToProvince(target, _) if target == ship
+                        )
+                    })
+            })
+        })
+}
+
 /// Validates a command against the current world.
 ///
 /// Validation must be deterministic and side-effect free: replays re-run it.
@@ -216,6 +287,51 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
                 .ok_or(AssignmentRejection::NoPlayerOrg)?;
             assignments::validate_start(world, org, assignment, *leader, *target)?;
             Ok(())
+        }
+        PlayerCommand::StartSituationAssignment {
+            situation,
+            action,
+            leader,
+            target,
+            war,
+        } => {
+            let org = world
+                .get_resource::<PlayerHouse>()
+                .and_then(|p| p.0)
+                .ok_or(AssignmentRejection::NoPlayerOrg)?;
+            if crate::situations::action_war(situation, *target) != *war {
+                return Err(crate::situations::SituationError::BadSubject(
+                    "action's formal-war identity differs from its current projection".to_owned(),
+                )
+                .into());
+            }
+            let assignment = crate::situations::assignment_for_action(
+                world, situation, action, *leader, *target,
+            )?;
+            assignments::validate_start_in_war(world, org, &assignment, *leader, *target, *war)?;
+            Ok(())
+        }
+        PlayerCommand::DismissSituationResolution { resolution } => {
+            world
+                .get_resource::<PlayerHouse>()
+                .and_then(|player| player.0)
+                .ok_or(AssignmentRejection::NoPlayerOrg)?;
+            let visible = world
+                .get_resource::<crate::situations::SituationState>()
+                .and_then(|state| {
+                    state
+                        .resolutions
+                        .iter()
+                        .find(|notice| notice.id == *resolution)
+                })
+                .is_some_and(|notice| {
+                    crate::situations::visible_to_player(world, &notice.situation)
+                });
+            if visible {
+                Ok(())
+            } else {
+                Err(CommandRejection::BadSituationResolution)
+            }
         }
         PlayerCommand::CancelAssignment { assignment } => {
             let org = world
@@ -282,8 +398,10 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
                         crate::forces::ShipLocation::Docked(at) if at != *destination
                     )
             }) && crate::access::province_entity(world, *destination).is_some();
-            if ok {
+            if ok && !ship_has_active_assignment(world, *ship) {
                 Ok(())
+            } else if ok {
+                Err(CommandRejection::ForceCommitted)
             } else {
                 Err(AssignmentRejection::BadTarget.into())
             }
@@ -294,8 +412,10 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
                 .and_then(|p| p.0)
                 .ok_or(AssignmentRejection::NoPlayerOrg)?;
             let owned = crate::access::army(world, *army).is_some_and(|a| a.owner == org);
-            if owned {
+            if owned && !army_has_active_assignment(world, *army) {
                 Ok(())
+            } else if owned {
+                Err(CommandRejection::ForceCommitted)
             } else {
                 Err(AssignmentRejection::BadAssignment.into())
             }
@@ -305,13 +425,23 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
                 .get_resource::<PlayerHouse>()
                 .and_then(|p| p.0)
                 .ok_or(AssignmentRejection::NoPlayerOrg)?;
-            let owned = crate::access::ship(world, *ship).is_some_and(|s| s.owner == org);
-            if !owned {
+            let Some(record) = crate::access::ship(world, *ship) else {
+                return Err(AssignmentRejection::BadTarget.into());
+            };
+            if record.owner != org {
                 return Err(AssignmentRejection::BadTarget.into());
             }
-            // Relinquishing command is always allowed. Taking it requires
-            // an officer free to hold it: a standing command elsewhere, an
-            // active assignment, or indisposition all bar it.
+            // Repeating the current posting is harmless. Any actual change
+            // waits until an assignment using this ship has finished: its
+            // original captain and hull are part of the operation's contract.
+            if record.captain == *captain {
+                return Ok(());
+            }
+            if ship_has_active_assignment(world, *ship) {
+                return Err(CommandRejection::ForceCommitted);
+            }
+            // Taking command requires an officer free to hold it: a standing
+            // command elsewhere, active work, or indisposition all bar it.
             let Some(captain) = captain else {
                 return Ok(());
             };
@@ -397,6 +527,58 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
                 assignments::start_assignment(world, org, assignment, *leader, *target);
             }
         }
+        PlayerCommand::StartSituationAssignment {
+            situation,
+            action,
+            leader,
+            target,
+            war,
+        } => {
+            if let Some(org) = world.get_resource::<PlayerHouse>().and_then(|p| p.0)
+                && crate::situations::action_war(situation, *target) == *war
+                && let Ok(assignment) = crate::situations::assignment_for_action(
+                    world, situation, action, *leader, *target,
+                )
+                && assignments::validate_start_in_war(
+                    world,
+                    org,
+                    &assignment,
+                    *leader,
+                    *target,
+                    *war,
+                )
+                .is_ok()
+            {
+                assignments::start_assignment_from_situation(
+                    world,
+                    org,
+                    &assignment,
+                    *leader,
+                    *target,
+                    situation.clone(),
+                );
+            }
+        }
+        PlayerCommand::DismissSituationResolution { resolution } => {
+            let visible = world
+                .get_resource::<PlayerHouse>()
+                .and_then(|player| player.0)
+                .is_some()
+                && world
+                    .get_resource::<crate::situations::SituationState>()
+                    .and_then(|state| {
+                        state
+                            .resolutions
+                            .iter()
+                            .find(|notice| notice.id == *resolution)
+                    })
+                    .is_some_and(|notice| {
+                        crate::situations::visible_to_player(world, &notice.situation)
+                    });
+            if visible {
+                crate::situations::dismiss_resolution(world, *resolution);
+            }
+        }
         PlayerCommand::CancelAssignment { assignment } => {
             crate::assignments::request_cancel(world, *assignment);
         }
@@ -410,6 +592,9 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
             presence::begin_travel(world, *character, *destination);
         }
         PlayerCommand::MoveShip { ship, destination } => {
+            if validate_command(world, command).is_err() {
+                return;
+            }
             let date = world.resource::<CampaignClock>().date;
             let entity = crate::access::ship_entity(world, *ship);
             if let Some(entity) = entity {
@@ -426,6 +611,7 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
                     if let Some(mut ship_record) =
                         world.get_mut::<crate::forces::ShipRecord>(entity)
                     {
+                        ship_record.blockading = None;
                         ship_record.location = crate::forces::ShipLocation::Transit {
                             to: *destination,
                             arrives: date.add_days(days),
@@ -435,13 +621,19 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
             }
         }
         PlayerCommand::DisbandArmy { army } => {
-            crate::forces::disband_army(world, *army);
+            if validate_command(world, command).is_ok() {
+                crate::forces::disband_army(world, *army);
+            }
         }
         PlayerCommand::SetShipCaptain { ship, captain } => {
-            if let Some(entity) = crate::access::ship_entity(world, *ship)
+            if validate_command(world, command).is_ok()
+                && let Some(entity) = crate::access::ship_entity(world, *ship)
                 && let Some(mut record) = world.get_mut::<crate::forces::ShipRecord>(entity)
             {
                 record.captain = *captain;
+                if captain.is_none() {
+                    record.blockading = None;
+                }
             }
         }
         PlayerCommand::SetStandingOrders { army, orders } => {
@@ -503,7 +695,8 @@ pub fn submit_command(
 ) -> Result<CommandEnvelope, CommandRejection> {
     validate_command(world, &command)?;
     let actor = match &command {
-        PlayerCommand::StartAssignment { leader, .. } => Some(*leader),
+        PlayerCommand::StartAssignment { leader, .. }
+        | PlayerCommand::StartSituationAssignment { leader, .. } => Some(*leader),
         PlayerCommand::Travel { character, .. } => Some(*character),
         _ => None,
     };

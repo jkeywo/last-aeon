@@ -110,6 +110,7 @@ impl SimHost {
         app.add_plugins(AeonSimPlugin);
         restore_content_state(app.world_mut(), &state, content);
         restore_state(app.world_mut(), state);
+        crate::situations::evaluate(app.world_mut());
         Ok(Self { app })
     }
 

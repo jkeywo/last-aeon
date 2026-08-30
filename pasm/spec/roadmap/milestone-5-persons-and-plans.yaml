@@ -168,12 +168,12 @@ entities:
       confidence: confirmed
       title: "M5.4: The Claim and the Grievance Become Campaigns"
       summary: >-
-        The first real plans: pressing the paramountcy claim becomes a
-        campaign of funding, mustering, endorsement and declaration
-        rather than a single act, and a house that has been wronged
-        answers the grievance over time, shoring up its own standing
-        first when it is weak. Military execution stays with standing
-        orders; the plan ends where the war begins.
+        The first real plans made the old paramountcy press a campaign of
+        funding, mustering, endorsement and declaration rather than a single
+        act, while a wronged house answered a grievance over time. M2.5 keeps
+        that authored campaign shape but separates the head's guaranteed
+        personal claim declaration from the later probabilistic press and
+        carries claimant rivalry into occurrence-identified formal war.
       references:
         - agency-intents-are-authored-on-jobs
         - standing-orders-are-priority-lists
@@ -191,18 +191,19 @@ entities:
       - kind: test
         reference: crates/aeon_sim/tests/acceptance.rs
         summary: >-
-          On the real authored scenario, once the opening three-way tie is
-          broken, Veyrin's head adopts the claim campaign unprompted and
-          carries it past funding and mustering to an ending, by
-          completion or honest abandonment.
+          The original acceptance proved Veyrin's head could adopt and pursue
+          the authored claim campaign after direct-holding dominance changed.
+          M2.5 replaces that gate with an explicit personal declaration,
+          unequal whole-realm dominance, and claimant-war-aware press
+          revalidation while retaining ordinary plan execution.
       - kind: manual-review
         reference: assets/content/scenario/ashkarr-succession.rhai
         summary: >-
-          The authored crisis opens with Veyrin, Draksha and Meloch tied
-          at five provinces each, so no dominant claimant exists and the
-          claim campaign cannot fire until play breaks the tie. The
-          acceptance test breaks it deliberately; campaigns from a
-          standing start are the scenario's drama, not a defect.
+          Veyrin, Draksha and Meloch retain five directly held provinces each.
+          M2.5 deliberately counts their transitive vassal branches instead,
+          leaving unequal opening realm totals: weakness does not prevent a
+          personal declaration, and the leading declared claimant may begin a
+          press without rebalancing the scenario.
 
   - milestone: m5-plans-speak
     core:

@@ -1,4 +1,4 @@
-//! The situation strip: what needs attention, and a way straight to it.
+//! The attention strip: what needs attention, and a way straight to it.
 //!
 //! Drawn over the map rather than beside it, and takes no layout space —
 //! it is a standing offer of somewhere to go, not a panel.
@@ -10,23 +10,27 @@
 use aeon_sim::TextDb;
 use bevy_egui::egui;
 
-use crate::map_modes::MapReadout;
+use crate::map_modes::{AttentionTarget, MapReadout};
+use crate::ui::dock::{DockSide, DockState, PanelKind};
+use crate::ui::situations_panel::SituationUiState;
 use crate::ui::theme::UiTheme;
 use crate::view::{MapView, Selection, ViewState};
 
-/// Draws the situation strip over the map.
+/// Draws the attention strip over the map.
 pub fn draw_overlays(
     ctx: &egui::Context,
     theme: &UiTheme,
     strings: &TextDb,
     readout: &MapReadout,
     view: &mut ViewState,
+    dock: &mut DockState,
+    situations: &mut SituationUiState,
 ) {
     // ------------------------------------------------------------------
-    // Situation strip: what needs attention, and a way straight to it.
+    // Attention strip: what needs attention, and a way straight to it.
     // ------------------------------------------------------------------
-    if matches!(view.view, MapView::Body(_)) && !readout.situation.is_empty() {
-        egui::Area::new("situation-strip".into())
+    if matches!(view.view, MapView::Body(_)) && !readout.attention.is_empty() {
+        egui::Area::new("attention-strip".into())
             .fixed_pos(egui::pos2(
                 f32::from(theme.components.strip_offset_x),
                 f32::from(theme.components.strip_offset_y),
@@ -36,7 +40,7 @@ pub fn draw_overlays(
                     ui.horizontal_wrapped(|ui| {
                         ui.strong(strings.text("ui.situation.heading"))
                             .on_hover_text(strings.text("ui.situation.heading.hover"));
-                        for item in &readout.situation {
+                        for item in &readout.attention {
                             let colour = if item.urgent {
                                 egui::Color32::from(theme.semantics.urgent)
                             } else {
@@ -49,8 +53,16 @@ pub fn draw_overlays(
                                 .on_hover_text(&item.detail)
                                 .clicked()
                             {
-                                view.view = MapView::Body(item.body);
-                                view.selected = Some(Selection::Province(item.province));
+                                match &item.target {
+                                    AttentionTarget::Province { province, body } => {
+                                        view.view = MapView::Body(*body);
+                                        view.selected = Some(Selection::Province(*province));
+                                    }
+                                    AttentionTarget::Situation(key) => {
+                                        situations.focused = Some(key.clone());
+                                        dock.dock(PanelKind::Situations, DockSide::Right);
+                                    }
+                                }
                             }
                         }
                     });

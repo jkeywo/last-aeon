@@ -52,6 +52,8 @@ impl DockSide {
 pub enum PanelKind {
     /// The current selection, in detail.
     Inspector,
+    /// Continuing authored problems, warnings, and completed resolutions.
+    Situations,
     /// What exists: bodies, houses, and your own forces.
     Listing,
     /// The message log.
@@ -79,6 +81,7 @@ impl PanelKind {
     #[cfg(not(target_arch = "wasm32"))]
     pub const ALL: &'static [PanelKind] = &[
         PanelKind::Inspector,
+        PanelKind::Situations,
         PanelKind::Listing,
         PanelKind::Log,
         PanelKind::Assignments,
@@ -91,6 +94,7 @@ impl PanelKind {
     #[cfg(target_arch = "wasm32")]
     pub const ALL: &'static [PanelKind] = &[
         PanelKind::Inspector,
+        PanelKind::Situations,
         PanelKind::Listing,
         PanelKind::Log,
         PanelKind::Assignments,
@@ -102,6 +106,7 @@ impl PanelKind {
     pub fn title_key(self) -> &'static str {
         match self {
             PanelKind::Inspector => "ui.panel.inspector.title",
+            PanelKind::Situations => "ui.panel.situations.title",
             PanelKind::Listing => "ui.panel.listing.title",
             PanelKind::Log => "ui.panel.log.title",
             PanelKind::Assignments => "ui.panel.assignments.title",
@@ -116,6 +121,7 @@ impl PanelKind {
     pub fn description_key(self) -> &'static str {
         match self {
             PanelKind::Inspector => "ui.panel.inspector.description",
+            PanelKind::Situations => "ui.panel.situations.description",
             PanelKind::Listing => "ui.panel.listing.description",
             PanelKind::Log => "ui.panel.log.description",
             PanelKind::Assignments => "ui.panel.assignments.description",
@@ -140,9 +146,8 @@ pub struct DockState {
 }
 
 impl Default for DockState {
-    /// The layout the game has always opened with: the inspector on the
-    /// left, the listing on the right, and the log and assignments sharing the
-    /// bottom.
+    /// The campaign layout: the inspector on the left, Situations on the
+    /// right, and the log and assignments sharing the bottom.
     fn default() -> Self {
         let mut dock = Self {
             placement: BTreeMap::new(),
@@ -153,7 +158,7 @@ impl Default for DockState {
         dock.sizes.insert(DockSide::Right, 230.0);
         dock.sizes.insert(DockSide::Bottom, 190.0);
         dock.dock(PanelKind::Inspector, DockSide::Left);
-        dock.dock(PanelKind::Listing, DockSide::Right);
+        dock.dock(PanelKind::Situations, DockSide::Right);
         dock.dock(PanelKind::Log, DockSide::Bottom);
         dock.dock(PanelKind::Assignments, DockSide::Bottom);
         dock
@@ -225,10 +230,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_default_layout_is_the_one_the_game_has_always_had() {
+    fn the_default_layout_keeps_continuing_situations_in_view() {
         let dock = DockState::default();
         assert_eq!(dock.side_of(PanelKind::Inspector), Some(DockSide::Left));
-        assert_eq!(dock.side_of(PanelKind::Listing), Some(DockSide::Right));
+        assert_eq!(dock.side_of(PanelKind::Situations), Some(DockSide::Right));
+        assert_eq!(dock.side_of(PanelKind::Listing), None);
         assert_eq!(
             dock.panels_on(DockSide::Bottom),
             &[PanelKind::Log, PanelKind::Assignments],

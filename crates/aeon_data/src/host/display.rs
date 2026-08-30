@@ -101,6 +101,22 @@ pub(super) fn fill_display_text(builder: &mut BuilderState, strings: &StringTabl
         def.title = fill.req("goal", key, "title");
         def.summary = fill.req("goal", key, "summary");
     }
+    for (key, def) in &mut builder.situations {
+        def.title = fill.req("situation", key, "title");
+        def.summary = fill.req("situation", key, "summary");
+        for stage in &mut def.stages {
+            let stem = format!("situation.{key}.stage.{}", stage.key);
+            stage.title = fill.at(&format!("{stem}.title"));
+            stage.summary = fill.at(&format!("{stem}.summary"));
+            stage.warning = fill.opt(&format!("{stem}.warning"));
+        }
+        for action in &mut def.actions {
+            action.label = fill.at(&format!("situation.{key}.action.{}.label", action.key));
+        }
+        for outcome in &mut def.outcomes {
+            outcome.text = fill.at(&format!("situation.{key}.resolution.{}.text", outcome.key));
+        }
+    }
     if let Some(scenario) = &mut builder.scenario {
         let key = scenario.key.clone();
         scenario.name = fill.req("scenario", &key, "name");
@@ -191,6 +207,24 @@ pub fn text_keys(set: &ContentSet) -> BTreeSet<String> {
     for key in set.goals.keys() {
         add(format!("goal.{key}.title"));
         add(format!("goal.{key}.summary"));
+    }
+    for (key, def) in &set.situations {
+        add(format!("situation.{key}.title"));
+        add(format!("situation.{key}.summary"));
+        for stage in &def.stages {
+            let stem = format!("situation.{key}.stage.{}", stage.key);
+            add(format!("{stem}.title"));
+            add(format!("{stem}.summary"));
+            if stage.warning.is_some() {
+                add(format!("{stem}.warning"));
+            }
+        }
+        for action in &def.actions {
+            add(format!("situation.{key}.action.{}.label", action.key));
+        }
+        for outcome in &def.outcomes {
+            add(format!("situation.{key}.resolution.{}.text", outcome.key));
+        }
     }
     if let Some(scenario) = &set.scenario {
         add(format!("scenario.{}.name", scenario.key));

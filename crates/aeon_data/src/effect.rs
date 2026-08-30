@@ -49,6 +49,20 @@ pub enum ScriptEffect {
     /// validates the claim: the title must be vacant and the owner must
     /// hold strictly more planetary provinces than any rival.
     ClaimParamountcy,
+    /// Publicly declare the assignment leader's personal claim to the vacant
+    /// planetary paramountcy.
+    DeclareParamountClaim,
+    /// Renounce the assignment leader's personal claim to the planetary
+    /// paramountcy.
+    RenounceParamountClaim,
+    /// Open a formal war against the organisation named by the assignment
+    /// target.
+    DeclareWar,
+    /// Adopt the side containing the caller's vassal in the formal war named
+    /// by the assignment target.
+    AdoptWar,
+    /// Conclude the whole formal war named by the assignment target.
+    ConcludeWar,
     /// Collect Imperial tithes: every house pays a twentieth of its
     /// wealth to the owner. Valid only for the Sanctora Imperim.
     CollectTithes,
@@ -292,6 +306,21 @@ pub fn parse_effects(value: Dynamic) -> Result<Vec<ScriptEffect>, EffectParseErr
             "claim-paramountcy" => {
                 effects.push(ScriptEffect::ClaimParamountcy);
             }
+            "declare-paramount-claim" => {
+                effects.push(ScriptEffect::DeclareParamountClaim);
+            }
+            "renounce-paramount-claim" => {
+                effects.push(ScriptEffect::RenounceParamountClaim);
+            }
+            "declare-war" => {
+                effects.push(ScriptEffect::DeclareWar);
+            }
+            "adopt-war" => {
+                effects.push(ScriptEffect::AdoptWar);
+            }
+            "conclude-war" => {
+                effects.push(ScriptEffect::ConcludeWar);
+            }
             "collect-tithes" => {
                 effects.push(ScriptEffect::CollectTithes);
             }
@@ -506,5 +535,28 @@ mod tests {
             parse_effects(not_map),
             Err(EffectParseError::NotAMap { .. })
         ));
+    }
+
+    #[test]
+    fn parses_claim_and_formal_war_effects() {
+        let value = dynamic_from(
+            r#"[
+                #{ kind: "declare-paramount-claim" },
+                #{ kind: "renounce-paramount-claim" },
+                #{ kind: "declare-war" },
+                #{ kind: "adopt-war" },
+                #{ kind: "conclude-war" }
+            ]"#,
+        );
+        assert_eq!(
+            parse_effects(value).unwrap(),
+            vec![
+                ScriptEffect::DeclareParamountClaim,
+                ScriptEffect::RenounceParamountClaim,
+                ScriptEffect::DeclareWar,
+                ScriptEffect::AdoptWar,
+                ScriptEffect::ConcludeWar,
+            ]
+        );
     }
 }

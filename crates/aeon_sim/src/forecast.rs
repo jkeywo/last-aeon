@@ -17,7 +17,7 @@ use bevy::prelude::*;
 
 use crate::assignments::{AssignmentRejection, AssignmentTarget};
 use crate::politics::{CharacterSkills, PoliticsIndex};
-use crate::{CharacterId, OrgId};
+use crate::{CharacterId, OrgId, WarId};
 
 /// A probability in parts per thousand.
 pub type Permille = u32;
@@ -57,6 +57,8 @@ pub struct AssignmentForecast {
     pub summary: String,
     /// The leader this forecast is for.
     pub leader: CharacterId,
+    /// Exact formal war authorising the assignment, when any.
+    pub war: Option<WarId>,
     /// Days from starting to resolution.
     pub duration_days: i64,
     /// Days before the order even reaches the leader.
@@ -281,6 +283,22 @@ pub fn forecast(
     leader: CharacterId,
     target: AssignmentTarget,
 ) -> Option<AssignmentForecast> {
+    let war = match target {
+        AssignmentTarget::War(war) => Some(war),
+        _ => None,
+    };
+    forecast_in_war(world, org, def_key, leader, target, war)
+}
+
+/// Builds a forecast retaining an exact war behind a composite target.
+pub fn forecast_in_war(
+    world: &World,
+    org: OrgId,
+    def_key: &ContentKey,
+    leader: CharacterId,
+    target: AssignmentTarget,
+    war: Option<WarId>,
+) -> Option<AssignmentForecast> {
     let content = world.get_resource::<crate::state::ContentDb>()?;
     let def = content.0.assignments.get(def_key)?.clone();
 
@@ -314,6 +332,7 @@ pub fn forecast(
         title: def.title.clone(),
         summary: def.summary.clone(),
         leader,
+        war,
         duration_days: assignment_duration_days(world, &def, target),
         order_delay_days: crate::presence::order_delay(world, Some(leader)),
         wealth_cost: def.wealth_cost,
@@ -327,7 +346,10 @@ pub fn forecast(
         results,
         risks,
         military_op: def.military_op,
-        blocked: crate::assignments::validate_start(world, org, def_key, leader, target).err(),
+        blocked: crate::assignments::validate_start_in_war(
+            world, org, def_key, leader, target, war,
+        )
+        .err(),
         point_of_no_return: def.point_of_no_return(),
     })
 }
@@ -366,6 +388,7 @@ mod tests {
             risks: Vec::new(),
             military_op: None,
             ai_available: false,
+            guaranteed: false,
             ai_intent: aeon_data::model::AiIntent::Routine,
             wealth_cost: 0,
             manpower_cost: 0,

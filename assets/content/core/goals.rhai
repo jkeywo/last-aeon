@@ -18,16 +18,17 @@ define_goal(#{
     directives: [ #{ intent: "standing" } ],
 });
 
-// The planet itself. A house that already holds more of it than any
-// rival bends everything toward pressing the claim, and calls its
-// vassals to arms behind the attempt.
+// The planet itself. Any living adult independent dynastic head may set this
+// ambition while the Paramountcy is vacant; dominance is something the
+// ensuing authored plans must win, not a prerequisite for wanting it.
 define_goal(#{
     id: "take-the-planet",
+    priority: 100,
     favours: ["claim", "muster"],
     favour_bonus: 60,
     max_days: 5400,
     cooldown_days: 1080,
-    trigger: #{ dominant_claimant: true },
+    trigger: #{ can_claim_paramountcy: true },
     directives: [ #{ intent: "muster" } ],
 });
 

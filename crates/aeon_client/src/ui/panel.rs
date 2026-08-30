@@ -27,6 +27,7 @@ use crate::ui::ledger_panel::draw_ledger_panel;
 use crate::ui::listing::draw_listing;
 use crate::ui::log_panel::draw_log_panel;
 use crate::ui::lookup::Lookup;
+use crate::ui::situations_panel::{SituationPanelView, SituationUiState, draw_situations_panel};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::ui::specimen::draw_specimen_panel;
 use crate::view::{MapMode, ViewState};
@@ -61,6 +62,8 @@ pub struct PanelCtx<'a, 'w, 's> {
     pub goals: Option<&'a aeon_sim::goals::Goals>,
     /// Directives issued to vassals by hand, if a campaign is running.
     pub issued_directives: Option<&'a aeon_sim::goals::IssuedDirectives>,
+    /// Active Situation cards and undismissed resolutions.
+    pub situations: &'a SituationPanelView,
 }
 
 /// Everything a panel writes.
@@ -75,6 +78,8 @@ pub struct PanelOut<'a> {
     pub popup: &'a mut AssignmentPopup,
     /// What the log is showing.
     pub filter: &'a mut LogFilter,
+    /// Focus and optimistic resolution dismissal state.
+    pub situation_ui: &'a mut SituationUiState,
 }
 
 /// What a panel's header was asked to do.
@@ -143,6 +148,7 @@ pub fn draw_panel_body(ui: &mut egui::Ui, kind: PanelKind, ctx: &PanelCtx, out: 
                     draw_inspector(ui, ctx, out);
                 });
         }
+        PanelKind::Situations => draw_situations_panel(ui, ctx, out),
         PanelKind::Listing => draw_listing(ui, ctx, out),
         PanelKind::Log => draw_log_panel(ui, ctx, out),
         PanelKind::Assignments => draw_assignments_panel(

@@ -225,13 +225,18 @@ pub fn pressures(world: &World, province: ProvinceId) -> OrderPressures {
             }
             match holder {
                 Some(holder) if army.owner == holder => pressures.garrison = true,
-                _ => pressures.occupied = true,
+                Some(holder)
+                    if crate::wars::active_war_between(world, army.owner, holder).is_some() =>
+                {
+                    pressures.occupied = true;
+                }
+                _ => {}
             }
         }
         for entity in forces.ships.values() {
             if world
                 .get::<ShipRecord>(*entity)
-                .is_some_and(|ship| ship.blockading == Some(province))
+                .is_some_and(|ship| crate::warfare::active_blockade_at(world, ship, province))
             {
                 pressures.blockaded = true;
             }

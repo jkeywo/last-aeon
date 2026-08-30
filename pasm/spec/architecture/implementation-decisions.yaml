@@ -254,7 +254,7 @@ entities:
       title: Content Files Declare Data and Provide File-Local Functions
       summary: >-
         Authored files declare definitions by calling define_job,
-        define_body, define_province, and define_scenario with plain maps,
+        define_body, define_province, define_situation, and define_scenario with plain maps,
         which Rust converts and validates immediately. Dynamic behaviour is
         written as named functions in the same file; definitions may only
         reference functions defined in their own file. Loading collects all
@@ -271,12 +271,15 @@ entities:
     core:
       status: accepted
       confidence: confirmed
-      title: Script Functions Return Effects
+      title: Script Functions Return Typed Values
       summary: >-
-        Authored functions receive a read-only context map and return an
-        array of effect maps, which Rust parses into typed effects,
-        validates, and applies. There are no emitter functions and no
-        shared collector state; a script invocation is a pure call.
+        Authored functions receive a read-only context and return plain Rhai
+        values which Rust immediately parses into the type expected at that
+        call site. Result functions return effect maps; Situation triggers,
+        projections, and outcomes return binding or presentation maps. There
+        are no emitter functions and no shared collector state: every script
+        invocation is a pure call, and only validated typed effects cross the
+        mutation boundary.
       rationale:
         - Pure calls cannot leak state between invocations, which keeps script execution replay-deterministic by construction.
         - Typed parsing at the boundary means malformed authored effects fail loudly at a single point with good errors.
@@ -362,19 +365,21 @@ entities:
       confidence: confirmed
       title: Territorial Titles Are Held by Organisations, Personal Titles and Offices by Characters
       summary: >-
-        Province and paramount titles are held by organisations and
-        exercised through their current head, so succession moves whole
-        holdings without retitling. The Consul title and all offices are
+        Province titles are held by organisations and exercised through their
+        current head, so succession moves territorial holdings without
+        retitling. The Consul, the planetary paramountcy, and all offices are
         held personally by characters and never inherited. Province titles
         are implicit - the simulation creates one per province - while
         paramountcies and Imperial titles are authored.
       rationale:
         - Organisation-held territory matches the vision's model of houses persisting across leaders.
+        - A paramount claimant asserts personal sovereignty, so their death vacates the office and requires every successor to make their own claim.
         - Implicit province titles avoid forty-one lines of authored boilerplate that carry no information.
       references:
         - legal-holdings-and-obligations
         - titles-and-offices-are-separate
         - consul-and-starbase-command-hierarchy
+        - paramountcy-is-personally-claimed-by-independent-heads
 
   - decision: consul-contest-scoring
     core:
@@ -559,12 +564,16 @@ entities:
         conquest, loot, blockades halving wealth output) are simulation
         code. Content declares pacing, costs, risks, and flavour; army
         operations are always led by the army's general, and defeat in
-        the field overrides the job's rolled result to failure.
+        the field overrides the job's rolled result to failure. Siege and
+        blockade bind to one exact active formal war and require opposing
+        sides at start and resolution. Raids need no war and create only
+        operation-local hostility.
       rationale:
         - Engagements and conquest touch titles, forces, and resources at once; putting them behind the script-effect boundary would either widen it unsafely or duplicate the simulation in content.
       references:
         - job-based-operational-warfare
         - military-operation-system
+        - formal-war-system
         - scripts-emit-validated-effects-only
 
   - decision: strategic-engagement-formula
@@ -593,40 +602,51 @@ entities:
       confidence: confirmed
       title: Standing Orders Start Reactive Jobs Only for Idle Armies
       summary: >-
-        An army set to defend holdings reacts to hostile besiege or raid
-        operations against its owner's provinces on its body by starting a
-        real, visible answer-the-alarm job. Standing orders only fire for
-        armies with no active job, so a bespoke player job automatically
-        takes precedence, and autonomous organisations rely on standing
-        orders rather than initiating military operations through random
-        agency.
+        An army set to defend holdings reacts to a siege or blockade by an
+        opposing member of its exact formal war, or to a raid aimed at its
+        owner's province, by starting a real, visible answer-the-alarm
+        assignment. Standing orders only fire for idle armies, so a bespoke
+        player assignment takes precedence. Peaceful foreign presence alone
+        is not hostile and creates no occupation pressure.
       rationale:
         - Reactive automation as ordinary jobs keeps every military action inside one pipeline, cancellable and inspectable like anything else.
       references:
         - military-standing-orders
         - ai-agency-through-the-job-catalogue
+        - formal-war-system
 
   - decision: province-count-paramountcy-claim
     core:
       status: accepted
       confidence: confirmed
-      title: The Paramountcy Is Claimed by Planetary Province Dominance
+      title: A Declared Paramount Claim Is Pressed by Whole-Realm Dominance
       summary: >-
-        The vacant planetary paramountcy can be claimed through a job whose
-        effect succeeds only if the claimant holds strictly more of the
-        planet's provinces than any rival. The three great houses open tied
-        at five planetary provinces apiece, so the title stays contested
-        until play shifts the balance through conquest or seizure. Consular
-        endorsement is a separate opinion-bearing job that helps a house's
-        standing without gating the claim.
+        While the title is vacant, a living adult current head of a
+        non-defunct independent dynastic house may declare or renounce a
+        personal claim through a guaranteed one-day head-led assignment.
+        Claims are stored in stable title-and-character order; declaration is
+        permitted however weak the claimant, while death, lost headship,
+        dependence, renunciation, or resolution removes it. The existing
+        ninety-day probabilistic press assignment may start and succeed only
+        while that claim remains valid and the claimant's whole realm - their
+        organisation plus every transitive vassal holding on the planet -
+        holds strictly more provinces than every rival realm. The opening
+        realms remain unequal, so the leader may press after declaring.
+        Success clears the title's other claims and awards its character-held,
+        non-inherited title; institutional bonuses resolve through that
+        character's current organisation. Consular endorsement remains helpful
+        but does not gate either act.
       rationale:
-        - A hard, legible dominance test makes the succession crisis a concrete territorial problem rather than an opaque score, and the opening tie makes it genuinely contested exactly as the crisis premise requires.
+        - A hard, legible whole-realm dominance test makes vassalage matter and keeps the succession crisis a concrete territorial problem rather than an opaque score.
+        - Declaration separates the choice to become a claimant from having the strength to win, allowing tenuous claims without manufacturing progress points.
         - Keeping endorsement soft honours the decision that Consular endorsement is helpful, not required.
       references:
         - planetary-paramount-title-is-contested
+        - paramountcy-is-personally-claimed-by-independent-heads
         - planetary-succession-crisis-origin
         - consul-endorsement-is-helpful-not-required
         - great-houses-contest-the-planet
+        - hop-distance-answers-realm-questions
 
   - decision: imperial-tithes-as-a-sanctora-lever
     core:
@@ -1056,13 +1076,14 @@ entities:
         function, tested against the real scenario: province holders come
         from province_holder, great-house realms from great_house_of,
         garrison strength from garrison_in (counted in stable-ID order),
-        and claim standing from the same province_counts_on and
-        dominant_claimant the claim job itself uses — so a tied field
-        shows nobody leading, exactly as the claim would resolve. The
+        and claimant standing from the same personal-claim registry,
+        transitive realm totals, and strict-dominance predicate used by the
+        press assignment. War hostility, sides, and operations likewise come
+        from the formal-war ledger rather than proximity heuristics. The
         interface's leader gating goes back through leader_availability,
         which the client had drifted into re-deriving.
       rationale:
-        - The client's claim-pressure heuristic showed a house "currently leading the claim" in the opening three-way tie that the simulation would refuse; asking the simulation makes the map agree with the rules it depicts.
+        - The client must depict the same claimant, realm, and war answers that authoritative assignment validation will enforce.
         - The re-derived leader gate was the exact bug class the single-source-leader-availability decision was written against; it had grown back within two milestones, which is why the predicate now lives nowhere but the simulation.
       references:
         - single-source-leader-availability
@@ -1641,6 +1662,289 @@ entities:
         - hand-rolled-deterministic-rng
         - rng-stream-labels-are-identities-not-names
 
+  - decision: situations-project-live-facts-into-authored-context
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Situations Query a Shared Semantic World View
+      summary: >-
+        A Situation definition contains pure trigger, projection, and outcome
+        functions. Each receives its authored source and the same read-only
+        semantic world interface available to every Rhai script, then returns
+        typed instance bindings or fixed presentation blocks. The interface
+        exposes stable game concepts rather than raw Bevy components, and this
+        change implements the minimum deterministic, sorted views required for
+        characters, organisations and lieges, titles, provinces, forces,
+        opinions, obligations, assignments, Consular contests, Paramount
+        claims and realm totals, and formal wars.
+      rationale:
+        - A generic semantic query surface lets authored triggers combine arbitrary supported simulation facts without hard-coding title, obligation, or war Situation categories.
+        - Stable domain records preserve the scripting boundary and deterministic ordering while allowing the ECS representation to change independently.
+        - Existing Rhai effect scripts receive the interface without needing to use it or change their current function bodies.
+      references:
+        - situation-system
+        - situations-are-authored-shells-over-simulation-facts
+        - deterministic-campaign-simulation
+        - scripts-emit-validated-effects-only
+        - world-read-access-module
+
+  - decision: situation-instances-have-structural-identity
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Situation Instances Have Structural Identity and Derived Stages
+      summary: >-
+        A Situation trigger returns zero or more binding maps in stable order.
+        An instance key is its definition key plus its ordered typed subject
+        bindings, allowing one definition to represent many simultaneous
+        conflicts. The snapshot stores only that key, bindings, and activation
+        date for active instances; stage, metrics, warnings, visibility, links,
+        and actions are freshly projected from authoritative facts. Definitions
+        may request an activation log entry, defaulting false; Formal War turns
+        it on so declarations enter permanent tagged history.
+      rationale:
+        - Structural keys make a reusable definition deterministic without allocating content-specific identities.
+        - Derived stages cannot drift from the title, obligation, contest, claim, assignment, or war state they explain.
+        - "[ai] Labeled participant groups keep role-specific presentation authored and generic while preserving deterministic semantic links."
+      references:
+        - situation-system
+        - situations-project-live-facts-into-authored-context
+        - stable-game-identity
+        - stable-id-ordered-iteration
+
+  - decision: situation-lifecycle-leaves-dismissible-resolutions
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Situation Lifecycles Leave Dismissible Resolutions
+      summary: >-
+        Situations evaluate once at campaign creation or restore and at the
+        fully settled end of every day after daily, monthly, and yearly work.
+        A newly returned key activates; an existing key retains its activation
+        date; and a missing key freezes the first matching authored outcome or
+        mandatory fallback into a resolution card. Resolutions persist across
+        save and reload until a logged DismissSituationResolution command
+        names their monotonic notice ID. Reactivation is a new lifecycle even
+        when an older resolution card remains.
+      rationale:
+        - Persistent resolutions let the player learn what happened without pausing time or losing the answer between sessions.
+        - End-of-day evaluation observes one settled authoritative state rather than exposing scheduler internals as visible stage flicker.
+        - "[ai] A monotonic notice ID distinguishes recurring instances whose structural key is intentionally reused."
+      references:
+        - situation-instances-have-structural-identity
+        - campaign-time-model
+        - versioned-snapshots-plus-command-log
+        - deterministic-seed-and-command-replay
+
+  - decision: situation-actions-launch-authoritative-assignments
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Situation Actions Launch Existing Assignment Flows
+      summary: >-
+        Rhai may offer typed actions but cannot mutate simulation state. For the
+        initial deck every gameplay action opens an existing assignment flow
+        with its subject and optional Situation or War identity preselected.
+        The client keeps unavailable actions visible with the authoritative
+        forecast reason. Assignments launched this way retain their originating
+        Situation key, and every relevant log entry carries explicit Situation
+        tags rather than being inferred from broad subject matches.
+      rationale:
+        - One command, validation, forecast, AI, and log path keeps a Situation shortcut honest about what the player can do.
+        - Explicit provenance gives related history exact membership and survives later changes to the participants.
+        - "[ai] Repeated projected actions carry semantic context links so every force-objective alternative stays individually identifiable without client-owned war rules."
+      references:
+        - situation-system
+        - scripted-command-boundary
+        - assignments-declare-who-they-may-target
+        - single-source-leader-availability
+        - notable-result-message-log
+
+  - decision: situation-errors-are-visible-and-deterministic
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Runtime Situation Errors Become Unavailable Cards
+      summary: >-
+        Content loading and validation fail hard for malformed Situation
+        definitions, missing functions, invalid bindings, audiences, actions,
+        outcomes, fallbacks, or text keys. A runtime trigger or projection
+        error preserves the affected lifecycle as an Unavailable card,
+        suppresses its actions and warnings, and writes one deterministic log
+        diagnostic per snapshotted error fingerprint instead of silently
+        removing or repeatedly spamming the Situation. An outcome error retains
+        the active lifecycle as unavailable rather than discarding it or
+        manufacturing a fallback result at runtime.
+      rationale:
+        - A broken explanatory layer must be visible without being allowed to issue unsafe commands or erase an unresolved authoritative conflict.
+        - Snapshotted fingerprints make log-once behaviour identical after restore and replay.
+      references:
+        - scripted-content-with-ci-validation
+        - situation-lifecycle-leaves-dismissible-resolutions
+        - deterministic-seed-and-command-replay
+
+  - decision: situations-own-one-dock-and-attention-links
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Situations Own the Default Right Dock and Attention Links
+      summary: >-
+        The Situations panel opens in the right dock by default, replacing
+        Listing in the initial layout while Listing remains available from the
+        toolbar. It orders newest resolutions first, then active warnings, then
+        remaining active instances by descending authored priority and stable
+        key. The old map SituationItem becomes AttentionItem so a warning may
+        focus either a province or a Situation. Spectators see every Situation
+        but no gameplay actions; private audiences otherwise remain authored.
+      rationale:
+        - "[ai] Making the new strategic surface visible on day one prevents its opening instances from becoming a feature the player must discover in a menu."
+        - Keeping warnings as derived links preserves the existing non-pausing attention model.
+      references:
+        - situation-system
+        - formal-wars-use-the-situation-surface
+        - strategic-map-intelligence-modes
+        - m7-spectator-mode
+
+  - decision: formal-wars-have-occurrence-stable-ledgers
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Formal Wars Have Occurrence-Stable Persistent Ledgers
+      summary: >-
+        Each declaration allocates a WarId and records an authoritative
+        WarRecord with cause, opening date, two nonempty disjoint sides, side
+        leaders, ordered organisation members, adoption history, and optional
+        conclusion date and reason. A guaranteed seven-day head-led assignment
+        declares the war. Concluded records remain available for history,
+        replay, and the Formal War Situation resolution. A war belongs to
+        organisations and survives head succession, claimant death, and claim
+        renunciation. This milestone adds no alliance, coalition, casus belli,
+        front, war-score, surrender, or inactivity-peace system.
+      rationale:
+        - "[ai] Occurrence identity distinguishes repeated wars between the same organisations and lets assignments, blockades, logs, and resolutions name exactly the conflict they belong to."
+        - Persisting concluded records makes a war's history authoritative rather than reconstructing it from display text.
+      references:
+        - formal-war-system
+        - stable-game-identity
+        - versioned-snapshots-plus-command-log
+        - formal-wars-use-the-situation-surface
+
+  - decision: war-sides-freeze-branches-with-explicit-liege-adoption
+    core:
+      status: accepted
+      confidence: confirmed
+      title: War Sides Freeze Realm Branches with Explicit Liege Adoption
+      summary: >-
+        Declaration recursively adds each leader's current transitive vassal
+        branch. For an internal war, the descendant keeps its whole branch and
+        that branch is excluded from the ancestor's side, supporting sibling,
+        liege-vassal, and rebellion conflicts without overlap. Membership then
+        stays frozen. A nonparticipating liege may use a guaranteed seven-day
+        head-led adoption assignment to join the side containing its vassal,
+        add its current branch except existing opponents, become side leader,
+        and assume whole-war peace authority. There are no defections or
+        separate settlements in this milestone.
+      rationale:
+        - "[ai] Snapshotting the declared branches makes war membership deterministic and legible even when peacetime liege relationships change mid-conflict."
+        - Explicit adoption creates a visible escalation decision instead of making every overlord join automatically.
+      references:
+        - formal-war-system
+        - legal-holdings-and-obligations
+        - characters-are-the-acting-unit
+        - situation-actions-launch-authoritative-assignments
+
+  - decision: exact-war-identity-gates-hostility-and-operations
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Exact War Identity Gates Hostility and Military Operations
+      summary: >-
+        AssignmentTarget gains War and forecasts, commands, active assignments,
+        snapshots, and blockades carry an optional exact WarId. Siege and
+        blockade require the owner and target holder to oppose one another in
+        that active war at start and resolution; peace aborts assignments bound
+        to it and clears its blockades while retaining territorial outcomes.
+        The existing probabilistic twenty-day negotiation assignment settles
+        the whole war and is authorised only for the current side leader.
+        Standing orders, defenders, map hostility, occupation pressure, trade,
+        and blockades ask shared war-side predicates. Raids remain deniable and
+        create hostility only for that operation.
+      rationale:
+        - "[ai] Binding an operation to one occurrence prevents a peace followed by a new war between the same parties from reviving old orders or blockades."
+        - Shared predicates keep the map, economy, defence automation, and assignment validation from disagreeing about who is an enemy.
+      references:
+        - formal-war-system
+        - engine-owned-military-operations
+        - standing-orders-fire-for-idle-armies
+        - map-facts-are-simulation-answers
+
+  - decision: claimant-war-blocks-paramount-press
+    core:
+      status: accepted
+      confidence: confirmed
+      title: A Live Rival-Claimant War Blocks Pressing the Paramountcy
+      summary: >-
+        The ninety-day press assignment revalidates its personal claim,
+        vacancy, whole-realm dominance, and war state at start and completion.
+        It cannot award the title while its claimant opposes another currently
+        valid claimant in an active formal war. An unrelated war does not
+        block; if the rival dies or renounces, their continuing organisation
+        war stops blocking. A blocking war begun during the attempt causes the
+        attempt to fail, while peace before completion permits success.
+      rationale:
+        - "[ai] A claimant should not settle the succession administratively while their right is still being fought by another live claimant."
+        - Revalidation prevents a dead, dependent, renounced, or no-longer-dominant claimant from receiving a delayed title award.
+      references:
+        - province-count-paramountcy-claim
+        - formal-war-system
+        - paramountcy-is-personally-claimed-by-independent-heads
+
+  - decision: autonomous-paramount-claimants-fight-through-authored-plans
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Autonomous Paramount Claimants Declare and Fight through Authored Plans
+      summary: >-
+        An eligible independent head adopting the take-the-planet ambition may
+        run the one-day declaration assignment before attaining dominance. A
+        trailing claimant challenges the leading claimant only when its
+        prospective war branch has at least seventy-five percent of the
+        leader's raised army manpower. Authored plans then choose the
+        lowest-order stable-ID enemy province, prosecute war through ordinary
+        assignments and standing orders, negotiate when dominant or unable to
+        continue, and press only after peace. Claim-war plans use zero cooldown
+        so they may continue this deterministic loop while the ambition holds.
+      rationale:
+        - "[ai] The seventy-five-percent floor permits risky political wars without sending obviously hopeless branches into deterministic ruin."
+        - Reusing goals, plans, assignments, and standing orders gives autonomous characters no privileged path through the new rules.
+      references:
+        - paramountcy-is-personally-claimed-by-independent-heads
+        - formal-war-system
+        - plans-are-authored-campaigns
+        - standing-orders-are-priority-lists
+        - intent-driven-organisation-agency
+
+  - decision: situations-and-formal-wars-use-snapshot-18
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Situations, Personal Claims, and Formal Wars Use Snapshot 18
+      summary: >-
+        Snapshot format 18 captures personal Paramount claims, active and
+        concluded wars and adoption history, war-bound assignments and
+        blockades, cancellation state, obligation source keys, active Situation
+        lifecycles, resolution notices, diagnostic fingerprints, log Situation
+        tags, and assignment Situation origins. This pre-release project rejects
+        version 17 snapshots rather than migrating them.
+      rationale:
+        - "[ai] A single format bump covers the mutually connected state shape instead of creating several short-lived intermediate versions during one milestone."
+        - Refusing the old pre-release shape is safer than inventing war and Situation identities during migration.
+      references:
+        - versioned-snapshots-plus-command-log
+        - formal-wars-have-occurrence-stable-ledgers
+        - situation-lifecycle-leaves-dismissible-resolutions
+        - claimant-war-blocks-paramount-press
+
   - decision: script-host-is-the-fleets
     core:
       status: accepted
@@ -1652,7 +1956,8 @@ entities:
         game as the fleet's deterministic script host. What stays here is
         the vocabulary: which builder functions the loading engine
         registers, the shape of the context a call receives, and how a
-        returned value becomes typed effects — one game's content model,
+        returned value becomes typed effects or another call-site-specific
+        typed model — one game's content model,
         not a general mechanism. A pure extraction, proven rather than
         asserted: the content hash and every acceptance replay hash are
         byte-identical across the change.

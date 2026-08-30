@@ -107,16 +107,32 @@ fn strings() -> aeon_data::StringTable {
     table
 }
 
-fn fixture_content() -> Arc<aeon_data::ContentSet> {
+fn fixture_content_from(source: String) -> Arc<aeon_data::ContentSet> {
     let (set, report) = load_content(
         &[ContentSource {
             path: "fixture.rhai".to_owned(),
-            source: FIXTURE.to_owned(),
+            source,
         }],
         &strings(),
     );
     assert!(!report.has_errors(), "findings: {:?}", report.findings);
     Arc::new(set.unwrap())
+}
+
+fn fixture_content() -> Arc<aeon_data::ContentSet> {
+    fixture_content_from(FIXTURE.to_owned())
+}
+
+fn vacant_consul_content() -> Arc<aeon_data::ContentSet> {
+    let source = FIXTURE.replace(
+        "define_title(#{ id: \"consulate\", kind: \"consul\",\n                holder_character: \"consul-vex\" });",
+        "define_title(#{ id: \"consulate\", kind: \"consul\" });",
+    );
+    assert_ne!(
+        source, FIXTURE,
+        "fixture Consul declaration should be replaced"
+    );
+    fixture_content_from(source)
 }
 
 fn start_date() -> aeon_core::calendar::GameDate {
@@ -305,6 +321,71 @@ fn consul_vacancy_opens_a_contest_and_the_tsar_appoints() {
         .unwrap();
     assert!(record.alive());
     assert!(record.age_years(world.resource::<aeon_sim::CampaignClock>().date) >= ADULT_AGE);
+}
+
+#[test]
+fn an_authored_consul_vacant_at_campaign_start_opens_a_contest() {
+    let mut host = SimHost::new_with_content(
+        CampaignConfig {
+            name: "Vacant Consulate Trial".to_owned(),
+            seed: 61,
+            start_date: start_date(),
+        },
+        vacant_consul_content(),
+    );
+
+    let world = host.world_mut();
+    let index = world.resource::<PoliticsIndex>().clone();
+    let consulate = index.title_keys[&aeon_data::ContentKey::new("consulate").unwrap()];
+    let contest = world
+        .get_resource::<ConsulContest>()
+        .expect("the opening vacancy should create a contest");
+    assert_eq!(contest.title, consulate);
+    assert_eq!(contest.opened, start_date());
+    assert!(!contest.candidates.is_empty());
+    assert!(contest.candidates.windows(2).all(|ids| ids[0] < ids[1]));
+    assert_eq!(
+        world
+            .get::<TitleRecord>(index.titles[&consulate])
+            .unwrap()
+            .holder,
+        TitleHolder::Vacant
+    );
+}
+
+#[test]
+fn a_dead_consul_candidate_slate_restarts_with_the_current_eligible_candidates() {
+    let mut host = SimHost::new_with_content(
+        CampaignConfig {
+            name: "Dead Consular Slate Trial".to_owned(),
+            seed: 62,
+            start_date: start_date(),
+        },
+        vacant_consul_content(),
+    );
+    let vex = char_id(&mut host, "consul-vex");
+    let original_opened = host.world_mut().resource::<ConsulContest>().opened;
+    host.world_mut().resource_mut::<ConsulContest>().candidates = vec![vex];
+
+    host.advance_days(10);
+    let death_date = host.date();
+    process_death(host.world_mut(), vex, death_date);
+
+    let reopened = host
+        .world_mut()
+        .get_resource::<ConsulContest>()
+        .expect("an eligible slate should replace the dead contest");
+    assert!(reopened.opened > original_opened);
+    assert_eq!(reopened.opened, death_date);
+    assert!(!reopened.candidates.is_empty());
+    assert!(!reopened.candidates.contains(&vex));
+    assert!(reopened.candidates.windows(2).all(|ids| ids[0] < ids[1]));
+
+    host.advance_days(CONSUL_CONTEST_DAYS as u32 - 1);
+    assert!(host.world_mut().get_resource::<ConsulContest>().is_some());
+    host.advance_days(1);
+    assert!(host.world_mut().get_resource::<ConsulContest>().is_none());
+    assert!(aeon_sim::access::consul(host.world_mut()).is_some());
 }
 
 #[test]

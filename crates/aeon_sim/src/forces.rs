@@ -15,7 +15,7 @@ use bevy::prelude::{Component, Entity, IntoScheduleConfigs, Resource, World};
 use serde::{Deserialize, Serialize};
 
 use crate::clock::MonthlyPulse;
-use crate::ids::{ArmyId, CharacterId, OrgId, ProvinceId, ShipId};
+use crate::ids::{ArmyId, CharacterId, OrgId, ProvinceId, ShipId, WarId};
 use crate::map::MapIndex;
 use crate::politics::PoliticsIndex;
 use crate::state::CampaignIds;
@@ -36,6 +36,15 @@ pub enum ShipLocation {
 }
 
 /// An individually tracked starship.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Blockade {
+    /// Province whose routes and order are being suppressed.
+    pub province: ProvinceId,
+    /// Exact active formal-war occurrence authorising the blockade.
+    pub war: WarId,
+}
+
+/// An individually tracked starship.
 #[derive(Component, Clone, Debug)]
 pub struct ShipRecord {
     /// Stable ID.
@@ -52,8 +61,8 @@ pub struct ShipRecord {
     pub captain: Option<CharacterId>,
     /// Current location.
     pub location: ShipLocation,
-    /// The province this ship is blockading, if any.
-    pub blockading: Option<ProvinceId>,
+    /// The exact war-bound blockade this ship is maintaining, if any.
+    pub blockading: Option<Blockade>,
     /// The standing trade route this ship plies, if any. Transports only.
     pub route: Option<crate::trade::TradeRoute>,
 }
@@ -293,9 +302,9 @@ pub struct ShipState {
     pub captain: Option<CharacterId>,
     /// Location.
     pub location: ShipLocation,
-    /// Blockade target.
+    /// Exact war-bound blockade.
     #[serde(default)]
-    pub blockading: Option<ProvinceId>,
+    pub blockading: Option<Blockade>,
     /// Standing trade route.
     #[serde(default)]
     pub route: Option<crate::trade::TradeRoute>,
