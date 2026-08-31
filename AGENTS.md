@@ -87,3 +87,22 @@ marker: ratification is the human deleting it after reviewing
 ```bash
 uv run pasm review pasm/spec
 ```
+
+## Agent skills
+
+### Issue tracker
+
+Issues and PRDs are tracked in GitHub Issues for `jkeywo/last-aeon`. See
+`docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the five canonical triage labels: `needs-triage`, `needs-info`,
+`ready-for-agent`, `ready-for-human`, and `wontfix`. See
+`docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository. Domain and architecture authority live in
+`docs/gdd/`, `pasm/spec/`, and `the_last_aeons/`. See
+`docs/agents/domain.md`.
