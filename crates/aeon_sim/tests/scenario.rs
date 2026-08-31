@@ -88,7 +88,7 @@ fn scenario_has_the_full_authored_field() {
     for army in content.armies.values() {
         let general = content
             .characters
-            .get(&army.general)
+            .get(army.general.as_ref().expect("starting army has a general"))
             .unwrap_or_else(|| panic!("army {} general defined", army.key));
         assert_eq!(
             general.organisation.as_ref(),
@@ -97,6 +97,72 @@ fn scenario_has_the_full_authored_field() {
             army.key
         );
     }
+}
+
+#[test]
+fn authored_routes_starports_and_capacities_are_complete() {
+    let content = repository_content();
+    assert_eq!(content.routes.len(), 80);
+    assert_eq!(
+        content
+            .routes
+            .values()
+            .filter(|route| route.kind == aeon_data::model::RouteKind::Surface)
+            .count(),
+        65
+    );
+    assert_eq!(
+        content
+            .routes
+            .values()
+            .filter(|route| route.kind == aeon_data::model::RouteKind::Space)
+            .count(),
+        15
+    );
+    let starports: std::collections::BTreeSet<_> = content
+        .provinces
+        .values()
+        .filter(|province| province.starport)
+        .map(|province| province.key.as_str())
+        .collect();
+    assert_eq!(
+        starports,
+        std::collections::BTreeSet::from([
+            "karvessa",
+            "old-anchorage",
+            "port-vesk",
+            "redwater",
+            "spire-decks",
+            "tolmaz",
+        ])
+    );
+    assert_eq!(content.ships[&key("redwater-runner")].troop_capacity, 1200);
+    assert_eq!(content.ships[&key("karvess-hauler")].troop_capacity, 1200);
+    assert!(
+        content
+            .ships
+            .iter()
+            .filter(|(key, _)| !matches!(key.as_str(), "redwater-runner" | "karvess-hauler"))
+            .all(|(_, ship)| ship.troop_capacity == 0)
+    );
+}
+
+#[test]
+fn route_selection_is_stable_and_uses_authored_space_time() {
+    let mut h = scenario_host(77);
+    let world = h.world_mut();
+    let map = world.resource::<aeon_sim::MapIndex>();
+    let from = map.province_keys[&key("redwater")];
+    let to = map.province_keys[&key("port-vesk")];
+    let graph = world.resource::<aeon_sim::routes::RouteGraph>();
+    let first = graph
+        .fastest_path(aeon_data::model::RouteKind::Space, from, to)
+        .unwrap();
+    let second = graph
+        .fastest_path(aeon_data::model::RouteKind::Space, from, to)
+        .unwrap();
+    assert_eq!(first, second);
+    assert_eq!(aeon_sim::routes::RouteGraph::path_days(&first), 7);
 }
 
 #[test]
@@ -114,7 +180,11 @@ fn starting_armies_spawn_deterministically_at_their_provinces() {
     for entity in forces.armies.values() {
         let army = world.get::<aeon_sim::ArmyRecord>(*entity).unwrap();
         assert!(army.manpower > 0);
-        assert!(politics.characters.contains_key(&army.general));
+        assert!(
+            politics
+                .characters
+                .contains_key(&army.general.expect("starting general"))
+        );
     }
 }
 
@@ -315,7 +385,8 @@ fn garrisons_are_counted_in_stable_order() {
             .get::<aeon_sim::ArmyRecord>(*entity)
             .expect("indexed")
             .clone();
-        let (men, owner) = aeon_sim::forces::garrison_in(world, army.location);
+        let province = army.location.province().expect("starting army is ashore");
+        let (men, owner) = aeon_sim::forces::garrison_in(world, province);
         assert!(men >= army.manpower, "garrison misses an army's men");
         assert!(owner.is_some(), "a garrisoned province names an owner");
     }
@@ -324,7 +395,7 @@ fn garrisons_are_counted_in_stable_order() {
         .armies
         .values()
         .filter_map(|e| world.get::<aeon_sim::ArmyRecord>(*e))
-        .map(|a| a.location)
+        .filter_map(|a| a.location.province())
         .collect();
     let map = world.resource::<aeon_sim::MapIndex>().clone();
     if let Some(empty) = map.provinces.keys().find(|p| !garrisoned.contains(p)) {

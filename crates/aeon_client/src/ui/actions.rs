@@ -540,7 +540,7 @@ fn map_pick_button(ui: &mut egui::Ui, strings: &TextDb, awaiting: bool) -> bool 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
+    use aeon_sim::forces::{ArmyLocation, ArmyRecord, ShipLocation, ShipRecord};
     use aeon_sim::warfare::StandingOrders;
     use aeon_sim::{ArmyId, ShipId};
 
@@ -549,10 +549,13 @@ mod tests {
             id: ArmyId::from_raw(10).unwrap(),
             name: "First Levy".to_owned(),
             owner: OrgId::from_raw(1).unwrap(),
-            general: CharacterId::from_raw(general).unwrap(),
+            general: Some(CharacterId::from_raw(general).unwrap()),
+            lieutenant: None,
             manpower: 500,
             supplies: 100,
-            location: ProvinceId::from_raw(3).unwrap(),
+            location: ArmyLocation::Province(ProvinceId::from_raw(3).unwrap()),
+            retreat_destination: None,
+            orders_suspended: false,
             standing_order: StandingOrders::default(),
         }
     }
@@ -565,6 +568,11 @@ mod tests {
             class: aeon_data::model::ShipClass::Capital,
             owner: OrgId::from_raw(1).unwrap(),
             captain: captain.map(|c| CharacterId::from_raw(c).unwrap()),
+            first_officer: None,
+            troop_capacity: 0,
+            personal_transport: false,
+            retreat_destination: None,
+            orders_suspended: captain.is_none(),
             location: ShipLocation::Docked(ProvinceId::from_raw(3).unwrap()),
             blockading: None,
             route: None,
@@ -575,7 +583,7 @@ mod tests {
     fn a_march_is_led_by_the_armys_general() {
         let army = army(42);
         let (leader, obstacle) = force_leader(Some(&army), None);
-        assert_eq!(leader, Some(army.general), "and by nobody else");
+        assert_eq!(leader, army.general, "and by nobody else");
         assert_eq!(obstacle, None);
     }
 
@@ -612,6 +620,8 @@ mod tests {
 /// What stops a force being ordered.
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum Obstacle {
+    /// The army has no general, so there is nobody to give the order to.
+    ArmyHasNoGeneral,
     /// The ship has no captain, so there is nobody to give the order to.
     ShipHasNoCaptain,
 }
@@ -620,6 +630,7 @@ impl Obstacle {
     /// The key of the sentence explaining this obstacle.
     pub fn text_key(self) -> &'static str {
         match self {
+            Obstacle::ArmyHasNoGeneral => "ui.actions.obstacle.army-has-no-general",
             Obstacle::ShipHasNoCaptain => "ui.actions.obstacle.ship-has-no-captain",
         }
     }
@@ -636,7 +647,10 @@ pub fn force_leader(
     ship: Option<&ShipRecord>,
 ) -> (Option<CharacterId>, Option<Obstacle>) {
     if let Some(army) = army {
-        return (Some(army.general), None);
+        return match army.general {
+            Some(general) => (Some(general), None),
+            None => (None, Some(Obstacle::ArmyHasNoGeneral)),
+        };
     }
     match ship {
         Some(ship) => match ship.captain {

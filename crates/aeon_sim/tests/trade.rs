@@ -28,10 +28,12 @@ define_good(#{ id: "grain", value: 2 });
 // Zero the plain outputs so the only wealth in motion is trade.
 define_province(#{ id: "alpha", body: "world",
                    latitude_mdeg: 0, longitude_mdeg: 0,
+                   starport: true,
                    wealth_output: 0, manpower_output: 0, supplies_output: 0,
                    produces: #{ grain: 40 } });
 define_province(#{ id: "luna", body: "moon",
                    latitude_mdeg: 0, longitude_mdeg: 0,
+                   starport: true,
                    wealth_output: 0, manpower_output: 0, supplies_output: 0,
                    consumes: #{ grain: 30 } });
 
@@ -355,12 +357,15 @@ define_good(#{ id: "grain", value: 2 });
 
 define_province(#{ id: "alpha", body: "world",
                    latitude_mdeg: 0, longitude_mdeg: 0,
+                   starport: true,
                    wealth_output: 0, manpower_output: 0, supplies_output: 0,
                    produces: #{ grain: 30 } });
 define_province(#{ id: "luna", body: "moon",
                    latitude_mdeg: 0, longitude_mdeg: 0,
+                   starport: true,
                    wealth_output: 0, manpower_output: 0, supplies_output: 0,
                    consumes: #{ grain: 20 } });
+define_route(#{ id: "alpha-luna", kind: "space", a: "alpha", b: "luna", travel_days: 5, risk: 0 });
 
 define_house(#{
     id: "ash", tier: "great",
@@ -382,10 +387,15 @@ define_character(#{
     birth_year: 372, organisation: "birch",
     skills: #{ command: 4, diplomacy: 9, intrigue: 8, stewardship: 5 },
 });
+define_character(#{
+    id: "cera-ash", gender: "female",
+    birth_year: 380, organisation: "ash",
+    skills: #{ command: 6, diplomacy: 6, intrigue: 5, stewardship: 8 },
+});
 
 // A transport to ply the route, and a patrol boat to blockade with.
-define_ship(#{ id: "hauler", class: "transport", owner: "ash", location: "alpha" });
-define_ship(#{ id: "picket", class: "patrol", owner: "ash", location: "luna" });
+define_ship(#{ id: "hauler", class: "transport", owner: "ash", captain: "aron-ash", location: "alpha" });
+define_ship(#{ id: "picket", class: "patrol", owner: "ash", captain: "cera-ash", location: "luna" });
 "#;
 
 fn route_host(seed: u64) -> SimHost {

@@ -24,9 +24,10 @@ use crate::model::{
     HolderRelation, HouseTier, MilitaryOp, NamePoolDef, ObligationDef, ObligationKind, OfficeDef,
     OrgDef, OrgKind, OutcomeDef, OutcomeKind, PlanArmySelector, PlanDef, PlanMethodDef,
     PlanRequires, PlanStepAction, PlanStepDef, PlanTargetSelector, PopupChoiceDef, ProvinceDef,
-    RiskTag, ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SituationActionDef, SituationDef,
-    SituationOutcomeDef, SituationStageDef, SituationSubjectKind, SituationVisibilityDef,
-    SkillsDef, StageDef, TitleDef, TitleHolderDef, TitleKindDef, TitleNeed, TraitDef, Urgency,
+    RiskTag, RouteDef, RouteKind, ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SituationActionDef,
+    SituationDef, SituationOutcomeDef, SituationStageDef, SituationSubjectKind,
+    SituationVisibilityDef, SkillsDef, StageDef, TitleDef, TitleHolderDef, TitleKindDef, TitleNeed,
+    TraitDef, Urgency,
 };
 use crate::report::{ContentReport, Severity};
 
@@ -40,6 +41,7 @@ pub(super) struct BuilderState {
     pub(super) goods: BTreeMap<ContentKey, GoodDef>,
     pub(super) buildings: BTreeMap<ContentKey, BuildingDef>,
     pub(super) provinces: BTreeMap<ContentKey, ProvinceDef>,
+    pub(super) routes: BTreeMap<ContentKey, RouteDef>,
     pub(super) traits: BTreeMap<ContentKey, TraitDef>,
     pub(super) name_pools: BTreeMap<ContentKey, NamePoolDef>,
     pub(super) characters: BTreeMap<ContentKey, CharacterDef>,
@@ -72,6 +74,7 @@ impl BuilderState {
             goods: std::mem::take(&mut self.goods),
             buildings: std::mem::take(&mut self.buildings),
             provinces: std::mem::take(&mut self.provinces),
+            routes: std::mem::take(&mut self.routes),
             traits: std::mem::take(&mut self.traits),
             name_pools: std::mem::take(&mut self.name_pools),
             characters: std::mem::take(&mut self.characters),
@@ -1220,6 +1223,9 @@ fn define_province(state: &mut BuilderState, map: Map) {
     let Some(body) = f.req_key_field("body") else {
         return;
     };
+    let Some(starport) = f.opt_bool("starport", false) else {
+        return;
+    };
     let (Some(latitude_mdeg), Some(longitude_mdeg)) =
         (f.req_int("latitude_mdeg"), f.req_int("longitude_mdeg"))
     else {
@@ -1257,6 +1263,7 @@ fn define_province(state: &mut BuilderState, map: Map) {
             key,
             name,
             body,
+            starport,
             latitude_mdeg: latitude_mdeg as i32,
             longitude_mdeg: longitude_mdeg as i32,
             wealth_output,
@@ -1264,6 +1271,52 @@ fn define_province(state: &mut BuilderState, map: Map) {
             supplies_output,
             produces,
             consumes,
+        },
+    );
+}
+
+fn define_route(state: &mut BuilderState, map: Map) {
+    let Some(mut f) = Fields::begin(state, map) else {
+        return;
+    };
+    let Some(kind) = f.req_enum(
+        "kind",
+        &[("surface", RouteKind::Surface), ("space", RouteKind::Space)],
+    ) else {
+        return;
+    };
+    let (Some(a), Some(b)) = (f.req_key_field("a"), f.req_key_field("b")) else {
+        return;
+    };
+    let (Some(travel_days), Some(risk)) = (f.req_int("travel_days"), f.opt_int("risk", 0)) else {
+        return;
+    };
+    if travel_days <= 0 {
+        f.error("travel_days must be positive");
+        return;
+    }
+    if !(0..=1000).contains(&risk) {
+        f.error("risk must be 0..=1000 permille");
+        return;
+    }
+    if a == b {
+        f.error("route endpoints must differ");
+        return;
+    }
+    let (state, key) = f.finish();
+    if state.routes.contains_key(&key) {
+        state.error(Some(key.as_str()), "duplicate route id");
+        return;
+    }
+    state.routes.insert(
+        key.clone(),
+        RouteDef {
+            key,
+            kind,
+            a,
+            b,
+            travel_days: travel_days as u32,
+            risk: risk as u16,
         },
     );
 }
@@ -1898,6 +1951,16 @@ fn define_ship(state: &mut BuilderState, map: Map) {
     let Some(captain) = f.opt_key("captain") else {
         return;
     };
+    let Some(first_officer) = f.opt_key("first_officer") else {
+        return;
+    };
+    let Some(troop_capacity) = f.opt_int("troop_capacity", 0) else {
+        return;
+    };
+    if troop_capacity < 0 {
+        f.error("troop_capacity must not be negative");
+        return;
+    }
     let Some(location) = f.req_key_field("location") else {
         return;
     };
@@ -1914,6 +1977,8 @@ fn define_ship(state: &mut BuilderState, map: Map) {
             class,
             owner,
             captain,
+            first_officer,
+            troop_capacity,
             location,
         },
     );
@@ -1924,9 +1989,10 @@ fn define_army(state: &mut BuilderState, map: Map) {
         return;
     };
     let name = f.moved_to_table("name", "army");
-    let (Some(owner), Some(general), Some(province)) = (
+    let (Some(owner), Some(general), Some(lieutenant), Some(province)) = (
         f.req_key_field("owner"),
-        f.req_key_field("general"),
+        f.opt_key("general"),
+        f.opt_key("lieutenant"),
         f.req_key_field("province"),
     ) else {
         return;
@@ -1951,6 +2017,7 @@ fn define_army(state: &mut BuilderState, map: Map) {
             name,
             owner,
             general,
+            lieutenant,
             province,
             manpower,
             supplies: supplies.max(0),
@@ -2823,6 +2890,7 @@ pub(super) fn loading_engine(state: Arc<Mutex<BuilderState>>) -> Engine {
     register!("define_good", define_good);
     register!("define_building", define_building);
     register!("define_province", define_province);
+    register!("define_route", define_route);
     register!("define_situation", define_situation);
     register!("define_scenario", define_scenario);
     register!("define_trait", define_trait);

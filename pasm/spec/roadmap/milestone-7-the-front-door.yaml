@@ -98,7 +98,8 @@ entities:
         The campaign autosaves as it runs — a monthly write of the same
         versioned, hash-verified snapshot every other embedding uses —
         and the title screen's Continue offers it back, enabled only when
-        the file is present, verifies, and matches the embedded content.
+        the file is present, parses, passes full state-hash verification,
+        and matches the embedded content.
         Native only, deliberately, like every other file the client
         touches; the web build simply does not offer it.
       goals:
@@ -113,8 +114,8 @@ entities:
       - kind: manual-review
         reference: crates/aeon_client/src/title.rs
         summary: >-
-          The autosave is read and vetted when the title appears — parse,
-          then content-hash check against the embedded set — so a bad
-          file leaves Continue disabled instead of failing after the
-          click, and the restore itself runs the same verify-then-restore
-          sequence the headless host uses, content-bound half first.
+          The autosave is read and fully vetted when the title appears — parse,
+          state-hash verification, then content-hash check against the embedded
+          set — so a bad file leaves Continue disabled instead of failing after
+          the click. Launch restores the already verified state through the same
+          content-bound then content-free sequence used by the headless host.

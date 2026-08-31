@@ -26,7 +26,7 @@ use crate::state::{CampaignIds, CampaignMeta, CampaignSeed, ContentDb};
 /// personal Paramount claims, occurrence-identified formal wars, and authored
 /// Situation lifecycle/resolution state; version 17 is refused rather than
 /// being assigned identities it never recorded.
-pub const SNAPSHOT_FORMAT_VERSION: u32 = 18;
+pub const SNAPSHOT_FORMAT_VERSION: u32 = 19;
 
 /// The complete authoritative campaign state.
 ///
@@ -259,6 +259,7 @@ pub fn restore_state(world: &mut World, state: CampaignState) {
 /// the content-free half.
 pub fn restore_content_state(world: &mut World, state: &CampaignState, content: Arc<ContentSet>) {
     crate::map::restore_map(world, &state.map, &content);
+    crate::routes::build(world, &content);
     crate::politics::restore_politics(world, &state.politics, &content);
     crate::forces::restore_forces(world, &state.forces, &content);
     crate::assignments::restore_assignments(world, &state.assignments);

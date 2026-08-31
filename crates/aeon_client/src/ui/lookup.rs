@@ -176,17 +176,7 @@ impl<'a> Lookup<'a> {
     pub fn location_label(&self, location: Option<&CharacterLocation>) -> String {
         match location.map(|l| l.0) {
             Some(Location::Province(province)) => self.province_name(province),
-            Some(Location::Transit { to, arrives }) => {
-                let dest = self
-                    .province_names
-                    .get(&to)
-                    .copied()
-                    .unwrap_or_else(|| self.strings.text("ui.location.unknown-province"));
-                self.strings.format(
-                    "ui.location.in-transit",
-                    &[("place", dest), ("date", &arrives.to_string())],
-                )
-            }
+            Some(Location::Aboard(ship)) => format!("Aboard ship {}", ship.raw()),
             None => self.strings.text("ui.location.unknown").to_owned(),
         }
     }

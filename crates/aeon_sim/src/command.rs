@@ -108,6 +108,16 @@ pub enum PlayerCommand {
         /// The officer taking command; `None` relinquishes it.
         captain: Option<CharacterId>,
     },
+    /// Begins a guaranteed travel-and-handover appointment job.
+    AppointOfficer {
+        target: crate::officers::OfficerTarget,
+        post: crate::officers::OfficerPost,
+        officer: CharacterId,
+    },
+    /// Loads one whole army aboard one persistent transport.
+    EmbarkArmy { army: ArmyId, ship: ShipId },
+    /// Unloads one whole army at the ship's current starport.
+    DisembarkArmy { army: ArmyId, province: ProvinceId },
     /// Presses an advisory directive on a house that answers directly to
     /// the player. A wish, not an order: it lifts the pressure it names in
     /// the vassal head's own scoring, and the vassal remains free to do
@@ -262,6 +272,84 @@ fn ship_has_active_assignment(world: &World, ship: ShipId) -> bool {
         })
 }
 
+fn province_is_starport(world: &World, province: ProvinceId) -> bool {
+    crate::access::province_entity(world, province)
+        .and_then(|entity| world.get::<crate::map::ProvinceRecord>(entity))
+        .is_some_and(|record| record.starport)
+}
+
+fn validate_embark(world: &World, org: crate::ids::OrgId, army: ArmyId, ship: ShipId) -> bool {
+    let (Some(army_record), Some(ship_record)) = (
+        crate::access::army(world, army),
+        crate::access::ship(world, ship),
+    ) else {
+        return false;
+    };
+    let (
+        crate::forces::ArmyLocation::Province(army_at),
+        crate::forces::ShipLocation::Docked(ship_at),
+    ) = (army_record.location, ship_record.location)
+    else {
+        return false;
+    };
+    let force_entities_free = crate::access::army_entity(world, army).is_some_and(|entity| {
+        world.get::<crate::routes::Journey>(entity).is_none()
+            && world
+                .get::<crate::officers::AppointmentJob>(entity)
+                .is_none()
+            && world.get::<crate::officers::TransportJob>(entity).is_none()
+    }) && crate::access::ship_entity(world, ship).is_some_and(|entity| {
+        world.get::<crate::routes::Journey>(entity).is_none()
+            && world
+                .get::<crate::officers::AppointmentJob>(entity)
+                .is_none()
+    });
+    let berth_free = world.resource::<crate::forces::ForcesIndex>().armies.values().all(|entity| {
+        !matches!(world.get::<crate::forces::ArmyRecord>(*entity).map(|record| record.location), Some(crate::forces::ArmyLocation::Embarked(aboard)) if aboard == ship)
+    });
+    army_record.owner == org
+        && ship_record.owner == org
+        && !ship_record.personal_transport
+        && army_at == ship_at
+        && province_is_starport(world, army_at)
+        && army_record.general.is_some()
+        && ship_record.captain.is_some()
+        && ship_record.troop_capacity >= army_record.manpower
+        && berth_free
+        && force_entities_free
+        && !army_has_active_assignment(world, army)
+        && !ship_has_active_assignment(world, ship)
+}
+
+fn validate_disembark(
+    world: &World,
+    org: crate::ids::OrgId,
+    army: ArmyId,
+    province: ProvinceId,
+) -> bool {
+    let Some(army_record) = crate::access::army(world, army) else {
+        return false;
+    };
+    let crate::forces::ArmyLocation::Embarked(ship) = army_record.location else {
+        return false;
+    };
+    let Some(ship_record) = crate::access::ship(world, ship) else {
+        return false;
+    };
+    army_record.owner == org
+        && ship_record.owner == org
+        && army_record.general.is_some()
+        && ship_record.captain.is_some()
+        && ship_record.location == crate::forces::ShipLocation::Docked(province)
+        && province_is_starport(world, province)
+        && crate::access::army_entity(world, army).is_some_and(|entity| {
+            world.get::<crate::officers::TransportJob>(entity).is_none()
+                && world
+                    .get::<crate::officers::AppointmentJob>(entity)
+                    .is_none()
+        })
+}
+
 /// Validates a command against the current world.
 ///
 /// Validation must be deterministic and side-effect free: replays re-run it.
@@ -393,11 +481,15 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
                 .ok_or(AssignmentRejection::NoPlayerOrg)?;
             let ok = crate::access::ship(world, *ship).is_some_and(|s| {
                 s.owner == org
+                    && s.captain.is_some()
+                    && !s.personal_transport
                     && matches!(
                         s.location,
                         crate::forces::ShipLocation::Docked(at) if at != *destination
                     )
-            }) && crate::access::province_entity(world, *destination).is_some();
+            }) && crate::access::province_entity(world, *destination)
+                .and_then(|entity| world.get::<crate::map::ProvinceRecord>(entity))
+                .is_some_and(|province| province.starport);
             if ok && !ship_has_active_assignment(world, *ship) {
                 Ok(())
             } else if ok {
@@ -431,38 +523,61 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
             if record.owner != org {
                 return Err(AssignmentRejection::BadTarget.into());
             }
-            // Repeating the current posting is harmless. Any actual change
-            // waits until an assignment using this ship has finished: its
-            // original captain and hull are part of the operation's contract.
+            // Repeating the current posting is harmless. Replacements use the
+            // same travel-and-handover job as typed appointments.
             if record.captain == *captain {
                 return Ok(());
             }
-            if ship_has_active_assignment(world, *ship) {
-                return Err(CommandRejection::ForceCommitted);
-            }
-            // Taking command requires an officer free to hold it: a standing
-            // command elsewhere, active work, or indisposition all bar it.
             let Some(captain) = captain else {
                 return Ok(());
             };
-            let date = world.resource::<CampaignClock>().date;
-            match assignments::leader_availability(world, org, *captain, date) {
-                assignments::LeaderAvailability::Available => Ok(()),
-                // Already this ship's captain: a harmless no-op.
-                assignments::LeaderAvailability::Posted(assignments::Post::Captain {
-                    ship: held,
-                    ..
-                }) if held == *ship => Ok(()),
-                assignments::LeaderAvailability::Posted(_) => {
-                    Err(AssignmentRejection::AlreadyAssigned.into())
-                }
-                assignments::LeaderAvailability::Busy { .. } => {
-                    Err(AssignmentRejection::LeaderBusy.into())
-                }
-                assignments::LeaderAvailability::Indisposed { .. } => {
-                    Err(AssignmentRejection::LeaderIndisposed.into())
-                }
-                assignments::LeaderAvailability::Ineligible(rejection) => Err(rejection.into()),
+            if crate::officers::validate_appointment(
+                world,
+                org,
+                crate::officers::OfficerTarget::Ship(*ship),
+                crate::officers::OfficerPost::Captain,
+                *captain,
+            ) {
+                Ok(())
+            } else {
+                Err(AssignmentRejection::AlreadyAssigned.into())
+            }
+        }
+        PlayerCommand::AppointOfficer {
+            target,
+            post,
+            officer,
+        } => {
+            let org = world
+                .get_resource::<PlayerHouse>()
+                .and_then(|player| player.0)
+                .ok_or(AssignmentRejection::NoPlayerOrg)?;
+            if crate::officers::validate_appointment(world, org, *target, *post, *officer) {
+                Ok(())
+            } else {
+                Err(AssignmentRejection::AlreadyAssigned.into())
+            }
+        }
+        PlayerCommand::EmbarkArmy { army, ship } => {
+            let org = world
+                .get_resource::<PlayerHouse>()
+                .and_then(|player| player.0)
+                .ok_or(AssignmentRejection::NoPlayerOrg)?;
+            if validate_embark(world, org, *army, *ship) {
+                Ok(())
+            } else {
+                Err(AssignmentRejection::BadTarget.into())
+            }
+        }
+        PlayerCommand::DisembarkArmy { army, province } => {
+            let org = world
+                .get_resource::<PlayerHouse>()
+                .and_then(|player| player.0)
+                .ok_or(AssignmentRejection::NoPlayerOrg)?;
+            if validate_disembark(world, org, *army, *province) {
+                Ok(())
+            } else {
+                Err(AssignmentRejection::BadTarget.into())
             }
         }
         PlayerCommand::SetStandingOrders { army, .. } => {
@@ -470,7 +585,8 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
                 .get_resource::<PlayerHouse>()
                 .and_then(|p| p.0)
                 .ok_or(AssignmentRejection::NoPlayerOrg)?;
-            let owned = crate::access::army(world, *army).is_some_and(|a| a.owner == org);
+            let owned = crate::access::army(world, *army)
+                .is_some_and(|army| army.owner == org && army.general.is_some());
             if owned {
                 Ok(())
             } else {
@@ -491,13 +607,24 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
                 Err(CommandRejection::NotYourVassal)
             }
         }
-        PlayerCommand::SetTradeRoute { ship, .. } | PlayerCommand::ClearTradeRoute { ship } => {
+        PlayerCommand::SetTradeRoute { ship, route } => {
             let org = world
                 .get_resource::<PlayerHouse>()
                 .and_then(|p| p.0)
                 .ok_or(AssignmentRejection::NoPlayerOrg)?;
             let owned = crate::access::ship(world, *ship).is_some_and(|s| s.owner == org);
-            if owned {
+            if owned && crate::trade::valid_route(world, *ship, route) {
+                Ok(())
+            } else {
+                Err(AssignmentRejection::BadAssignment.into())
+            }
+        }
+        PlayerCommand::ClearTradeRoute { ship } => {
+            let org = world
+                .get_resource::<PlayerHouse>()
+                .and_then(|p| p.0)
+                .ok_or(AssignmentRejection::NoPlayerOrg)?;
+            if crate::access::ship(world, *ship).is_some_and(|s| s.owner == org) {
                 Ok(())
             } else {
                 Err(AssignmentRejection::BadAssignment.into())
@@ -589,13 +716,13 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
             character,
             destination,
         } => {
+            crate::officers::vacate_character_posts(world, *character);
             presence::begin_travel(world, *character, *destination);
         }
         PlayerCommand::MoveShip { ship, destination } => {
             if validate_command(world, command).is_err() {
                 return;
             }
-            let date = world.resource::<CampaignClock>().date;
             let entity = crate::access::ship_entity(world, *ship);
             if let Some(entity) = entity {
                 let from = match world
@@ -606,16 +733,22 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
                     _ => None,
                 };
                 if let Some(from) = from {
-                    // Ships cross space a third faster than liners.
-                    let days = (presence::travel_days(world, from, *destination) * 2 / 3).max(2);
-                    if let Some(mut ship_record) =
-                        world.get_mut::<crate::forces::ShipRecord>(entity)
-                    {
-                        ship_record.blockading = None;
-                        ship_record.location = crate::forces::ShipLocation::Transit {
-                            to: *destination,
-                            arrives: date.add_days(days),
-                        };
+                    let path = world.resource::<crate::routes::RouteGraph>().fastest_path(
+                        aeon_data::model::RouteKind::Space,
+                        from,
+                        *destination,
+                    );
+                    if let Some(path) = path {
+                        if let Some(mut ship_record) =
+                            world.get_mut::<crate::forces::ShipRecord>(entity)
+                        {
+                            ship_record.blockading = None;
+                        }
+                        world.entity_mut(entity).insert(crate::routes::Journey::new(
+                            *destination,
+                            path,
+                            crate::routes::JourneyPurpose::Travel,
+                        ));
                     }
                 }
             }
@@ -626,14 +759,48 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
             }
         }
         PlayerCommand::SetShipCaptain { ship, captain } => {
-            if validate_command(world, command).is_ok()
-                && let Some(entity) = crate::access::ship_entity(world, *ship)
-                && let Some(mut record) = world.get_mut::<crate::forces::ShipRecord>(entity)
-            {
-                record.captain = *captain;
-                if captain.is_none() {
-                    record.blockading = None;
+            if validate_command(world, command).is_ok() {
+                match captain {
+                    Some(officer) => crate::officers::begin_appointment(
+                        world,
+                        crate::officers::OfficerTarget::Ship(*ship),
+                        crate::officers::OfficerPost::Captain,
+                        *officer,
+                    ),
+                    None => crate::officers::clear_primary(
+                        world,
+                        crate::officers::OfficerTarget::Ship(*ship),
+                    ),
                 }
+            }
+        }
+        PlayerCommand::AppointOfficer {
+            target,
+            post,
+            officer,
+        } => {
+            if validate_command(world, command).is_ok() {
+                crate::officers::begin_appointment(world, *target, *post, *officer);
+            }
+        }
+        PlayerCommand::EmbarkArmy { army, ship } => {
+            if validate_command(world, command).is_ok() {
+                crate::officers::begin_transport_job(
+                    world,
+                    *army,
+                    crate::officers::TransportJobKind::Embark { ship: *ship },
+                );
+            }
+        }
+        PlayerCommand::DisembarkArmy { army, province } => {
+            if validate_command(world, command).is_ok() {
+                crate::officers::begin_transport_job(
+                    world,
+                    *army,
+                    crate::officers::TransportJobKind::Disembark {
+                        province: *province,
+                    },
+                );
             }
         }
         PlayerCommand::SetStandingOrders { army, orders } => {

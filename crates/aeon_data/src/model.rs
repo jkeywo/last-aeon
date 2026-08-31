@@ -400,6 +400,9 @@ pub struct ProvinceDef {
     pub name: String,
     /// The body this province is on.
     pub body: ContentKey,
+    /// Whether ordinary starships may dock here.
+    #[serde(default)]
+    pub starport: bool,
     /// Latitude of the province centre in millidegrees, -90000..=90000.
     pub latitude_mdeg: i32,
     /// Longitude of the province centre in millidegrees, -180000..180000.
@@ -414,6 +417,33 @@ pub struct ProvinceDef {
     pub produces: BTreeMap<ContentKey, i64>,
     /// Monthly consumption of each good, by good key.
     pub consumes: BTreeMap<ContentKey, i64>,
+}
+
+/// The medium an authored route crosses.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RouteKind {
+    /// A border or road between provinces on one body.
+    Surface,
+    /// A lane between authored starports.
+    Space,
+}
+
+/// One authored, undirected connection between two provinces.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RouteDef {
+    /// Stable content identity.
+    pub key: ContentKey,
+    /// The route medium.
+    pub kind: RouteKind,
+    /// First endpoint.
+    pub a: ContentKey,
+    /// Second endpoint.
+    pub b: ContentKey,
+    /// Base traversal time.
+    pub travel_days: u32,
+    /// Reserved route danger in permille; not resolved in the current slice.
+    pub risk: u16,
 }
 
 /// Scenario metadata. Extended by the authored-scenario milestone.
@@ -570,6 +600,8 @@ pub struct ContentSet {
     pub buildings: BTreeMap<ContentKey, BuildingDef>,
     /// Provinces by key.
     pub provinces: BTreeMap<ContentKey, ProvinceDef>,
+    /// Authored surface and space routes by key.
+    pub routes: BTreeMap<ContentKey, RouteDef>,
     /// Trait definitions by key.
     pub traits: BTreeMap<ContentKey, TraitDef>,
     /// Name pools by key.
@@ -833,6 +865,10 @@ pub struct ShipDef {
     pub owner: ContentKey,
     /// Captain; required for capital ships.
     pub captain: Option<ContentKey>,
+    /// Optional deputy command officer.
+    pub first_officer: Option<ContentKey>,
+    /// Maximum soldiers carried as one whole army.
+    pub troop_capacity: i64,
     /// Starting dock province.
     pub location: ContentKey,
 }
@@ -847,7 +883,9 @@ pub struct ArmyDef {
     /// Owning organisation.
     pub owner: ContentKey,
     /// The general commanding it (a member of the owner).
-    pub general: ContentKey,
+    pub general: Option<ContentKey>,
+    /// Optional deputy commander.
+    pub lieutenant: Option<ContentKey>,
     /// The province it stands in.
     pub province: ContentKey,
     /// Soldiers under arms.

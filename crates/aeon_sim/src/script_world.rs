@@ -212,6 +212,32 @@ pub fn context_value(world: &World) -> Map {
                     ("intrigue", i64::from(skills.intrigue).into()),
                     ("stewardship", i64::from(skills.stewardship).into()),
                     ("held_titles", array(held_titles)),
+                    (
+                        "location_kind",
+                        match world
+                            .get::<crate::presence::CharacterLocation>(*entity)
+                            .map(|location| location.0)
+                        {
+                            Some(crate::presence::Location::Province(_)) => "province".into(),
+                            Some(crate::presence::Location::Aboard(_)) => "aboard".into(),
+                            None => Dynamic::UNIT,
+                        },
+                    ),
+                    (
+                        "location",
+                        match world
+                            .get::<crate::presence::CharacterLocation>(*entity)
+                            .map(|location| location.0)
+                        {
+                            Some(crate::presence::Location::Province(province)) => {
+                                integer(province.raw()).into()
+                            }
+                            Some(crate::presence::Location::Aboard(ship)) => {
+                                integer(ship.raw()).into()
+                            }
+                            None => Dynamic::UNIT,
+                        },
+                    ),
                 ])
                 .into(),
             );
@@ -373,6 +399,7 @@ pub fn context_value(world: &World) -> Map {
                     ("key", record.key.as_str().to_owned().into()),
                     ("name", name.into()),
                     ("body", integer(record.body.raw()).into()),
+                    ("starport", record.starport.into()),
                     (
                         "holder",
                         optional_id(
@@ -391,6 +418,34 @@ pub fn context_value(world: &World) -> Map {
     view.insert("bodies".into(), bodies.into());
     view.insert("provinces".into(), provinces.into());
 
+    let routes = world
+        .get_resource::<crate::routes::RouteGraph>()
+        .map(|graph| {
+            graph
+                .routes()
+                .into_iter()
+                .map(|leg| {
+                    map([
+                        ("key", leg.route.as_str().to_owned().into()),
+                        (
+                            "kind",
+                            match leg.kind {
+                                aeon_data::model::RouteKind::Surface => "surface".into(),
+                                aeon_data::model::RouteKind::Space => "space".into(),
+                            },
+                        ),
+                        ("a", integer(leg.from.raw()).into()),
+                        ("b", integer(leg.to.raw()).into()),
+                        ("travel_days", i64::from(leg.travel_days).into()),
+                        ("risk", i64::from(leg.risk).into()),
+                    ])
+                    .into()
+                })
+                .collect::<Array>()
+        })
+        .unwrap_or_default();
+    view.insert("routes".into(), routes.into());
+
     let mut armies = Array::new();
     let mut ships = Array::new();
     if let Some(index) = world.get_resource::<ForcesIndex>() {
@@ -403,10 +458,44 @@ pub fn context_value(world: &World) -> Map {
                     ("id", integer(id.raw()).into()),
                     ("name", record.name.clone().into()),
                     ("owner", integer(record.owner.raw()).into()),
-                    ("general", integer(record.general.raw()).into()),
+                    (
+                        "general",
+                        optional_id(record.general.map(|value| value.raw())),
+                    ),
+                    (
+                        "lieutenant",
+                        optional_id(record.lieutenant.map(|value| value.raw())),
+                    ),
                     ("manpower", record.manpower.into()),
                     ("supplies", record.supplies.into()),
-                    ("location", integer(record.location.raw()).into()),
+                    (
+                        "location",
+                        record
+                            .location
+                            .province()
+                            .map_or(Dynamic::UNIT, |province| integer(province.raw()).into()),
+                    ),
+                    (
+                        "location_kind",
+                        match record.location {
+                            crate::forces::ArmyLocation::Province(_) => "province".into(),
+                            crate::forces::ArmyLocation::Embarked(_) => "aboard".into(),
+                        },
+                    ),
+                    (
+                        "aboard_ship",
+                        match record.location {
+                            crate::forces::ArmyLocation::Embarked(ship) => {
+                                integer(ship.raw()).into()
+                            }
+                            crate::forces::ArmyLocation::Province(_) => Dynamic::UNIT,
+                        },
+                    ),
+                    ("orders_suspended", record.orders_suspended.into()),
+                    (
+                        "retreat_destination",
+                        optional_id(record.retreat_destination.map(|value| value.raw())),
+                    ),
                 ])
                 .into(),
             );
@@ -417,11 +506,9 @@ pub fn context_value(world: &World) -> Map {
             };
             let (location_kind, location, arrives) = match record.location {
                 ShipLocation::Docked(at) => ("docked", at.raw(), Dynamic::UNIT),
-                ShipLocation::Transit { to, arrives } => (
-                    "transit",
-                    to.raw(),
-                    Dynamic::from(arrives.days_since_epoch()),
-                ),
+                ShipLocation::OnRoute { to, arrives, .. } => {
+                    ("route", to.raw(), Dynamic::from(arrives.days_since_epoch()))
+                }
             };
             ships.push(
                 map([
@@ -433,6 +520,19 @@ pub fn context_value(world: &World) -> Map {
                         "captain",
                         optional_id(record.captain.map(|value| value.raw())),
                     ),
+                    ("first_officer", optional_id(record.first_officer.map(|value| value.raw()))),
+                    ("troop_capacity", record.troop_capacity.into()),
+                    ("personal_transport", record.personal_transport.into()),
+                    ("orders_suspended", record.orders_suspended.into()),
+                    ("retreat_destination", optional_id(record.retreat_destination.map(|value| value.raw()))),
+                    ("occupant_characters", array(world.resource::<crate::politics::PoliticsIndex>().characters.iter().filter_map(|(character, entity)| {
+                        matches!(world.get::<crate::presence::CharacterLocation>(*entity).map(|location| location.0), Some(crate::presence::Location::Aboard(aboard)) if aboard == *id)
+                            .then_some(integer(character.raw()).into())
+                    }))),
+                    ("occupant_armies", array(index.armies.iter().filter_map(|(army, entity)| {
+                        matches!(world.get::<ArmyRecord>(*entity).map(|record| record.location), Some(crate::forces::ArmyLocation::Embarked(aboard)) if aboard == *id)
+                            .then_some(integer(army.raw()).into())
+                    }))),
                     ("location_kind", location_kind.into()),
                     ("location", integer(location).into()),
                     ("arrives", arrives),

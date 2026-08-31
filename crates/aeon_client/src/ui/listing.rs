@@ -5,7 +5,7 @@
 
 use aeon_data::model::ShipClass;
 use aeon_sim::PlayerCommand;
-use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
+use aeon_sim::forces::{ArmyLocation, ArmyRecord, ShipLocation, ShipRecord};
 use bevy_egui::egui;
 
 use crate::ui::panel::{PanelCtx, PanelOut};
@@ -60,7 +60,7 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                                 .get(&province)
                                 .map(|n| (*n).to_owned())
                                 .unwrap_or_default(),
-                            ShipLocation::Transit { to, .. } => format!(
+                            ShipLocation::OnRoute { to, .. } => format!(
                                 "-> {}",
                                 ctx.lookup.province_names.get(&to).copied().unwrap_or("...")
                             ),
@@ -98,12 +98,22 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                     let mut armies: Vec<&ArmyRecord> = ctx.data.armies.iter().collect();
                     armies.sort_by_key(|a| a.id);
                     for army in armies {
-                        let place = ctx
-                            .lookup
-                            .province_names
-                            .get(&army.location)
-                            .copied()
-                            .unwrap_or("...");
+                        let place = match army.location {
+                            ArmyLocation::Province(province) => ctx
+                                .lookup
+                                .province_names
+                                .get(&province)
+                                .copied()
+                                .unwrap_or("...")
+                                .to_owned(),
+                            ArmyLocation::Embarked(ship) => ctx
+                                .data
+                                .ships
+                                .iter()
+                                .find(|candidate| candidate.id == ship)
+                                .map(|candidate| format!("Aboard {}", candidate.name))
+                                .unwrap_or_else(|| "Aboard ship".to_owned()),
+                        };
                         ui.horizontal(|ui| {
                             // A way in to the army, where its own orders
                             // are given.

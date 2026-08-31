@@ -6,12 +6,12 @@
 //! neighbours.
 
 use aeon_data::model::{AiIntent, HouseTier, OrgKind};
-use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
+use aeon_sim::forces::{ArmyLocation, ArmyRecord, ShipLocation, ShipRecord};
 use aeon_sim::obligations::ObligationRecord;
 use aeon_sim::order::ORDER_MAX;
 use aeon_sim::politics::{CharacterView, opinion_of};
 use aeon_sim::presence::Location;
-use aeon_sim::{PlayerCommand, TitleHolder};
+use aeon_sim::{OfficerPost, OfficerTarget, PlayerCommand, TitleHolder};
 use bevy_egui::egui;
 
 use crate::ui::actions::{AssignmentScope, draw_context_assignments};
@@ -20,6 +20,32 @@ use crate::ui::panel::{PanelCtx, PanelOut};
 use crate::ui::theme::TargetState;
 use crate::ui::widgets::{kind_label_key, linked, resource_readout};
 use crate::view::{MapView, Selection};
+
+fn appointment_picker(
+    ui: &mut egui::Ui,
+    ctx: &PanelCtx,
+    out: &mut PanelOut,
+    target: OfficerTarget,
+    post: OfficerPost,
+    label: &str,
+) {
+    egui::ComboBox::from_id_salt(("officer-appointment", target, post))
+        .selected_text(label)
+        .show_ui(ui, |ui| {
+            for (id, (record, ..)) in &ctx.lookup.chars {
+                if record.alive()
+                    && record.organisation == ctx.player_org
+                    && ui.selectable_label(false, &record.name).clicked()
+                {
+                    out.queue.0.push(PlayerCommand::AppointOfficer {
+                        target,
+                        post,
+                        officer: *id,
+                    });
+                }
+            }
+        });
+}
 
 /// Draws the inspector for whatever is currently selected.
 pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
@@ -197,7 +223,7 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                     .data
                     .armies
                     .iter()
-                    .filter(|a| a.location == id)
+                    .filter(|a| a.location == ArmyLocation::Province(id))
                     .collect();
                 let ships_here: Vec<&ShipRecord> = ctx
                     .data
@@ -220,10 +246,12 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                             ) {
                                 out.view.selected = Some(Selection::Army(army.id));
                             }
-                            if let Some((general, ..)) = ctx.lookup.chars.get(&army.general) {
+                            if let Some(general_id) = army.general
+                                && let Some((general, ..)) = ctx.lookup.chars.get(&general_id)
+                            {
                                 ui.label("·");
-                                if linked(ui, &general.name, &ctx.lookup.char_hover(army.general)) {
-                                    out.view.selected = Some(Selection::Character(army.general));
+                                if linked(ui, &general.name, &ctx.lookup.char_hover(general_id)) {
+                                    out.view.selected = Some(Selection::Character(general_id));
                                 }
                             }
                         });
@@ -278,19 +306,103 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
             ));
             ui.horizontal(|ui| {
                 ui.label(strings.text("ui.inspector.army.standing-at"));
-                let place = ctx.lookup.province_name(army.location);
-                if linked(ui, &place, &place) {
-                    out.view.selected = Some(Selection::Province(army.location));
+                match army.location {
+                    ArmyLocation::Province(province) => {
+                        let place = ctx.lookup.province_name(province);
+                        if linked(ui, &place, &place) {
+                            out.view.selected = Some(Selection::Province(province));
+                        }
+                    }
+                    ArmyLocation::Embarked(ship) => {
+                        let name = ctx
+                            .data
+                            .ships
+                            .iter()
+                            .find(|candidate| candidate.id == ship)
+                            .map(|candidate| candidate.name.as_str())
+                            .unwrap_or("Aboard ship");
+                        if linked(ui, name, name) {
+                            out.view.selected = Some(Selection::Ship(ship));
+                        }
+                    }
                 }
             });
             ui.horizontal(|ui| {
                 ui.label(strings.text("ui.inspector.army.general"));
-                let name = ctx.lookup.char_name(army.general);
-                if linked(ui, &name, &ctx.lookup.char_hover(army.general)) {
-                    out.view.selected = Some(Selection::Character(army.general));
+                if let Some(general) = army.general {
+                    let name = ctx.lookup.char_name(general);
+                    if linked(ui, &name, &ctx.lookup.char_hover(general)) {
+                        out.view.selected = Some(Selection::Character(general));
+                    }
+                } else {
+                    ui.weak("Vacant");
                 }
             });
+            ui.horizontal(|ui| {
+                ui.label("Lieutenant");
+                if let Some(lieutenant) = army.lieutenant {
+                    let name = ctx.lookup.char_name(lieutenant);
+                    if linked(ui, &name, &ctx.lookup.char_hover(lieutenant)) {
+                        out.view.selected = Some(Selection::Character(lieutenant));
+                    }
+                } else {
+                    ui.weak("Vacant");
+                }
+            });
+            if army.orders_suspended {
+                ui.colored_label(
+                    egui::Color32::YELLOW,
+                    "Orders suspended — leaderless retreat",
+                );
+            }
             if Some(army.owner) == ctx.player_org {
+                appointment_picker(
+                    ui,
+                    ctx,
+                    out,
+                    OfficerTarget::Army(id),
+                    OfficerPost::General,
+                    "Appoint General",
+                );
+                appointment_picker(
+                    ui,
+                    ctx,
+                    out,
+                    OfficerTarget::Army(id),
+                    OfficerPost::Lieutenant,
+                    "Appoint Lieutenant",
+                );
+                match army.location {
+                    ArmyLocation::Province(province) => {
+                        for ship in ctx.data.ships.iter().filter(|ship| {
+                            ship.owner == army.owner
+                                && !ship.personal_transport
+                                && ship.troop_capacity >= army.manpower
+                                && ship.location == ShipLocation::Docked(province)
+                        }) {
+                            if ui.button(format!("Embark on {}", ship.name)).clicked() {
+                                out.queue.0.push(PlayerCommand::EmbarkArmy {
+                                    army: id,
+                                    ship: ship.id,
+                                });
+                            }
+                        }
+                    }
+                    ArmyLocation::Embarked(ship_id) => {
+                        if let Some(ShipLocation::Docked(province)) = ctx
+                            .data
+                            .ships
+                            .iter()
+                            .find(|ship| ship.id == ship_id)
+                            .map(|ship| ship.location)
+                            && ui.button("Disembark").clicked()
+                        {
+                            out.queue
+                                .0
+                                .push(PlayerCommand::DisembarkArmy { army: id, province });
+                        }
+                    }
+                }
                 draw_standing_orders(ui, ctx, out, &army.name, id, &army.standing_order);
                 draw_context_assignments(
                     ui,
@@ -309,6 +421,18 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                 return;
             };
             ui.strong(&ship.name);
+            let location = match ship.location {
+                ShipLocation::Docked(province) => {
+                    format!("Docked at {}", ctx.lookup.province_name(province))
+                }
+                ShipLocation::OnRoute { from, to, arrives } => format!(
+                    "On route: {} → {} (ETA {arrives})",
+                    ctx.lookup.province_name(from),
+                    ctx.lookup.province_name(to),
+                ),
+            };
+            ui.label(location);
+            ui.label(format!("Troop capacity: {}", ship.troop_capacity));
             ui.horizontal(|ui| {
                 ui.label(strings.text("ui.inspector.ship.captain"));
                 match ship.captain {
@@ -323,7 +447,40 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                     }
                 }
             });
+            ui.horizontal(|ui| {
+                ui.label("First Officer");
+                if let Some(first_officer) = ship.first_officer {
+                    let name = ctx.lookup.char_name(first_officer);
+                    if linked(ui, &name, &ctx.lookup.char_hover(first_officer)) {
+                        out.view.selected = Some(Selection::Character(first_officer));
+                    }
+                } else {
+                    ui.weak("Vacant");
+                }
+            });
+            if ship.orders_suspended {
+                ui.colored_label(
+                    egui::Color32::YELLOW,
+                    "Orders suspended — automatic retreat at half speed",
+                );
+            }
             if Some(ship.owner) == ctx.player_org {
+                appointment_picker(
+                    ui,
+                    ctx,
+                    out,
+                    OfficerTarget::Ship(id),
+                    OfficerPost::Captain,
+                    "Appoint Captain",
+                );
+                appointment_picker(
+                    ui,
+                    ctx,
+                    out,
+                    OfficerTarget::Ship(id),
+                    OfficerPost::FirstOfficer,
+                    "Appoint First Officer",
+                );
                 draw_context_assignments(
                     ui,
                     AssignmentScope::Ship(id),

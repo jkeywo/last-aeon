@@ -6,7 +6,7 @@
 
 use aeon_sim::command::PendingCommands;
 use aeon_sim::state::ContentDb;
-use aeon_sim::{ActiveAssignment, OrgId, PlayerCommand};
+use aeon_sim::{ActiveAssignment, AssignmentTarget, OrgId, PlayerCommand};
 use bevy::prelude::Query;
 use bevy_egui::egui;
 
@@ -40,14 +40,16 @@ pub fn draw_assignments_panel(
             // when a day ticks, so without this a player who starts one while
             // paused would see nothing at all. Shown ahead of what is under
             // way, and plainly marked as still on its way.
-            let en_route: Vec<(&str, String, aeon_core::calendar::GameDate)> = pending
+            let en_route: Vec<(String, String, aeon_core::calendar::GameDate)> = pending
                 .map(|pending| {
                     pending
                         .entries()
                         .iter()
                         .filter_map(|envelope| match &envelope.command {
                             PlayerCommand::StartAssignment {
-                                assignment, leader, ..
+                                assignment,
+                                leader,
+                                target,
                             } => {
                                 let title = content
                                     .0
@@ -55,7 +57,40 @@ pub fn draw_assignments_panel(
                                     .get(assignment)
                                     .map(|def| def.title.as_str())
                                     .unwrap_or_else(|| strings.text("ui.inspector.unknown"));
-                                Some((title, lookup.char_name(*leader), envelope.day))
+                                Some((
+                                    en_route_title(title, *target, player_org, lookup),
+                                    lookup.char_name(*leader),
+                                    envelope.day,
+                                ))
+                            }
+                            PlayerCommand::StartSituationAssignment {
+                                situation,
+                                action,
+                                leader,
+                                target,
+                                ..
+                            } => {
+                                let assignment = content
+                                    .0
+                                    .situations
+                                    .get(&situation.definition)
+                                    .and_then(|definition| {
+                                        definition
+                                            .actions
+                                            .iter()
+                                            .find(|candidate| candidate.key == *action)
+                                    })
+                                    .and_then(|action| {
+                                        content.0.assignments.get(&action.assignment)
+                                    });
+                                let title = assignment
+                                    .map(|def| def.title.as_str())
+                                    .unwrap_or_else(|| strings.text("ui.inspector.unknown"));
+                                Some((
+                                    en_route_title(title, *target, player_org, lookup),
+                                    lookup.char_name(*leader),
+                                    envelope.day,
+                                ))
                             }
                             _ => None,
                         })
@@ -71,7 +106,7 @@ pub fn draw_assignments_panel(
                 ui.weak(strings.format(
                     "ui.assignments.en-route",
                     &[
-                        ("assignment", title),
+                        ("assignment", title.as_str()),
                         ("leader", leader),
                         ("date", &arrives.to_string()),
                     ],
@@ -127,4 +162,28 @@ pub fn draw_assignments_panel(
                 });
             }
         });
+}
+
+fn en_route_title(
+    title: &str,
+    target: AssignmentTarget,
+    player_org: Option<OrgId>,
+    lookup: &Lookup,
+) -> String {
+    let target = match target {
+        AssignmentTarget::None => player_org.map(|org| lookup.org_display(org)),
+        AssignmentTarget::Character(character) => Some(lookup.char_name(character)),
+        AssignmentTarget::Org(org) => Some(lookup.org_display(org)),
+        AssignmentTarget::Province(province) => Some(lookup.province_name(province)),
+        AssignmentTarget::War(war) => Some(war.to_string()),
+        AssignmentTarget::WarSide(war, side) => Some(format!("{war} ({side:?})")),
+        AssignmentTarget::OwnArmy(army) => Some(army.to_string()),
+        AssignmentTarget::ArmyToProvince(_, province)
+        | AssignmentTarget::ShipToProvince(_, province) => Some(lookup.province_name(province)),
+    }
+    .filter(|label| !label.is_empty());
+    match target {
+        Some(target) => format!("{title} → {target}"),
+        None => title.to_owned(),
+    }
 }

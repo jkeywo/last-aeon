@@ -47,6 +47,8 @@ pub struct ProvinceRecord {
     pub key: ContentKey,
     /// The body this province is on.
     pub body: BodyId,
+    /// Whether ordinary starships may dock here.
+    pub starport: bool,
 }
 
 /// A player-facing display name.
@@ -123,6 +125,7 @@ fn spawn_province(world: &mut World, id: ProvinceId, def: &ProvinceDef, body: Bo
                 id,
                 key: def.key.clone(),
                 body,
+                starport: def.starport,
             },
             DisplayName(def.name.clone()),
             GeoPosition {

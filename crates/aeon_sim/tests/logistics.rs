@@ -27,11 +27,14 @@ define_body(#{ id: "moon", kind: "moon", radius_km: 1500,
                parent: "world", orbit_radius_mm: 384, orbit_days: 27 });
 define_province(#{ id: "alpha", body: "world",
                    latitude_mdeg: 0, longitude_mdeg: 0,
+                   starport: true,
                    wealth_output: 20, manpower_output: 30, supplies_output: 10 });
 define_province(#{ id: "beta", body: "world",
                    latitude_mdeg: 10000, longitude_mdeg: 10000 });
 define_province(#{ id: "luna-port", body: "moon",
-                   latitude_mdeg: 0, longitude_mdeg: 0 });
+                   latitude_mdeg: 0, longitude_mdeg: 0, starport: true });
+define_route(#{ id: "alpha-beta", kind: "surface", a: "alpha", b: "beta", travel_days: 3, risk: 0 });
+define_route(#{ id: "alpha-luna", kind: "space", a: "alpha", b: "luna-port", travel_days: 11, risk: 0 });
 
 define_house(#{
     id: "ash", tier: "great",
@@ -49,7 +52,7 @@ define_title(#{ id: "paramountcy", kind: "paramount", body: "world" });
 
 define_ship(#{
     id: "runner", class: "transport",
-    owner: "ash", location: "alpha",
+    owner: "ash", location: "alpha", captain: "ruth-ash",
 });
 
 define_character(#{
@@ -61,6 +64,11 @@ define_character(#{
     id: "cera-ash", gender: "female",
     birth_year: 380, organisation: "ash",
     skills: #{ command: 6, diplomacy: 6, intrigue: 5, stewardship: 8 },
+});
+define_character(#{
+    id: "ruth-ash", gender: "female",
+    birth_year: 378, organisation: "ash",
+    skills: #{ command: 8, diplomacy: 4, intrigue: 4, stewardship: 5 },
 });
 define_character(#{
     id: "bela-birch", gender: "female",
@@ -115,6 +123,7 @@ fn strings() -> aeon_data::StringTable {
         ("character.aron-ash.name", "Aron Ash"),
         ("character.bela-birch.name", "Bela Birch"),
         ("character.cera-ash.name", "Cera Ash"),
+        ("character.ruth-ash.name", "Ruth Ash"),
         ("assignment.pricey-rite.title", "A Pricey Rite"),
         ("assignment.pricey-rite.summary", "It costs."),
         ("assignment.sure-muster.title", "Muster the Levies"),
@@ -287,13 +296,16 @@ fn muster_assignments_form_armies_at_the_generals_province() {
         .get::<ArmyRecord>(*forces.armies.values().next().unwrap())
         .unwrap()
         .clone();
-    assert_eq!(army.general, aron);
+    assert_eq!(army.general, Some(aron));
     assert_eq!(army.manpower, 800);
     assert_eq!(army.supplies, 120);
     assert!(army.name.contains("House Ash"));
     // Mustered at Aron's location (House Ash's first holding, Alpha).
     let alpha = world.resource::<aeon_sim::MapIndex>().province_keys[&key("alpha")];
-    assert_eq!(army.location, alpha);
+    assert_eq!(
+        army.location,
+        aeon_sim::forces::ArmyLocation::Province(alpha)
+    );
 
     let after = ash_resources(&mut h);
     assert_eq!(after.manpower, manpower_before - 800);
@@ -335,7 +347,7 @@ fn travel_crosses_bodies_and_lands_on_schedule() {
     h.advance_days(2);
     assert!(matches!(
         character_location(h.world_mut(), cera),
-        Some(Location::Transit { .. })
+        Some(Location::Aboard(_))
     ));
     h.advance_days(12);
     assert_eq!(
@@ -420,7 +432,7 @@ fn ships_move_between_bodies_and_dock() {
         let world = h.world_mut();
         let forces = world.resource::<ForcesIndex>();
         let ship = world.get::<ShipRecord>(forces.ships[&runner]).unwrap();
-        assert!(matches!(ship.location, ShipLocation::Transit { .. }));
+        assert!(matches!(ship.location, ShipLocation::OnRoute { .. }));
     }
     h.advance_days(10);
     let world = h.world_mut();

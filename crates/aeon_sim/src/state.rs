@@ -75,8 +75,10 @@ pub fn start_campaign_with_content(
 ) {
     start_campaign(world, config);
     crate::map::spawn_from_content(world, &content);
+    crate::routes::build(world, &content);
     crate::politics::spawn_from_content(world, &content);
     crate::forces::spawn_from_content(world, &content);
+    crate::officers::place_starting_officers(world);
     crate::obligations::seed_from_content(world, &content);
     crate::assignments::init_assignments(world);
     crate::crisis::init_paramount_claims(world);

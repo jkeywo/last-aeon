@@ -297,8 +297,8 @@ sim.obligation.promise.summary,"One-line description of a promise given. {debtor
 sim.order.revolted,Log line when a province throws off its ruler. {province} is a province name.,[{province} has revolted and thrown off its ruler. The province stands unclaimed.]
 sim.order.unrest-begins,"Log line on the first day a province falls into open unrest, naming the deadline. {province} is a province name, {days} the days until revolt.",[{province} has fallen into open unrest. Without a garrison or the ruler's presence it will throw off its allegiance in {days} days.]
 sim.politics.no-successor,Reason shown when the campaign ends because the player's house has died out. {house} is the house's name.,[{house} has no viable successor]
+sim.politics.no-territorial-foothold,Reason shown when the campaign ends because the player's house directly holds no province. {house} is the house's name.,[{house} holds no territorial foothold]
 sim.politics.ship-without-captain,Log line when a ship's captain dies and nobody has replaced them. {ship} is the ship's name.,[{ship} is without a captain.]
-sim.politics.the-player-house,Stands in for the player's house name when it cannot be resolved.,[the player house]
 sim.pressure.blockaded,One pressure acting on a province's order: its approaches are closed by a hostile ship.,[blockaded]
 sim.pressure.garrison,One pressure acting on a province's order: troops are stationed there.,[garrisoned]
 sim.pressure.none,Shown in place of the pressure list when nothing at all is acting on a province.,"[quiet, but unattended]"
@@ -504,9 +504,7 @@ ui.listing.houses,Heading above the list of houses in the listing panel.,[Houses
 ui.listing.move-to,Placeholder on the closed dropdown that sends a ship somewhere.,[Move to...]
 ui.listing.provinces,Heading above the list of provinces in the listing panel.,[Provinces]
 ui.listing.ship.hover,Tooltip on a ship row in the listing.,Open this ship
-ui.location.in-transit,"Where a character is when travelling. {place} is the destination province, {date} when they arrive.",[In transit to {place} (arrives {date})]
 ui.location.unknown,Shown where a character's location should be but none is recorded.,[Unknown]
-ui.location.unknown-province,Stand-in for a destination province whose name could not be resolved. An ellipsis.,[...]
 ui.log.channel.economy,"Name of the log channel carrying money, supply, and provincial order.",[Economy]
 ui.log.channel.events,Name of the log channel carrying contextual events.,[Events]
 ui.log.channel.assignments,Name of the log channel carrying assignment results.,[Assignments]

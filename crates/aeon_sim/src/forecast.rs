@@ -237,7 +237,8 @@ pub fn governing_skill(world: &World, leader: CharacterId, skill: GoverningSkill
     }
 }
 
-/// How long a assignment will take, including a march's travel time.
+/// How long an assignment will take: dynamic travel first, then authored
+/// work. A march has one extra arrival/reorganisation day.
 ///
 /// Shared by [`crate::assignments::start_assignment`] and the forecast so the quoted
 /// duration is the duration actually used.
@@ -247,16 +248,44 @@ pub fn assignment_duration_days(
     target: AssignmentTarget,
 ) -> i64 {
     let base = i64::from(def.duration_days);
-    // Marches take at least the army's round travel time to the objective.
-    let march_days = match target {
+    let travel_days = match target {
         AssignmentTarget::ArmyToProvince(army, destination) => world
             .get_resource::<crate::forces::ForcesIndex>()
             .and_then(|forces| forces.armies.get(&army).copied())
             .and_then(|entity| world.get::<crate::forces::ArmyRecord>(entity))
-            .map(|record| crate::presence::travel_days(world, record.location, destination) * 2),
+            .and_then(|record| record.location.province())
+            .and_then(|from| {
+                world.resource::<crate::routes::RouteGraph>().fastest_path(
+                    aeon_data::model::RouteKind::Surface,
+                    from,
+                    destination,
+                )
+            })
+            .map(|path| crate::routes::RouteGraph::path_days(&path)),
+        AssignmentTarget::ShipToProvince(ship, destination) => world
+            .get_resource::<crate::forces::ForcesIndex>()
+            .and_then(|forces| forces.ships.get(&ship).copied())
+            .and_then(|entity| world.get::<crate::forces::ShipRecord>(entity))
+            .and_then(|record| match record.location {
+                crate::forces::ShipLocation::Docked(from) => Some(from),
+                crate::forces::ShipLocation::OnRoute { .. } => None,
+            })
+            .and_then(|from| {
+                world.resource::<crate::routes::RouteGraph>().fastest_path(
+                    aeon_data::model::RouteKind::Space,
+                    from,
+                    destination,
+                )
+            })
+            .map(|path| crate::routes::RouteGraph::path_days(&path)),
         _ => None,
     };
-    march_days.map_or(base, |march| base.max(march))
+    if def.military_op.is_some() {
+        let reorganisation = i64::from(def.military_op == Some(aeon_data::model::MilitaryOp::Move));
+        travel_days.map_or(base, |travel| travel + base + reorganisation)
+    } else {
+        base
+    }
 }
 
 /// The chance a personal risk lands, given a bad outcome.

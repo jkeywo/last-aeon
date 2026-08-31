@@ -158,6 +158,106 @@ pub(super) fn validate_cross_references(
         }
     }
 
+    let mut route_pairs = BTreeSet::new();
+    for (key, route) in &builder.routes {
+        let Some(a) = builder.provinces.get(&route.a) else {
+            findings.push((
+                String::new(),
+                Some(key.to_string()),
+                format!("route endpoint '{}' is not defined", route.a),
+            ));
+            continue;
+        };
+        let Some(b) = builder.provinces.get(&route.b) else {
+            findings.push((
+                String::new(),
+                Some(key.to_string()),
+                format!("route endpoint '{}' is not defined", route.b),
+            ));
+            continue;
+        };
+        let pair = if route.a < route.b {
+            (route.kind, route.a.clone(), route.b.clone())
+        } else {
+            (route.kind, route.b.clone(), route.a.clone())
+        };
+        if !route_pairs.insert(pair) {
+            findings.push((
+                String::new(),
+                Some(key.to_string()),
+                "duplicate undirected route endpoints".to_owned(),
+            ));
+        }
+        match route.kind {
+            crate::model::RouteKind::Surface if a.body != b.body => findings.push((
+                String::new(),
+                Some(key.to_string()),
+                "surface route endpoints must share a body".to_owned(),
+            )),
+            crate::model::RouteKind::Space if !a.starport || !b.starport => findings.push((
+                String::new(),
+                Some(key.to_string()),
+                "space route endpoints must both be starports".to_owned(),
+            )),
+            _ => {}
+        }
+    }
+    if !builder.routes.is_empty() {
+        let connected = |nodes: &BTreeSet<ContentKey>, kind: crate::model::RouteKind| {
+            let Some(first) = nodes.first().cloned() else {
+                return true;
+            };
+            let mut seen = BTreeSet::from([first.clone()]);
+            let mut pending = vec![first];
+            while let Some(at) = pending.pop() {
+                for route in builder.routes.values().filter(|route| route.kind == kind) {
+                    let next = if route.a == at {
+                        Some(&route.b)
+                    } else if route.b == at {
+                        Some(&route.a)
+                    } else {
+                        None
+                    };
+                    if let Some(next) = next
+                        && nodes.contains(next)
+                        && seen.insert(next.clone())
+                    {
+                        pending.push(next.clone());
+                    }
+                }
+            }
+            seen.len() == nodes.len()
+        };
+        for body in builder.bodies.keys() {
+            let nodes: BTreeSet<_> = builder
+                .provinces
+                .values()
+                .filter(|province| province.body == *body)
+                .map(|province| province.key.clone())
+                .collect();
+            if !connected(&nodes, crate::model::RouteKind::Surface) {
+                findings.push((
+                    String::new(),
+                    Some(body.to_string()),
+                    "surface route graph is not connected".to_owned(),
+                ));
+            }
+        }
+        let starports: BTreeSet<_> = builder
+            .provinces
+            .values()
+            .filter(|province| province.starport)
+            .map(|province| province.key.clone())
+            .collect();
+        if !connected(&starports, crate::model::RouteKind::Space) {
+            findings.push((
+                String::new(),
+                None,
+                "space route graph does not connect every starport".to_owned(),
+            ));
+        }
+    }
+
     // Buildings: every good they produce or consume must be defined.
     for (key, building) in &builder.buildings {
         for good in building.produces.keys().chain(building.consumes.keys()) {
@@ -359,6 +459,16 @@ fn validate_political_references(
         if !builder.provinces.contains_key(&ship.location) {
             err(key, format!("location '{}' is not defined", ship.location));
         }
+        if builder
+            .provinces
+            .get(&ship.location)
+            .is_some_and(|province| !province.starport)
+        {
+            err(
+                key,
+                format!("location '{}' is not a starport", ship.location),
+            );
+        }
         match (&ship.class, &ship.captain) {
             (ShipClass::Capital, None) => {
                 err(key, "capital ships must have a captain".to_owned());
@@ -381,6 +491,24 @@ fn validate_political_references(
             }
             _ => {}
         }
+        for (label, officer) in [
+            ("captain", ship.captain.as_ref()),
+            ("first officer", ship.first_officer.as_ref()),
+        ] {
+            if let Some(officer) = officer {
+                match builder.characters.get(officer) {
+                    None => err(key, format!("{label} '{officer}' is not defined")),
+                    Some(character) if character.organisation.as_ref() != Some(&ship.owner) => err(
+                        key,
+                        format!("{label} '{officer}' does not belong to the owning house"),
+                    ),
+                    Some(_) => {}
+                }
+            }
+        }
+        if ship.captain.is_some() && ship.captain == ship.first_officer {
+            err(key, "captain and first officer must differ".to_owned());
+        }
     }
 
     for (key, army) in &builder.armies {
@@ -390,18 +518,23 @@ fn validate_political_references(
         if !builder.provinces.contains_key(&army.province) {
             err(key, format!("province '{}' is not defined", army.province));
         }
-        match builder.characters.get(&army.general) {
-            None => err(key, format!("general '{}' is not defined", army.general)),
-            Some(general) if general.organisation.as_ref() != Some(&army.owner) => {
-                err(
-                    key,
-                    format!(
-                        "general '{}' does not belong to the owning house",
-                        army.general
+        for (label, officer) in [
+            ("general", army.general.as_ref()),
+            ("lieutenant", army.lieutenant.as_ref()),
+        ] {
+            if let Some(officer) = officer {
+                match builder.characters.get(officer) {
+                    None => err(key, format!("{label} '{officer}' is not defined")),
+                    Some(character) if character.organisation.as_ref() != Some(&army.owner) => err(
+                        key,
+                        format!("{label} '{officer}' does not belong to the owning house"),
                     ),
-                );
+                    Some(_) => {}
+                }
             }
-            Some(_) => {}
+        }
+        if army.general.is_some() && army.general == army.lieutenant {
+            err(key, "general and lieutenant must differ".to_owned());
         }
     }
 

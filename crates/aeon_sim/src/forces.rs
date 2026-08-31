@@ -27,12 +27,30 @@ pub enum ShipLocation {
     /// Docked at a province.
     Docked(ProvinceId),
     /// Under way to a province.
-    Transit {
-        /// Destination.
+    OnRoute {
+        /// Segment origin.
+        from: ProvinceId,
+        /// Segment destination.
         to: ProvinceId,
         /// Arrival day.
         arrives: GameDate,
     },
+}
+
+/// Concrete location of one whole army.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ArmyLocation {
+    Province(ProvinceId),
+    Embarked(ShipId),
+}
+
+impl ArmyLocation {
+    pub fn province(self) -> Option<ProvinceId> {
+        match self {
+            Self::Province(province) => Some(province),
+            Self::Embarked(_) => None,
+        }
+    }
 }
 
 /// An individually tracked starship.
@@ -59,6 +77,16 @@ pub struct ShipRecord {
     pub owner: OrgId,
     /// Captain; capital ships always have one.
     pub captain: Option<CharacterId>,
+    /// Optional deputy commander.
+    pub first_officer: Option<CharacterId>,
+    /// Whole-army troop capacity.
+    pub troop_capacity: i64,
+    /// Temporary simulation-controlled civilian vessel.
+    pub personal_transport: bool,
+    /// Retained automatic refuge.
+    pub retreat_destination: Option<ProvinceId>,
+    /// Active work is paused while the primary command is vacant.
+    pub orders_suspended: bool,
     /// Current location.
     pub location: ShipLocation,
     /// The exact war-bound blockade this ship is maintaining, if any.
@@ -77,13 +105,19 @@ pub struct ArmyRecord {
     /// Owning organisation.
     pub owner: OrgId,
     /// The general commanding it.
-    pub general: CharacterId,
+    pub general: Option<CharacterId>,
+    /// Optional deputy commander.
+    pub lieutenant: Option<CharacterId>,
     /// Soldiers under arms.
     pub manpower: i64,
     /// Supplies in train.
     pub supplies: i64,
     /// The province it stands in.
-    pub location: ProvinceId,
+    pub location: ArmyLocation,
+    /// Retained automatic refuge.
+    pub retreat_destination: Option<ProvinceId>,
+    /// Active work is paused while the primary command is vacant.
+    pub orders_suspended: bool,
     /// The order followed while idle.
     pub standing_order: crate::warfare::StandingOrders,
 }
@@ -120,6 +154,14 @@ pub fn spawn_from_content(world: &mut World, content: &ContentSet) {
                 class: def.class,
                 owner: politics.org_keys[&def.owner],
                 captain: def.captain.as_ref().map(|c| politics.character_keys[c]),
+                first_officer: def
+                    .first_officer
+                    .as_ref()
+                    .map(|c| politics.character_keys[c]),
+                troop_capacity: def.troop_capacity,
+                personal_transport: false,
+                retreat_destination: None,
+                orders_suspended: def.captain.is_none(),
                 location: ShipLocation::Docked(map_index.province_keys[&def.location]),
                 blockading: None,
                 route: None,
@@ -137,10 +179,19 @@ pub fn spawn_from_content(world: &mut World, content: &ContentSet) {
                 id,
                 name: def.name.clone(),
                 owner,
-                general: politics.character_keys[&def.general],
+                general: def
+                    .general
+                    .as_ref()
+                    .map(|general| politics.character_keys[general]),
+                lieutenant: def
+                    .lieutenant
+                    .as_ref()
+                    .map(|lieutenant| politics.character_keys[lieutenant]),
                 manpower: def.manpower,
                 supplies: def.supplies,
-                location: map_index.province_keys[&def.province],
+                location: ArmyLocation::Province(map_index.province_keys[&def.province]),
+                retreat_destination: None,
+                orders_suspended: def.general.is_none(),
                 standing_order: crate::warfare::StandingOrders::default(),
             })
             .id();
@@ -169,7 +220,7 @@ pub fn garrison_in(world: &World, province: ProvinceId) -> (i64, Option<OrgId>) 
         let Some(army) = world.get::<ArmyRecord>(*entity) else {
             continue;
         };
-        if army.location != province {
+        if army.location != ArmyLocation::Province(province) {
             continue;
         }
         total += army.manpower;
@@ -207,10 +258,13 @@ pub fn form_army(
             id,
             name: army_name,
             owner,
-            general,
+            general: Some(general),
+            lieutenant: None,
             manpower,
             supplies,
-            location,
+            location: ArmyLocation::Province(location),
+            retreat_destination: None,
+            orders_suspended: false,
             standing_order: crate::warfare::StandingOrders::default(),
         })
         .id();
@@ -219,6 +273,58 @@ pub fn form_army(
         .armies
         .insert(id, entity);
     id
+}
+
+/// Spawns a visible, simulation-owned vessel for one civilian crossing.
+/// Its allocated ID is never reused, even after the vessel is retired.
+pub fn spawn_personal_transport(world: &mut World, owner: OrgId, location: ProvinceId) -> ShipId {
+    let id: ShipId = world.resource_mut::<CampaignIds>().0.allocate();
+    let key = ContentKey::new(&format!("personal-transport-{}", id.raw()))
+        .expect("generated personal transport key is valid");
+    let entity = world
+        .spawn(ShipRecord {
+            id,
+            key: key.clone(),
+            name: format!("Personal Transport {}", id.raw()),
+            class: ShipClass::Transport,
+            owner,
+            captain: None,
+            first_officer: None,
+            troop_capacity: 0,
+            personal_transport: true,
+            retreat_destination: None,
+            orders_suspended: false,
+            location: ShipLocation::Docked(location),
+            blockading: None,
+            route: None,
+        })
+        .id();
+    let mut index = world.resource_mut::<ForcesIndex>();
+    index.ships.insert(id, entity);
+    index.ship_keys.insert(key, id);
+    id
+}
+
+/// Permanently retires a completed personal transport.
+pub fn retire_personal_transport(world: &mut World, ship: ShipId) {
+    let Some(entity) = world.resource::<ForcesIndex>().ships.get(&ship).copied() else {
+        return;
+    };
+    if !world
+        .get::<ShipRecord>(entity)
+        .is_some_and(|record| record.personal_transport)
+    {
+        return;
+    }
+    let key = world
+        .get::<ShipRecord>(entity)
+        .map(|record| record.key.clone());
+    world.despawn(entity);
+    let mut index = world.resource_mut::<ForcesIndex>();
+    index.ships.remove(&ship);
+    if let Some(key) = key {
+        index.ship_keys.remove(&key);
+    }
 }
 
 /// Disbands an army, returning its soldiers to the owner's pool.
@@ -246,9 +352,15 @@ pub fn monthly_upkeep(world: &mut World) {
 
     // Ships: one supply per ship from the owning organisation.
     for entity in index.ships.values() {
-        let Some(owner) = world.get::<ShipRecord>(*entity).map(|s| s.owner) else {
+        let Some((owner, personal)) = world
+            .get::<ShipRecord>(*entity)
+            .map(|s| (s.owner, s.personal_transport))
+        else {
             continue;
         };
+        if personal {
+            continue;
+        }
         let org_entity = crate::access::org_entity(world, owner).expect("indexed");
         if let Some(mut resources) = world.get_mut::<crate::economy::OrgResources>(org_entity) {
             resources.supplies = (resources.supplies - 1).max(0);
@@ -298,8 +410,24 @@ pub struct ShipState {
     pub id: ShipId,
     /// Authored key.
     pub key: ContentKey,
+    /// Persisted because dynamic personal transports have no authored def.
+    pub name: String,
+    pub class: ShipClass,
+    pub owner: OrgId,
     /// Captain.
     pub captain: Option<CharacterId>,
+    #[serde(default)]
+    pub first_officer: Option<CharacterId>,
+    #[serde(default)]
+    pub troop_capacity: i64,
+    #[serde(default)]
+    pub personal_transport: bool,
+    #[serde(default)]
+    pub retreat_destination: Option<ProvinceId>,
+    #[serde(default)]
+    pub orders_suspended: bool,
+    #[serde(default)]
+    pub appointment: Option<crate::officers::AppointmentJob>,
     /// Location.
     pub location: ShipLocation,
     /// Exact war-bound blockade.
@@ -308,6 +436,8 @@ pub struct ShipState {
     /// Standing trade route.
     #[serde(default)]
     pub route: Option<crate::trade::TradeRoute>,
+    #[serde(default)]
+    pub journey: Option<crate::routes::Journey>,
 }
 
 /// Serialised army.
@@ -320,16 +450,28 @@ pub struct ArmyState {
     /// Owner.
     pub owner: OrgId,
     /// General.
-    pub general: CharacterId,
+    pub general: Option<CharacterId>,
+    #[serde(default)]
+    pub lieutenant: Option<CharacterId>,
     /// Soldiers.
     pub manpower: i64,
     /// Supplies.
     pub supplies: i64,
     /// Location.
-    pub location: ProvinceId,
+    pub location: ArmyLocation,
+    #[serde(default)]
+    pub retreat_destination: Option<ProvinceId>,
+    #[serde(default)]
+    pub orders_suspended: bool,
+    #[serde(default)]
+    pub appointment: Option<crate::officers::AppointmentJob>,
+    #[serde(default)]
+    pub transport_job: Option<crate::officers::TransportJob>,
     /// Standing order.
     #[serde(default)]
     pub standing_order: crate::warfare::StandingOrders,
+    #[serde(default)]
+    pub journey: Option<crate::routes::Journey>,
 }
 
 /// The complete serialised forces state.
@@ -357,10 +499,22 @@ pub fn capture_forces(world: &World) -> ForcesState {
                 ShipState {
                     id: ship.id,
                     key: ship.key.clone(),
+                    name: ship.name.clone(),
+                    class: ship.class,
+                    owner: ship.owner,
                     captain: ship.captain,
+                    first_officer: ship.first_officer,
+                    troop_capacity: ship.troop_capacity,
+                    personal_transport: ship.personal_transport,
+                    retreat_destination: ship.retreat_destination,
+                    orders_suspended: ship.orders_suspended,
+                    appointment: world
+                        .get::<crate::officers::AppointmentJob>(*entity)
+                        .cloned(),
                     location: ship.location,
                     blockading: ship.blockading,
                     route: ship.route.clone(),
+                    journey: world.get::<crate::routes::Journey>(*entity).cloned(),
                 }
             })
             .collect(),
@@ -374,10 +528,18 @@ pub fn capture_forces(world: &World) -> ForcesState {
                     name: army.name.clone(),
                     owner: army.owner,
                     general: army.general,
+                    lieutenant: army.lieutenant,
                     manpower: army.manpower,
                     supplies: army.supplies,
                     location: army.location,
+                    retreat_destination: army.retreat_destination,
+                    orders_suspended: army.orders_suspended,
+                    appointment: world
+                        .get::<crate::officers::AppointmentJob>(*entity)
+                        .cloned(),
+                    transport_job: world.get::<crate::officers::TransportJob>(*entity).cloned(),
                     standing_order: army.standing_order.clone(),
+                    journey: world.get::<crate::routes::Journey>(*entity).cloned(),
                 }
             })
             .collect(),
@@ -395,23 +557,35 @@ pub fn restore_forces(world: &mut World, state: &ForcesState, content: &ContentS
     let mut index = ForcesIndex::default();
 
     for ship in &state.ships {
-        let def = content
-            .ships
-            .get(&ship.key)
-            .expect("hash-verified content defines every persisted ship");
+        let def = content.ships.get(&ship.key);
+        assert!(
+            ship.personal_transport || def.is_some(),
+            "persistent ship is authored"
+        );
         let entity = world
             .spawn(ShipRecord {
                 id: ship.id,
                 key: ship.key.clone(),
-                name: def.name.clone(),
-                class: def.class,
-                owner: politics.org_keys[&def.owner],
+                name: def.map_or_else(|| ship.name.clone(), |def| def.name.clone()),
+                class: def.map_or(ship.class, |def| def.class),
+                owner: def.map_or(ship.owner, |def| politics.org_keys[&def.owner]),
                 captain: ship.captain,
+                first_officer: ship.first_officer,
+                troop_capacity: ship.troop_capacity,
+                personal_transport: ship.personal_transport,
+                retreat_destination: ship.retreat_destination,
+                orders_suspended: ship.orders_suspended,
                 location: ship.location,
                 blockading: ship.blockading,
                 route: ship.route.clone(),
             })
             .id();
+        if let Some(journey) = &ship.journey {
+            world.entity_mut(entity).insert(journey.clone());
+        }
+        if let Some(appointment) = &ship.appointment {
+            world.entity_mut(entity).insert(appointment.clone());
+        }
         index.ships.insert(ship.id, entity);
         index.ship_keys.insert(ship.key.clone(), ship.id);
     }
@@ -422,34 +596,138 @@ pub fn restore_forces(world: &mut World, state: &ForcesState, content: &ContentS
                 name: army.name.clone(),
                 owner: army.owner,
                 general: army.general,
+                lieutenant: army.lieutenant,
                 manpower: army.manpower,
                 supplies: army.supplies,
                 location: army.location,
+                retreat_destination: army.retreat_destination,
+                orders_suspended: army.orders_suspended,
                 standing_order: army.standing_order.clone(),
             })
             .id();
+        if let Some(journey) = &army.journey {
+            world.entity_mut(entity).insert(journey.clone());
+        }
+        if let Some(appointment) = &army.appointment {
+            world.entity_mut(entity).insert(appointment.clone());
+        }
+        if let Some(job) = &army.transport_job {
+            world.entity_mut(entity).insert(job.clone());
+        }
         index.armies.insert(army.id, entity);
     }
     index.armies_raised = state.armies_raised.iter().copied().collect();
     world.insert_resource(index);
 }
 
-/// Daily: ships whose arrival day has come dock at their destination.
+/// Daily: advance ships over their explicit authored route segments.
 pub fn dock_arrivals(world: &mut World) {
     let Some(index) = world.get_resource::<ForcesIndex>().cloned() else {
         return;
     };
     let date = world.resource::<crate::clock::CampaignClock>().date;
     for entity in index.ships.values() {
-        let due = matches!(
-            world.get::<ShipRecord>(*entity).map(|s| s.location),
-            Some(ShipLocation::Transit { arrives, .. }) if arrives <= date
-        );
-        if due
-            && let Some(mut ship) = world.get_mut::<ShipRecord>(*entity)
-            && let ShipLocation::Transit { to, .. } = ship.location
+        let journey = world.get::<crate::routes::Journey>(*entity).cloned();
+        let Some(mut journey) = journey else { continue };
+        if journey
+            .current
+            .as_ref()
+            .is_some_and(|progress| progress.arrives <= date)
         {
-            ship.location = ShipLocation::Docked(to);
+            let to = journey.current.as_ref().expect("checked").leg.to;
+            if let Some(mut ship) = world.get_mut::<ShipRecord>(*entity) {
+                ship.location = ShipLocation::Docked(to);
+            }
+            journey.current = None;
+        }
+        let held_for_appointment = world
+            .get::<crate::officers::AppointmentJob>(*entity)
+            .is_some();
+        if journey.current.is_none() && !journey.remaining.is_empty() && !held_for_appointment {
+            let leg = journey.remaining.remove(0);
+            let multiplier = if journey.speed == crate::routes::JourneySpeed::Half {
+                2
+            } else {
+                1
+            };
+            let arrives = date.add_days(i64::from(leg.travel_days) * multiplier);
+            if let Some(mut ship) = world.get_mut::<ShipRecord>(*entity) {
+                ship.location = ShipLocation::OnRoute {
+                    from: leg.from,
+                    to: leg.to,
+                    arrives,
+                };
+            }
+            journey.current = Some(crate::routes::RouteProgress { leg, arrives });
+        }
+        if journey.current.is_none() && journey.remaining.is_empty() {
+            world.entity_mut(*entity).remove::<crate::routes::Journey>();
+        } else {
+            world.entity_mut(*entity).insert(journey);
+        }
+    }
+}
+
+/// Daily: advance marching armies over explicit surface edges. Embarked
+/// armies inherit their ship's location and never run an independent route.
+pub fn advance_army_journeys(world: &mut World) {
+    let Some(index) = world.get_resource::<ForcesIndex>().cloned() else {
+        return;
+    };
+    let date = world.resource::<crate::clock::CampaignClock>().date;
+    for entity in index.armies.values() {
+        if world
+            .get::<ArmyRecord>(*entity)
+            .is_some_and(|army| matches!(army.location, ArmyLocation::Embarked(_)))
+        {
+            continue;
+        }
+        let Some(mut journey) = world.get::<crate::routes::Journey>(*entity).cloned() else {
+            continue;
+        };
+        if journey
+            .current
+            .as_ref()
+            .is_some_and(|progress| progress.arrives <= date)
+        {
+            let to = journey.current.take().expect("checked").leg.to;
+            let officers = world
+                .get::<ArmyRecord>(*entity)
+                .map(|army| [army.general, army.lieutenant])
+                .unwrap_or([None, None]);
+            if let Some(mut army) = world.get_mut::<ArmyRecord>(*entity) {
+                army.location = ArmyLocation::Province(to);
+            }
+            for officer in officers.into_iter().flatten() {
+                if let Some(character) = crate::access::character_entity(world, officer) {
+                    world
+                        .entity_mut(character)
+                        .insert(crate::presence::CharacterLocation(
+                            crate::presence::Location::Province(to),
+                        ));
+                }
+            }
+        }
+        let held = world
+            .get::<crate::officers::AppointmentJob>(*entity)
+            .is_some()
+            || world
+                .get::<crate::officers::TransportJob>(*entity)
+                .is_some();
+        if journey.current.is_none() && !journey.remaining.is_empty() && !held {
+            let leg = journey.remaining.remove(0);
+            let multiplier = if journey.speed == crate::routes::JourneySpeed::Half {
+                2
+            } else {
+                1
+            };
+            let arrives = date.add_days(i64::from(leg.travel_days) * multiplier);
+            journey.current = Some(crate::routes::RouteProgress { leg, arrives });
+        }
+        if journey.current.is_none() && journey.remaining.is_empty() {
+            world.entity_mut(*entity).remove::<crate::routes::Journey>();
+        } else {
+            world.entity_mut(*entity).insert(journey);
         }
     }
 }
@@ -461,7 +739,8 @@ pub(crate) fn install(app: &mut App) {
     );
     app.add_systems(
         crate::clock::DailyTick,
-        dock_arrivals
+        (dock_arrivals, advance_army_journeys)
+            .chain()
             .in_set(crate::clock::TickSet::Simulation)
             .before(crate::assignments::resolve_due_assignments),
     );

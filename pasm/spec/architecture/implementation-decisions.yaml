@@ -495,20 +495,25 @@ entities:
         - character-led-jobs-are-primary-actions
         - notable-results-are-logged
 
-  - decision: abstract-liner-travel-tracked-military-ships
+  - decision: authored-routes-and-physical-personal-transport
     core:
       status: accepted
       confidence: confirmed
-      title: Personal Travel Is Abstract; Tracked Ships Are Strategic Assets
+      title: Every Journey Uses Authored Routes and Concrete Locations
       summary: >-
-        Characters travel between provinces on abstract scheduled liners
-        (three days locally, four plus an orbital-distance term across
-        bodies); individually tracked ships are the strategic assets that
-        move a third faster, carry military weight, and give capital
-        captains their simulated role. This keeps the presence and delay
-        model complete without coupling every journey to fleet management.
+        Characters and armies move province by province over one shared
+        authored route graph. The initial selector chooses the fastest valid
+        deterministic route, while every edge carries separate time and risk
+        costs for later safety-versus-speed choices. A character crossing
+        between bodies must travel through a starport at each end and boards a
+        temporary system-owned personal transport spawned at the departure
+        starport; it follows the space route and despawns after disembarkation.
+        Armies cannot spawn personal transports and require a persistent ship
+        with sufficient troop capacity. There is no abstract transit state:
+        a traveller is in the last province reached or aboard a ship occupying
+        an explicit route segment.
       rationale:
-        - The vision requires presence and delay to bite and ships to be individual assets; it does not require personal journeys to consume fleet logistics, which would punish delegation.
+        - Concrete routes make distance, future danger, relationships, interception, and the position of ships legible without forcing routine personal travel to consume a faction's military fleet.
       references:
         - physical-presence-and-order-delay
         - individually-tracked-ships
@@ -518,14 +523,16 @@ entities:
     core:
       status: accepted
       confidence: confirmed
-      title: Order Delay from Head Transit and Body Separation
+      title: Order Delay from Head Location and Body Separation
       summary: >-
         Player commands execute after one day plus delays computed at
-        submission and recorded in the command envelope: a head in space
-        delays every order until the day after arrival, and orders to a
-        character on another body add half the liner travel time between
-        the bodies. Recording the delay in the envelope keeps replay
-        byte-identical.
+        submission and recorded in the command envelope. A head aboard a
+        moving ship delays every player order until the day after that ship
+        next docks. Surface travel imposes no blanket delay because the head
+        remains physically present in each successive province. Orders to a
+        character on another body add half the fastest valid route time
+        between their locations. Recording the delay in the envelope keeps
+        replay byte-identical.
       rationale:
         - Computing delay at submission makes the cost of distance visible when the order is given, which is what makes location a strategic commitment.
       references:
@@ -996,17 +1003,91 @@ entities:
       confidence: confirmed
       title: Ships Are Commanded by Assigned Captains
       summary: >-
-        A ship's captain is assigned by player command, persists like an
-        army's general, is required before the ship can be ordered, and
-        scales what the ship achieves. Content validation checks that a
-        captain belongs to the ship's owner. On a captain's death the post
-        falls vacant and says so.
+        A ship's captain and optional first officer are physical posts aboard
+        the vessel. They may be appointed remotely, but the timed appointment
+        completes only when the candidate reaches and boards the ship; the
+        incumbent remains captain until then. An aboard first officer succeeds
+        a vacant captain immediately and seamlessly, preserving active orders.
+        A replaced captain fills an open first-officer post unless already
+        given another validated active or queued assignment. A commanded ship
+        may receive ordinary orders and its captain scales what it achieves.
+        A ship with neither captain nor promotable first officer accepts no
+        ordinary orders and retreats automatically at half speed. It chooses
+        the closest reachable starport by fastest route and stable-ID tie-break:
+        first its owner's ports, then one hierarchy level at a time above its
+        owner, then ports whose owner's head has positive opinion of the
+        ship-owner's head. Within each tier, route time and then stable ID choose
+        the destination. The chosen
+        destination remains unless invalid or unreachable; an already docked
+        ship stays at any acceptable port. If none qualifies, it stays where it
+        is. Passengers, cargo, and an embarked army remain aboard. A new captain
+        ends the retreat immediately without losing route progress.
       rationale:
         - The field existed but was inert, so the interface papered over a missing captain by falling back to the house head, which meant ordering a ship nobody was commanding.
         - Giving the post mechanical weight makes assigning it a decision rather than a formality, and matches how armies already work.
       references:
         - job-system
         - job-based-operational-warfare
+
+  - decision: armies-use-general-and-lieutenant-command-succession
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Armies Use Generals and Lieutenants Like Ships Use Captains and First Officers
+      summary: >-
+        An army's general and optional Lieutenant follow the same physical,
+        timed appointment, incumbent replacement, automatic promotion, order
+        preservation, and displaced-commander rules as a ship's captain and
+        first officer. An army with neither general nor promotable Lieutenant
+        accepts no ordinary orders and retreats at half speed toward the closest
+        acceptable province using the same owner, hierarchy, positive-opinion,
+        route-time, and deterministic tie-break rules used for ship refuges. It
+        cannot arrange new interworld transport while leaderless. If already
+        embarked, it remains aboard and defers its own retreat until the carrying
+        ship docks and legal disembarkation is possible.
+      rationale:
+        - Parallel command rules make leadership loss predictable across persistent forces while named subordinate officers turn succession into preparation rather than a special-case rescue action.
+      references:
+        - ship-captains-are-assigned-and-consequential
+        - persistent-armies
+        - physical-presence-and-order-delay
+
+  - decision: armies-embark-whole-against-authored-troop-capacity
+    core:
+      status: accepted
+      confidence: confirmed
+      title: One Whole Army Embarks Against Authored Troop Capacity
+      summary: >-
+        A persistent owned ship may carry one army when its authored troop
+        capacity is at least the army's current manpower. Supplies and equipment
+        are included rather than counted separately. An army is never split
+        implicitly, and authored army sizes and capacity bands align to keep the
+        fit legible. Embarkation requires army and ship together at an authored
+        starport and brings the general aboard; ordinary disembarkation is a
+        timed assignment at a starport. Future specialised assault landings may
+        target non-starport provinces through distinct ships, risks, and
+        opposition rules.
+      rationale:
+        - Whole-army capacity makes transport a strategic constraint without turning embarkation into packing arithmetic.
+      references:
+        - authored-routes-and-physical-personal-transport
+        - persistent-armies
+        - tracked-starships
+
+  - decision: all-delayed-assignments-share-en-route-feedback
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Every Delayed Assignment Appears En Route
+      summary: >-
+        Every validated delayed assignment order appears in the same en-route
+        projection with its execution date and target, whether it was launched
+        from an ordinary inspector action or from a Situation action.
+      rationale:
+        - The launch surface must not change the visibility of an otherwise identical authoritative order.
+      references:
+        - job-forecast-and-explanation-ui
+        - situation-system
 
   - decision: hop-distance-answers-realm-questions
     core:

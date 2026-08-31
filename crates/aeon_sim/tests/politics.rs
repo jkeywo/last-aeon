@@ -276,8 +276,50 @@ fn a_house_without_heirs_ends_the_player_campaign() {
         process_death(host.world_mut(), id, date);
     }
 
+    assert!(
+        host.world_mut().get_resource::<CampaignOver>().is_none(),
+        "terminal failure waits for the fully settled day"
+    );
+    host.advance_days(1);
+
     let world = host.world_mut();
     let over = world.get_resource::<CampaignOver>().expect("campaign ends");
+    assert!(over.reason.contains("House Ash"), "reason: {}", over.reason);
+}
+
+#[test]
+fn losing_the_last_direct_province_ends_the_campaign_after_the_day_settles() {
+    let mut host = fixture_host(5);
+    let (birch, province_title) = {
+        let world = host.world_mut();
+        let index = world.resource::<PoliticsIndex>();
+        let ash = index.org_keys[&aeon_data::ContentKey::new("ash").unwrap()];
+        let birch = index.org_keys[&aeon_data::ContentKey::new("birch").unwrap()];
+        let title = index
+            .titles
+            .values()
+            .copied()
+            .find(|entity| {
+                world.get::<TitleRecord>(*entity).is_some_and(|title| {
+                    matches!(title.kind, aeon_sim::TitleKind::Province(_))
+                        && title.holder == TitleHolder::Org(ash)
+                })
+            })
+            .expect("fixture player starts with a province");
+        (birch, title)
+    };
+    host.world_mut()
+        .get_mut::<TitleRecord>(province_title)
+        .expect("title remains present")
+        .holder = TitleHolder::Org(birch);
+
+    assert!(host.world_mut().get_resource::<CampaignOver>().is_none());
+    host.advance_days(1);
+
+    let over = host
+        .world_mut()
+        .get_resource::<CampaignOver>()
+        .expect("loss of the last direct province ends play");
     assert!(over.reason.contains("House Ash"), "reason: {}", over.reason);
 }
 

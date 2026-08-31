@@ -220,7 +220,7 @@ pub fn pressures(world: &World, province: ProvinceId) -> OrderPressures {
             let Some(army) = world.get::<ArmyRecord>(*entity) else {
                 continue;
             };
-            if army.location != province {
+            if army.location != crate::forces::ArmyLocation::Province(province) {
                 continue;
             }
             match holder {

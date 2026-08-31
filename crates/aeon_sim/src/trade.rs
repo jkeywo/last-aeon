@@ -20,7 +20,6 @@ use aeon_data::ContentKey;
 use bevy::prelude::{Component, World};
 use serde::{Deserialize, Serialize};
 
-use crate::clock::CampaignClock;
 use crate::ids::{BodyId, OrgId, ProvinceId};
 use crate::map::{MapIndex, ProvinceRecord};
 use crate::politics::PlayerHouse;
@@ -151,6 +150,8 @@ fn route_running(world: &World, ship: &crate::forces::ShipRecord) -> bool {
         return false;
     };
     ship.class == aeon_data::model::ShipClass::Transport
+        && ship.captain.is_some()
+        && !ship.orders_suspended
         && !is_blockaded(world, route.source)
         && !is_blockaded(world, route.sink)
 }
@@ -297,7 +298,6 @@ pub fn run_trade_routes(world: &mut World) {
     let Some(forces) = world.get_resource::<crate::forces::ForcesIndex>().cloned() else {
         return;
     };
-    let date = world.resource::<CampaignClock>().date;
     for entity in forces.ships.values() {
         let Some(ship) = world.get::<crate::forces::ShipRecord>(*entity) else {
             continue;
@@ -318,13 +318,22 @@ pub fn run_trade_routes(world: &mut World) {
         if destination == at {
             continue;
         }
-        let days = crate::presence::travel_days(world, at, destination).max(1);
-        if let Some(mut record) = world.get_mut::<crate::forces::ShipRecord>(*entity) {
-            record.blockading = None;
-            record.location = crate::forces::ShipLocation::Transit {
-                to: destination,
-                arrives: date.add_days(days),
-            };
+        let path = world.resource::<crate::routes::RouteGraph>().fastest_path(
+            aeon_data::model::RouteKind::Space,
+            at,
+            destination,
+        );
+        if let Some(path) = path {
+            if let Some(mut record) = world.get_mut::<crate::forces::ShipRecord>(*entity) {
+                record.blockading = None;
+            }
+            world
+                .entity_mut(*entity)
+                .insert(crate::routes::Journey::new(
+                    destination,
+                    path,
+                    crate::routes::JourneyPurpose::Travel,
+                ));
         }
     }
 }
@@ -361,6 +370,14 @@ pub fn auto_route_transports(world: &mut World) {
         // to load it at: the owner's own holding on a surplus world.
         let mut source: Option<(ProvinceId, ContentKey)> = None;
         'find: for province in crate::order::held_provinces(world, owner) {
+            if !map
+                .provinces
+                .get(&province)
+                .and_then(|entity| world.get::<crate::map::ProvinceRecord>(*entity))
+                .is_some_and(|record| record.starport)
+            {
+                continue;
+            }
             let Some(body) = crate::presence::province_body(world, province) else {
                 continue;
             };
@@ -379,7 +396,14 @@ pub fn auto_route_transports(world: &mut World) {
         // A world in native want of that good, and a province to unload at.
         let sink = map.provinces.keys().copied().find(|province| {
             let body = crate::presence::province_body(world, *province);
-            body != source_body && body.is_some_and(|b| native_deficit(world, b, &good) > 0)
+            let starport = map
+                .provinces
+                .get(province)
+                .and_then(|entity| world.get::<crate::map::ProvinceRecord>(*entity))
+                .is_some_and(|record| record.starport);
+            starport
+                && body != source_body
+                && body.is_some_and(|b| native_deficit(world, b, &good) > 0)
         });
         let Some(sink_province) = sink else {
             continue;
@@ -403,25 +427,43 @@ pub fn auto_route_transports(world: &mut World) {
 /// different worlds — goods within a world need no carrying. Returns
 /// whether the route was set.
 pub fn set_route(world: &mut World, ship: crate::ids::ShipId, route: TradeRoute) -> bool {
+    if !valid_route(world, ship, &route) {
+        return false;
+    }
     let Some(entity) = crate::access::ship_entity(world, ship) else {
         return false;
     };
-    let is_transport = world
-        .get::<crate::forces::ShipRecord>(entity)
-        .is_some_and(|s| s.class == aeon_data::model::ShipClass::Transport);
-    let different_worlds = crate::presence::province_body(world, route.source)
-        != crate::presence::province_body(world, route.sink);
-    let good_defined = world
-        .get_resource::<ContentDb>()
-        .is_some_and(|db| db.0.goods.contains_key(&route.good));
-    if !is_transport || !different_worlds || !good_defined {
-        return false;
-    }
     if let Some(mut record) = world.get_mut::<crate::forces::ShipRecord>(entity) {
         record.route = Some(route);
         return true;
     }
     false
+}
+
+/// Side-effect-free validation shared by commands, AI, and application.
+pub fn valid_route(world: &World, ship: crate::ids::ShipId, route: &TradeRoute) -> bool {
+    let Some(record) = crate::access::ship(world, ship) else {
+        return false;
+    };
+    let starport = |province| {
+        crate::access::province_entity(world, province)
+            .and_then(|entity| world.get::<crate::map::ProvinceRecord>(entity))
+            .is_some_and(|record| record.starport)
+    };
+    record.class == aeon_data::model::ShipClass::Transport
+        && record.captain.is_some()
+        && !record.personal_transport
+        && starport(route.source)
+        && starport(route.sink)
+        && crate::presence::province_body(world, route.source)
+            != crate::presence::province_body(world, route.sink)
+        && world
+            .get_resource::<ContentDb>()
+            .is_some_and(|db| db.0.goods.contains_key(&route.good))
+        && world
+            .resource::<crate::routes::RouteGraph>()
+            .fastest_path(aeon_data::model::RouteKind::Space, route.source, route.sink)
+            .is_some()
 }
 
 /// Clears a ship's trade route.

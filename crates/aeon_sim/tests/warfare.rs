@@ -22,12 +22,18 @@ define_name_pool(#{ id: "names", male: ["Bram"], female: ["Yeva"] });
 
 define_body(#{ id: "world", kind: "planet", radius_km: 6000 });
 define_province(#{ id: "alpha", body: "world",
-                   latitude_mdeg: 0, longitude_mdeg: 0 });
+                   latitude_mdeg: 0, longitude_mdeg: 0, starport: true });
 define_province(#{ id: "beta", body: "world",
                    latitude_mdeg: 10000, longitude_mdeg: 10000,
-                   wealth_output: 40 });
+                   wealth_output: 40, starport: true });
 define_province(#{ id: "gamma", body: "world",
-                   latitude_mdeg: -10000, longitude_mdeg: -10000 });
+                   latitude_mdeg: -10000, longitude_mdeg: -10000, starport: true });
+define_route(#{ id: "surface-alpha-beta", kind: "surface", a: "alpha", b: "beta", travel_days: 1, risk: 0 });
+define_route(#{ id: "surface-alpha-gamma", kind: "surface", a: "alpha", b: "gamma", travel_days: 1, risk: 0 });
+define_route(#{ id: "surface-beta-gamma", kind: "surface", a: "beta", b: "gamma", travel_days: 1, risk: 0 });
+define_route(#{ id: "space-alpha-beta", kind: "space", a: "alpha", b: "beta", travel_days: 2, risk: 0 });
+define_route(#{ id: "space-alpha-gamma", kind: "space", a: "alpha", b: "gamma", travel_days: 2, risk: 0 });
+define_route(#{ id: "space-beta-gamma", kind: "space", a: "beta", b: "gamma", travel_days: 2, risk: 0 });
 
 define_house(#{
     id: "ash", tier: "great",
@@ -216,19 +222,40 @@ fn marches_move_armies_and_take_road_time() {
             target: AssignmentTarget::ArmyToProvince(army, beta),
         })
         .unwrap();
-    // March duration is at least twice the liner time (3 days locally).
+    // Travel is physical and completes before the authored work stage.
     h.advance_days(2);
     {
         let world = h.world_mut();
         let forces = world.resource::<ForcesIndex>();
         let record = world.get::<ArmyRecord>(forces.armies[&army]).unwrap();
-        assert_ne!(record.location, beta, "still marching");
+        assert_eq!(
+            record.location,
+            aeon_sim::forces::ArmyLocation::Province(beta),
+            "travel finished"
+        );
+        assert!(
+            world
+                .resource::<aeon_sim::AssignmentsIndex>()
+                .assignments
+                .values()
+                .any(|entity| {
+                    world
+                        .get::<aeon_sim::ActiveAssignment>(*entity)
+                        .is_some_and(|active| {
+                            active.target == AssignmentTarget::ArmyToProvince(army, beta)
+                        })
+                }),
+            "authored work remains after arrival"
+        );
     }
     h.advance_days(8);
     let world = h.world_mut();
     let forces = world.resource::<ForcesIndex>();
     let record = world.get::<ArmyRecord>(forces.armies[&army]).unwrap();
-    assert_eq!(record.location, beta);
+    assert_eq!(
+        record.location,
+        aeon_sim::forces::ArmyLocation::Province(beta)
+    );
     let _ = envelope;
 }
 
@@ -798,7 +825,7 @@ fn an_operation_cannot_use_an_army_that_changed_owner() {
 }
 
 #[test]
-fn a_ship_on_assignment_cannot_move_or_change_captain_and_keeps_its_leader_contract() {
+fn a_ship_on_assignment_suspends_and_resumes_across_command_succession() {
     let mut h = host(43);
     let aron = char_id(&mut h, "aron-ash");
     let alpha = province(&mut h, "alpha");
@@ -827,29 +854,40 @@ fn a_ship_on_assignment_cannot_move_or_change_captain_and_keeps_its_leader_contr
         }),
         Err(CommandRejection::ForceCommitted),
     );
-    assert_eq!(
-        h.submit(PlayerCommand::SetShipCaptain {
-            ship,
-            captain: None,
-        }),
-        Err(CommandRejection::ForceCommitted),
-    );
-
-    // Exceptional state changes still revalidate at completion. The original
-    // leader no longer commands the hull, so the blockade does not happen.
+    h.submit(PlayerCommand::SetShipCaptain {
+        ship,
+        captain: None,
+    })
+    .unwrap();
+    h.advance_days(1);
     let forces = h.world_mut().resource::<ForcesIndex>().clone();
-    h.world_mut()
-        .get_mut::<ShipRecord>(forces.ships[&ship])
-        .unwrap()
-        .captain = None;
-    h.advance_days(5);
+    assert!(
+        h.world_mut()
+            .get::<ShipRecord>(forces.ships[&ship])
+            .unwrap()
+            .orders_suspended
+    );
+    h.submit(PlayerCommand::SetShipCaptain {
+        ship,
+        captain: Some(aron),
+    })
+    .unwrap();
+    h.advance_days(8);
+    let resumed = h
+        .world_mut()
+        .get::<ShipRecord>(forces.ships[&ship])
+        .unwrap();
+    assert_eq!(resumed.captain, Some(aron));
+    assert!(!resumed.orders_suspended);
+    h.advance_days(8);
     let world = h.world_mut();
     let record = world.get::<ShipRecord>(forces.ships[&ship]).unwrap();
     assert_eq!(
         record.location,
-        aeon_sim::forces::ShipLocation::Docked(alpha)
+        aeon_sim::forces::ShipLocation::Docked(beta)
     );
-    assert_eq!(record.blockading, None);
+    assert!(record.blockading.is_some());
+    let _ = alpha;
 }
 
 #[test]
@@ -995,7 +1033,7 @@ fn formal_war_besiege_action_is_led_by_the_selected_armys_general() {
     h.world_mut()
         .get_mut::<ArmyRecord>(army_entity)
         .unwrap()
-        .general = replacement;
+        .general = Some(replacement);
 
     let enemy = org(&mut h, "vantar");
     let war = aeon_sim::wars::declare_war(h.world_mut(), player, enemy, key("besiege-leader-war"))

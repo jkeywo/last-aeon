@@ -35,9 +35,10 @@ pub struct TitleState {
     pub spectator: bool,
     /// A click waiting for the launch system.
     pub pending: Option<TitleAction>,
-    /// The autosave, loaded and content-checked when the title appears.
+    /// The autosave state, fully hash-verified and content-checked when the
+    /// title appears.
     /// Always `None` on the web build, which offers no Continue.
-    pub autosave: Option<aeon_sim::CampaignSnapshot>,
+    pub autosave: Option<aeon_sim::CampaignState>,
 }
 
 /// A choice made on the title screen.
@@ -118,7 +119,8 @@ pub fn load_autosave(mut title: ResMut<TitleState>) {
     title.autosave = std::fs::read_to_string(sim_driver::AUTOSAVE_PATH)
         .ok()
         .and_then(|document| aeon_sim::persistence::snapshot_from_ron(&document).ok())
-        .filter(|snapshot| snapshot.state.content_hash == Some(embedded_hash));
+        .and_then(|snapshot| aeon_sim::snapshot::verify_snapshot(snapshot).ok())
+        .filter(|state| state.content_hash == Some(embedded_hash));
 }
 
 /// Acts on a recorded title choice: starts or restores the campaign,
@@ -133,19 +135,12 @@ pub fn launch(world: &mut World) {
             sim_driver::begin_campaign(world, spectator);
         }
         TitleAction::Continue => {
-            let Some(snapshot) = world.resource_mut::<TitleState>().autosave.take() else {
+            let Some(state) = world.resource_mut::<TitleState>().autosave.take() else {
                 return;
             };
-            // The same verify-and-restore path the headless host takes:
-            // hash-verify the snapshot, then the content-bound half
-            // before the content-free half.
-            let state = match aeon_sim::snapshot::verify_snapshot(snapshot) {
-                Ok(state) => state,
-                Err(err) => {
-                    warn!("autosave failed verification: {err}");
-                    return;
-                }
-            };
+            // Full verification happened before Continue was enabled. Restore
+            // the content-bound half before the content-free half, matching the
+            // headless host's verified restore sequence.
             let content = crate::content::load_embedded();
             aeon_sim::snapshot::restore_content_state(world, &state, content);
             aeon_sim::snapshot::restore_state(world, state);

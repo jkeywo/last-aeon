@@ -641,7 +641,7 @@ entities:
       status: implemented
       confidence: confirmed
       title: Physical Presence and Order Delay
-      summary: Every simulated character is physically present at a holding, on a celestial body, aboard a tracked ship, or in transit. Orders issued across distance are delayed; while a character is in space, all of that character's orders are delayed.
+      summary: Every simulated character has a concrete physical location at a province, aboard a tracked ship, or on an explicit route segment. There is no abstract transit location. Characters, ships, and armies move through authored routes; people and embarked armies inherit the location of their vessel. Orders issued across distance are delayed, and an organisation head aboard a moving ship delays every player order until the day after that ship next docks.
       references: [campaign-time-model, character-simulation-scope, campaign-map]
     architecture:
       kind: simulation-subsystem
@@ -650,6 +650,9 @@ entities:
     implementation:
       paths:
         - crates/aeon_sim/src/presence.rs
+        - crates/aeon_sim/src/routes.rs
+        - crates/aeon_data/src/model.rs
+        - assets/content/system/routes.rhai
       tests:
         - crates/aeon_sim/tests/logistics.rs
       status: declared
@@ -659,7 +662,7 @@ entities:
       status: implemented
       confidence: confirmed
       title: Individually Tracked Starships
-      summary: Starships are strategic assets represented and located individually in the simulation. Capital ships additionally have captains who are simulated characters.
+      summary: Starships are strategic assets represented and located individually in the simulation. Ships may carry people and, where their authored troop capacity permits, one whole army. Commanded ships have captains and may optionally have first officers; both are simulated characters physically aboard their vessel.
       references: [physical-presence-and-order-delay, character-simulation-scope, campaign-map]
     architecture:
       kind: simulation-subsystem
@@ -668,6 +671,8 @@ entities:
     implementation:
       paths:
         - crates/aeon_sim/src/forces.rs
+        - crates/aeon_sim/src/officers.rs
+        - crates/aeon_sim/src/command.rs
       tests:
         - crates/aeon_sim/tests/logistics.rs
       status: declared
@@ -677,7 +682,7 @@ entities:
       status: accepted
       confidence: confirmed
       title: Presence-Constrained Command
-      summary: The player's leader and every other simulated character must be somewhere. If a character is on the wrong world, their orders are delayed; if travelling through space, all their orders are delayed. Physical location is therefore a strategic commitment.
+      summary: The player's leader and every other simulated character must be somewhere concrete. Surface travellers occupy each province reached along an authored route, while characters in space are aboard a ship and inherit its route-segment location. If a character is on the wrong world, their orders are delayed; if the player's head is aboard a moving ship, every player order waits until the day after it next docks. Physical location is therefore a strategic commitment.
       rationale:
         - It makes the world, moon, and starbase distinct political arenas rather than instantaneous interfaces.
         - It makes travel, delegation, interception, and the position of ships central to strategy.
@@ -1071,7 +1076,14 @@ entities:
       status: accepted
       confidence: confirmed
       title: MVP Has No Victory Condition
-      summary: The MVP is an open-ended simulation with no campaign victory condition or scripted ending. It continues until a terminal house failure, including having neither a viable successor nor a meaningful territorial foothold.
+      summary: >-
+        The MVP is an open-ended simulation with no campaign victory condition
+        or scripted ending. It continues until either terminal house failure
+        occurs: the player organisation has no living character selected by its
+        legal succession rule, or it directly holds no province title at the
+        end of a fully settled day. Vassal holdings and ownership of personal
+        titles, armies, or ships do not preserve the required territorial
+        foothold.
       rationale:
         - The point of the MVP is to establish a living political simulation rather than solve a fixed scenario objective.
       references: [mvp-hand-authored-scenario, mvp-dynastic-succession, player-organisation]
@@ -1258,7 +1270,7 @@ entities:
       status: accepted
       confidence: confirmed
       title: MVP Dynastic Succession
-      summary: When the current house head dies or is removed, play continues as the legally recognised heir, including a weak, unpopular, underage, distant, or compromised heir. The campaign ends only if the house has no viable successor or no meaningful territorial foothold.
+      summary: When the current house head dies or is removed, play continues as the living character selected by the house's legal succession rule, including a weak, unpopular, underage, distant, captive, incapacitated, or otherwise compromised heir. The campaign ends at the end of the first fully settled day on which either no such living successor exists or the player organisation directly holds no province title.
       rationale:
         - Succession should create dramatic change and new constraints rather than a routine game-over state.
         - Different organisation types will later provide distinct succession rules through the shared framework.

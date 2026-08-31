@@ -134,6 +134,7 @@ pub fn load_content(
         goods: builder.goods,
         buildings: builder.buildings,
         provinces: builder.provinces,
+        routes: builder.routes,
         traits: builder.traits,
         name_pools: builder.name_pools,
         characters: builder.characters,

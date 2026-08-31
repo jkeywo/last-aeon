@@ -329,7 +329,7 @@ fn the_enhanced_campaign_replays_from_a_mid_campaign_snapshot() {
 /// simultaneous wars, internal-war adoption, a concluded occurrence and its
 /// resolution, exact provenance, and a still-running war-bound operation.
 #[test]
-fn snapshot_18_replays_connected_situations_and_formal_wars() {
+fn snapshot_19_replays_connected_situations_and_formal_wars() {
     use std::collections::BTreeSet;
 
     use aeon_sim::assignments::{ActiveAssignment, AssignmentsIndex, MessageLog};
@@ -540,7 +540,7 @@ fn snapshot_18_replays_connected_situations_and_formal_wars() {
     assert!(dismissal.day > original.date());
 
     let snapshot = original.snapshot();
-    assert_eq!(snapshot.format_version, 18);
+    assert_eq!(snapshot.format_version, 19);
     assert_eq!(
         snapshot
             .state

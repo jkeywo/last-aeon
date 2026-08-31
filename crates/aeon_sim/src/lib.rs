@@ -37,11 +37,13 @@ pub mod host;
 pub mod ids;
 pub mod map;
 pub mod obligations;
+pub mod officers;
 pub mod order;
 pub mod persistence;
 pub mod plans;
 pub mod politics;
 pub mod presence;
+pub mod routes;
 pub mod script_world;
 pub mod situations;
 pub mod snapshot;
@@ -73,6 +75,7 @@ pub use ids::{
 };
 pub use map::{BodyRecord, DisplayName, GeoPosition, MapIndex, ProvinceRecord};
 pub use obligations::{ObligationKind, ObligationRecord, ObligationStatus, Obligations};
+pub use officers::{AppointmentJob, OfficerPost, OfficerTarget, TransportJob, TransportJobKind};
 pub use order::ProvincialOrder;
 pub use politics::{
     CampaignOver, CharacterRecord, OfficeRecord, OrgRecord, PlayerHouse, PoliticsIndex,
@@ -116,6 +119,7 @@ impl Plugin for AeonSimPlugin {
         forces::install(app);
         order::install(app);
         obligations::install(app);
+        officers::install(app);
         events::install(app);
         wars::install(app);
         crisis::install(app);

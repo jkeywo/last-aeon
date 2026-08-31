@@ -486,10 +486,11 @@ define_ship(#{
 define_ship(#{
     id: "redwater-runner", class: "transport",
     owner: "harrow", captain: "captain-lira", location: "tolmaz",
+    troop_capacity: 1200,
 });
 define_ship(#{
     id: "karvess-hauler", class: "transport",
-    owner: "veyrin", location: "karvessa",
+    owner: "veyrin", location: "karvessa", troop_capacity: 1200,
 });
 define_ship(#{
     id: "pale-lantern", class: "patrol",

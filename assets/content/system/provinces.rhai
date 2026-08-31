@@ -6,6 +6,7 @@
 // --- Ashkarr: 32 planetary provinces ---
 define_province(#{
     id: "karvessa", body: "ashkarr",
+    starport: true,
     latitude_mdeg: 75638, longitude_mdeg: 0,
     wealth_output: 20, manpower_output: 20, supplies_output: 12,
     produces: #{ grain: 15 },
@@ -18,6 +19,7 @@ define_province(#{
 });
 define_province(#{
     id: "tolmaz", body: "ashkarr",
+    starport: true,
     latitude_mdeg: 57538, longitude_mdeg: -84984,
     wealth_output: 12, manpower_output: 15, supplies_output: 8,
     produces: #{ grain: 10 },
@@ -74,6 +76,7 @@ define_province(#{
 });
 define_province(#{
     id: "redwater", body: "ashkarr",
+    starport: true,
     latitude_mdeg: 8989, longitude_mdeg: -12399,
     wealth_output: 20, manpower_output: 20, supplies_output: 12,
 });
@@ -139,6 +142,7 @@ define_province(#{
 });
 define_province(#{
     id: "old-anchorage", body: "ashkarr",
+    starport: true,
     latitude_mdeg: -41014, longitude_mdeg: -24798,
     wealth_output: 20, manpower_output: 20, supplies_output: 12,
 });
@@ -170,6 +174,7 @@ define_province(#{
 // --- Vesk: 8 lunar provinces ---
 define_province(#{
     id: "port-vesk", body: "vesk",
+    starport: true,
     latitude_mdeg: 61045, longitude_mdeg: 57296,
     wealth_output: 20, manpower_output: 20, supplies_output: 12,
     produces: #{ ore: 10 }, consumes: #{ grain: 10 },
@@ -214,6 +219,7 @@ define_province(#{
 // --- The Aurelian Spire: the starbase is one province ---
 define_province(#{
     id: "spire-decks", body: "aurelian-spire",
+    starport: true,
     latitude_mdeg: 0, longitude_mdeg: 0,
     wealth_output: 25, manpower_output: 8, supplies_output: 20,
     consumes: #{ grain: 8 },

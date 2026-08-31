@@ -725,7 +725,7 @@ pub fn leader_availability(
     if let Some(forces) = world.get_resource::<crate::forces::ForcesIndex>() {
         for entity in forces.armies.values() {
             if let Some(army) = world.get::<crate::forces::ArmyRecord>(*entity)
-                && army.general == leader
+                && army.general == Some(leader)
             {
                 return LeaderAvailability::Posted(Post::General {
                     army: army.id,
@@ -1017,7 +1017,7 @@ fn requirements_met(
         AssignmentTarget::ArmyToProvince(_, id) => Some(id),
         AssignmentTarget::ShipToProvince(_, id) => Some(id),
         AssignmentTarget::OwnArmy(army) => {
-            crate::access::army(world, army).map(|record| record.location)
+            crate::access::army(world, army).and_then(|record| record.location.province())
         }
         _ => None,
     };
@@ -1051,7 +1051,7 @@ fn requirements_met(
     if requires.army_present {
         let at = match target {
             AssignmentTarget::OwnArmy(army) | AssignmentTarget::ArmyToProvince(army, _) => {
-                crate::access::army(world, army).map(|record| record.location)
+                crate::access::army(world, army).and_then(|record| record.location.province())
             }
             _ => None,
         };
@@ -1126,7 +1126,10 @@ fn hostile_force_in(world: &World, owner: OrgId, province: ProvinceId) -> bool {
     forces.armies.values().any(|entity| {
         world
             .get::<crate::forces::ArmyRecord>(*entity)
-            .is_some_and(|army| army.location == province && army.owner != owner)
+            .is_some_and(|army| {
+                army.location == crate::forces::ArmyLocation::Province(province)
+                    && army.owner != owner
+            })
     })
 }
 
@@ -1316,7 +1319,7 @@ pub fn validate_start_in_war(
     }
     // Army operations are led by the army's general, nobody else.
     if let AssignmentTarget::OwnArmy(army) | AssignmentTarget::ArmyToProvince(army, _) = target {
-        let general = crate::access::army(world, army).map(|record| record.general);
+        let general = crate::access::army(world, army).and_then(|record| record.general);
         if general != Some(leader) {
             return Err(AssignmentRejection::IneligibleLeader);
         }
@@ -1365,7 +1368,7 @@ pub fn start_assignment_in_war(
     war: Option<WarId>,
 ) -> AssignmentId {
     let date = world.resource::<CampaignClock>().date;
-    let (duration, costs) = {
+    let (duration, costs, military_op) = {
         let content = world.resource::<ContentDb>().0.clone();
         let def = &content.assignments[def_key];
         (
@@ -1376,12 +1379,60 @@ pub fn start_assignment_in_war(
                 def.supplies_cost,
                 def.influence_cost,
             ),
+            def.military_op,
         )
     };
     {
         let org_entity = crate::access::org_entity(world, org).expect("indexed");
         if let Some(mut resources) = world.get_mut::<crate::economy::OrgResources>(org_entity) {
             resources.spend(costs.0, costs.1, costs.2, costs.3);
+        }
+    }
+    if military_op.is_some() {
+        match target {
+            AssignmentTarget::ArmyToProvince(army, destination) => {
+                if let Some(entity) = crate::access::army_entity(world, army)
+                    && let Some(from) = world
+                        .get::<crate::forces::ArmyRecord>(entity)
+                        .and_then(|record| record.location.province())
+                    && let Some(path) = world.resource::<crate::routes::RouteGraph>().fastest_path(
+                        aeon_data::model::RouteKind::Surface,
+                        from,
+                        destination,
+                    )
+                    && !path.is_empty()
+                {
+                    world.entity_mut(entity).insert(crate::routes::Journey::new(
+                        destination,
+                        path,
+                        crate::routes::JourneyPurpose::Assignment,
+                    ));
+                }
+            }
+            AssignmentTarget::ShipToProvince(ship, destination) => {
+                if let Some(entity) = crate::access::ship_entity(world, ship)
+                    && let Some(from) =
+                        world
+                            .get::<crate::forces::ShipRecord>(entity)
+                            .and_then(|record| match record.location {
+                                crate::forces::ShipLocation::Docked(province) => Some(province),
+                                crate::forces::ShipLocation::OnRoute { .. } => None,
+                            })
+                    && let Some(path) = world.resource::<crate::routes::RouteGraph>().fastest_path(
+                        aeon_data::model::RouteKind::Space,
+                        from,
+                        destination,
+                    )
+                    && !path.is_empty()
+                {
+                    world.entity_mut(entity).insert(crate::routes::Journey::new(
+                        destination,
+                        path,
+                        crate::routes::JourneyPurpose::Assignment,
+                    ));
+                }
+            }
+            _ => {}
         }
     }
     let id: AssignmentId = world.resource_mut::<CampaignIds>().0.allocate();
@@ -1457,7 +1508,7 @@ fn resolve_roles(world: &World, assignment: &ActiveAssignment) -> AssignmentRole
         | AssignmentTarget::ArmyToProvince(_, province)
         | AssignmentTarget::ShipToProvince(_, province) => Some(province),
         AssignmentTarget::OwnArmy(army) => {
-            crate::access::army(world, army).map(|record| record.location)
+            crate::access::army(world, army).and_then(|record| record.location.province())
         }
         _ => match crate::presence::character_location(world, assignment.leader) {
             Some(crate::presence::Location::Province(province)) => Some(province),

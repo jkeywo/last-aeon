@@ -750,7 +750,7 @@ fn resolve_army(
         PlanArmySelector::Own => forces.armies.iter().find_map(|(id, entity)| {
             world
                 .get::<crate::forces::ArmyRecord>(*entity)
-                .filter(|army| army.owner == authority && army.general == actor)
+                .filter(|army| army.owner == authority && army.general == Some(actor))
                 .map(|_| *id)
         }),
     }

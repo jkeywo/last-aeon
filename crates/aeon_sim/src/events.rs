@@ -189,7 +189,7 @@ fn subjects_for(world: &World, family: EventFamily) -> Vec<EventSubject> {
                         world
                             .get::<crate::presence::CharacterLocation>(**entity)
                             .is_some_and(|location| {
-                                matches!(location.0, crate::presence::Location::Transit { .. })
+                                matches!(location.0, crate::presence::Location::Aboard(_))
                             })
                     })
                     .map(|(id, _)| EventSubject::Character(*id))

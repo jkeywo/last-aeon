@@ -4,11 +4,12 @@
 //! its name, plus a small badge counting armies and docked ships standing
 //! there. Purely presentational; reads simulation state, never writes it.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use aeon_sim::ProvinceId;
-use aeon_sim::forces::{ArmyRecord, ShipLocation, ShipRecord};
+use aeon_sim::forces::{ArmyLocation, ArmyRecord, ShipLocation, ShipRecord};
 use aeon_sim::map::{DisplayName, GeoPosition, ProvinceRecord};
+use aeon_sim::routes::{Journey, RouteGraph};
 use bevy::prelude::*;
 use bevy_egui::{EguiContexts, egui};
 
@@ -27,6 +28,8 @@ pub fn draw_map_overlay(
     provinces: Query<(&ProvinceRecord, &DisplayName, &GeoPosition)>,
     armies: Query<&ArmyRecord>,
     ships: Query<&ShipRecord>,
+    journeys: Query<&Journey>,
+    routes: Option<Res<RouteGraph>>,
 ) {
     let MapView::Body(body) = view.view else {
         return;
@@ -42,7 +45,9 @@ pub fn draw_map_overlay(
     // Forces standing at each province on this body.
     let mut army_count: BTreeMap<ProvinceId, u32> = BTreeMap::new();
     for army in &armies {
-        *army_count.entry(army.location).or_default() += 1;
+        if let ArmyLocation::Province(province) = army.location {
+            *army_count.entry(province).or_default() += 1;
+        }
     }
     let mut ship_count: BTreeMap<ProvinceId, u32> = BTreeMap::new();
     for ship in &ships {
@@ -55,6 +60,49 @@ pub fn draw_map_overlay(
     // system runs before the panels in the egui pass, so their opaque frames
     // land on top: labels sit behind the GUI rather than over it.
     let painter = ctx.layer_painter(egui::LayerId::background());
+
+    let projected: BTreeMap<ProvinceId, egui::Pos2> = provinces
+        .iter()
+        .filter(|(record, _, _)| record.body == body)
+        .filter_map(|(record, _, geo)| {
+            let dir = geo_to_unit(geo.latitude_mdeg, geo.longitude_mdeg);
+            if !view.projection.faces_camera(dir, camera_pos) {
+                return None;
+            }
+            camera
+                .world_to_viewport(camera_transform, view.projection.place(dir))
+                .ok()
+                .map(|screen| (record.id, egui::pos2(screen.x, screen.y)))
+        })
+        .collect();
+    let active_routes: BTreeSet<_> = journeys
+        .iter()
+        .filter_map(|journey| {
+            journey
+                .current
+                .as_ref()
+                .map(|progress| progress.leg.route.clone())
+        })
+        .collect();
+    if let Some(routes) = routes {
+        for leg in routes.routes() {
+            let (Some(a), Some(b)) = (projected.get(&leg.from), projected.get(&leg.to)) else {
+                continue;
+            };
+            let selected = matches!(view.selected, Some(Selection::Province(id)) if id == leg.from || id == leg.to);
+            let color = if active_routes.contains(&leg.route) {
+                egui::Color32::from_rgb(230, 184, 72)
+            } else if selected {
+                egui::Color32::from_rgb(151, 192, 221)
+            } else {
+                egui::Color32::from_rgba_unmultiplied(120, 140, 155, 90)
+            };
+            painter.line_segment(
+                [*a, *b],
+                egui::Stroke::new(if selected { 2.0 } else { 1.0 }, color),
+            );
+        }
+    }
 
     for (record, name, geo) in &provinces {
         if record.body != body {
@@ -74,6 +122,9 @@ pub fn draw_map_overlay(
         let selected = view.selected == Some(Selection::Province(record.id));
         let entry = readout.provinces.get(&record.id);
         let mut label = name.0.clone();
+        if record.starport {
+            label.push_str("  ✶");
+        }
         // The active mode's value is printed on the map, so the reading
         // never depends on telling colours apart.
         if let Some(value) = entry.and_then(|entry| entry.value.as_deref()) {

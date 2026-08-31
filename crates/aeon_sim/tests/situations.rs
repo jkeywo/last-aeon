@@ -350,7 +350,7 @@ fn siege_and_blockade_cannot_start_without_an_exact_formal_war() {
             world,
             army.owner,
             &key("besiege"),
-            army.general,
+            army.general.expect("starting army has a general"),
             AssignmentTarget::ArmyToProvince(army.id, target),
         ),
         Err(AssignmentRejection::BadTarget)

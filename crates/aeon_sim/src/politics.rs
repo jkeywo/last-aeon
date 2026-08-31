@@ -17,7 +17,7 @@ use bevy::app::App;
 use bevy::prelude::{Component, Entity, IntoScheduleConfigs, Resource, World};
 use serde::{Deserialize, Serialize};
 
-use crate::clock::{CampaignClock, DailyTick, TickSet, YearlyPulse};
+use crate::clock::{CampaignClock, DailyTick, SettledDay, TickSet, YearlyPulse};
 use crate::ids::{BodyId, CharacterId, OfficeId, OrgId, ProvinceId, TitleId};
 use crate::map::MapIndex;
 use crate::state::{CampaignIds, ContentDb};
@@ -513,6 +513,9 @@ pub struct CharacterState {
     /// Physical location, if tracked.
     #[serde(default)]
     pub location: Option<crate::presence::Location>,
+    /// Persisted route and segment progress, if travelling.
+    #[serde(default)]
+    pub journey: Option<crate::routes::Journey>,
 }
 
 /// Serialised organisation (mutable facts only; the rest is content).
@@ -606,6 +609,7 @@ pub fn capture_politics(world: &World) -> PoliticsState {
         let location = world
             .get::<crate::presence::CharacterLocation>(*entity)
             .map(|l| l.0);
+        let journey = world.get::<crate::routes::Journey>(*entity).cloned();
         characters.push(CharacterState {
             id: record.id,
             key: record.key.clone(),
@@ -621,6 +625,7 @@ pub fn capture_politics(world: &World) -> PoliticsState {
             opinions: opinions.0.clone(),
             condition,
             location,
+            journey,
         });
     }
 
@@ -717,6 +722,9 @@ pub fn restore_politics(world: &mut World, state: &PoliticsState, content: &Cont
             world
                 .entity_mut(entity)
                 .insert(crate::presence::CharacterLocation(location));
+        }
+        if let Some(journey) = &character.journey {
+            world.entity_mut(entity).insert(journey.clone());
         }
         index.characters.insert(character.id, entity);
         if let Some(key) = &character.key {
@@ -1082,7 +1090,7 @@ pub fn process_death(world: &mut World, id: CharacterId, date: GameDate) {
             .collect()
     };
     for org_id in led {
-        resolve_succession(world, org_id, id, date);
+        resolve_succession(world, org_id, id);
     }
 
     // Vacate personally held titles (the Consulate opens a contest).
@@ -1166,7 +1174,7 @@ pub fn house_heir(world: &World, org: OrgId, dead: CharacterId) -> Option<Charac
 
 /// Resolves the change of head after a death, per the organisation's
 /// succession rules.
-fn resolve_succession(world: &mut World, org_id: OrgId, dead: CharacterId, date: GameDate) {
+fn resolve_succession(world: &mut World, org_id: OrgId, dead: CharacterId) {
     let org_entity = crate::access::org_entity(world, org_id).expect("indexed");
     let kind = world.get::<OrgRecord>(org_entity).expect("indexed").kind;
 
@@ -1177,26 +1185,8 @@ fn resolve_succession(world: &mut World, org_id: OrgId, dead: CharacterId, date:
             match heir {
                 Some(heir_id) => org.head = Some(heir_id),
                 None => {
-                    let key = org.key.clone();
                     org.head = None;
                     org.defunct = true;
-                    let is_player = world.resource::<PlayerHouse>().0 == Some(org_id);
-                    if is_player && world.get_resource::<CampaignOver>().is_none() {
-                        let strings = world.resource::<crate::text::TextDb>();
-                        let name = world
-                            .resource::<ContentDb>()
-                            .0
-                            .organisations
-                            .get(&key)
-                            .map(|def| def.name.clone())
-                            .unwrap_or_else(|| {
-                                strings.text("sim.politics.the-player-house").to_owned()
-                            });
-                        let reason = world
-                            .resource::<crate::text::TextDb>()
-                            .format("sim.politics.no-successor", &[("house", &name)]);
-                        world.insert_resource(CampaignOver { date, reason });
-                    }
                 }
             }
         }
@@ -1207,6 +1197,48 @@ fn resolve_succession(world: &mut World, org_id: OrgId, dead: CharacterId, date:
             org.head = None;
         }
     }
+}
+
+/// Ends a player campaign after the complete day has settled when either
+/// dynastic continuity or a direct territorial foothold has been lost.
+pub fn check_player_failure(world: &mut World) {
+    if world.get_resource::<CampaignOver>().is_some() {
+        return;
+    }
+    let Some(player) = world
+        .get_resource::<PlayerHouse>()
+        .and_then(|house| house.0)
+    else {
+        return;
+    };
+    let Some(index) = world.get_resource::<PoliticsIndex>() else {
+        return;
+    };
+    let has_successor = index.characters.values().any(|entity| {
+        world
+            .get::<CharacterRecord>(*entity)
+            .is_some_and(|character| character.organisation == Some(player) && character.alive())
+    });
+    let has_direct_province = index.titles.values().any(|entity| {
+        world.get::<TitleRecord>(*entity).is_some_and(|title| {
+            matches!(title.kind, TitleKind::Province(_)) && title.holder == TitleHolder::Org(player)
+        })
+    });
+    if has_successor && has_direct_province {
+        return;
+    }
+
+    let name = crate::access::org_name(world, player);
+    let key = if has_successor {
+        "sim.politics.no-territorial-foothold"
+    } else {
+        "sim.politics.no-successor"
+    };
+    let reason = world
+        .resource::<crate::text::TextDb>()
+        .format(key, &[("house", &name)]);
+    let date = world.resource::<CampaignClock>().date;
+    world.insert_resource(CampaignOver { date, reason });
 }
 
 /// Vacates a personally held title; a Consul vacancy opens the contest.
@@ -1697,4 +1729,5 @@ pub(crate) fn install(app: &mut App) {
         YearlyPulse,
         (yearly_mortality, yearly_marriages, yearly_births).chain(),
     );
+    app.add_systems(SettledDay, check_player_failure);
 }

@@ -618,7 +618,7 @@ fn political_fixture(vassal_liege: &str, spouse_line: &str, ship_captain: &str) 
     format!(
         r#"
 define_body(#{{ id: "world", kind: "planet", radius_km: 6000 }});
-define_province(#{{ id: "home", body: "world", latitude_mdeg: 0, longitude_mdeg: 0 }});
+define_province(#{{ id: "home", body: "world", latitude_mdeg: 0, longitude_mdeg: 0, starport: true }});
 define_province(#{{ id: "march", body: "world", latitude_mdeg: 1000, longitude_mdeg: 1000 }});
 define_name_pool(#{{ id: "names", male: ["Aron"], female: ["Bela"] }});
 define_character(#{{ id: "gale", gender: "male", birth_year: 370, organisation: "greatwood" }});
