@@ -56,6 +56,7 @@ pub enum TitleAction {
 pub fn draw_title(
     mut contexts: EguiContexts,
     mut title: ResMut<TitleState>,
+    mut preferences: ResMut<crate::preferences::UiPreferences>,
     strings: Res<aeon_sim::TextDb>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
@@ -104,6 +105,12 @@ pub fn draw_title(
                 strings.text("ui.title.spectator").to_owned(),
             );
             ui.weak(strings.text("ui.title.spectator-note"));
+
+            ui.add_space(16.0);
+            ui.separator();
+            ui.add_space(8.0);
+            ui.heading(strings.text("ui.preferences.title"));
+            crate::preferences::draw_controls(ui, &strings, &mut preferences);
         });
     });
 }

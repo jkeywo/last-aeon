@@ -711,10 +711,11 @@ fn theme_path() -> Option<std::path::PathBuf> {
 pub fn apply_theme(
     mut contexts: bevy_egui::EguiContexts,
     theme: bevy::prelude::Res<UiTheme>,
+    preferences: bevy::prelude::Res<crate::preferences::UiPreferences>,
     mut applied: bevy::prelude::Local<bool>,
 ) {
     use bevy::prelude::DetectChanges;
-    if *applied && !theme.is_changed() {
+    if *applied && !theme.is_changed() && !preferences.is_changed() {
         return;
     }
     let Ok(ctx) = contexts.ctx_mut() else {
@@ -722,7 +723,11 @@ pub fn apply_theme(
     };
     // Written into every theme egui keeps, so the appearance does not
     // depend on which one the context happens to be using.
-    ctx.all_styles_mut(|style| theme.apply(style));
+    ctx.set_zoom_factor(crate::preferences::zoom_factor(*preferences));
+    ctx.all_styles_mut(|style| {
+        theme.apply(style);
+        crate::preferences::apply_to_style(*preferences, style);
+    });
     *applied = true;
 }
 

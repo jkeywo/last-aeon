@@ -200,6 +200,26 @@ screen-reader semantics, caption settings, or an accessibility test plan.
 The build ships one interface face; font family is deliberately not a theme
 token. No minimum resolution or maximum text expansion has been accepted.
 
+### Interface scale and density
+
+**Implemented and accepted design.** Interface scale is a client preference
+with four supported values: 100%, 125%, 150%, and 200%. Information density is
+a separate preference with Compact and Comfortable values. Compact preserves
+the original authored spacing and is the default; Comfortable increases gaps,
+row heights, and control targets without removing information. Scale changes
+the whole egui interface rather than changing only body text.
+
+The same controls appear at the title screen and within the running campaign.
+Preferences persist in a versioned, fail-soft document: a native file for the
+desktop build under the operating system's per-user application configuration
+directory, and the stable `last-aeon.ui.preferences` local-storage entry for
+the web build. Missing, corrupt, inaccessible, or unsupported future documents
+restore the 100%/Compact defaults. Shared adapter-contract tests cover browser
+storage without claiming a browser-runtime test harness the repository does not
+have; the Trunk build provides wasm compile coverage. These values are
+presentation state only; an isolation test proves changing and persisting them
+does not alter campaign snapshots, command logs, or state hashes.
+
 ### Required decision work
 
 **Proposal.** Before an accessibility target is promised, decide and record:
@@ -207,8 +227,8 @@ token. No minimum resolution or maximum text expansion has been accepted.
 - supported input methods and whether every campaign action must be reachable
   without a pointer;
 - minimum contrast and non-colour redundancy requirements for UI and maps;
-- UI-scale and text-scale ranges, minimum viewport, wrapping, and dock overflow
-  behaviour;
+- minimum viewport, wrapping, responsive reflow, and dock overflow behaviour at
+  the accepted interface scales;
 - motion, flashing, camera, and selection-pulse limits;
 - assistive-technology expectations for native and browser builds;
 - caption/subtitle requirements if sound is introduced;

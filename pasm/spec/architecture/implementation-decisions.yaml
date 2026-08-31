@@ -2053,3 +2053,29 @@ entities:
       references:
         - deterministic-campaign-simulation
         - fleet-foundation-adoption
+
+  - decision: client-owned-versioned-interface-preferences
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Interface Scale and Density Persist Outside the Campaign
+      summary: >-
+        The client exposes 100%, 125%, 150%, and 200% whole-interface scale
+        choices independently from Compact and Comfortable density. One
+        versioned codec is stored under the operating system's stable per-user
+        application configuration directory or the stable
+        last-aeon.ui.preferences browser local-storage entry and fails softly
+        to 100% Compact when it is missing, corrupt, inaccessible, or from an
+        unsupported future version. Native filesystem and shared browser-shaped
+        adapter contracts are tested through injectable backends, while Trunk
+        supplies wasm compile coverage. Title and campaign surfaces edit the
+        same resource. The preference resource remains in aeon_client and an
+        isolation test proves it never changes commands, snapshots, or hashes.
+      rationale:
+        - "[ai] Separating scale from density lets a player enlarge the whole interface without making information disappear, while retaining the existing compact presentation as the default."
+        - "[ai] A shared codec and platform-specific storage adapters give native and web the same contract without teaching the authoritative simulation about presentation state."
+        - "[ai] Resolving native storage through per-user application configuration directories makes persistence independent of launch working directory while keeping read and write failures recoverable."
+      references:
+        - egui-with-owned-design-tokens
+        - shared-native-and-web-delivery
+        - headless-authoritative-simulation

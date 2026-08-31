@@ -14,6 +14,7 @@ mod loading;
 mod map_modes;
 mod map_overlay;
 mod offer_view;
+mod preferences;
 mod scene;
 mod selection;
 mod sim_driver;
@@ -64,6 +65,8 @@ fn main() {
         .init_resource::<assignment_ui::LogFilter>()
         .init_resource::<map_modes::MapReadout>()
         .init_resource::<ui::theme::UiTheme>()
+        .init_resource::<preferences::UiPreferences>()
+        .init_resource::<preferences::SettingsUi>()
         .init_resource::<ui::picker::PickerState>()
         .init_resource::<ui::assignment_popup::AssignmentPopup>()
         .init_resource::<ui::dock::DockState>()
@@ -75,7 +78,14 @@ fn main() {
         // The client boots to the title screen; no campaign resource
         // exists until the player steps through, and the scene has
         // nothing to spawn a globe from until one does.
-        .add_systems(Startup, (camera::spawn_camera, loading::begin_preload))
+        .add_systems(
+            Startup,
+            (
+                preferences::load_preferences,
+                camera::spawn_camera,
+                loading::begin_preload,
+            ),
+        )
         .add_systems(OnEnter(title::Screen::Playing), scene::spawn_scene)
         .add_systems(
             OnEnter(title::Screen::Title),
@@ -132,6 +142,7 @@ fn main() {
                     assignment_ui::draw_popups,
                 )
                     .run_if(in_state(title::Screen::Playing)),
+                preferences::persist_preferences,
             )
                 .chain(),
         )

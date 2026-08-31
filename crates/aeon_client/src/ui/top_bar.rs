@@ -10,6 +10,7 @@ use aeon_sim::state::CampaignMeta;
 use aeon_sim::{CampaignOver, CharacterId, OrgId, TextDb};
 use bevy_egui::egui;
 
+use crate::preferences::SettingsUi;
 use crate::sim_driver::{SPEED_STEPS, TimeControl};
 use crate::ui::dock::{DockSide, DockState, PanelKind};
 use crate::ui::icons::{draw_mode_bar, draw_panel_icon};
@@ -36,6 +37,7 @@ pub fn draw_top_bar(
     mode: &mut MapMode,
     dock: &mut DockState,
     search: &mut SearchState,
+    settings: &mut SettingsUi,
 ) {
     egui::Panel::top("top-bar").show(viewport, |ui| {
         ui.horizontal(|ui| {
@@ -113,6 +115,9 @@ pub fn draw_top_bar(
 
             // Search box, pushed to the right end of the bar.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.button(strings.text("ui.preferences.open")).clicked() {
+                    settings.open = !settings.open;
+                }
                 ui.add(
                     egui::TextEdit::singleline(&mut search.query)
                         .hint_text(strings.text("ui.top-bar.search-hint"))

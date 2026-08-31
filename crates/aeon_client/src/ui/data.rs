@@ -31,6 +31,7 @@ use crate::assignment_ui::AssignmentForm;
 use crate::forecast_view::{AvailabilityView, ForecastCache};
 use crate::map_modes::MapReadout;
 use crate::offer_view::OfferView;
+use crate::preferences::{SettingsUi, UiPreferences};
 use crate::ui::assignment_popup::AssignmentPopup;
 use crate::ui::dock::DockState;
 use crate::ui::situations_panel::{SituationPanelView, SituationUiState};
@@ -54,6 +55,8 @@ pub struct MapUi<'w> {
     pub mode: ResMut<'w, MapMode>,
     pub dock: ResMut<'w, DockState>,
     pub situation_ui: ResMut<'w, SituationUiState>,
+    pub preferences: ResMut<'w, UiPreferences>,
+    pub settings: ResMut<'w, SettingsUi>,
 }
 
 /// Character lookup shared across the panel helpers.

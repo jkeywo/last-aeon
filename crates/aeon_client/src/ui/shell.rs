@@ -51,6 +51,8 @@ pub fn draw_panels(
         mut mode,
         mut dock,
         mut situation_ui,
+        mut preferences,
+        mut settings,
     } = map_ui;
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
@@ -95,7 +97,10 @@ pub fn draw_panels(
         &mut mode,
         &mut dock,
         &mut search,
+        &mut settings,
     );
+
+    crate::preferences::draw_campaign_settings(ctx, strings, &mut preferences, &mut settings);
 
     draw_search_results(ctx, &lookup, &data, &mut view, &mut search);
     draw_overlays(
