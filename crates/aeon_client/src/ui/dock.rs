@@ -143,6 +143,9 @@ pub struct DockState {
     order: BTreeMap<DockSide, Vec<PanelKind>>,
     /// How much room each side takes.
     sizes: BTreeMap<DockSide, f32>,
+    /// The visible bottom tab in compact layout. This is presentation state;
+    /// all bottom panels remain open and reachable.
+    bottom_selected: Option<PanelKind>,
 }
 
 impl Default for DockState {
@@ -153,6 +156,7 @@ impl Default for DockState {
             placement: BTreeMap::new(),
             order: BTreeMap::new(),
             sizes: BTreeMap::new(),
+            bottom_selected: None,
         };
         dock.sizes.insert(DockSide::Left, 260.0);
         dock.sizes.insert(DockSide::Right, 230.0);
@@ -181,6 +185,20 @@ impl DockState {
         self.sizes.get(&side).copied().unwrap_or(240.0)
     }
 
+    /// The selected compact bottom tab, repaired if that panel moved away.
+    pub fn bottom_selected(&self) -> Option<PanelKind> {
+        self.bottom_selected
+            .filter(|kind| self.side_of(*kind) == Some(DockSide::Bottom))
+            .or_else(|| self.panels_on(DockSide::Bottom).first().copied())
+    }
+
+    /// Selects an already-open compact bottom tab.
+    pub fn select_bottom(&mut self, kind: PanelKind) {
+        if self.side_of(kind) == Some(DockSide::Bottom) {
+            self.bottom_selected = Some(kind);
+        }
+    }
+
     /// Moves a panel to a side, opening it if it was closed.
     ///
     /// Removing it from wherever it was first is what keeps the
@@ -199,6 +217,9 @@ impl DockState {
         }
         self.placement.insert(kind, side);
         self.order.entry(side).or_default().push(kind);
+        if side == DockSide::Bottom && self.bottom_selected.is_none() {
+            self.bottom_selected = Some(kind);
+        }
     }
 
     /// Closes a panel, wherever it is.
@@ -207,6 +228,9 @@ impl DockState {
             && let Some(list) = self.order.get_mut(&previous)
         {
             list.retain(|entry| *entry != kind);
+        }
+        if self.bottom_selected == Some(kind) {
+            self.bottom_selected = self.panels_on(DockSide::Bottom).first().copied();
         }
     }
 
@@ -293,6 +317,25 @@ mod tests {
             dock.panels_on(DockSide::Bottom),
             &[PanelKind::Log, PanelKind::Assignments, PanelKind::Ledger],
             "the one-per-side rule is for the edges, not the bottom"
+        );
+    }
+
+    #[test]
+    fn compact_bottom_tabs_keep_every_open_panel_reachable() {
+        let mut dock = DockState::default();
+        assert_eq!(dock.bottom_selected(), Some(PanelKind::Log));
+        dock.select_bottom(PanelKind::Assignments);
+        assert_eq!(dock.bottom_selected(), Some(PanelKind::Assignments));
+        assert_eq!(
+            dock.panels_on(DockSide::Bottom),
+            &[PanelKind::Log, PanelKind::Assignments],
+            "selecting one tab must not close the other"
+        );
+        dock.dock(PanelKind::Assignments, DockSide::Left);
+        assert_eq!(
+            dock.bottom_selected(),
+            Some(PanelKind::Log),
+            "moving the selected tab repairs selection to a visible bottom panel"
         );
     }
 

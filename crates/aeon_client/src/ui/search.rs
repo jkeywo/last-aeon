@@ -6,6 +6,7 @@
 use bevy_egui::egui;
 
 use crate::ui::data::PanelData;
+use crate::ui::layout::LayoutPlan;
 use crate::ui::lookup::Lookup;
 use crate::view::{MapView, SearchState, Selection, ViewState};
 
@@ -41,6 +42,7 @@ pub fn draw_search_results(
     data: &PanelData,
     view: &mut ViewState,
     search: &mut SearchState,
+    layout: LayoutPlan,
 ) {
     let strings = lookup.strings;
     let theme = &data.theme;
@@ -59,14 +61,16 @@ pub fn draw_search_results(
         }
         let hits = matching(&query, candidates);
 
+        let viewport = ctx.viewport_rect();
+        let width = f32::from(theme.components.search_width)
+            .min((viewport.width() - layout.left_width - layout.right_width - 16.0).max(180.0));
+        let x = (viewport.right() - layout.right_width - width - 8.0).max(viewport.left() + 8.0);
         egui::Area::new("search-results".into())
-            .fixed_pos(egui::pos2(
-                ctx.viewport_rect().width() - f32::from(theme.components.search_width),
-                f32::from(theme.components.search_offset_y),
-            ))
+            .fixed_pos(egui::pos2(x, layout.overlay_top))
+            .constrain_to(viewport)
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
-                    ui.set_min_width(f32::from(theme.components.search_width) - 20.0);
+                    ui.set_width(width);
                     if hits.is_empty() {
                         ui.label(strings.text("ui.search.no-matches"));
                     }

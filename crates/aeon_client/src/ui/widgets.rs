@@ -25,8 +25,28 @@ pub fn kind_label_key(kind: BodyKind) -> &'static str {
 ///
 /// Takes `impl Into<WidgetText>` rather than `&str` so a caller can hand it
 /// a coloured [`egui::RichText`] — a house link carries its own colour.
+const LINK_RESPONSE: &str = "production-linked-subject";
+
+#[cfg(test)]
+pub(crate) fn recorded_link(ctx: &egui::Context) -> Option<egui::Rect> {
+    ctx.data(|data| data.get_temp(egui::Id::new(LINK_RESPONSE)))
+}
+
 pub fn linked(ui: &mut egui::Ui, label: impl Into<egui::WidgetText>, summary: &str) -> bool {
-    ui.link(label).on_hover_text(summary).clicked()
+    let response = ui
+        .add(
+            egui::Button::new(label)
+                .wrap()
+                .frame(false)
+                .min_size(egui::vec2(24.0, 24.0)),
+        )
+        .on_hover_text(summary);
+    #[cfg(test)]
+    crate::ui::rendered_state::record_response(ui, "subject", &response);
+    ui.ctx().data_mut(|data| {
+        data.insert_temp(egui::Id::new(LINK_RESPONSE), response.rect);
+    });
+    response.clicked()
 }
 
 /// Renders the W/M/S/I resource readout, each value with its own tooltip.

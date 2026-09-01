@@ -193,12 +193,14 @@ identity and map context.
   shadows, scroll behaviour, panel dimensions, and tooltip width.
 
 These are implementation facts, not proof of compliance with any accessibility
-standard. The repository does not currently evidence a contrast audit,
-colour-vision-safe palette validation, scalable UI setting, reduced-motion
-mode, keyboard-complete navigation, remappable controls, controller support,
-screen-reader semantics, caption settings, or an accessibility test plan.
-The build ships one interface face; font family is deliberately not a theme
-token. No minimum resolution or maximum text expansion has been accepted.
+standard. [ai] The repository now provides an automated resolved-colour contrast
+audit and the native/browser rendered matrix below. It still does not evidence
+colour-vision-safe palette validation, reduced-motion mode, keyboard-complete
+navigation, remappable controls, controller support, screen-reader semantics,
+or caption settings. The build ships one interface face; font family is
+deliberately not a theme token. [ai] The accepted minimum rendered matrix is
+1366×768 at 100% and 150%; no claim is made for smaller viewports or arbitrary
+maximum text expansion.
 
 ### Interface scale and density
 
@@ -215,28 +217,78 @@ desktop build under the operating system's per-user application configuration
 directory, and the stable `last-aeon.ui.preferences` local-storage entry for
 the web build. Missing, corrupt, inaccessible, or unsupported future documents
 restore the 100%/Compact defaults. Shared adapter-contract tests cover browser
-storage without claiming a browser-runtime test harness the repository does not
-have; the Trunk build provides wasm compile coverage. These values are
+storage. [ai] The responsive production-shell harness below also executes in an
+actual headless Chrome runtime, while Trunk separately provides the shipping wasm
+build. These values are
 presentation state only; an isolation test proves changing and persisting them
 does not alter campaign snapshots, command logs, or state hashes.
 
-### Required decision work
+### Responsive campaign shell
 
-**Proposal.** Before an accessibility target is promised, decide and record:
+**Implemented design [ai].** The complete Situation path—open the Situation,
+follow its subject links, compare the authoritative forecast, issue the logged
+command, use the persistent time controls, and recover the outcome from the
+resolution card or exact Situation history—reflows at 1920×1080 at 100%, 150%,
+and 200%, and at 1366×768 at 100% and 150%.
+
+The shell plans in logical egui points, which makes native and web choose the
+same mode after interface scale is applied. Spacious mode uses one top-bar band
+and side-by-side bottom panels. Below 1400 points wide or 640 points tall,
+Compact mode uses two independently wrapping top-bar bands and exposes one
+bottom panel at a time behind persistent tabs. Edge docks and the bottom dock
+are clamped together, preserving at least 280 points of central map while
+giving ordinary prose a vertical-only scrolling measure. Search, attention,
+and assignment overlays are constrained to the current viewport. Downstream
+geometry uses the top panel's measured rendered height, so expanded translations
+or names may add rows without putting overlays or docks underneath them.
+
+Resolved normal/widget and semantic text colours are checked at 4.5:1 against
+the composited panel and popup-window grounds. Resolved inactive, hovered,
+active, open, and selected control boundaries reach 3:1.
+Unavailable Situation commands retain adjacent textual reasons; forecast
+blockers and incomplete slots remain written beside the disabled Confirm
+control, so disabled meaning is not encoded by fading alone.
+
+A deterministic embedded-campaign fixture renders every accepted
+resolution/scale tuple through the complete production shell: top bar, search,
+attention overlay, side and bottom docks, compact tabs, Situation panel,
+assignment popup, and forecast renderer. In each tuple one coherent flow follows
+the real subject and time controls, hovers the Situation action's real forecast,
+opens the shared popup from that action, verifies its painted forecast galley,
+and clicks its real Confirm. The resulting `StartSituationAssignment` is flushed
+through the client command seam and advances only through the production
+elapsed-time seam until it naturally produces its resolution and tagged history.
+The harness preserves each raw response and active clip separately, requiring
+the full raw rectangle to fit both clip and viewport and reach 24 points for
+dock headers, compact tabs where present, search, attention, time, subject,
+action, and Confirm. Forecast, resolution, and history galleys must retain a
+materially visible area inside both their paint clip and viewport; production
+scroll geometry proves horizontal movement is not required and the accepted
+matrix exercises vertical overflow. The same test
+executes natively and under `wasm-bindgen-test` in
+headless Chrome; `tools/test-rendered-state-browser.ps1` is the reproducible
+browser entry point. [ai] This is rendered widget/state evidence, not a
+pixel-perfect screenshot baseline.
+
+### Remaining required decision work
+
+**Proposal.** [ai] The implemented matrix, interface scales, response-target
+floor, scroll policy, and automated contrast thresholds are accepted above.
+Before a broader accessibility-standard claim is promised, decide and record:
 
 - supported input methods and whether every campaign action must be reachable
   without a pointer;
-- minimum contrast and non-colour redundancy requirements for UI and maps;
-- minimum viewport, wrapping, responsive reflow, and dock overflow behaviour at
-  the accepted interface scales;
+- colour-vision-safe map palettes and any additional non-colour redundancy;
+- viewport, aspect-ratio, and text-expansion support beyond the accepted matrix;
 - motion, flashing, camera, and selection-pulse limits;
 - assistive-technology expectations for native and browser builds;
 - caption/subtitle requirements if sound is introduced;
-- the test matrix and which checks are automated, manual, or user-tested.
+- which additional checks require manual review or user testing beyond the
+  automated native/Chrome rendered-state matrix.
 
-Until those decisions are accepted, new presentation should at least preserve
-the existing pattern of text explanation alongside semantic colour and should
-not encode a critical fact by colour or hover alone.
+[ai] Until those remaining decisions are accepted, new presentation must retain
+the implemented text explanation alongside semantic colour and must not encode a
+critical fact by colour or hover alone.
 
 ## Localisation and text
 
@@ -505,6 +557,9 @@ The current presentation contract is accepted when:
   and strategic scene.
 - `crates/aeon_client/src/ui/theme.rs`, `view.rs`, `dock.rs`, and
   `situations_panel.rs` contain unit tests for key presentation invariants.
+- [ai] `crates/aeon_client/src/ui/rendered_state.rs` and
+  `tools/test-rendered-state-browser.ps1` execute the same complete production
+  shell matrix natively and in headless Chrome.
 - `crates/aeon_client/tests/strings.rs` checks UI/simulation string use,
   placeholders, and orphan rows against `assets/text/strings.csv`.
 - `crates/aeon_client/index.html` and `Trunk.toml` evidence browser loading and
@@ -517,10 +572,11 @@ The current presentation contract is accepted when:
 
 - Which accessibility standard and target platforms define release acceptance?
 - Which pointer, keyboard, controller, and touch interactions must be complete?
-- What resolutions, aspect ratios, UI scales, and text expansion must docks and
-  overlays support?
-- Should panel layout and presentation preferences persist between sessions,
-  independently of campaign saves?
+- [ai] Which additional resolutions, aspect ratios, UI scales, and maximum text
+  expansion should docks and overlays support beyond the accepted matrix?
+- [ai] Should panel layout, or future presentation preferences beyond the
+  already-persisted scale and density settings, persist independently of
+  campaign saves?
 - Does the web release need a browser-backed Continue path, and if so what are
   its compatibility and deletion rules?
 - What is the final visual brief beyond the current functional dark strategic

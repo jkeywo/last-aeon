@@ -326,12 +326,6 @@ pub struct Components {
     pub search_width: u16,
     /// How far they scroll before clipping.
     pub search_max_height: u16,
-    /// How far below the top bar they sit.
-    pub search_offset_y: u8,
-    /// How far in from the left the situation strip sits.
-    pub strip_offset_x: u16,
-    /// How far down from the top.
-    pub strip_offset_y: u8,
     /// The log's free-text filter box.
     pub log_filter_width: u16,
     /// How many log entries are kept on screen.
@@ -734,6 +728,73 @@ pub fn apply_theme(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn relative_luminance(colour: Rgba) -> f32 {
+        fn channel(value: u8) -> f32 {
+            let value = f32::from(value) / 255.0;
+            if value <= 0.04045 {
+                value / 12.92
+            } else {
+                ((value + 0.055) / 1.055).powf(2.4)
+            }
+        }
+        0.2126 * channel(colour.r) + 0.7152 * channel(colour.g) + 0.0722 * channel(colour.b)
+    }
+
+    fn contrast(a: Rgba, b: Rgba) -> f32 {
+        let (light, dark) = if relative_luminance(a) >= relative_luminance(b) {
+            (relative_luminance(a), relative_luminance(b))
+        } else {
+            (relative_luminance(b), relative_luminance(a))
+        };
+        (light + 0.05) / (dark + 0.05)
+    }
+
+    #[test]
+    fn text_and_meaningful_control_boundaries_meet_contrast_floor() {
+        let theme = UiTheme::embedded();
+        for foreground in [
+            theme.palette.text,
+            theme.palette.text_weak,
+            theme.palette.text_strong,
+            theme.palette.link,
+            theme.semantics.valid,
+            theme.semantics.already_doing,
+            theme.semantics.ineligible_fixable,
+            theme.semantics.ineligible_structural,
+            theme.semantics.not_interactable,
+            theme.semantics.urgent,
+            theme.semantics.notable,
+            theme.semantics.calm,
+        ] {
+            assert!(
+                contrast(foreground, theme.palette.panel) >= 4.5,
+                "standard/semantic text {foreground:?} must reach 4.5:1 on panels"
+            );
+        }
+        for boundary in [
+            theme.palette.border,
+            theme.palette.border_strong,
+            theme.palette.selection,
+        ] {
+            assert!(
+                contrast(boundary, theme.palette.panel) >= 3.0,
+                "control/focus boundary {boundary:?} must reach 3:1 on panels"
+            );
+        }
+        assert!(
+            contrast(theme.palette.border_strong, theme.palette.hovered) >= 3.0,
+            "the active focus/hover boundary must remain visible beside its control"
+        );
+    }
+
+    #[test]
+    fn authored_control_targets_reach_the_layout_floor() {
+        let theme = UiTheme::embedded();
+        assert!(theme.spacing.row_height >= 24);
+        assert!(theme.components.icon_button >= 24);
+        assert!(theme.spacing.scroll_handle_min >= 24);
+    }
 
     #[test]
     fn the_shipped_theme_parses() {

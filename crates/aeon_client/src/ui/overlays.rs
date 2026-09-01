@@ -12,11 +12,13 @@ use bevy_egui::egui;
 
 use crate::map_modes::{AttentionTarget, MapReadout};
 use crate::ui::dock::{DockSide, DockState, PanelKind};
+use crate::ui::layout::LayoutPlan;
 use crate::ui::situations_panel::SituationUiState;
 use crate::ui::theme::UiTheme;
 use crate::view::{MapView, Selection, ViewState};
 
 /// Draws the attention strip over the map.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_overlays(
     ctx: &egui::Context,
     theme: &UiTheme,
@@ -25,18 +27,25 @@ pub fn draw_overlays(
     view: &mut ViewState,
     dock: &mut DockState,
     situations: &mut SituationUiState,
+    layout: LayoutPlan,
 ) {
     // ------------------------------------------------------------------
     // Attention strip: what needs attention, and a way straight to it.
     // ------------------------------------------------------------------
     if matches!(view.view, MapView::Body(_)) && !readout.attention.is_empty() {
+        let viewport = ctx.viewport_rect();
         egui::Area::new("attention-strip".into())
             .fixed_pos(egui::pos2(
-                f32::from(theme.components.strip_offset_x),
-                f32::from(theme.components.strip_offset_y),
+                viewport.left() + layout.left_width + 8.0,
+                layout.overlay_top,
             ))
+            .constrain_to(viewport)
             .show(ctx, |ui| {
                 egui::Frame::popup(ui.style()).show(ui, |ui| {
+                    ui.set_max_width(
+                        (viewport.width() - layout.left_width - layout.right_width - 16.0)
+                            .max(180.0),
+                    );
                     ui.horizontal_wrapped(|ui| {
                         ui.strong(strings.text("ui.situation.heading"))
                             .on_hover_text(strings.text("ui.situation.heading.hover"));
@@ -46,13 +55,17 @@ pub fn draw_overlays(
                             } else {
                                 egui::Color32::from(theme.semantics.notable)
                             };
-                            if ui
-                                .add(egui::Button::new(
-                                    egui::RichText::new(&item.headline).color(colour),
-                                ))
-                                .on_hover_text(&item.detail)
-                                .clicked()
-                            {
+                            let response = ui
+                                .add(
+                                    egui::Button::new(
+                                        egui::RichText::new(&item.headline).color(colour),
+                                    )
+                                    .min_size(egui::vec2(24.0, 24.0)),
+                                )
+                                .on_hover_text(&item.detail);
+                            #[cfg(test)]
+                            crate::ui::rendered_state::record_response(ui, "attention", &response);
+                            if response.clicked() {
                                 match &item.target {
                                     AttentionTarget::Province { province, body } => {
                                         view.view = MapView::Body(*body);

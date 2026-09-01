@@ -28,5 +28,8 @@ serde_json = { workspace = true }
 getrandom = { version = "0.3", features = ["wasm_js"] }
 web-sys = { version = "0.3", features = ["Storage", "Window"] }
 
+[target.'cfg(target_arch = "wasm32")'.dev-dependencies]
+wasm-bindgen-test = "=0.3.76"
+
 [lints]
 workspace = true

@@ -14,10 +14,30 @@ use crate::preferences::SettingsUi;
 use crate::sim_driver::{SPEED_STEPS, TimeControl};
 use crate::ui::dock::{DockSide, DockState, PanelKind};
 use crate::ui::icons::{draw_mode_bar, draw_panel_icon};
+use crate::ui::layout::{LayoutMode, LayoutPlan, draw_top_band};
 use crate::ui::lookup::Lookup;
 use crate::ui::theme::UiTheme;
 use crate::ui::widgets::{draw_identity, resource_readout};
 use crate::view::{MapMode, MapView, SearchState, ViewState};
+
+const TIME_CONTROL_RESPONSE: &str = "production-top-time-control";
+
+#[cfg(test)]
+pub(crate) fn recorded_time_control(ctx: &egui::Context) -> Option<egui::Rect> {
+    ctx.data(|data| data.get_temp(egui::Id::new(TIME_CONTROL_RESPONSE)))
+}
+
+pub(crate) fn draw_pause_control(ui: &mut egui::Ui, label: &str, control: &mut TimeControl) {
+    let response = ui.add(egui::Button::new(label).min_size(egui::vec2(24.0, 24.0)));
+    #[cfg(test)]
+    crate::ui::rendered_state::record_response(ui, "time", &response);
+    ui.ctx().data_mut(|data| {
+        data.insert_temp(egui::Id::new(TIME_CONTROL_RESPONSE), response.rect);
+    });
+    if response.clicked() {
+        control.paused = !control.paused;
+    }
+}
 
 /// Draws the top bar into the shell's viewport.
 #[allow(clippy::too_many_arguments)]
@@ -38,15 +58,36 @@ pub fn draw_top_bar(
     dock: &mut DockState,
     search: &mut SearchState,
     settings: &mut SettingsUi,
-) {
-    egui::Panel::top("top-bar").show(viewport, |ui| {
-        ui.horizontal(|ui| {
+    layout: LayoutPlan,
+) -> f32 {
+    let shown = egui::Panel::top("top-bar").show(viewport, |ui| {
+        if layout.mode == LayoutMode::Compact {
+            draw_compact_top_bar(
+                ui,
+                lookup,
+                theme,
+                strings,
+                meta,
+                date,
+                over,
+                player_org,
+                player_head,
+                control,
+                view,
+                mode,
+                dock,
+                search,
+                settings,
+            );
+            return;
+        }
+        ui.horizontal_wrapped(|ui| {
             // Who you are, first and always.
             if let Some(hit) = draw_identity(ui, theme, lookup, player_org, player_head) {
                 view.selected = Some(hit);
             }
             ui.separator();
-            ui.strong(&meta.name);
+            ui.add(egui::Label::new(egui::RichText::new(&meta.name).strong()).wrap());
             ui.separator();
             ui.monospace(date.to_string());
             ui.separator();
@@ -61,9 +102,7 @@ pub fn draw_top_bar(
             } else {
                 "ui.top-bar.pause"
             });
-            if ui.button(pause_label).clicked() {
-                control.paused = !control.paused;
-            }
+            draw_pause_control(ui, pause_label, control);
             for (index, speed) in SPEED_STEPS.iter().enumerate() {
                 let active = (control.days_per_second - speed).abs() < f32::EPSILON;
                 if ui
@@ -86,7 +125,7 @@ pub fn draw_top_bar(
                     {
                         view.view = MapView::System;
                     }
-                    ui.label(lookup.body_name(id));
+                    ui.add(egui::Label::new(lookup.body_name(id)).wrap());
                     ui.separator();
                     if let Some(picked) = draw_mode_bar(ui, theme, strings, *mode) {
                         *mode = picked;
@@ -118,16 +157,121 @@ pub fn draw_top_bar(
                 if ui.button(strings.text("ui.preferences.open")).clicked() {
                     settings.open = !settings.open;
                 }
-                ui.add(
+                let _search_response = ui.add_sized(
+                    [150.0, 24.0],
                     egui::TextEdit::singleline(&mut search.query)
                         .hint_text(strings.text("ui.top-bar.search-hint"))
                         .desired_width(150.0),
                 );
+                #[cfg(test)]
+                crate::ui::rendered_state::record_response(ui, "search", &_search_response);
                 ui.label("\u{1f50d}");
                 ui.separator();
                 draw_panel_toggles(ui, theme, strings, dock);
             });
         });
+    });
+    shown.response.rect.height()
+}
+
+/// Compact mode keeps every verb, but separates identity/time from navigation
+/// and tools. Each band wraps independently, so long campaign or body names
+/// grow the bar vertically rather than clipping a command off-screen.
+#[allow(clippy::too_many_arguments)]
+fn draw_compact_top_bar(
+    ui: &mut egui::Ui,
+    lookup: &Lookup,
+    theme: &UiTheme,
+    strings: &TextDb,
+    meta: &CampaignMeta,
+    date: GameDate,
+    over: Option<&CampaignOver>,
+    player_org: Option<OrgId>,
+    player_head: Option<CharacterId>,
+    control: &mut TimeControl,
+    view: &mut ViewState,
+    mode: &mut MapMode,
+    dock: &mut DockState,
+    search: &mut SearchState,
+    settings: &mut SettingsUi,
+) {
+    draw_top_band(ui, |ui| {
+        if let Some(hit) = draw_identity(ui, theme, lookup, player_org, player_head) {
+            view.selected = Some(hit);
+        }
+        ui.separator();
+        ui.add(egui::Label::new(egui::RichText::new(&meta.name).strong()).wrap());
+        ui.separator();
+        ui.monospace(date.to_string());
+        if let Some((_, Some(resources))) = player_org.and_then(|org| lookup.orgs.get(&org)) {
+            ui.separator();
+            resource_readout(ui, strings, resources);
+        }
+        if let Some(over) = over {
+            ui.separator();
+            ui.colored_label(
+                egui::Color32::from(theme.semantics.urgent),
+                strings.format("ui.top-bar.campaign-over", &[("reason", &over.reason)]),
+            );
+        }
+    });
+    ui.separator();
+    draw_top_band(ui, |ui| {
+        let pause_label = strings.text(if control.paused {
+            "ui.top-bar.resume"
+        } else {
+            "ui.top-bar.pause"
+        });
+        draw_pause_control(ui, pause_label, control);
+        for (index, speed) in SPEED_STEPS.iter().enumerate() {
+            let active = (control.days_per_second - speed).abs() < f32::EPSILON;
+            if ui
+                .selectable_label(active, format!("{}x", index + 1))
+                .clicked()
+            {
+                control.days_per_second = *speed;
+            }
+        }
+        ui.separator();
+        match view.view {
+            MapView::System => {
+                ui.label(strings.text("ui.top-bar.local-system"));
+            }
+            MapView::Body(id) => {
+                if ui
+                    .button(strings.text("ui.top-bar.back-to-system"))
+                    .clicked()
+                {
+                    view.view = MapView::System;
+                }
+                ui.add(egui::Label::new(lookup.body_name(id)).wrap());
+                if let Some(picked) = draw_mode_bar(ui, theme, strings, *mode) {
+                    *mode = picked;
+                }
+                let other = view.projection.toggled();
+                if ui
+                    .button(strings.text(other.label_key()))
+                    .on_hover_text(strings.text("ui.projection.hover"))
+                    .clicked()
+                {
+                    view.projection = other;
+                }
+            }
+        }
+        ui.separator();
+        draw_panel_toggles(ui, theme, strings, dock);
+        ui.label("\u{1f50d}");
+        let _search_response = ui.add_sized(
+            [110.0, 24.0],
+            egui::TextEdit::singleline(&mut search.query)
+                .hint_text(strings.text("ui.top-bar.search-hint"))
+                .desired_width(110.0),
+        );
+        #[cfg(test)]
+        crate::ui::rendered_state::record_response(ui, "search", &_search_response);
+        if ui.button(strings.text("ui.preferences.open")).clicked() {
+            settings.open = !settings.open;
+        }
     });
 }
 

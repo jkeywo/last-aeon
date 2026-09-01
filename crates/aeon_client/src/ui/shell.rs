@@ -17,6 +17,7 @@ use crate::assignment_ui::UiCommandQueue;
 use crate::sim_driver::TimeControl;
 use crate::ui::data::{AssignmentUi, MapUi, PanelData};
 use crate::ui::dock::{DockSide, PanelKind};
+use crate::ui::layout::{BottomPresentation, LayoutPlan};
 use crate::ui::lookup::Lookup;
 use crate::ui::overlays::draw_overlays;
 use crate::ui::panel::{HeaderAction, PanelCtx, PanelOut, draw_header, draw_panel_body};
@@ -80,8 +81,9 @@ pub fn draw_panels(
             .layer_id(egui::LayerId::background())
             .max_rect(ctx.viewport_rect()),
     );
+    let mut layout = LayoutPlan::new(ctx.viewport_rect().size(), &dock);
 
-    draw_top_bar(
+    let measured_top = draw_top_bar(
         &mut viewport,
         &lookup,
         &content.0,
@@ -98,11 +100,13 @@ pub fn draw_panels(
         &mut dock,
         &mut search,
         &mut settings,
+        layout,
     );
+    layout = layout.with_measured_top(measured_top);
 
     crate::preferences::draw_campaign_settings(ctx, strings, &mut preferences, &mut settings);
 
-    draw_search_results(ctx, &lookup, &data, &mut view, &mut search);
+    draw_search_results(ctx, &lookup, &data, &mut view, &mut search, layout);
     draw_overlays(
         ctx,
         theme,
@@ -111,6 +115,7 @@ pub fn draw_panels(
         &mut view,
         &mut dock,
         &mut situation_ui,
+        layout,
     );
 
     let panel_ctx = PanelCtx {
@@ -148,9 +153,22 @@ pub fn draw_panels(
         if kinds.is_empty() {
             continue;
         }
-        let size = dock.size_of(*side);
-        let draw = |ui: &mut egui::Ui, moves: &mut Vec<_>, out: &mut PanelOut| {
-            draw_side(ui, *side, &kinds, &panel_ctx, out, moves);
+        let size = match side {
+            DockSide::Bottom => layout.bottom_height,
+            DockSide::Left | DockSide::Right => layout.side_width(*side),
+        };
+        let mut bottom_selected = dock.bottom_selected();
+        let mut draw = |ui: &mut egui::Ui, moves: &mut Vec<_>, out: &mut PanelOut| {
+            draw_side(
+                ui,
+                *side,
+                &kinds,
+                &panel_ctx,
+                out,
+                moves,
+                layout.bottom_presentation,
+                &mut bottom_selected,
+            );
         };
         match side {
             DockSide::Bottom => {
@@ -160,14 +178,17 @@ pub fn draw_panels(
             }
             DockSide::Left => {
                 egui::Panel::left("dock-left")
-                    .default_size(size)
+                    .exact_size(size)
                     .show(&mut viewport, |ui| draw(ui, &mut moves, &mut out));
             }
             DockSide::Right => {
                 egui::Panel::right("dock-right")
-                    .default_size(size)
+                    .exact_size(size)
                     .show(&mut viewport, |ui| draw(ui, &mut moves, &mut out));
             }
+        }
+        if let Some(selected) = bottom_selected {
+            dock.select_bottom(selected);
         }
     }
 
@@ -184,6 +205,7 @@ pub fn draw_panels(
 /// The bottom lays its panels out side by side and the edges stack theirs,
 /// because that is the shape each has room for — a wide short strip suits
 /// a list of messages, a tall narrow one suits an inspector.
+#[allow(clippy::too_many_arguments)]
 fn draw_side(
     ui: &mut egui::Ui,
     side: DockSide,
@@ -191,6 +213,8 @@ fn draw_side(
     ctx: &PanelCtx,
     out: &mut PanelOut,
     moves: &mut Vec<(PanelKind, Option<DockSide>)>,
+    bottom_presentation: BottomPresentation,
+    bottom_selected: &mut Option<PanelKind>,
 ) {
     let mut one = |ui: &mut egui::Ui, kind: PanelKind, out: &mut PanelOut| {
         if let Some(action) = draw_header(ui, ctx.strings, kind, side) {
@@ -204,6 +228,26 @@ fn draw_side(
     };
 
     match side {
+        DockSide::Bottom if bottom_presentation == BottomPresentation::Tabs => {
+            ui.horizontal_wrapped(|ui| {
+                ui.spacing_mut().interact_size.y = ui.spacing().interact_size.y.max(24.0);
+                for kind in kinds {
+                    let response = ui.selectable_label(
+                        *bottom_selected == Some(*kind),
+                        ctx.strings.text(kind.title_key()),
+                    );
+                    #[cfg(test)]
+                    crate::ui::rendered_state::record_response(ui, "compact-tab", &response);
+                    if response.clicked() {
+                        *bottom_selected = Some(*kind);
+                    }
+                }
+            });
+            ui.separator();
+            if let Some(kind) = (*bottom_selected).or_else(|| kinds.first().copied()) {
+                one(ui, kind, out);
+            }
+        }
         DockSide::Bottom => {
             ui.columns(kinds.len(), |columns| {
                 for (index, kind) in kinds.iter().enumerate() {

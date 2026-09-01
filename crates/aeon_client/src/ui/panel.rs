@@ -23,6 +23,7 @@ use crate::ui::data::PanelData;
 use crate::ui::dock::{DockSide, PanelKind};
 use crate::ui::idle_panel::draw_idle_panel;
 use crate::ui::inspector::draw_inspector;
+use crate::ui::layout::draw_vertical_scroll;
 use crate::ui::ledger_panel::draw_ledger_panel;
 use crate::ui::listing::draw_listing;
 use crate::ui::log_panel::draw_log_panel;
@@ -102,36 +103,39 @@ pub fn draw_header(
     side: DockSide,
 ) -> Option<HeaderAction> {
     let mut action = None;
-    ui.horizontal(|ui| {
+    ui.horizontal_wrapped(|ui| {
         ui.strong(strings.text(kind.title_key()))
             .on_hover_text(strings.text(kind.description_key()));
-        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-            if ui
-                .small_button("✕")
-                .on_hover_text(strings.text("ui.panel.close"))
-                .clicked()
-            {
-                action = Some(HeaderAction::Close);
+        for target in [DockSide::Left, DockSide::Bottom, DockSide::Right] {
+            let glyph = match target {
+                DockSide::Left => "▏",
+                DockSide::Right => "▕",
+                DockSide::Bottom => "▁",
+            };
+            let here = target == side;
+            let response = ui
+                .add_enabled(
+                    !here,
+                    egui::Button::new(glyph).min_size(egui::vec2(24.0, 24.0)),
+                )
+                .on_hover_text(strings.format(
+                    "ui.panel.move-to",
+                    &[("side", strings.text(target.label_key()))],
+                ));
+            #[cfg(test)]
+            crate::ui::rendered_state::record_response(ui, "dock-header", &response);
+            if response.clicked() {
+                action = Some(HeaderAction::Dock(target));
             }
-            for target in [DockSide::Right, DockSide::Bottom, DockSide::Left] {
-                let glyph = match target {
-                    DockSide::Left => "▏",
-                    DockSide::Right => "▕",
-                    DockSide::Bottom => "▁",
-                };
-                let here = target == side;
-                if ui
-                    .add_enabled(!here, egui::Button::new(glyph).small())
-                    .on_hover_text(strings.format(
-                        "ui.panel.move-to",
-                        &[("side", strings.text(target.label_key()))],
-                    ))
-                    .clicked()
-                {
-                    action = Some(HeaderAction::Dock(target));
-                }
-            }
-        });
+        }
+        let close = ui
+            .add(egui::Button::new("✕").min_size(egui::vec2(24.0, 24.0)))
+            .on_hover_text(strings.text("ui.panel.close"));
+        #[cfg(test)]
+        crate::ui::rendered_state::record_response(ui, "dock-header", &close);
+        if close.clicked() {
+            action = Some(HeaderAction::Close);
+        }
     });
     action
 }
@@ -142,11 +146,7 @@ pub fn draw_panel_body(ui: &mut egui::Ui, kind: PanelKind, ctx: &PanelCtx, out: 
         PanelKind::Inspector => {
             // A forecast and its candidate list can outgrow the panel, so
             // the inspector scrolls independently of its side.
-            egui::ScrollArea::vertical()
-                .id_salt("inspector-scroll")
-                .show(ui, |ui| {
-                    draw_inspector(ui, ctx, out);
-                });
+            draw_vertical_scroll(ui, "inspector-scroll", |ui| draw_inspector(ui, ctx, out));
         }
         PanelKind::Situations => draw_situations_panel(ui, ctx, out),
         PanelKind::Listing => draw_listing(ui, ctx, out),

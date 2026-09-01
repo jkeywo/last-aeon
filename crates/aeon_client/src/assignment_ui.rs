@@ -37,12 +37,23 @@ pub enum ProvinceSlot {
     Destination,
 }
 
+/// Exact authored Situation action retained while its ordinary assignment is
+/// composed in the shared assignment popup.
+#[derive(Clone, Debug)]
+pub struct SituationAssignmentContext {
+    pub situation: aeon_sim::situations::SituationInstanceKey,
+    pub action: ContentKey,
+    pub war: Option<aeon_sim::WarId>,
+}
+
 /// The inspector's in-progress assignment choice, expanded by a context button
 /// and filled in by inline pickers before it is confirmed.
 #[derive(Resource, Default)]
 pub struct AssignmentForm {
     /// The assignment whose inline picker is currently expanded, if any.
     pub assignment: Option<ContentKey>,
+    /// Present when the assignment was opened from a Situation action.
+    pub situation: Option<SituationAssignmentContext>,
     /// Chosen leader.
     pub leader: Option<CharacterId>,
     /// Chosen target.
@@ -71,6 +82,7 @@ impl AssignmentForm {
     /// Clears the in-progress choice after a command is queued.
     pub fn reset(&mut self) {
         self.assignment = None;
+        self.situation = None;
         self.leader = None;
         self.target = None;
         self.army = None;

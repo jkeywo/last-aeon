@@ -80,11 +80,18 @@ pub fn draw_assignment_popup(
     };
 
     let mut open = true;
+    let viewport = ctx.viewport_rect();
+    let popup_width =
+        f32::from(theme.components.picker_width).min((viewport.width() - 24.0).max(240.0));
     egui::Window::new(&def.title)
         .id(egui::Id::new("assignment-popup"))
         .open(&mut open)
         .resizable(true)
-        .default_width(f32::from(theme.components.picker_width))
+        .default_width(popup_width)
+        .max_width(popup_width)
+        .max_height((viewport.height() - 24.0).max(240.0))
+        .constrain_to(viewport.shrink(8.0))
+        .scroll(true)
         .show(ctx, |ui| {
             ui.label(&def.summary);
             ui.separator();

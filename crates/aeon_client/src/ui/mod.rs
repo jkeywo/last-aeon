@@ -10,6 +10,7 @@ pub mod forecast;
 pub mod icons;
 pub mod idle_panel;
 pub mod inspector;
+pub mod layout;
 pub mod ledger_panel;
 pub mod listing;
 pub mod log_panel;
@@ -17,6 +18,8 @@ pub mod lookup;
 pub mod overlays;
 pub mod panel;
 pub mod picker;
+#[cfg(test)]
+pub mod rendered_state;
 pub mod search;
 pub mod shell;
 pub mod situations_panel;

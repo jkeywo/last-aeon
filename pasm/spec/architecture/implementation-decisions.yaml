@@ -2079,3 +2079,41 @@ entities:
         - egui-with-owned-design-tokens
         - shared-native-and-web-delivery
         - headless-authoritative-simulation
+
+  - decision: logical-point-responsive-campaign-shell
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Campaign Chrome Reflows from One Shared Logical-Point Plan
+      summary: >-
+        The client computes one deterministic layout plan from the egui
+        viewport after interface scale is applied. Spacious mode keeps a
+        one-band top bar and columnar bottom dock. Below 1400 logical points
+        wide or 640 points tall, Compact mode uses two wrapping top-bar bands
+        and persistent tabs for bottom panels. Side and bottom docks are
+        clamped as a group, ordinary panel content scrolls vertically, and
+        floating search, attention, and assignment surfaces are constrained to
+        the viewport. The presentation changes no commands or simulation data.
+        A deterministic embedded-campaign fixture renders the complete
+        production shell, including its docks, compact tabs, search and attention
+        overlays, Situation panel, assignment popup, and forecast renderer. It
+        uses one coherent per-tuple flow: real subject and time controls, the
+        Situation action and its hover forecast, that action's shared assignment
+        popup and Confirm, then the emitted StartSituationAssignment through the
+        client command and elapsed-time seams until it naturally projects its
+        resolution and tagged history. Passive production instrumentation checks
+        full raw 24-point responses contained by their active clips and viewport
+        for headers, compact tabs, search, attention, time, subject, action, and
+        Confirm, plus vertical-only scroll geometry, materially visible clipped
+        forecast/resolution/history galleys, and resolved panel/window contrast.
+        Native tests and wasm-bindgen-test in headless Chrome execute every
+        display-matrix tuple from the same harness.
+      rationale:
+        - "[ai] Planning in logical points makes interface scale part of the input and prevents native and web from drifting into target-specific responsive policies."
+        - "[ai] Tabs preserve every bottom panel and command at short heights without forcing ordinary text into simultaneous horizontal and vertical scrolling."
+        - "[ai] The shared production-path fixture plus headless Chrome execution gives repeatable native/web rendered-state evidence without pretending it is a pixel-perfect screenshot baseline."
+      references:
+        - egui-with-owned-design-tokens
+        - client-owned-versioned-interface-preferences
+        - shared-native-and-web-delivery
+        - headless-authoritative-simulation

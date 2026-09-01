@@ -25,6 +25,7 @@ use bevy::prelude::{Resource, World};
 use bevy_egui::egui;
 
 use crate::ui::forecast::draw_forecast_body;
+use crate::ui::layout::{draw_vertical_scroll, draw_wrapped_action, draw_wrapped_fact};
 use crate::ui::panel::{PanelCtx, PanelOut};
 use crate::view::{MapView, Selection};
 
@@ -32,10 +33,39 @@ use crate::view::{MapView, Selection};
 /// full log panel.
 const HISTORY_LIMIT: usize = 6;
 
+#[cfg(test)]
+const SITUATION_ACTION_RESPONSE: &str = "production-situation-action";
+#[cfg(test)]
+const SITUATION_FORECAST_VISIBLE: &str = "production-situation-forecast-visible";
+#[cfg(test)]
+const SITUATION_ACTION_HOVERED: &str = "production-situation-action-hovered";
+
+#[cfg(test)]
+pub(crate) fn recorded_situation_action(ctx: &egui::Context) -> Option<egui::Rect> {
+    ctx.data(|data| data.get_temp(egui::Id::new(SITUATION_ACTION_RESPONSE)))
+}
+
+#[cfg(test)]
+pub(crate) fn recorded_situation_forecast(ctx: &egui::Context) -> bool {
+    ctx.data(|data| {
+        data.get_temp(egui::Id::new(SITUATION_FORECAST_VISIBLE))
+            .unwrap_or(false)
+    })
+}
+
+#[cfg(test)]
+pub(crate) fn recorded_situation_action_hovered(ctx: &egui::Context) -> bool {
+    ctx.data(|data| {
+        data.get_temp(egui::Id::new(SITUATION_ACTION_HOVERED))
+            .unwrap_or(false)
+    })
+}
+
 /// One projected action paired with the simulation's current forecast.
 #[derive(Clone, Debug)]
 pub struct SituationActionView {
     pub action: SituationAction,
+    pub assignment: aeon_data::ContentKey,
     pub label: String,
     pub forecast: Option<AssignmentForecast>,
     pub unavailable: Option<String>,
@@ -150,6 +180,7 @@ pub fn refresh_situation_panel_view(world: &mut World) {
                 };
                 actions.push(SituationActionView {
                     action: action.clone(),
+                    assignment: authored.assignment.clone(),
                     label: authored.label.clone(),
                     forecast: view,
                     unavailable,
@@ -205,21 +236,19 @@ pub fn draw_situations_panel(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelO
         return;
     }
 
-    egui::ScrollArea::vertical()
-        .id_salt("situations-scroll")
-        .show(ui, |ui| {
-            for notice in &ctx.situations.resolutions {
-                if out.situation_ui.dismissed.contains(&notice.resolution.id) {
-                    continue;
-                }
-                draw_resolution(ui, notice, ctx, out);
-                ui.add_space(8.0);
+    draw_vertical_scroll(ui, "situations-scroll", |ui| {
+        for notice in &ctx.situations.resolutions {
+            if out.situation_ui.dismissed.contains(&notice.resolution.id) {
+                continue;
             }
-            for card in &ctx.situations.active {
-                draw_active_card(ui, card, ctx, out);
-                ui.add_space(8.0);
-            }
-        });
+            draw_resolution(ui, notice, ctx, out);
+            ui.add_space(8.0);
+        }
+        for card in &ctx.situations.active {
+            draw_active_card(ui, card, ctx, out);
+            ui.add_space(8.0);
+        }
+    });
 }
 
 fn draw_resolution(
@@ -255,9 +284,7 @@ fn draw_resolution(
         draw_links(ui, ctx, out, &notice.links, "ui.situations.links");
         draw_history(ui, ctx, &view.history);
         if ctx.player_org.is_some()
-            && ui
-                .button(ctx.strings.text("ui.situations.dismiss"))
-                .clicked()
+            && draw_wrapped_action(ui, true, ctx.strings.text("ui.situations.dismiss")).clicked()
         {
             out.situation_ui.dismissed.insert(notice.id);
             out.queue.0.push(PlayerCommand::DismissSituationResolution {
@@ -322,10 +349,7 @@ fn draw_active_card(
                     SituationMetricValue::Integer(value) => value.to_string(),
                     SituationMetricValue::Text(value) => value.clone(),
                 };
-                ui.horizontal(|ui| {
-                    ui.weak(ctx.strings.text(&metric.label_key));
-                    ui.label(value);
-                });
+                draw_wrapped_fact(ui, ctx.strings.text(&metric.label_key), &value);
             }
             draw_links(
                 ui,
@@ -399,7 +423,18 @@ fn draw_action(
 ) {
     let enabled = view.unavailable.is_none() && view.action.leader.is_some();
     let label = action_label(ctx, view);
-    let mut response = ui.add_enabled(enabled, egui::Button::new(label));
+    let mut response = draw_wrapped_action(ui, enabled, label);
+    #[cfg(test)]
+    if view.action.id.as_str() == "call-favour" {
+        crate::ui::rendered_state::record_response(ui, "situation-action", &response);
+    }
+    #[cfg(test)]
+    if view.action.id.as_str() == "call-favour" {
+        ui.ctx().data_mut(|data| {
+            data.insert_temp(egui::Id::new(SITUATION_ACTION_RESPONSE), response.rect);
+            data.insert_temp(egui::Id::new(SITUATION_ACTION_HOVERED), response.hovered());
+        });
+    }
     if let Some(reason) = &view.unavailable {
         response = response.on_disabled_hover_text(reason);
         ui.weak(
@@ -408,19 +443,28 @@ fn draw_action(
         );
     } else if let Some(forecast) = &view.forecast {
         response = response.on_hover_ui(|ui| {
+            #[cfg(test)]
+            if view.action.id.as_str() == "call-favour" {
+                ui.ctx().data_mut(|data| {
+                    data.insert_temp(egui::Id::new(SITUATION_FORECAST_VISIBLE), true);
+                });
+            }
             draw_forecast_body(ui, &ctx.data.theme, ctx.strings, forecast);
         });
     }
     if response.clicked()
         && let Some(leader) = view.action.leader
     {
-        out.queue.0.push(PlayerCommand::StartSituationAssignment {
+        out.form.reset();
+        out.form.assignment = Some(view.assignment.clone());
+        out.form.leader = Some(leader);
+        out.form.target = Some(view.action.target);
+        out.form.situation = Some(crate::assignment_ui::SituationAssignmentContext {
             situation: situation.clone(),
             action: view.action.id.clone(),
-            leader,
-            target: view.action.target,
             war: aeon_sim::situations::action_war(situation, view.action.target),
         });
+        out.popup.open();
     }
 }
 
@@ -471,7 +515,10 @@ fn draw_links(
         for link in links {
             let label = link_label(ctx, link);
             if let Some(selection) = selection_for(link) {
-                if ui.link(label).clicked() {
+                if ui
+                    .add(egui::Button::new(label).wrap().frame(false))
+                    .clicked()
+                {
                     if let Selection::Province(province) = selection
                         && let Some((record, ..)) = ctx
                             .data

@@ -15,6 +15,14 @@ use bevy_egui::egui;
 
 use crate::ui::theme::{TargetState, UiTheme};
 
+#[cfg(test)]
+const FORECAST_BODY_RECT: &str = "production-forecast-body-rect";
+
+#[cfg(test)]
+pub(crate) fn recorded_forecast_body(ctx: &egui::Context) -> Option<egui::Rect> {
+    ctx.data(|data| data.get_temp(egui::Id::new(FORECAST_BODY_RECT)))
+}
+
 /// A permille figure as a percentage with one decimal place.
 pub fn permille_text(value: Permille) -> String {
     format!("{}.{}%", value / 10, value % 10)
@@ -41,6 +49,8 @@ pub fn draw_forecast_body(
     strings: &TextDb,
     view: &AssignmentForecast,
 ) {
+    #[cfg(test)]
+    let before = ui.min_rect();
     // Timing.
     ui.horizontal_wrapped(|ui| {
         ui.label(strings.format(
@@ -106,14 +116,14 @@ pub fn draw_forecast_body(
     for result in &view.results {
         let label = strings.text(result_label_key(result.kind));
         let colour = theme.semantics.outcome(result.kind);
-        ui.horizontal(|ui| {
+        ui.horizontal_wrapped(|ui| {
             ui.colored_label(colour, permille_text(result.chance));
             let text = if result.popup {
                 strings.format("ui.forecast.result.asks-you", &[("result", label)])
             } else {
                 label.to_owned()
             };
-            let response = ui.label(text);
+            let response = ui.add(egui::Label::new(text).wrap());
             match &result.text {
                 Some(detail) => {
                     response.on_hover_text(detail);
@@ -174,4 +184,12 @@ pub fn draw_forecast_body(
             strings.format("ui.forecast.blocked", &[("reason", &reason.to_string())]),
         );
     }
+
+    #[cfg(test)]
+    ui.ctx().data_mut(|data| {
+        data.insert_temp(
+            egui::Id::new(FORECAST_BODY_RECT),
+            before.union(ui.min_rect()).intersect(ui.clip_rect()),
+        );
+    });
 }

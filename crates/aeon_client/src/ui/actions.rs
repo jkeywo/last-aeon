@@ -223,19 +223,44 @@ pub fn confirm_assignment(
         .map(|view| view.startable())
         .unwrap_or(false);
     let ready = form.leader.is_some() && form.target.is_some() && forecast_allows;
-    if ui
-        .add_enabled(ready, egui::Button::new(strings.text("ui.actions.confirm")))
-        .clicked()
+    let response = ui.add_enabled(
+        ready,
+        egui::Button::new(strings.text("ui.actions.confirm")).min_size(egui::vec2(24.0, 24.0)),
+    );
+    #[cfg(test)]
+    crate::ui::rendered_state::record_response(ui, "confirm", &response);
+    ui.ctx().data_mut(|data| {
+        data.insert_temp(
+            egui::Id::new("production-assignment-confirm"),
+            response.rect,
+        );
+    });
+    if response.clicked()
         && let (Some(leader), Some(target)) = (form.leader, form.target)
     {
-        queue.0.push(PlayerCommand::StartAssignment {
-            assignment: key.clone(),
-            leader,
-            target,
-        });
+        let command = match form.situation.clone() {
+            Some(context) => PlayerCommand::StartSituationAssignment {
+                situation: context.situation,
+                action: context.action,
+                leader,
+                target,
+                war: context.war,
+            },
+            None => PlayerCommand::StartAssignment {
+                assignment: key.clone(),
+                leader,
+                target,
+            },
+        };
+        queue.0.push(command);
         form.reset();
         form.notice = None;
     }
+}
+
+#[cfg(test)]
+pub(crate) fn recorded_confirm(ctx: &egui::Context) -> Option<egui::Rect> {
+    ctx.data(|data| data.get_temp(egui::Id::new("production-assignment-confirm")))
 }
 
 /// Whether the player picks who leads an action, or the action settles it.

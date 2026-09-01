@@ -109,25 +109,11 @@ pub fn begin_campaign(world: &mut World, spectator: bool) {
 /// Advances the simulation according to wall time, pause, and speed.
 pub fn drive_simulation(world: &mut World) {
     let delta = world.resource::<Time>().delta_secs();
-    let (paused, rate) = {
-        let control = world.resource::<TimeControl>();
-        (control.paused, control.days_per_second)
-    };
-    if paused {
-        return;
-    }
-    let mut days = 0u32;
-    {
-        let mut control = world.resource_mut::<TimeControl>();
-        control.carry += delta * rate;
-        while control.carry >= 1.0 {
-            control.carry -= 1.0;
-            days += 1;
-        }
-    }
-    for _ in 0..days {
-        advance_one_day(world);
-    }
+    let days = advance_for_elapsed(world, delta);
+
+    // Web has no filesystem autosave, but shares the exact advancement seam.
+    #[cfg(target_arch = "wasm32")]
+    let _ = days;
 
     // A campaign that runs writes itself down as it goes, so the title
     // screen's Continue always has something honest to offer.
@@ -143,6 +129,32 @@ pub fn drive_simulation(world: &mut World) {
             world.resource_mut::<TimeControl>().days_since_save = 0;
         }
     }
+}
+
+/// Advances the authoritative clock by the amount accumulated in one client
+/// frame. Production and rendered-state tests share this seam; only the outer
+/// driver performs platform persistence after the returned number of days.
+pub(crate) fn advance_for_elapsed(world: &mut World, delta: f32) -> u32 {
+    let (paused, rate) = {
+        let control = world.resource::<TimeControl>();
+        (control.paused, control.days_per_second)
+    };
+    if paused {
+        return 0;
+    }
+    let mut days = 0u32;
+    {
+        let mut control = world.resource_mut::<TimeControl>();
+        control.carry += delta * rate;
+        while control.carry >= 1.0 {
+            control.carry -= 1.0;
+            days += 1;
+        }
+    }
+    for _ in 0..days {
+        advance_one_day(world);
+    }
+    days
 }
 
 /// Writes the running campaign to the autosave file: the same
