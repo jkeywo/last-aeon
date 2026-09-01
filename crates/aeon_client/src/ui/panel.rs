@@ -21,6 +21,7 @@ use crate::ui::assignment_popup::AssignmentPopup;
 use crate::ui::assignments_panel::draw_assignments_panel;
 use crate::ui::data::PanelData;
 use crate::ui::dock::{DockSide, PanelKind};
+use crate::ui::explanations::ExplanationState;
 use crate::ui::idle_panel::draw_idle_panel;
 use crate::ui::inspector::draw_inspector;
 use crate::ui::layout::draw_vertical_scroll;
@@ -81,6 +82,8 @@ pub struct PanelOut<'a> {
     pub filter: &'a mut LogFilter,
     /// Focus and optimistic resolution dismissal state.
     pub situation_ui: &'a mut SituationUiState,
+    /// Pinned explanatory snapshot, wholly outside authoritative state.
+    pub explanations: &'a mut ExplanationState,
 }
 
 /// What a panel's header was asked to do.

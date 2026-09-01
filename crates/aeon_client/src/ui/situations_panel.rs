@@ -24,7 +24,8 @@ use aeon_sim::{
 use bevy::prelude::{Resource, World};
 use bevy_egui::egui;
 
-use crate::ui::forecast::draw_forecast_body;
+use crate::ui::explanations::{ExplanationTopic, explanation_trigger, preview_for_response};
+use crate::ui::forecast::forecast_summary;
 use crate::ui::layout::{draw_vertical_scroll, draw_wrapped_action, draw_wrapped_fact};
 use crate::ui::panel::{PanelCtx, PanelOut};
 use crate::view::{MapView, Selection};
@@ -59,6 +60,15 @@ pub(crate) fn recorded_situation_action_hovered(ctx: &egui::Context) -> bool {
         data.get_temp(egui::Id::new(SITUATION_ACTION_HOVERED))
             .unwrap_or(false)
     })
+}
+
+#[cfg(test)]
+pub(crate) fn clear_situation_frame_evidence(ctx: &egui::Context) {
+    ctx.data_mut(|data| {
+        data.remove::<egui::Rect>(egui::Id::new(SITUATION_ACTION_RESPONSE));
+        data.insert_temp(egui::Id::new(SITUATION_FORECAST_VISIBLE), false);
+        data.insert_temp(egui::Id::new(SITUATION_ACTION_HOVERED), false);
+    });
 }
 
 /// One projected action paired with the simulation's current forecast.
@@ -462,7 +472,7 @@ fn draw_action(
 ) -> egui::Response {
     let enabled = view.unavailable.is_none() && view.action.leader.is_some();
     let label = action_label(ctx, view);
-    let mut response = draw_wrapped_action(ui, enabled, label);
+    let mut response = draw_wrapped_action(ui, enabled, label.clone());
     let occurrence = format!("{situation:?}@{activated}");
     crate::ui::keyboard::situation_action(
         ui,
@@ -470,7 +480,7 @@ fn draw_action(
             "situation-action:{occurrence}:{}",
             view.action.id
         )),
-        occurrence,
+        occurrence.clone(),
         view.action.id.to_string(),
         crate::ui::keyboard::FocusBand::Right,
         &response,
@@ -493,17 +503,34 @@ fn draw_action(
             ctx.strings
                 .format("ui.situations.unavailable", &[("reason", reason)]),
         );
-    } else if let Some(forecast) = &view.forecast
-        && crate::ui::keyboard::disclosed(&response)
-    {
-        egui::Tooltip::for_widget(&response).show(|ui| {
-            #[cfg(test)]
-            if view.action.id.as_str() == "call-favour" {
-                ui.ctx().data_mut(|data| {
-                    data.insert_temp(egui::Id::new(SITUATION_FORECAST_VISIBLE), true);
-                });
-            }
-            draw_forecast_body(ui, &ctx.data.theme, ctx.strings, forecast);
+    } else if let Some(forecast) = &view.forecast {
+        let topic = ExplanationTopic {
+            title: label,
+            summary: forecast_summary(ctx.strings, forecast),
+            forecast: forecast.clone(),
+        };
+        response = preview_for_response(response, &ctx.data.theme, ctx.strings, &topic);
+        #[cfg(test)]
+        if view.action.id.as_str() == "call-favour" && (response.hovered() || response.has_focus())
+        {
+            ui.ctx().data_mut(|data| {
+                data.insert_temp(egui::Id::new(SITUATION_FORECAST_VISIBLE), true);
+            });
+        }
+        ui.horizontal_wrapped(|ui| {
+            ui.weak(forecast_summary(ctx.strings, forecast));
+            explanation_trigger(
+                ui,
+                &ctx.data.theme,
+                ctx.strings,
+                &topic,
+                out.explanations,
+                crate::ui::keyboard::LogicalFocus::new(format!(
+                    "situation-explanation:{occurrence}:{}",
+                    view.action.id
+                )),
+                crate::ui::keyboard::FocusBand::Right,
+            );
         });
     }
     if response.clicked()

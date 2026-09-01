@@ -29,6 +29,11 @@ use crate::ui::actions::recorded_confirm;
 #[cfg(test)]
 use crate::ui::assignment_popup::AssignmentPopup;
 #[cfg(test)]
+use crate::ui::explanations::{
+    ExplanationState, recorded_explanation_dismiss, recorded_explanation_preview,
+    recorded_explanation_trigger, recorded_explanation_trigger_id, recorded_pinned_explanation,
+};
+#[cfg(test)]
 use crate::ui::picker::PickerState;
 #[cfg(test)]
 use crate::ui::situations_panel::{
@@ -58,7 +63,7 @@ use aeon_sim::situations::{SituationSubject, active_cards};
 #[cfg(test)]
 use aeon_sim::{CampaignClock, LeaderAvailability, PoliticsIndex};
 #[cfg(test)]
-use bevy::prelude::{ButtonInput, IntoScheduleConfigs, KeyCode, Schedule};
+use bevy::prelude::{Assets, ButtonInput, Image, IntoScheduleConfigs, KeyCode, Schedule};
 #[cfg(test)]
 use bevy::window::PrimaryWindow;
 #[cfg(test)]
@@ -92,6 +97,9 @@ const SEMANTIC_RESPONSES: &str = "production-semantic-responses";
 const SCROLL_GEOMETRY: &str = "production-scroll-geometry";
 
 pub(crate) fn clear_frame_evidence(ctx: &egui::Context) {
+    crate::ui::explanations::clear_explanation_frame_evidence(ctx);
+    crate::ui::forecast::clear_forecast_frame_evidence(ctx);
+    crate::ui::situations_panel::clear_situation_frame_evidence(ctx);
     ctx.data_mut(|data| {
         data.insert_temp(
             egui::Id::new(SEMANTIC_RESPONSES),
@@ -296,8 +304,10 @@ mod tests {
             world.insert_resource(AssignmentPopup::default());
             world.insert_resource(LogFilter::default());
             world.insert_resource(PickerState::default());
-            world.insert_resource(ButtonInput::<KeyCode>::default());
             world.insert_resource(crate::ui::shell::LocalEscapeClaim::default());
+            world.insert_resource(ExplanationState::default());
+            world.insert_resource(ButtonInput::<KeyCode>::default());
+            world.insert_resource(Assets::<Image>::default());
             world.insert_resource(EguiUserTextures::default());
             world.spawn((EguiContext::default(), PrimaryEguiContext, PrimaryWindow));
             refresh_situation_panel_view(world);
@@ -347,15 +357,26 @@ mod tests {
                     }
                 )
             });
+            refresh_situation_panel_view(world);
             {
                 let mut keys = world.resource_mut::<ButtonInput<KeyCode>>();
-                keys.release(KeyCode::Escape);
-                keys.clear();
+                keys.reset_all();
                 if physical_escape {
                     keys.press(KeyCode::Escape);
                 }
             }
-            refresh_situation_panel_view(world);
+            // Exercise the same ordered production Escape route as main's
+            // Update schedule before rendering the egui pass.
+            let mut hotkey_schedule = Schedule::default();
+            hotkey_schedule.add_systems(
+                (
+                    crate::ui::explanations::claim_escape_for_pinned_help,
+                    crate::ui::shell::claim_local_escape,
+                    crate::selection::view_hotkeys,
+                )
+                    .chain(),
+            );
+            hotkey_schedule.run(world);
             let ctx = {
                 let mut query = world
                     .query_filtered::<&mut EguiContext, bevy::prelude::With<PrimaryEguiContext>>();
@@ -375,13 +396,15 @@ mod tests {
             let mut schedule = Schedule::default();
             schedule.add_systems(
                 (
-                    crate::ui::shell::claim_local_escape,
-                    crate::selection::view_hotkeys,
                     crate::ui::theme::apply_theme,
                     crate::forecast_view::refresh_forecast,
+                    crate::ui::explanations::consume_claimed_escape,
+                    crate::map_overlay::draw_map_overlay,
                     crate::ui::shell::draw_panels,
                     crate::ui::assignment_popup::draw_assignment_popup,
                     crate::ui::picker::draw_picker,
+                    crate::assignment_ui::draw_popups,
+                    crate::ui::explanations::draw_pinned_explanation,
                     crate::ui::keyboard::finish_frame,
                 )
                     .chain(),
@@ -583,6 +606,24 @@ mod tests {
         }
     }
 
+    fn visible_response_center(
+        ctx: &egui::Context,
+        viewport: egui::Rect,
+        role: &'static str,
+    ) -> egui::Pos2 {
+        semantic_responses(ctx)
+            .into_iter()
+            .rev()
+            .find_map(|response| {
+                if response.role != role {
+                    return None;
+                }
+                let visible = response.rect.intersect(response.clip).intersect(viewport);
+                (visible.width() >= 24.0 && visible.height() >= 24.0).then_some(visible.center())
+            })
+            .unwrap_or_else(|| panic!("visible raw production response for {role}"))
+    }
+
     fn assert_vertical_only_scroll(ctx: &egui::Context, spec: DisplaySpec) -> bool {
         let scrolls = scroll_geometry(ctx);
         assert!(!scrolls.is_empty(), "production scroll areas at {spec:?}");
@@ -773,6 +814,102 @@ mod tests {
             .filter(|entry| entry.enabled && entry.role == role)
             .map(|entry| entry.logical)
             .collect()
+    }
+
+    fn draw_duplicate_explanation_controls(
+        mut contexts: bevy_egui::EguiContexts,
+        mut explanations: bevy::prelude::ResMut<ExplanationState>,
+        theme: bevy::prelude::Res<UiTheme>,
+        strings: bevy::prelude::Res<TextDb>,
+        situations: bevy::prelude::Res<SituationPanelView>,
+    ) {
+        let Ok(ctx) = contexts.ctx_mut() else {
+            return;
+        };
+        crate::ui::keyboard::begin_frame(ctx);
+        let forecast = situations
+            .active
+            .iter()
+            .flat_map(|card| &card.actions)
+            .find_map(|action| action.forecast.clone())
+            .expect("fixture has a consequential Situation forecast");
+        let topic = crate::ui::explanations::ExplanationTopic {
+            // Deliberately identical display copy: semantic caller identity,
+            // never this title, must distinguish the controls.
+            title: "The same displayed title".to_owned(),
+            summary: crate::ui::forecast::forecast_summary(&strings, &forecast),
+            forecast,
+        };
+        egui::Area::new(egui::Id::new("duplicate-explanation-fixture")).show(ctx, |ui| {
+            for logical in ["duplicate-source:first", "duplicate-source:second"] {
+                crate::ui::explanations::explanation_trigger(
+                    ui,
+                    &theme,
+                    &strings,
+                    &topic,
+                    &mut explanations,
+                    crate::ui::keyboard::LogicalFocus::new(logical),
+                    crate::ui::keyboard::FocusBand::Center,
+                );
+            }
+        });
+    }
+
+    fn render_duplicate_explanations(
+        fixture: &mut ProductionFixture,
+        viewport: egui::Vec2,
+        events: Vec<egui::Event>,
+    ) -> egui::FullOutput {
+        fixture.time += 0.6;
+        let world = fixture.host.world_mut();
+        let physical_escape = events.iter().any(|event| {
+            matches!(
+                event,
+                egui::Event::Key {
+                    key: egui::Key::Escape,
+                    pressed: true,
+                    ..
+                }
+            )
+        });
+        {
+            let mut keys = world.resource_mut::<ButtonInput<KeyCode>>();
+            keys.reset_all();
+            if physical_escape {
+                keys.press(KeyCode::Escape);
+            }
+        }
+        let mut hotkeys = Schedule::default();
+        hotkeys.add_systems(crate::ui::explanations::claim_escape_for_pinned_help);
+        hotkeys.run(world);
+        let ctx = {
+            let mut query =
+                world.query_filtered::<&mut EguiContext, bevy::prelude::With<PrimaryEguiContext>>();
+            query
+                .single_mut(world)
+                .expect("one primary egui context")
+                .get_mut()
+                .clone()
+        };
+        clear_frame_evidence(&ctx);
+        ctx.begin_pass(egui::RawInput {
+            screen_rect: Some(egui::Rect::from_min_size(egui::Pos2::ZERO, viewport)),
+            events,
+            time: Some(fixture.time),
+            ..Default::default()
+        });
+        let mut schedule = Schedule::default();
+        schedule.add_systems(
+            (
+                crate::ui::explanations::consume_claimed_escape,
+                draw_duplicate_explanation_controls,
+                crate::ui::explanations::draw_pinned_explanation,
+                crate::ui::keyboard::finish_frame,
+            )
+                .chain(),
+        );
+        schedule.run(world);
+        ctx.end_pass()
     }
 
     fn settle_registry_focus(
@@ -1000,6 +1137,121 @@ mod tests {
 
     #[cfg_attr(not(target_arch = "wasm32"), test)]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    fn duplicate_explanation_titles_keep_distinct_invokers() {
+        let viewport = egui::vec2(960.0, 720.0);
+        let mut fixture = ProductionFixture::new();
+        render_duplicate_explanations(&mut fixture, viewport, Vec::new());
+        render_duplicate_explanations(&mut fixture, viewport, Vec::new());
+        let expected = [
+            crate::ui::keyboard::LogicalFocus::new("duplicate-source:first"),
+            crate::ui::keyboard::LogicalFocus::new("duplicate-source:second"),
+        ];
+        let registry = crate::ui::keyboard::completed_registry(&fixture.full_egui_context());
+        let pins = registry
+            .iter()
+            .filter(|entry| entry.role == "explanation-pin")
+            .collect::<Vec<_>>();
+        assert_eq!(pins.len(), 2, "both same-title Pin controls are registered");
+        assert!(
+            expected
+                .iter()
+                .all(|logical| pins.iter().any(|entry| &entry.logical == logical))
+        );
+        assert_ne!(
+            pins[0].id, pins[1].id,
+            "same display title keeps two widgets"
+        );
+
+        let mut traversed = std::collections::BTreeSet::new();
+        for _ in 0..4 {
+            render_duplicate_explanations(&mut fixture, viewport, key_event(egui::Key::Tab, false));
+            if let Some(logical) = crate::ui::keyboard::logical_focus(&fixture.full_egui_context())
+                && expected.contains(&logical)
+            {
+                traversed.insert(logical);
+            }
+        }
+        assert_eq!(
+            traversed.len(),
+            2,
+            "Tab reaches both same-title semantic Pin controls"
+        );
+
+        let click_pin = |fixture: &mut ProductionFixture,
+                         logical: &crate::ui::keyboard::LogicalFocus| {
+            crate::ui::keyboard::clear_focus(&fixture.full_egui_context());
+            crate::ui::keyboard::request_logical(&fixture.full_egui_context(), logical.clone());
+            render_duplicate_explanations(fixture, viewport, Vec::new());
+            assert_eq!(
+                crate::ui::keyboard::logical_focus(&fixture.full_egui_context()),
+                Some(logical.clone()),
+                "requested semantic Pin receives rendered focus"
+            );
+            render_duplicate_explanations(fixture, viewport, key_event(egui::Key::Enter, false));
+        };
+
+        click_pin(&mut fixture, &expected[1]);
+        assert_eq!(
+            fixture
+                .host
+                .world_mut()
+                .resource::<ExplanationState>()
+                .invoker,
+            Some(expected[1].clone()),
+            "Pin stores the exact second semantic invoker"
+        );
+        let dismiss = recorded_explanation_dismiss(&fixture.full_egui_context())
+            .expect("visible Dismiss for pinned explanation");
+        assert!(dismiss.width() >= 24.0 && dismiss.height() >= 24.0);
+        crate::ui::keyboard::request_logical(
+            &fixture.full_egui_context(),
+            crate::ui::keyboard::LogicalFocus::new("explanation-dismiss"),
+        );
+        render_duplicate_explanations(&mut fixture, viewport, Vec::new());
+        render_duplicate_explanations(&mut fixture, viewport, key_event(egui::Key::Enter, false));
+        assert!(
+            fixture
+                .host
+                .world_mut()
+                .resource::<ExplanationState>()
+                .pinned
+                .is_none()
+        );
+        assert_eq!(
+            crate::ui::keyboard::logical_focus(&fixture.full_egui_context()),
+            Some(expected[1].clone()),
+            "visible Dismiss returns to the actual second invoker"
+        );
+
+        click_pin(&mut fixture, &expected[0]);
+        assert_eq!(
+            fixture
+                .host
+                .world_mut()
+                .resource::<ExplanationState>()
+                .invoker,
+            Some(expected[0].clone()),
+            "Pin stores the exact first semantic invoker"
+        );
+        render_duplicate_explanations(&mut fixture, viewport, key_event(egui::Key::Escape, false));
+        render_duplicate_explanations(&mut fixture, viewport, Vec::new());
+        assert!(
+            fixture
+                .host
+                .world_mut()
+                .resource::<ExplanationState>()
+                .pinned
+                .is_none()
+        );
+        assert_eq!(
+            crate::ui::keyboard::logical_focus(&fixture.full_egui_context()),
+            Some(expected[0].clone()),
+            "Escape returns to the actual first invoker"
+        );
+    }
+
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn production_situation_controls_emit_and_resolve_authoritative_command() {
         let mut exercised_vertical_overflow = false;
         for spec in MATRIX {
@@ -1106,75 +1358,349 @@ mod tests {
                     ],
                 );
             }
-            let action = recorded_situation_action(&fixture.full_egui_context())
-                .filter(|rect| {
+            assert!(
+                recorded_situation_action(&fixture.full_egui_context()).is_some_and(|rect| {
                     egui::Rect::from_min_size(egui::Pos2::ZERO, viewport).contains(rect.center())
-                })
-                .unwrap_or_else(|| panic!("production action reachable at {spec:?}"));
+                }),
+                "production action reachable at {spec:?}"
+            );
             assert_response_roles(
                 &fixture.full_egui_context(),
                 viewport_rect,
                 spec,
                 &["situation-action"],
             );
-            fixture.render_full_shell(viewport, vec![egui::Event::PointerMoved(action.center())]);
-            let mut forecast = fixture
-                .render_full_shell(viewport, vec![egui::Event::PointerMoved(action.center())]);
-            for _ in 0..8 {
-                if recorded_situation_forecast(&fixture.full_egui_context())
-                    && materially_visible_text(&forecast, viewport_rect, "Takes").is_some()
+            assert!(
+                materially_visible_text(&output, viewport_rect, "favourable outcome").is_some(),
+                "Situation consequence has an always-visible summary at {spec:?}"
+            );
+            assert!(
+                recorded_explanation_trigger(&fixture.full_egui_context())
+                    .is_some_and(|rect| viewport_rect.contains(rect.center())),
+                "focusable Situation detail trigger at {spec:?}"
+            );
+            let detail_id = recorded_explanation_trigger_id(&fixture.full_egui_context())
+                .expect("production detail trigger id");
+            fixture
+                .full_egui_context()
+                .memory_mut(|memory| memory.request_focus(detail_id));
+            let mut focused = fixture.render_full_shell(viewport, vec![egui::Event::PointerGone]);
+            for _ in 0..3 {
+                if recorded_explanation_preview(&fixture.full_egui_context())
+                    && materially_visible_text(&focused, viewport_rect, "If ordered now").is_some()
                 {
                     break;
                 }
-                forecast = fixture.render_full_shell(viewport, Vec::new());
+                let current_id = recorded_explanation_trigger_id(&fixture.full_egui_context())
+                    .expect("stable production detail trigger id");
+                fixture
+                    .full_egui_context()
+                    .memory_mut(|memory| memory.request_focus(current_id));
+                focused = fixture.render_full_shell(viewport, vec![egui::Event::PointerGone]);
             }
-            let forecast_drawn = recorded_situation_forecast(&fixture.full_egui_context());
-            let action_hovered = recorded_situation_action_hovered(&fixture.full_egui_context());
-            let forecast_body = recorded_forecast_body(&fixture.full_egui_context())
-                .expect("production forecast renderer records its laid-out body");
             assert!(
-                action_hovered
-                    && forecast_drawn
-                    && forecast_body.width() > 0.0
-                    && forecast_body.height() > 0.0
-                    && egui::Rect::from_min_size(egui::Pos2::ZERO, viewport)
-                        .intersects(forecast_body)
-                    && materially_visible_text(&forecast, viewport_rect, "Takes").is_some(),
-                "production forecast tooltip is visibly laid out at {spec:?}: hovered={action_hovered}, drawn={forecast_drawn}, action={action:?}, forecast={forecast_body:?}, painted={:?}",
-                painted_texts(&forecast),
+                recorded_explanation_preview(&fixture.full_egui_context())
+                    && materially_visible_text(&focused, viewport_rect, "If ordered now").is_some()
+                    && materially_visible_text(&focused, viewport_rect, "Days from the order")
+                        .is_some()
+                    && materially_visible_text(&focused, viewport_rect, "governing skill against")
+                        .is_some()
+                    && materially_visible_text(
+                        &focused,
+                        viewport_rect,
+                        "exact outcome distribution"
+                    )
+                    .is_some(),
+                "keyboard focus exposes consequential timing, contest and outcome meaning without a pointer at {spec:?}: {:?}",
+                painted_texts(&focused),
             );
-            fixture.render_full_shell(viewport, press_at(action.center()));
-            fixture.render_full_shell(viewport, release_at(action.center()));
+            let focused_trigger = recorded_explanation_trigger_id(&fixture.full_egui_context())
+                .expect("focused production detail trigger before activation");
+            fixture
+                .full_egui_context()
+                .memory_mut(|memory| memory.request_focus(focused_trigger));
+            fixture.render_full_shell(
+                viewport,
+                vec![egui::Event::Key {
+                    key: egui::Key::Enter,
+                    physical_key: Some(egui::Key::Enter),
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+            let pinned = fixture.render_full_shell(viewport, vec![egui::Event::PointerGone]);
+            let pinned_rect = recorded_pinned_explanation(&fixture.full_egui_context())
+                .unwrap_or_else(|| panic!("pinned explanation is laid out at {spec:?}"));
+            let dismiss_visible =
+                materially_visible_text(&pinned, viewport_rect, "Dismiss explanation").is_some();
+            let pinned_clip_failures = horizontal_clip_failures(&pinned);
+            assert!(
+                viewport_rect.contains(pinned_rect.min)
+                    && viewport_rect.contains(pinned_rect.max)
+                    && dismiss_visible
+                    && pinned_clip_failures.is_empty(),
+                "pinned explanation is constrained, wrapped and visibly dismissible at {spec:?}: rect={pinned_rect:?}, dismiss={dismiss_visible}, clips={pinned_clip_failures:#?}, painted={:?}",
+                painted_texts(&pinned),
+            );
+            let owned_topic = fixture
+                .host
+                .world_mut()
+                .resource::<ExplanationState>()
+                .pinned
+                .clone()
+                .expect("visible pin captures an owned topic");
+            let queued_before_help_dismiss = fixture
+                .host
+                .world_mut()
+                .resource::<UiCommandQueue>()
+                .0
+                .len();
+            let visible_dismiss = recorded_explanation_dismiss(&fixture.full_egui_context())
+                .expect("visible explanation dismissal response");
+            fixture.render_full_shell(viewport, press_at(visible_dismiss.center()));
+            let dismiss_release = recorded_explanation_dismiss(&fixture.full_egui_context())
+                .expect("visible explanation dismissal after press");
+            fixture.render_full_shell(viewport, release_at(dismiss_release.center()));
+            assert!(
+                fixture
+                    .host
+                    .world_mut()
+                    .resource::<ExplanationState>()
+                    .pinned
+                    .is_none(),
+                "visible control dismisses pinned help at {spec:?}"
+            );
+            assert_eq!(
+                fixture
+                    .host
+                    .world_mut()
+                    .resource::<UiCommandQueue>()
+                    .0
+                    .len(),
+                queued_before_help_dismiss,
+                "visible help dismissal preserves the command queue at {spec:?}"
+            );
+            // Visible close correctly restored the logical Pin invoker. End
+            // that completed keyboard interaction before the independent
+            // stationary-pointer route, or its focus tooltip would remain a
+            // real top-layer hit target over the action under test.
+            let ctx = fixture.full_egui_context();
+            crate::ui::keyboard::clear_focus(&ctx);
+            fixture.render_full_shell(viewport, Vec::new());
+            let action_center = visible_response_center(
+                &fixture.full_egui_context(),
+                viewport_rect,
+                "situation-action",
+            );
+            // Prime egui's hover delay once, then hold the pointer stationary.
+            // The next two fixed passes allow egui's response-owned popup to
+            // complete its sizing/opening lifecycle. Every asserted frame
+            // after that must still report the originating action as hovered
+            // and paint the same semantics as keyboard focus.
+            fixture.render_full_shell(viewport, vec![egui::Event::PointerMoved(action_center)]);
+            fixture.render_full_shell(viewport, Vec::new());
+            fixture.render_full_shell(viewport, Vec::new());
+            for held_frame in 0..4 {
+                let forecast = fixture.render_full_shell(viewport, Vec::new());
+                let forecast_drawn = recorded_situation_forecast(&fixture.full_egui_context());
+                let action_hovered =
+                    recorded_situation_action_hovered(&fixture.full_egui_context());
+                let action_rect = recorded_situation_action(&fixture.full_egui_context())
+                    .expect("stationary-hover action remains in this frame");
+                let forecast_body = recorded_forecast_body(&fixture.full_egui_context())
+                    .expect("stationary-hover forecast belongs to this frame");
+                assert!(
+                    action_hovered
+                        && action_rect.contains(action_center)
+                        && forecast_drawn
+                        && forecast_body.width() > 0.0
+                        && forecast_body.height() > 0.0
+                        && viewport_rect.intersects(forecast_body)
+                        && materially_visible_text(&forecast, viewport_rect, "If ordered now")
+                            .is_some()
+                        && materially_visible_text(&forecast, viewport_rect, "Days from the order")
+                            .is_some()
+                        && materially_visible_text(
+                            &forecast,
+                            viewport_rect,
+                            "governing skill against",
+                        )
+                        .is_some()
+                        && materially_visible_text(
+                            &forecast,
+                            viewport_rect,
+                            "exact outcome distribution",
+                        )
+                        .is_some(),
+                    "stationary response-owned hover frame {held_frame} remains anchored and paints focus-equivalent meaning at {spec:?}: hovered={action_hovered}, drawn={forecast_drawn}, action={action_rect:?}, forecast={forecast_body:?}, painted={:?}",
+                    painted_texts(&forecast),
+                );
+            }
+            fixture.render_full_shell(viewport, vec![egui::Event::PointerGone]);
+            let action_press = visible_response_center(
+                &fixture.full_egui_context(),
+                viewport_rect,
+                "situation-action",
+            );
+            fixture.render_full_shell(viewport, press_at(action_press));
+            let action_release = visible_response_center(
+                &fixture.full_egui_context(),
+                viewport_rect,
+                "situation-action",
+            );
+            fixture.render_full_shell(viewport, release_at(action_release));
             assert!(
                 fixture.host.world_mut().resource::<AssignmentPopup>().open,
                 "Situation action opens production assignment popup at {spec:?}"
             );
-            let mut popup = fixture.render_full_shell(viewport, Vec::new());
-            let mut confirm = recorded_confirm(&fixture.full_egui_context())
+            fixture.host.world_mut().resource_mut::<PickerState>().open = true;
+            fixture
+                .host
+                .world_mut()
+                .resource_mut::<ExplanationState>()
+                .pinned = Some(owned_topic.clone());
+            fixture.render_full_shell(viewport, vec![egui::Event::PointerGone]);
+            let view_before_help_escape = *fixture.host.world_mut().resource::<ViewState>();
+            let form_before_help_escape = fixture
+                .host
+                .world_mut()
+                .resource::<AssignmentForm>()
+                .clone();
+            let popup_before_help_escape = fixture
+                .host
+                .world_mut()
+                .resource::<AssignmentPopup>()
+                .clone();
+            let picker_before_help_escape =
+                fixture.host.world_mut().resource::<PickerState>().clone();
+            let search_before_help_escape =
+                fixture.host.world_mut().resource::<SearchState>().clone();
+            let queue_before_help_escape = fixture
+                .host
+                .world_mut()
+                .resource::<UiCommandQueue>()
+                .0
+                .clone();
+            assert!(
+                popup_before_help_escape.open
+                    && picker_before_help_escape.open
+                    && form_before_help_escape.assignment.is_some(),
+                "Escape fixture holds a real active assignment composition at {spec:?}"
+            );
+            fixture.render_full_shell(
+                viewport,
+                vec![egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: Some(egui::Key::Escape),
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+            assert!(
+                fixture
+                    .host
+                    .world_mut()
+                    .resource::<ExplanationState>()
+                    .pinned
+                    .is_none(),
+                "claimed Escape closes visible help over active composition at {spec:?}"
+            );
+            assert_eq!(
+                *fixture.host.world_mut().resource::<ViewState>(),
+                view_before_help_escape,
+                "claimed Escape preserves map view and selection at {spec:?}"
+            );
+            assert_eq!(
+                *fixture.host.world_mut().resource::<AssignmentForm>(),
+                form_before_help_escape,
+                "claimed Escape preserves active assignment composition at {spec:?}"
+            );
+            assert_eq!(
+                fixture
+                    .host
+                    .world_mut()
+                    .resource::<AssignmentPopup>()
+                    .clone(),
+                popup_before_help_escape,
+                "claimed Escape preserves open assignment popup at {spec:?}"
+            );
+            assert_eq!(
+                fixture.host.world_mut().resource::<PickerState>().clone(),
+                picker_before_help_escape,
+                "claimed Escape preserves open candidate picker at {spec:?}"
+            );
+            assert_eq!(
+                *fixture.host.world_mut().resource::<SearchState>(),
+                search_before_help_escape,
+                "claimed Escape preserves search context at {spec:?}"
+            );
+            assert_eq!(
+                fixture.host.world_mut().resource::<UiCommandQueue>().0,
+                queue_before_help_escape,
+                "claimed Escape emits no authoritative command at {spec:?}"
+            );
+
+            // With no pinned help, #8's nearer local surfaces correctly own
+            // Escape before the map. Remove those presentation layers to
+            // exercise the genuinely unclaimed Body -> System fallback.
+            fixture.host.world_mut().resource_mut::<PickerState>().open = false;
+            fixture
+                .host
+                .world_mut()
+                .resource_mut::<AssignmentPopup>()
+                .open = false;
+            fixture
+                .host
+                .world_mut()
+                .resource_mut::<AssignmentForm>()
+                .reset();
+            fixture
+                .host
+                .world_mut()
+                .resource_mut::<SearchState>()
+                .query
+                .clear();
+            crate::ui::keyboard::clear_focus(&fixture.full_egui_context());
+            fixture.render_full_shell(
+                viewport,
+                vec![egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: Some(egui::Key::Escape),
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+            let after_fallthrough = *fixture.host.world_mut().resource::<ViewState>();
+            assert_eq!(
+                after_fallthrough.view,
+                MapView::System,
+                "unclaimed Escape retains normal map-navigation behavior at {spec:?}"
+            );
+            assert_eq!(
+                after_fallthrough.selected, view_before_help_escape.selected,
+                "normal Escape changes only the map level at {spec:?}"
+            );
+            assert_eq!(
+                fixture.host.world_mut().resource::<UiCommandQueue>().0,
+                queue_before_help_escape,
+                "unclaimed map Escape emits no authoritative command at {spec:?}"
+            );
+            *fixture.host.world_mut().resource_mut::<ViewState>() = view_before_help_escape;
+            *fixture.host.world_mut().resource_mut::<AssignmentForm>() =
+                form_before_help_escape.clone();
+            *fixture.host.world_mut().resource_mut::<AssignmentPopup>() =
+                popup_before_help_escape.clone();
+            *fixture.host.world_mut().resource_mut::<PickerState>() =
+                picker_before_help_escape.clone();
+            fixture.host.world_mut().resource_mut::<PickerState>().open = false;
+            *fixture.host.world_mut().resource_mut::<SearchState>() =
+                search_before_help_escape.clone();
+            let popup = fixture.render_full_shell(viewport, Vec::new());
+            let confirm = recorded_confirm(&fixture.full_egui_context())
                 .expect("Situation popup renders Confirm");
-            for _ in 0..6 {
-                if viewport_rect.contains(confirm.center())
-                    && confirm.width() >= 24.0
-                    && confirm.height() >= 24.0
-                    && materially_visible_text(&popup, viewport_rect, "Takes").is_some()
-                {
-                    break;
-                }
-                popup = fixture.render_full_shell(
-                    viewport,
-                    vec![
-                        egui::Event::PointerMoved(viewport_rect.center()),
-                        egui::Event::MouseWheel {
-                            unit: egui::MouseWheelUnit::Point,
-                            delta: egui::vec2(0.0, -400.0),
-                            modifiers: egui::Modifiers::NONE,
-                            phase: egui::TouchPhase::Move,
-                        },
-                    ],
-                );
-                confirm = recorded_confirm(&fixture.full_egui_context())
-                    .expect("Situation Confirm remains rendered while scrolling");
-            }
             assert!(
                 viewport_rect.contains(confirm.center())
                     && confirm.width() >= 24.0
@@ -1209,8 +1735,74 @@ mod tests {
                     )),
                 "popup Confirm emits the Situation command at {spec:?}"
             );
+            let queued_command_count = fixture
+                .host
+                .world_mut()
+                .resource::<UiCommandQueue>()
+                .0
+                .len();
+            crate::ui::keyboard::clear_focus(&fixture.full_egui_context());
+            let after_confirm = fixture.render_full_shell(viewport, Vec::new());
+            let repin = recorded_explanation_trigger(&fixture.full_egui_context())
+                .filter(|rect| viewport_rect.contains(rect.center()))
+                .unwrap_or_else(|| {
+                    panic!(
+                        "Situation detail remains reachable after Confirm at {spec:?}: {:?}",
+                        painted_texts(&after_confirm)
+                    )
+                });
+            fixture.render_full_shell(viewport, press_at(repin.center()));
+            let repin_release = recorded_explanation_trigger(&fixture.full_egui_context())
+                .expect("Situation detail remains after press");
+            fixture.render_full_shell(viewport, release_at(repin_release.center()));
+            let pinned_title = fixture
+                .host
+                .world_mut()
+                .resource::<ExplanationState>()
+                .pinned
+                .as_ref()
+                .map(|topic| topic.title.clone())
+                .expect("Situation forecast snapshot pinned before resolution");
+            fixture
+                .host
+                .world_mut()
+                .resource_mut::<ViewState>()
+                .selected = None;
+            let reflowed_viewport = egui::vec2((viewport.x * 0.72).max(480.0), viewport.y);
+            let reflowed_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, reflowed_viewport);
+            let reflowed =
+                fixture.render_full_shell(reflowed_viewport, vec![egui::Event::PointerGone]);
+            let reflowed_help = recorded_pinned_explanation(&fixture.full_egui_context())
+                .expect("pinned snapshot survives context and responsive reflow");
+            assert!(
+                reflowed_rect.contains(reflowed_help.min)
+                    && reflowed_rect.contains(reflowed_help.max)
+                    && materially_visible_text(&reflowed, reflowed_rect, &pinned_title).is_some(),
+                "owned explanation remains readable after context/reflow at {spec:?}: {reflowed_help:?}"
+            );
+            assert_eq!(
+                fixture
+                    .host
+                    .world_mut()
+                    .resource::<UiCommandQueue>()
+                    .0
+                    .len(),
+                queued_command_count,
+                "context and help changes do not alter the authoritative queue at {spec:?}"
+            );
             fixture.submit_queued_and_resolve();
             let mut resolved = fixture.render_full_shell(viewport, Vec::new());
+            assert_eq!(
+                fixture
+                    .host
+                    .world_mut()
+                    .resource::<ExplanationState>()
+                    .pinned
+                    .as_ref()
+                    .map(|topic| topic.title.as_str()),
+                Some(pinned_title.as_str()),
+                "owned explanation survives authoritative Situation resolution at {spec:?}"
+            );
             for _ in 0..5 {
                 if materially_visible_text(&resolved, viewport_rect, "Resolved").is_some() {
                     break;
@@ -1235,6 +1827,41 @@ mod tests {
             assert!(
                 materially_visible_text(&resolved, viewport_rect, "History").is_some(),
                 "history rendered at {spec:?}"
+            );
+            let applied_before_escape = fixture
+                .host
+                .world_mut()
+                .resource::<aeon_sim::command::CommandLog>()
+                .applied
+                .len();
+            fixture.render_full_shell(
+                viewport,
+                vec![egui::Event::Key {
+                    key: egui::Key::Escape,
+                    physical_key: Some(egui::Key::Escape),
+                    pressed: true,
+                    repeat: false,
+                    modifiers: egui::Modifiers::NONE,
+                }],
+            );
+            assert!(
+                fixture
+                    .host
+                    .world_mut()
+                    .resource::<ExplanationState>()
+                    .pinned
+                    .is_none(),
+                "Escape dismisses a snapshot after source resolution at {spec:?}"
+            );
+            assert_eq!(
+                fixture
+                    .host
+                    .world_mut()
+                    .resource::<aeon_sim::command::CommandLog>()
+                    .applied
+                    .len(),
+                applied_before_escape,
+                "Escape dismissal has no authoritative effect at {spec:?}"
             );
         }
         assert!(

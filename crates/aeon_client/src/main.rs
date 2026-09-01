@@ -71,6 +71,7 @@ fn main() {
         .init_resource::<ui::picker::PickerState>()
         .init_resource::<ui::assignment_popup::AssignmentPopup>()
         .init_resource::<ui::dock::DockState>()
+        .init_resource::<ui::explanations::ExplanationState>()
         .init_resource::<ui::situations_panel::SituationPanelView>()
         .init_resource::<ui::situations_panel::SituationUiState>()
         .init_resource::<loading::GameAssets>()
@@ -102,8 +103,14 @@ fn main() {
                 sim_driver::drive_simulation,
                 sim_driver::time_hotkeys,
                 selection::attach_pickers,
-                ui::shell::claim_local_escape.before(selection::view_hotkeys),
-                selection::view_hotkeys,
+                // Pinned help owns Escape before the nearest ordinary local
+                // surface, which in turn owns it before map navigation.
+                (
+                    ui::explanations::claim_escape_for_pinned_help,
+                    ui::shell::claim_local_escape,
+                    selection::view_hotkeys,
+                )
+                    .chain(),
                 scene::spawn_loaded_starbases,
                 scene::update_system_positions,
                 scene::apply_view_visibility,
@@ -134,6 +141,9 @@ fn main() {
                 loading::loading_screen.run_if(in_state(title::Screen::Loading)),
                 title::draw_title.run_if(in_state(title::Screen::Title)),
                 (
+                    // Consume an Escape already claimed in Update before any
+                    // floating egui surface can interpret the same press.
+                    ui::explanations::consume_claimed_escape,
                     map_overlay::draw_map_overlay,
                     ui::shell::draw_panels,
                     // The picker floats above the panels that open it, so
@@ -142,6 +152,10 @@ fn main() {
                     ui::assignment_popup::draw_assignment_popup,
                     ui::picker::draw_picker,
                     assignment_ui::draw_popups,
+                    // Pinned help is the topmost client-owned surface.
+                    ui::explanations::draw_pinned_explanation,
+                    // Finish only after every ordinary and pinned control has
+                    // registered its rendered logical focus boundary.
                     ui::keyboard::finish_frame,
                 )
                     .run_if(in_state(title::Screen::Playing)),

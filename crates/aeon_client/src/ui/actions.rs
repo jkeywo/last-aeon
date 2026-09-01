@@ -19,6 +19,8 @@ use crate::assignment_ui::{AssignmentForm, ProvinceSlot, UiCommandQueue};
 use crate::forecast_view::ForecastCache;
 use crate::ui::assignment_popup::AssignmentPopup;
 use crate::ui::data::PanelData;
+use crate::ui::explanations::{ExplanationState, ExplanationTopic, explanation_trigger};
+use crate::ui::forecast::forecast_summary;
 use crate::ui::forecast::{draw_forecast_body, permille_text};
 use crate::ui::picker::PickerState;
 use crate::ui::theme::{TargetState, UiTheme};
@@ -299,6 +301,7 @@ pub enum LeaderChoice {
 /// The breakdown itself is drawn by [`draw_forecast_body`], shared with the
 /// character picker, so the figures a player compares candidates on are the
 /// figures they commit to.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_forecast(
     ui: &mut egui::Ui,
     theme: &UiTheme,
@@ -306,6 +309,7 @@ pub fn draw_forecast(
     cache: &ForecastCache,
     form: &mut AssignmentForm,
     picker: &mut PickerState,
+    explanations: &mut ExplanationState,
     choice: LeaderChoice,
 ) {
     draw_leader_slot(ui, theme, strings, cache, form, picker, choice);
@@ -317,6 +321,23 @@ pub fn draw_forecast(
 
     egui::Frame::group(ui.style()).show(ui, |ui| {
         draw_forecast_body(ui, theme, strings, view);
+        ui.separator();
+        explanation_trigger(
+            ui,
+            theme,
+            strings,
+            &ExplanationTopic {
+                title: view.title.clone(),
+                summary: forecast_summary(strings, view),
+                forecast: view.clone(),
+            },
+            explanations,
+            crate::ui::keyboard::LogicalFocus::new(format!(
+                "assignment-explanation:popup:{}",
+                view.assignment
+            )),
+            crate::ui::keyboard::FocusBand::Floating,
+        );
     });
 }
 

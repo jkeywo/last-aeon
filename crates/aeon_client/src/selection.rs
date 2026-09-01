@@ -10,6 +10,7 @@ use bevy::prelude::*;
 
 use crate::assignment_ui::{AssignmentForm, ProvinceSlot};
 use crate::scene::{GlobeVisual, SystemBodyVisual, nearest_province, province_from_id_texture};
+use crate::ui::explanations::ExplanationState;
 use crate::view::{MapView, Selection, ViewState};
 
 /// Attaches pointer observers to every map visual once the scene exists.
@@ -117,9 +118,10 @@ fn on_globe_click(
 pub fn view_hotkeys(
     keys: Res<ButtonInput<KeyCode>>,
     local_escape: Option<Res<crate::ui::shell::LocalEscapeClaim>>,
+    explanations: Res<ExplanationState>,
     mut view: ResMut<ViewState>,
 ) {
-    let claimed = local_escape.is_some_and(|claim| claim.claimed);
+    let claimed = explanations.escape_claimed() || local_escape.is_some_and(|claim| claim.claimed);
     if !claimed && keys.just_pressed(KeyCode::Escape) && matches!(view.view, MapView::Body(_)) {
         view.view = MapView::System;
     }

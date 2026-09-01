@@ -128,7 +128,7 @@ pub enum Selection {
 }
 
 /// The active view and selection.
-#[derive(Resource, Copy, Clone, Debug)]
+#[derive(Resource, Copy, Clone, Debug, PartialEq, Eq)]
 pub struct ViewState {
     /// The active map view.
     pub view: MapView,
@@ -149,7 +149,7 @@ impl Default for ViewState {
 }
 
 /// The global search box's current query.
-#[derive(Resource, Clone, Debug, Default)]
+#[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
 pub struct SearchState {
     /// The text the player has typed; empty hides the results.
     pub query: String,

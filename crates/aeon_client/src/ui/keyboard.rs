@@ -558,6 +558,23 @@ pub fn logical_focus(ctx: &egui::Context) -> Option<LogicalFocus> {
     })
 }
 
+/// Ends one completed keyboard route before a rendered test begins an
+/// independent pointer-only interaction in the same retained egui context.
+#[cfg(test)]
+pub fn clear_focus(ctx: &egui::Context) {
+    let mut state = ctx.data_mut(|data| {
+        data.get_temp::<RegistryState>(state_id())
+            .unwrap_or_default()
+    });
+    state.logical_focus = None;
+    state.pending = None;
+    state.fallback = None;
+    ctx.data_mut(|data| data.insert_temp(state_id(), state));
+    if let Some(focused) = ctx.memory(|memory| memory.focused()) {
+        ctx.memory_mut(|memory| memory.surrender_focus(focused));
+    }
+}
+
 pub fn paint_focus(ui: &egui::Ui, response: &egui::Response) {
     if response.has_focus() {
         response.scroll_to_me(Some(egui::Align::Center));
@@ -625,10 +642,6 @@ pub fn roving_group(ui: &egui::Ui, responses: &[egui::Response]) {
         ui.ctx()
             .data_mut(|data| data.insert_temp(state_id(), state));
     }
-}
-
-pub fn disclosed(response: &egui::Response) -> bool {
-    response.hovered() || response.has_focus()
 }
 
 #[cfg(test)]

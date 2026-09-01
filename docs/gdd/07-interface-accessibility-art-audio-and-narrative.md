@@ -130,6 +130,34 @@ known, until when. Suitability and forecasts are produced by authoritative
 simulation code. Disabled actions remain visible with their refusal reason;
 absence is reserved for actions that are not relevant to the selected subject.
 
+**Implemented design [ai].** Consequential Situation responses expose a compact
+duration and favourable-outcome summary without hover. Their action control and
+candidate controls show the same authoritative forecast on pointer hover or
+keyboard focus, while a separate visible **Pin details** control captures an
+owned explanation snapshot. [ai] Each Pin control carries the stable semantic
+identity of its production source — Situation occurrence and action, candidate
+character, or assignment and surface — rather than deriving focus identity
+from display copy, so equal localized titles remain separately traversable and
+dismissal returns to the control that actually opened help. [ai] Pointer preview placement belongs to the
+originating response so a stationary pointer cannot be covered by its own
+forecast; keyboard focus uses the same body from a response-anchored surface.
+Pinning never activates the action. The snapshot
+remains readable when the inspected subject changes, the shell reflows, or the
+originating Situation resolves; a visible dismissal control or Escape closes
+only that explanation and emits no campaign command. [ai] Pinned help claims a
+physical Escape press before ordinary map navigation, then consumes the egui
+copy at the head of the campaign egui chain before floating surfaces see the
+same press; when no help is pinned, Escape retains its ordinary
+back-navigation behaviour. The pinned window is
+viewport-constrained, wraps its content, and scrolls vertically at supported
+large interface scales. Forecast outcome consequences are written into the
+forecast body rather than being discoverable only by hovering their names.
+[ai] The same is true of duration and order delay, guaranteed immediate costs,
+the skill contest and distribution mechanics, conditional personal risks,
+military-operation exclusions, and recall limits: their consequential meaning
+is visible inside every full forecast, including the focus preview and pinned
+snapshot, without requiring a pointer.
+
 An issued click becomes a validated `PlayerCommand`; a rejection is feedback,
 not a silent no-op. Cancellation likewise reports whether it was accepted,
 deferred to the next cancellable phase, or refused because the point of no
@@ -157,7 +185,9 @@ duplicate a permanent log entry as an unrelated notification.
 ## Onboarding surfaces
 
 **Implemented.** Present onboarding is contextual rather than tutorial-led:
-tooltips explain map modes, panel controls, costs, delays, duration, forecasts,
+focusable and pinnable forecast explanations supplement tooltips for the core
+Situation-to-result path; tooltips explain map modes, panel controls, costs,
+delays, duration, forecasts,
 risks, and points of no return; empty states say why a surface has nothing to
 show; unavailable leaders and actions name their blockers; Situation cards
 state the problem, stage, warning, deadline, participants, related subjects,

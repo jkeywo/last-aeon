@@ -42,6 +42,15 @@ pub fn claim_local_escape(world: &mut World) {
     if !pressed {
         return;
     }
+    // Pinned explanations are the topmost local layer. Their earlier Update
+    // claim closes help and reserves both the physical and egui copies of this
+    // press, so no lower surface may also unwind.
+    if world
+        .resource::<crate::ui::explanations::ExplanationState>()
+        .escape_claimed()
+    {
+        return;
+    }
     let ctx = {
         let mut query = world.query_filtered::<&mut EguiContext, With<PrimaryEguiContext>>();
         let Ok(mut context) = query.single_mut(world) else {
@@ -106,6 +115,7 @@ pub fn draw_panels(
         mut mode,
         mut dock,
         mut situation_ui,
+        mut explanations,
         mut preferences,
         mut settings,
         escape_claim,
@@ -203,6 +213,7 @@ pub fn draw_panels(
         popup: &mut popup,
         filter: &mut filter,
         situation_ui: &mut situation_ui,
+        explanations: &mut explanations,
     };
 
     // Header verbs are collected and applied after drawing: a panel cannot

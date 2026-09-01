@@ -6,6 +6,7 @@ pub mod assignment_popup;
 pub mod assignments_panel;
 pub mod data;
 pub mod dock;
+pub mod explanations;
 pub mod forecast;
 pub mod icons;
 pub mod idle_panel;

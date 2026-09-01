@@ -22,7 +22,11 @@ use bevy_egui::{EguiContexts, egui};
 
 use crate::assignment_ui::AssignmentForm;
 use crate::forecast_view::{ForecastCache, LeaderOption};
-use crate::ui::forecast::{draw_forecast_body, permille_text};
+use crate::ui::explanations::{
+    ExplanationState, ExplanationTopic, explanation_trigger, preview_for_response,
+};
+use crate::ui::forecast::forecast_summary;
+use crate::ui::forecast::permille_text;
 use crate::ui::theme::{TargetState, UiTheme};
 
 /// Whether the picker is up.
@@ -31,7 +35,7 @@ use crate::ui::theme::{TargetState, UiTheme};
 /// outlives any single expanded action: closing an action should not leave
 /// a stale window open, but changing which action is expanded while the
 /// picker is up should just re-list the candidates for the new one.
-#[derive(Resource, Default)]
+#[derive(Resource, Clone, Debug, Default, PartialEq, Eq)]
 pub struct PickerState {
     /// Whether the window is showing.
     pub open: bool,
@@ -56,10 +60,12 @@ impl PickerState {
 }
 
 /// Draws the picker window when it is open and an action is expanded.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_picker(
     mut contexts: EguiContexts,
     mut picker: ResMut<PickerState>,
     mut form: ResMut<AssignmentForm>,
+    mut explanations: ResMut<ExplanationState>,
     cache: Res<ForecastCache>,
     content: Option<Res<ContentDb>>,
     theme: Res<UiTheme>,
@@ -114,7 +120,14 @@ pub fn draw_picker(
                     }
                     let mut responses = Vec::new();
                     for option in &free {
-                        responses.push(draw_candidate(ui, &theme, strings, &mut form, option));
+                        responses.push(draw_candidate(
+                            ui,
+                            &theme,
+                            strings,
+                            &mut form,
+                            &mut explanations,
+                            option,
+                        ));
                     }
 
                     if !committed.is_empty() {
@@ -157,6 +170,7 @@ fn draw_candidate(
     theme: &UiTheme,
     strings: &TextDb,
     form: &mut AssignmentForm,
+    explanations: &mut ExplanationState,
     option: &LeaderOption,
 ) -> egui::Response {
     let chosen = form.leader == Some(option.id);
@@ -180,19 +194,7 @@ fn draw_candidate(
         TargetState::Valid
     };
     let text = egui::RichText::new(label).color(theme.semantics.target(state));
-    let response = ui
-        .selectable_label(chosen, text)
-        // The full breakdown is one hover away from the summary, and is the
-        // same calculation the assignment will resolve with.
-        .on_hover_ui(|ui| {
-            ui.set_max_width(f32::from(theme.components.picker_hover_width));
-            ui.strong(&option.name);
-            if let Some(assignment) = &option.assignment {
-                ui.weak(assignment);
-            }
-            ui.separator();
-            draw_forecast_body(ui, theme, strings, &option.forecast);
-        });
+    let response = ui.selectable_label(chosen, text);
     crate::ui::keyboard::capture_action(
         ui,
         crate::ui::keyboard::LogicalFocus::new(format!("leader:{}", option.id.raw())),
@@ -201,17 +203,24 @@ fn draw_candidate(
         &response,
     )
     .register();
-    if response.has_focus() {
-        response.clone().show_tooltip_ui(|ui| {
-            ui.set_max_width(f32::from(theme.components.picker_hover_width));
-            ui.strong(&option.name);
-            if let Some(assignment) = &option.assignment {
-                ui.weak(assignment);
-            }
-            ui.separator();
-            draw_forecast_body(ui, theme, strings, &option.forecast);
-        });
-    }
+    let topic = ExplanationTopic {
+        title: option.name.clone(),
+        summary: forecast_summary(strings, &option.forecast),
+        forecast: option.forecast.clone(),
+    };
+    let response = preview_for_response(response, theme, strings, &topic);
+    explanation_trigger(
+        ui,
+        theme,
+        strings,
+        &topic,
+        explanations,
+        crate::ui::keyboard::LogicalFocus::new(format!(
+            "candidate-explanation:{}",
+            option.id.raw()
+        )),
+        crate::ui::keyboard::FocusBand::Floating,
+    );
     // Selecting writes the choice and leaves the window open, so the next
     // candidate can be weighed against this one without reopening it.
     if response.clicked() {

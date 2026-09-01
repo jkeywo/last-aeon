@@ -23,6 +23,13 @@ pub(crate) fn recorded_forecast_body(ctx: &egui::Context) -> Option<egui::Rect> 
     ctx.data(|data| data.get_temp(egui::Id::new(FORECAST_BODY_RECT)))
 }
 
+#[cfg(test)]
+pub(crate) fn clear_forecast_frame_evidence(ctx: &egui::Context) {
+    ctx.data_mut(|data| {
+        data.remove::<egui::Rect>(egui::Id::new(FORECAST_BODY_RECT));
+    });
+}
+
 /// A permille figure as a percentage with one decimal place.
 pub fn permille_text(value: Permille) -> String {
     format!("{}.{}%", value / 10, value % 10)
@@ -36,6 +43,36 @@ pub fn result_label_key(kind: OutcomeKind) -> &'static str {
         OutcomeKind::Failure => "ui.result.failure",
         OutcomeKind::Disaster => "ui.result.disaster",
     }
+}
+
+/// A compact, always-visible account of the commitment and likely result.
+/// It is intentionally derived from the same authoritative forecast as the
+/// full breakdown.
+pub fn forecast_summary(strings: &TextDb, view: &AssignmentForecast) -> String {
+    if let Some(reason) = &view.blocked {
+        return strings.format(
+            "ui.situations.unavailable",
+            &[("reason", &reason.to_string())],
+        );
+    }
+    let favourable: Permille = view
+        .results
+        .iter()
+        .filter(|result| {
+            matches!(
+                result.kind,
+                OutcomeKind::CriticalSuccess | OutcomeKind::Success
+            )
+        })
+        .map(|result| result.chance)
+        .sum();
+    strings.format(
+        "ui.forecast.compact",
+        &[
+            ("days", &view.duration_days.to_string()),
+            ("success", &permille_text(favourable)),
+        ],
+    )
 }
 
 /// Draws what an action costs, how long it takes, the exact odds it would
@@ -56,16 +93,18 @@ pub fn draw_forecast_body(
         ui.label(strings.format(
             "ui.forecast.duration",
             &[("days", &view.duration_days.to_string())],
-        ))
-        .on_hover_text(strings.text("ui.forecast.duration.hover"));
+        ));
         if view.order_delay_days > 0 {
             ui.label(strings.format(
                 "ui.forecast.delay",
                 &[("days", &view.order_delay_days.to_string())],
-            ))
-            .on_hover_text(strings.text("ui.forecast.delay.hover"));
+            ));
         }
     });
+    ui.weak(strings.text("ui.forecast.duration.hover"));
+    if view.order_delay_days > 0 {
+        ui.weak(strings.text("ui.forecast.delay.hover"));
+    }
 
     // Immediate costs.
     let mut costs = Vec::new();
@@ -94,8 +133,8 @@ pub fn draw_forecast_body(
         ));
     }
     if !costs.is_empty() {
-        ui.label(strings.format("ui.forecast.costs", &[("costs", &costs.join(" · "))]))
-            .on_hover_text(strings.text("ui.forecast.costs.hover"));
+        ui.label(strings.format("ui.forecast.costs", &[("costs", &costs.join(" · "))]));
+        ui.weak(strings.text("ui.forecast.costs.hover"));
     }
 
     // The skill contest behind the odds.
@@ -107,31 +146,29 @@ pub fn draw_forecast_body(
             ("difficulty", &view.difficulty.to_string()),
             ("effect", &format!("{:+}", view.effectiveness)),
         ],
-    ))
-    .on_hover_text(strings.text("ui.forecast.contest.hover"));
+    ));
+    ui.weak(strings.text("ui.forecast.contest.hover"));
 
     ui.separator();
-    ui.label(strings.text("ui.forecast.outcomes"))
-        .on_hover_text(strings.text("ui.forecast.outcomes.hover"));
+    ui.label(strings.text("ui.forecast.outcomes"));
+    ui.weak(strings.text("ui.forecast.outcomes.hover"));
     for result in &view.results {
         let label = strings.text(result_label_key(result.kind));
         let colour = theme.semantics.outcome(result.kind);
         ui.horizontal_wrapped(|ui| {
             ui.colored_label(colour, permille_text(result.chance));
-            let text = if result.popup {
+            let mut text = if result.popup {
                 strings.format("ui.forecast.result.asks-you", &[("result", label)])
             } else {
                 label.to_owned()
             };
-            let response = ui.add(egui::Label::new(text).wrap());
-            match &result.text {
-                Some(detail) => {
-                    response.on_hover_text(detail);
-                }
-                None => {
-                    response.on_hover_text(strings.text("ui.forecast.result.unauthored"));
-                }
-            }
+            let detail = result
+                .text
+                .as_deref()
+                .unwrap_or_else(|| strings.text("ui.forecast.result.unauthored"));
+            text.push_str(" — ");
+            text.push_str(detail);
+            ui.add(egui::Label::new(text).wrap());
         });
     }
 
@@ -147,8 +184,8 @@ pub fn draw_forecast_body(
                     ("on_disaster", &permille_text(risk.on_disaster)),
                 ],
             ),
-        )
-        .on_hover_text(strings.text("ui.forecast.risk.hover"));
+        );
+        ui.weak(strings.text("ui.forecast.risk.hover"));
     }
 
     // A military operation is settled after the roll, not by it.
@@ -159,8 +196,8 @@ pub fn draw_forecast_body(
                 "ui.forecast.military-op",
                 &[("operation", strings.text(op.label_key()))],
             ),
-        )
-        .on_hover_text(strings.text("ui.forecast.military-op.hover"));
+        );
+        ui.weak(strings.text("ui.forecast.military-op.hover"));
     }
 
     // What committing actually commits to.
@@ -172,8 +209,8 @@ pub fn draw_forecast_body(
             );
         }
         Some(day) => {
-            ui.label(strings.format("ui.forecast.recall-until", &[("days", &day.to_string())]))
-                .on_hover_text(strings.text("ui.forecast.recall-until.hover"));
+            ui.label(strings.format("ui.forecast.recall-until", &[("days", &day.to_string())]));
+            ui.weak(strings.text("ui.forecast.recall-until.hover"));
         }
         None => {}
     }

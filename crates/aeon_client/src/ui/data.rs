@@ -34,6 +34,7 @@ use crate::offer_view::OfferView;
 use crate::preferences::{SettingsUi, UiPreferences};
 use crate::ui::assignment_popup::AssignmentPopup;
 use crate::ui::dock::DockState;
+use crate::ui::explanations::ExplanationState;
 use crate::ui::situations_panel::{SituationPanelView, SituationUiState};
 use crate::ui::theme::UiTheme;
 use crate::view::MapMode;
@@ -55,6 +56,7 @@ pub struct MapUi<'w> {
     pub mode: ResMut<'w, MapMode>,
     pub dock: ResMut<'w, DockState>,
     pub situation_ui: ResMut<'w, SituationUiState>,
+    pub explanations: ResMut<'w, ExplanationState>,
     pub preferences: ResMut<'w, UiPreferences>,
     pub settings: ResMut<'w, SettingsUi>,
     pub escape_claim: Res<'w, crate::ui::shell::LocalEscapeClaim>,

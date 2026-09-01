@@ -2149,4 +2149,53 @@ entities:
         - logical-point-responsive-campaign-shell
         - egui-with-owned-design-tokens
         - shared-native-and-web-delivery
+
+  - decision: core-explanations-are-owned-focusable-snapshots
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Core Explanations Are Owned, Focusable Snapshots
+      summary: >-
+        The client gives consequential Situation actions and candidate
+        comparisons an always-visible compact forecast summary plus a shared
+        detail trigger. Pointer hover and keyboard focus render the same
+        transient body from the same authoritative AssignmentForecast. Explicit
+        pointer hover remains owned by the originating response so its popup
+        cannot cover or displace that control; keyboard focus alone uses an
+        explicit response-anchored tooltip with the identical body. Explicit
+        activation of the separate Pin details control copies the title,
+        summary, and forecast into one client-owned snapshot; it never activates
+        the underlying action or emits a PlayerCommand. Every production source
+        supplies a stable semantic logical key (Situation occurrence and action,
+        candidate character, or assignment and surface), so identical display
+        titles remain distinct controls and dismissal restores the exact
+        invoker. The pinned window is
+        constrained to the current viewport, wraps and scrolls vertically,
+        survives selection changes, responsive reflow, and resolution of its
+        source Situation, and is dismissed by its visible control or Escape.
+        A client-owned per-press claim is established before ordinary Update
+        navigation and consumed at the head of the later egui pass, preventing
+        the same
+        physical Escape from also changing map, popup, search, form, or command
+        context; with no pinned snapshot, Escape falls through normally.
+        Full forecast bodies write the meaning of duration and delay,
+        guaranteed costs, contests and distributions, conditional risks,
+        military-operation exclusions, recall limits, and authored outcomes
+        directly into the layout rather than leaving those consequences in
+        pointer-only tooltips.
+        Native and headless-Chrome rendered-state tests exercise the same
+        production widgets and verify focus without a pointer, pinning,
+        persistence, geometry, dismissal, and command isolation.
+      rationale:
+        - "[ai] A copied presentation snapshot lets the player finish reading an explanation after its live source changes without retaining or mutating authoritative campaign state."
+        - "[ai] Keeping action activation and explanation pinning on distinct focusable controls removes ambiguity for pointer, keyboard, and touch interaction."
+        - "[ai] One renderer for hover, focus, and pinned help prevents explanatory meaning from drifting between access routes."
+        - "[ai] Sharing one Escape claim across Bevy input and egui ordering gives pinned help semantic priority without teaching authoritative simulation state about UI events."
+        - "[ai] A pinned or keyboard-focused forecast must be semantically complete on its own; retaining pointer-only definitions inside that body would merely move the accessibility boundary into the new help surface."
+        - "[ai] Response-owned hover placement preserves the action's stable hover geometry, while limiting explicit tooltip construction to pointerless keyboard focus keeps both routes equivalent without making them mechanically identical."
+        - "[ai] Display copy is localised and non-unique, so Pin traversal and focus restoration use caller-owned domain identity rather than titles; rendered duplicate-title coverage protects that boundary."
+      references:
+        - job-forecast-and-explanation-ui
+        - forecasts-derive-from-shared-resolution-code
+        - logical-point-responsive-campaign-shell
         - headless-authoritative-simulation
