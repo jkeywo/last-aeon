@@ -147,17 +147,29 @@ pub fn draw_assignments_panel(
                         // The click landed; it is simply waiting for a
                         // phase that can be interrupted.
                         ui.weak(strings.text("ui.assignments.cancel-pending"));
-                    } else if ui
-                        .add_enabled(
-                            recallable,
-                            egui::Button::new(strings.text("ui.assignments.cancel")).small(),
+                    } else {
+                        let response = ui
+                            .add_enabled(
+                                recallable,
+                                egui::Button::new(strings.text("ui.assignments.cancel")).small(),
+                            )
+                            .on_disabled_hover_text(strings.text("ui.assignments.cannot-recall"));
+                        crate::ui::keyboard::capture_action(
+                            ui,
+                            crate::ui::keyboard::LogicalFocus::new(format!(
+                                "cancel-assignment:{}",
+                                assignment.id.raw()
+                            )),
+                            "cancel-assignment",
+                            crate::ui::keyboard::inferred_band(ui.ctx(), response.rect),
+                            &response,
                         )
-                        .on_disabled_hover_text(strings.text("ui.assignments.cannot-recall"))
-                        .clicked()
-                    {
-                        queue.0.push(PlayerCommand::CancelAssignment {
-                            assignment: assignment.id,
-                        });
+                        .register();
+                        if response.clicked() {
+                            queue.0.push(PlayerCommand::CancelAssignment {
+                                assignment: assignment.id,
+                            });
+                        }
                     }
                 });
             }

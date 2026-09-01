@@ -238,7 +238,19 @@ pub fn draw_popups(
             ui.separator();
             ui.horizontal(|ui| {
                 for (choice_id, label) in &popup.choices {
-                    if ui.button(label).clicked() {
+                    let response = ui.button(label);
+                    crate::ui::keyboard::capture_action(
+                        ui,
+                        crate::ui::keyboard::LogicalFocus::new(format!(
+                            "attention-choice:{}:{choice_id}",
+                            popup.id
+                        )),
+                        "attention-choice",
+                        crate::ui::keyboard::FocusBand::Floating,
+                        &response,
+                    )
+                    .register();
+                    if response.clicked() {
                         queue.0.push(PlayerCommand::AnswerPopup {
                             popup: popup.id,
                             choice: choice_id.clone(),

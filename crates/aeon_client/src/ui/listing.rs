@@ -23,7 +23,19 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
             sorted.sort_by_key(|(record, _)| record.id);
             for (record, name) in sorted {
                 let selected = out.view.selected == Some(Selection::Body(record.id));
-                if ui.selectable_label(selected, &name.0).clicked() {
+                let response = ui.selectable_label(selected, &name.0);
+                crate::ui::keyboard::capture_action(
+                    ui,
+                    crate::ui::keyboard::LogicalFocus::new(format!(
+                        "listing-body:{}",
+                        record.id.raw()
+                    )),
+                    "listing-body",
+                    crate::ui::keyboard::inferred_band(ui.ctx(), response.rect),
+                    &response,
+                )
+                .register();
+                if response.clicked() {
                     out.view.selected = Some(Selection::Body(record.id));
                 }
             }
@@ -34,7 +46,16 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
             for org_id in ctx.lookup.orgs.keys() {
                 let label = ctx.lookup.org_rich(*org_id);
                 let selected = out.view.selected == Some(Selection::Org(*org_id));
-                if ui.selectable_label(selected, label).clicked() {
+                let response = ui.selectable_label(selected, label);
+                crate::ui::keyboard::capture_action(
+                    ui,
+                    crate::ui::keyboard::LogicalFocus::new(format!("listing-org:{}", org_id.raw())),
+                    "listing-org",
+                    crate::ui::keyboard::inferred_band(ui.ctx(), response.rect),
+                    &response,
+                )
+                .register();
+                if response.clicked() {
                     out.view.selected = Some(Selection::Org(*org_id));
                 }
             }
@@ -77,14 +98,30 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                         if Some(ship.owner) == ctx.player_org
                             && matches!(ship.location, ShipLocation::Docked(_))
                         {
-                            egui::ComboBox::from_id_salt(("move-ship", ship.id))
+                            let combo = egui::ComboBox::from_id_salt(("move-ship", ship.id))
                                 .selected_text(strings.text("ui.listing.move-to"))
                                 .show_ui(ui, |ui| {
                                     let mut sorted: Vec<_> =
                                         ctx.lookup.province_names.iter().collect();
                                     sorted.sort_by_key(|(id, _)| **id);
                                     for (province, name) in sorted {
-                                        if ui.selectable_label(false, *name).clicked() {
+                                        let response = ui.selectable_label(false, *name);
+                                        crate::ui::keyboard::capture_action(
+                                            ui,
+                                            crate::ui::keyboard::LogicalFocus::new(format!(
+                                                "move-ship:{}:{}",
+                                                ship.id.raw(),
+                                                province.raw()
+                                            )),
+                                            "move-ship-choice",
+                                            crate::ui::keyboard::inferred_band(
+                                                ui.ctx(),
+                                                response.rect,
+                                            ),
+                                            &response,
+                                        )
+                                        .register();
+                                        if response.clicked() {
                                             out.queue.0.push(PlayerCommand::MoveShip {
                                                 ship: ship.id,
                                                 destination: *province,
@@ -92,6 +129,17 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                                         }
                                     }
                                 });
+                            crate::ui::keyboard::capture_action(
+                                ui,
+                                crate::ui::keyboard::LogicalFocus::new(format!(
+                                    "move-ship-combo:{}",
+                                    ship.id.raw()
+                                )),
+                                "move-ship-combo",
+                                crate::ui::keyboard::inferred_band(ui.ctx(), combo.response.rect),
+                                &combo.response,
+                            )
+                            .register();
                         }
                     }
 
@@ -132,11 +180,22 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                                 ui.weak(strings.text("ui.listing.has-standing-orders"));
                             }
                         });
-                        if Some(army.owner) == ctx.player_org
-                            && ui
-                                .small_button(strings.text("ui.listing.disband"))
-                                .clicked()
-                        {
+                        let disband = (Some(army.owner) == ctx.player_org).then(|| {
+                            let response = ui.small_button(strings.text("ui.listing.disband"));
+                            crate::ui::keyboard::capture_action(
+                                ui,
+                                crate::ui::keyboard::LogicalFocus::new(format!(
+                                    "disband-army:{}",
+                                    army.id.raw()
+                                )),
+                                "disband-army",
+                                crate::ui::keyboard::inferred_band(ui.ctx(), response.rect),
+                                &response,
+                            )
+                            .register();
+                            response
+                        });
+                        if disband.is_some_and(|response| response.clicked()) {
                             out.queue
                                 .0
                                 .push(PlayerCommand::DisbandArmy { army: army.id });
@@ -157,7 +216,19 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                 sorted.sort_by_key(|(record, _, _)| record.id);
                 for (record, name, _) in sorted {
                     let selected = out.view.selected == Some(Selection::Province(record.id));
-                    if ui.selectable_label(selected, &name.0).clicked() {
+                    let response = ui.selectable_label(selected, &name.0);
+                    crate::ui::keyboard::capture_action(
+                        ui,
+                        crate::ui::keyboard::LogicalFocus::new(format!(
+                            "listing-province:{}",
+                            record.id.raw()
+                        )),
+                        "listing-province",
+                        crate::ui::keyboard::inferred_band(ui.ctx(), response.rect),
+                        &response,
+                    )
+                    .register();
+                    if response.clicked() {
                         out.view.selected = Some(Selection::Province(record.id));
                     }
                 }

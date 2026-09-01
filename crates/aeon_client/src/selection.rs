@@ -114,8 +114,13 @@ fn on_globe_click(
 }
 
 /// Escape backs out of a body view.
-pub fn view_hotkeys(keys: Res<ButtonInput<KeyCode>>, mut view: ResMut<ViewState>) {
-    if keys.just_pressed(KeyCode::Escape) && matches!(view.view, MapView::Body(_)) {
+pub fn view_hotkeys(
+    keys: Res<ButtonInput<KeyCode>>,
+    local_escape: Option<Res<crate::ui::shell::LocalEscapeClaim>>,
+    mut view: ResMut<ViewState>,
+) {
+    let claimed = local_escape.is_some_and(|claim| claim.claimed);
+    if !claimed && keys.just_pressed(KeyCode::Escape) && matches!(view.view, MapView::Body(_)) {
         view.view = MapView::System;
     }
 }

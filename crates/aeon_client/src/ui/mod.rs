@@ -10,6 +10,7 @@ pub mod forecast;
 pub mod icons;
 pub mod idle_panel;
 pub mod inspector;
+pub mod keyboard;
 pub mod layout;
 pub mod ledger_panel;
 pub mod listing;

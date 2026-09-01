@@ -122,6 +122,20 @@ pub fn draw_header(
                     "ui.panel.move-to",
                     &[("side", strings.text(target.label_key()))],
                 ));
+            crate::ui::keyboard::capture_action(
+                ui,
+                crate::ui::keyboard::LogicalFocus::new(format!(
+                    "dock-header:{kind:?}:move:{target:?}"
+                )),
+                "dock-header",
+                match side {
+                    DockSide::Left => crate::ui::keyboard::FocusBand::Left,
+                    DockSide::Right => crate::ui::keyboard::FocusBand::Right,
+                    DockSide::Bottom => crate::ui::keyboard::FocusBand::BottomBody,
+                },
+                &response,
+            )
+            .register();
             #[cfg(test)]
             crate::ui::rendered_state::record_response(ui, "dock-header", &response);
             if response.clicked() {
@@ -131,6 +145,18 @@ pub fn draw_header(
         let close = ui
             .add(egui::Button::new("✕").min_size(egui::vec2(24.0, 24.0)))
             .on_hover_text(strings.text("ui.panel.close"));
+        crate::ui::keyboard::capture_action(
+            ui,
+            crate::ui::keyboard::LogicalFocus::new(format!("dock-header:{kind:?}:close")),
+            "dock-header",
+            match side {
+                DockSide::Left => crate::ui::keyboard::FocusBand::Left,
+                DockSide::Right => crate::ui::keyboard::FocusBand::Right,
+                DockSide::Bottom => crate::ui::keyboard::FocusBand::BottomBody,
+            },
+            &close,
+        )
+        .register();
         #[cfg(test)]
         crate::ui::rendered_state::record_response(ui, "dock-header", &close);
         if close.clicked() {

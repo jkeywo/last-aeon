@@ -29,14 +29,26 @@ fn appointment_picker(
     post: OfficerPost,
     label: &str,
 ) {
-    egui::ComboBox::from_id_salt(("officer-appointment", target, post))
+    let combo = egui::ComboBox::from_id_salt(("officer-appointment", target, post))
         .selected_text(label)
         .show_ui(ui, |ui| {
             for (id, (record, ..)) in &ctx.lookup.chars {
-                if record.alive()
-                    && record.organisation == ctx.player_org
-                    && ui.selectable_label(false, &record.name).clicked()
-                {
+                if !record.alive() || record.organisation != ctx.player_org {
+                    continue;
+                }
+                let response = ui.selectable_label(false, &record.name);
+                crate::ui::keyboard::capture_action(
+                    ui,
+                    crate::ui::keyboard::LogicalFocus::new(format!(
+                        "appoint:{target:?}:{post:?}:{}",
+                        id.raw()
+                    )),
+                    "appoint-officer-choice",
+                    crate::ui::keyboard::inferred_band(ui.ctx(), response.rect),
+                    &response,
+                )
+                .register();
+                if response.clicked() {
                     out.queue.0.push(PlayerCommand::AppointOfficer {
                         target,
                         post,
@@ -45,6 +57,14 @@ fn appointment_picker(
                 }
             }
         });
+    crate::ui::keyboard::capture_action(
+        ui,
+        crate::ui::keyboard::LogicalFocus::new(format!("appoint:{target:?}:{post:?}")),
+        "appoint-officer",
+        crate::ui::keyboard::inferred_band(ui.ctx(), combo.response.rect),
+        &combo.response,
+    )
+    .register();
 }
 
 /// Draws the inspector for whatever is currently selected.
@@ -81,10 +101,16 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                     );
                     ui.end_row();
                 });
-                if ui
-                    .button(strings.text("ui.inspector.body.open-map"))
-                    .clicked()
-                {
+                let open = ui.button(strings.text("ui.inspector.body.open-map"));
+                crate::ui::keyboard::capture_action(
+                    ui,
+                    crate::ui::keyboard::LogicalFocus::new(format!("open-body:{}", id.raw())),
+                    "open-body-map",
+                    crate::ui::keyboard::inferred_band(ui.ctx(), open.rect),
+                    &open,
+                )
+                .register();
+                if open.clicked() {
                     out.view.view = MapView::Body(id);
                 }
             }
@@ -380,7 +406,20 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                                 && ship.troop_capacity >= army.manpower
                                 && ship.location == ShipLocation::Docked(province)
                         }) {
-                            if ui.button(format!("Embark on {}", ship.name)).clicked() {
+                            let response = ui.button(format!("Embark on {}", ship.name));
+                            crate::ui::keyboard::capture_action(
+                                ui,
+                                crate::ui::keyboard::LogicalFocus::new(format!(
+                                    "embark:{}:{}",
+                                    id.raw(),
+                                    ship.id.raw()
+                                )),
+                                "embark-army",
+                                crate::ui::keyboard::inferred_band(ui.ctx(), response.rect),
+                                &response,
+                            )
+                            .register();
+                            if response.clicked() {
                                 out.queue.0.push(PlayerCommand::EmbarkArmy {
                                     army: id,
                                     ship: ship.id,
@@ -395,11 +434,24 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                             .iter()
                             .find(|ship| ship.id == ship_id)
                             .map(|ship| ship.location)
-                            && ui.button("Disembark").clicked()
                         {
-                            out.queue
-                                .0
-                                .push(PlayerCommand::DisembarkArmy { army: id, province });
+                            let response = ui.button("Disembark");
+                            crate::ui::keyboard::capture_action(
+                                ui,
+                                crate::ui::keyboard::LogicalFocus::new(format!(
+                                    "disembark:{}",
+                                    id.raw()
+                                )),
+                                "disembark-army",
+                                crate::ui::keyboard::inferred_band(ui.ctx(), response.rect),
+                                &response,
+                            )
+                            .register();
+                            if response.clicked() {
+                                out.queue
+                                    .0
+                                    .push(PlayerCommand::DisembarkArmy { army: id, province });
+                            }
                         }
                     }
                 }
@@ -611,10 +663,20 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                                 AiIntent::Standing,
                                 AiIntent::Resources,
                             ] {
-                                if ui
-                                    .button(strings.text(directive_intent_key(intent)))
-                                    .clicked()
-                                {
+                                let response =
+                                    ui.button(strings.text(directive_intent_key(intent)));
+                                crate::ui::keyboard::capture_action(
+                                    ui,
+                                    crate::ui::keyboard::LogicalFocus::new(format!(
+                                        "directive:{}:{intent:?}",
+                                        id.raw()
+                                    )),
+                                    "issue-directive",
+                                    crate::ui::keyboard::inferred_band(ui.ctx(), response.rect),
+                                    &response,
+                                )
+                                .register();
+                                if response.clicked() {
                                     out.queue.0.push(PlayerCommand::IssueDirective {
                                         vassal: id,
                                         intent,
@@ -623,14 +685,25 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                                 }
                             }
                         });
-                        if current.is_some()
-                            && ui
-                                .button(strings.text("ui.inspector.org.clear-directive"))
-                                .clicked()
-                        {
-                            out.queue
-                                .0
-                                .push(PlayerCommand::ClearDirective { vassal: id });
+                        if current.is_some() {
+                            let response =
+                                ui.button(strings.text("ui.inspector.org.clear-directive"));
+                            crate::ui::keyboard::capture_action(
+                                ui,
+                                crate::ui::keyboard::LogicalFocus::new(format!(
+                                    "clear-directive:{}",
+                                    id.raw()
+                                )),
+                                "clear-directive",
+                                crate::ui::keyboard::inferred_band(ui.ctx(), response.rect),
+                                &response,
+                            )
+                            .register();
+                            if response.clicked() {
+                                out.queue
+                                    .0
+                                    .push(PlayerCommand::ClearDirective { vassal: id });
+                            }
                         }
                     }
                 }
@@ -757,7 +830,7 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                     && record.organisation == ctx.player_org
                     && let Some(Location::Province(at)) = location.map(|l| l.0)
                 {
-                    egui::ComboBox::from_id_salt("travel-to")
+                    let combo = egui::ComboBox::from_id_salt("travel-to")
                         .selected_text(strings.text("ui.inspector.character.travel-to"))
                         .show_ui(ui, |ui| {
                             let mut sorted: Vec<_> = ctx.lookup.province_names.iter().collect();
@@ -766,7 +839,20 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                                 if *province == at {
                                     continue;
                                 }
-                                if ui.selectable_label(false, *name).clicked() {
+                                let response = ui.selectable_label(false, *name);
+                                crate::ui::keyboard::capture_action(
+                                    ui,
+                                    crate::ui::keyboard::LogicalFocus::new(format!(
+                                        "travel:{}:{}",
+                                        id.raw(),
+                                        province.raw()
+                                    )),
+                                    "travel-choice",
+                                    crate::ui::keyboard::inferred_band(ui.ctx(), response.rect),
+                                    &response,
+                                )
+                                .register();
+                                if response.clicked() {
                                     out.queue.0.push(PlayerCommand::Travel {
                                         character: id,
                                         destination: *province,
@@ -774,6 +860,14 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                                 }
                             }
                         });
+                    crate::ui::keyboard::capture_action(
+                        ui,
+                        crate::ui::keyboard::LogicalFocus::new(format!("travel:{}", id.raw())),
+                        "travel-combo",
+                        crate::ui::keyboard::inferred_band(ui.ctx(), combo.response.rect),
+                        &combo.response,
+                    )
+                    .register();
                 }
                 // What an autonomous character has set their mind to. The
                 // game's stance is that AI reasons are visible: the plan
@@ -938,7 +1032,16 @@ fn draw_standing_orders(
 
     for (key, def) in offered {
         let mut on = wanted.contains(key);
-        if ui.checkbox(&mut on, &def.title).changed() {
+        let response = ui.checkbox(&mut on, &def.title);
+        crate::ui::keyboard::capture_action(
+            ui,
+            crate::ui::keyboard::LogicalFocus::new(format!("standing-order:{}:{key}", army.raw())),
+            "standing-order",
+            crate::ui::keyboard::inferred_band(ui.ctx(), response.rect),
+            &response,
+        )
+        .register();
+        if response.changed() {
             if on {
                 wanted.push(key.clone());
             } else {

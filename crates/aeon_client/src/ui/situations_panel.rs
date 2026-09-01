@@ -269,7 +269,24 @@ fn draw_resolution(
         .map(|def| def.title.clone())
         .unwrap_or_else(|| resolved.clone());
     egui::Frame::group(ui.style()).show(ui, |ui| {
-        ui.strong(&title);
+        let heading = ui.add(
+            egui::Label::new(egui::RichText::new(&title).strong())
+                .sense(egui::Sense::focusable_noninteractive()),
+        );
+        let occurrence = format!("{:?}@{}", notice.situation, notice.activated);
+        crate::ui::keyboard::situation_resolution(
+            ui,
+            crate::ui::keyboard::LogicalFocus::new(format!(
+                "resolution-summary:{occurrence}:{}",
+                notice.id
+            )),
+            occurrence,
+            crate::ui::keyboard::FocusBand::Right,
+            &heading,
+        )
+        .register();
+        #[cfg(test)]
+        crate::ui::rendered_state::record_response(ui, "resolution-summary", &heading);
         ui.weak(resolved);
         ui.separator();
         ui.label(&notice.text);
@@ -283,9 +300,21 @@ fn draw_resolution(
         draw_participant_groups(ui, ctx, out, &notice.participant_groups);
         draw_links(ui, ctx, out, &notice.links, "ui.situations.links");
         draw_history(ui, ctx, &view.history);
-        if ctx.player_org.is_some()
-            && draw_wrapped_action(ui, true, ctx.strings.text("ui.situations.dismiss")).clicked()
-        {
+        let dismiss = ctx.player_org.is_some().then(|| {
+            let response = draw_wrapped_action(ui, true, ctx.strings.text("ui.situations.dismiss"));
+            crate::ui::keyboard::capture_action(
+                ui,
+                crate::ui::keyboard::LogicalFocus::new(format!("resolution-dismiss:{}", notice.id)),
+                "resolution-dismiss",
+                crate::ui::keyboard::FocusBand::Right,
+                &response,
+            )
+            .register();
+            #[cfg(test)]
+            crate::ui::rendered_state::record_response(ui, "resolution-dismiss", &response);
+            response
+        });
+        if dismiss.is_some_and(|response| response.clicked()) {
             out.situation_ui.dismissed.insert(notice.id);
             out.queue.0.push(PlayerCommand::DismissSituationResolution {
                 resolution: notice.id,
@@ -365,9 +394,18 @@ fn draw_active_card(
             if ctx.player_org.is_some() && !view.actions.is_empty() {
                 ui.separator();
                 ui.strong(ctx.strings.text("ui.situations.actions"));
+                let mut responses = Vec::new();
                 for action in &view.actions {
-                    draw_action(ui, &view.card.active.key, action, ctx, out);
+                    responses.push(draw_action(
+                        ui,
+                        &view.card.active.key,
+                        view.card.active.activated,
+                        action,
+                        ctx,
+                        out,
+                    ));
                 }
+                crate::ui::keyboard::roving_group(ui, &responses);
             }
         })
         .response;
@@ -417,13 +455,27 @@ fn draw_history(ui: &mut egui::Ui, ctx: &PanelCtx, entries: &[LogEntry]) {
 fn draw_action(
     ui: &mut egui::Ui,
     situation: &SituationInstanceKey,
+    activated: aeon_core::calendar::GameDate,
     view: &SituationActionView,
     ctx: &PanelCtx,
     out: &mut PanelOut,
-) {
+) -> egui::Response {
     let enabled = view.unavailable.is_none() && view.action.leader.is_some();
     let label = action_label(ctx, view);
     let mut response = draw_wrapped_action(ui, enabled, label);
+    let occurrence = format!("{situation:?}@{activated}");
+    crate::ui::keyboard::situation_action(
+        ui,
+        crate::ui::keyboard::LogicalFocus::new(format!(
+            "situation-action:{occurrence}:{}",
+            view.action.id
+        )),
+        occurrence,
+        view.action.id.to_string(),
+        crate::ui::keyboard::FocusBand::Right,
+        &response,
+    )
+    .register();
     #[cfg(test)]
     if view.action.id.as_str() == "call-favour" {
         crate::ui::rendered_state::record_response(ui, "situation-action", &response);
@@ -441,8 +493,10 @@ fn draw_action(
             ctx.strings
                 .format("ui.situations.unavailable", &[("reason", reason)]),
         );
-    } else if let Some(forecast) = &view.forecast {
-        response = response.on_hover_ui(|ui| {
+    } else if let Some(forecast) = &view.forecast
+        && crate::ui::keyboard::disclosed(&response)
+    {
+        egui::Tooltip::for_widget(&response).show(|ui| {
             #[cfg(test)]
             if view.action.id.as_str() == "call-favour" {
                 ui.ctx().data_mut(|data| {
@@ -464,8 +518,13 @@ fn draw_action(
             action: view.action.id.clone(),
             war: aeon_sim::situations::action_war(situation, view.action.target),
         });
-        out.popup.open();
+        out.popup
+            .open_from(crate::ui::keyboard::LogicalFocus::new(format!(
+                "situation-action:{situation:?}@{activated}:{}",
+                view.action.id
+            )));
     }
+    response
 }
 
 fn action_label(ctx: &PanelCtx, view: &SituationActionView) -> String {
@@ -512,13 +571,24 @@ fn draw_links(
     }
     ui.horizontal_wrapped(|ui| {
         ui.weak(ctx.strings.text(heading_key));
+        let mut responses = Vec::new();
         for link in links {
             let label = link_label(ctx, link);
             if let Some(selection) = selection_for(link) {
-                if ui
-                    .add(egui::Button::new(label).wrap().frame(false))
-                    .clicked()
-                {
+                let response = ui.add(egui::Button::new(label).wrap().frame(false));
+                crate::ui::keyboard::capture_action(
+                    ui,
+                    crate::ui::keyboard::LogicalFocus::new(format!(
+                        "situation-subject:{:?}:{}",
+                        link.kind, link.id
+                    )),
+                    "situation-subject",
+                    crate::ui::keyboard::FocusBand::Right,
+                    &response,
+                )
+                .register();
+                responses.push(response.clone());
+                if response.clicked() {
                     if let Selection::Province(province) = selection
                         && let Some((record, ..)) = ctx
                             .data
@@ -534,6 +604,7 @@ fn draw_links(
                 ui.label(label);
             }
         }
+        crate::ui::keyboard::roving_group(ui, &responses);
     });
 }
 

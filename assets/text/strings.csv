@@ -345,6 +345,7 @@ ui.actions.choose-character,"Placeholder on the closed character-target dropdown
 ui.actions.choose-leader,Button that opens the leader comparison list for an action.,[Choose…]
 ui.actions.choose-leader.hover,"Tooltip on the choose-leader button. {free} is how many house members could take the assignment on now, {total} how many there are.",[Compare everyone in your house for this assignment. {free} of {total} could take it on now.]
 ui.actions.confirm,Button that issues the composed action to the simulation.,[Confirm]
+ui.assignment-popup.cancel,Visible button that cancels assignment composition and returns to its opener.,[Cancel]
 ui.actions.filter-org,Hint text in the organisation picker's filter box.,[Filter organisations…]
 ui.actions.filter-province,Hint text in the province picker's filter box.,[Filter provinces…]
 ui.actions.forecast-pending,Shown in place of the forecast while the action still has empty slots.,[Choose the remaining details to see the forecast.]
@@ -610,6 +611,7 @@ ui.picker.empty.nobody,Shown in the leader picker when nobody in the house could
 ui.picker.empty.wait-until,"Shown under the all-committed message, naming when the first member frees up. {date} is a campaign date.","[Cancel a assignment below, or wait — the first comes free on {date}.]"
 ui.picker.title,Title of the leader picker window. {assignment} is the assignment being staffed.,[Who leads: {assignment}]
 ui.picker.title.generic,Title of the leader picker window before a assignment is known.,[Who leads this]
+ui.picker.close,Visible button that closes the leader picker and returns to its opener.,[Close]
 ui.resource.influence,"The influence reading in the resource bar, shown against the house's legitimacy ceiling. I abbreviates influence.",[I {influence}/{legitimacy}]
 ui.resource.manpower.hover,Tooltip on the manpower reading in the resource bar.,"[Manpower — people to staff assignments, garrisons, and armies]"
 ui.resource.supplies.hover,Tooltip on the supplies reading in the resource bar.,"[Supplies — sustains armies, fleets, and expeditions]"
@@ -658,6 +660,7 @@ ui.preferences.scale-125,Interface scale choice at one hundred and twenty-five p
 ui.preferences.scale-150,Interface scale choice at one hundred and fifty percent.,[150%]
 ui.preferences.scale-200,Interface scale choice at two hundred percent.,[200%]
 ui.preferences.title,Heading for interface preferences on the title and campaign surfaces.,[Interface]
+ui.preferences.close,Visible button that closes interface preferences and returns to its opener.,[Close]
 ui.window.title,"The game's name, shown in the title bar of the window and on the taskbar.",[The Last Aeons]
 sim.plan.adopted,"Log line when a house's head adopts a plan, giving the pressure behind it. {house} is the house, {plan} the plan's title, {reason} why.",[{house} has set its mind to '{plan}': {reason}.]
 sim.plan.completed,Log line when a plan is seen through to the end. {house} {plan},[{house} has seen '{plan}' through.]

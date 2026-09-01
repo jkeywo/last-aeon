@@ -36,6 +36,7 @@ pub fn draw_mode_bar(
     active: MapMode,
 ) -> Option<MapMode> {
     let mut picked = None;
+    let mut responses = Vec::new();
     let button = f32::from(theme.components.icon_button);
     for mode in MapMode::ALL {
         let (rect, response) =
@@ -46,13 +47,22 @@ pub fn draw_mode_bar(
         // rest of the interface uses, so an icon button and a text button
         // respond identically.
         let visuals = ui.style().interact_selectable(&response, selected);
-        if selected || response.hovered() {
+        if selected || response.hovered() || response.has_focus() {
             ui.painter()
                 .rect_filled(rect, theme.shape.radius_small as f32, visuals.bg_fill);
         }
         draw_mode_icon(ui.painter(), theme, rect, *mode, visuals.fg_stroke.color);
+        crate::ui::keyboard::capture_action(
+            ui,
+            crate::ui::keyboard::LogicalFocus::new(format!("map-mode:{mode:?}")),
+            "map-mode",
+            crate::ui::keyboard::FocusBand::TopChrome,
+            &response,
+        )
+        .register();
 
         if response
+            .clone()
             .on_hover_text(format!(
                 "{}\n{}",
                 strings.text(&mode.label_key()),
@@ -62,7 +72,9 @@ pub fn draw_mode_bar(
         {
             picked = Some(*mode);
         }
+        responses.push(response);
     }
+    crate::ui::keyboard::roving_group(ui, &responses);
     picked
 }
 

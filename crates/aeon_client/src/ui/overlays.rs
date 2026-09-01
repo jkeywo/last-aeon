@@ -63,6 +63,17 @@ pub fn draw_overlays(
                                     .min_size(egui::vec2(24.0, 24.0)),
                                 )
                                 .on_hover_text(&item.detail);
+                            crate::ui::keyboard::capture_action(
+                                ui,
+                                crate::ui::keyboard::LogicalFocus::new(format!(
+                                    "attention:{:?}",
+                                    item.target
+                                )),
+                                "attention",
+                                crate::ui::keyboard::FocusBand::Overlay,
+                                &response,
+                            )
+                            .register();
                             #[cfg(test)]
                             crate::ui::rendered_state::record_response(ui, "attention", &response);
                             if response.clicked() {

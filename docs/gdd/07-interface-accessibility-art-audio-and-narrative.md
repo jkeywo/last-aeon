@@ -245,6 +245,45 @@ or names may add rows without putting overlays or docks underneath them.
 Resolved normal/widget and semantic text colours are checked at 4.5:1 against
 the composited panel and popup-window grounds. Resolved inactive, hovered,
 active, open, and selected control boundaries reach 3:1.
+**Implemented design [ai].** Keyboard focus follows the actionable controls in
+their actual rendered responsive order, rather than a parallel fixed menu.
+Tab and Shift+Tab cross surfaces; arrow keys move within rendered mode, panel,
+Situation-action, subject-link, and leader groups. Enter and Space use the same
+button activation path as a pointer. Focus paints an explicit outer boundary
+from the audited selection stroke, including primitive-drawn icon controls, at
+every supported scale. A focused Situation action or leader reveals the same
+authoritative forecast as hover.
+
+[ai] Every campaign-shell action is unconditionally captured at response
+construction, before a separate explicit step registers enabled focusable
+responses and paints their focus boundary. Rendered acceptance compares that
+raw response audit with the completed registry and fails if an action is
+skipped; a negative regression deliberately omits registration to prove the
+two records are independent. Situation action identities include their occurrence
+and action key; when an action resolves, focus moves only to a newly created
+resolution summary for that exact occurrence, never to an unrelated notice.
+
+Escape unwinds one local surface at a time—leader picker, assignment
+composition, settings, then search—and returns focus to the opening control.
+[ai] A single per-press presentation claim is resolved before strategic view
+hotkeys and is then consumed by the egui pass. Thus one Escape cannot both
+close a local layer and back the map out from Body to System; when no local
+layer claims it, the ordinary strategic fallback remains available. Settings,
+like assignment composition and the leader picker, stores a logical invoker
+and resolves that key against the newly rendered registry after close or
+reflow, using the adjacent visible fallback if the original action vanished.
+[ai] Floating surfaces do not expose egui's separate title-bar close response.
+Settings, assignment composition, and the leader picker instead render an
+explicit localized Close or Cancel action through the same independent capture
+and registry seam as every other campaign action. Tab therefore reaches the
+visible close action, and Enter or Space uses the same invoker-restoring close
+path as Escape.
+[ai] When responsive reflow moves a control, its logical registration is
+re-established in rendered order; a removed or disabled control yields focus
+to the next rendered actionable control rather than retaining an invisible
+target. This is presentation state only and never issues a command or advances
+the clock.
+
 Unavailable Situation commands retain adjacent textual reasons; forecast
 blockers and incomplete slots remain written beside the disabled Confirm
 control, so disabled meaning is not encoded by fading alone.
@@ -253,7 +292,7 @@ A deterministic embedded-campaign fixture renders every accepted
 resolution/scale tuple through the complete production shell: top bar, search,
 attention overlay, side and bottom docks, compact tabs, Situation panel,
 assignment popup, and forecast renderer. In each tuple one coherent flow follows
-the real subject and time controls, hovers the Situation action's real forecast,
+the real subject and time controls, focuses the Situation action's real forecast,
 opens the shared popup from that action, verifies its painted forecast galley,
 and clicks its real Confirm. The resulting `StartSituationAssignment` is flushed
 through the client command seam and advances only through the production
@@ -267,7 +306,10 @@ scroll geometry proves horizontal movement is not required and the accepted
 matrix exercises vertical overflow. The same test
 executes natively and under `wasm-bindgen-test` in
 headless Chrome; `tools/test-rendered-state-browser.ps1` is the reproducible
-browser entry point. [ai] This is rendered widget/state evidence, not a
+browser entry point, run from the repository root as
+`powershell -File tools/test-rendered-state-browser.ps1 -ChromeDriver <path-to-matching-chromedriver.exe>`.
+The script builds and executes the same-source `wasm-bindgen-test` evidence in
+actual Chrome rather than substituting a DOM-only harness. [ai] This is rendered widget/state evidence, not a
 pixel-perfect screenshot baseline.
 
 ### Remaining required decision work
@@ -276,8 +318,7 @@ pixel-perfect screenshot baseline.
 floor, scroll policy, and automated contrast thresholds are accepted above.
 Before a broader accessibility-standard claim is promised, decide and record:
 
-- supported input methods and whether every campaign action must be reachable
-  without a pointer;
+- controller and touch semantics beyond the accepted keyboard-complete path;
 - colour-vision-safe map palettes and any additional non-colour redundancy;
 - viewport, aspect-ratio, and text-expansion support beyond the accepted matrix;
 - motion, flashing, camera, and selection-pulse limits;
@@ -571,7 +612,8 @@ The current presentation contract is accepted when:
 ## Open questions
 
 - Which accessibility standard and target platforms define release acceptance?
-- Which pointer, keyboard, controller, and touch interactions must be complete?
+- Which controller and touch interactions must be complete beyond the accepted
+  keyboard path?
 - [ai] Which additional resolutions, aspect ratios, UI scales, and maximum text
   expansion should docks and overlays support beyond the accepted matrix?
 - [ai] Should panel layout, or future presentation preferences beyond the

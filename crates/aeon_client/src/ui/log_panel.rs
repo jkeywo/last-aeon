@@ -26,10 +26,16 @@ pub fn draw_log_panel(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
     ui.horizontal_wrapped(|ui| {
         for channel in LogChannel::ALL {
             let mut on = filter.channels.contains(&channel);
-            if ui
-                .toggle_value(&mut on, strings.text(channel.label_key()))
-                .changed()
-            {
+            let response = ui.toggle_value(&mut on, strings.text(channel.label_key()));
+            crate::ui::keyboard::capture_action(
+                ui,
+                crate::ui::keyboard::LogicalFocus::new(format!("log-channel:{channel:?}")),
+                "log-channel",
+                crate::ui::keyboard::inferred_band(ui.ctx(), response.rect),
+                &response,
+            )
+            .register();
+            if response.changed() {
                 if on {
                     filter.channels.insert(channel);
                 } else {
@@ -37,13 +43,30 @@ pub fn draw_log_panel(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                 }
             }
         }
-        ui.toggle_value(&mut filter.mine_only, strings.text("ui.log.mine-only"))
+        let mine = ui
+            .toggle_value(&mut filter.mine_only, strings.text("ui.log.mine-only"))
             .on_hover_text(strings.text("ui.log.mine-only.hover"));
-        ui.add(
+        crate::ui::keyboard::capture_action(
+            ui,
+            crate::ui::keyboard::LogicalFocus::new("log-mine-only"),
+            "log-mine-only",
+            crate::ui::keyboard::inferred_band(ui.ctx(), mine.rect),
+            &mine,
+        )
+        .register();
+        let text = ui.add(
             egui::TextEdit::singleline(&mut filter.text)
                 .hint_text(strings.text("ui.log.filter-hint"))
                 .desired_width(f32::from(theme.components.log_filter_width)),
         );
+        crate::ui::keyboard::capture_action(
+            ui,
+            crate::ui::keyboard::LogicalFocus::new("log-filter"),
+            "log-filter",
+            crate::ui::keyboard::inferred_band(ui.ctx(), text.rect),
+            &text,
+        )
+        .register();
     });
 
     egui::ScrollArea::vertical()
@@ -60,17 +83,27 @@ pub fn draw_log_panel(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
             if visible.is_empty() {
                 ui.weak(strings.text("ui.log.no-matches"));
             }
-            for entry in visible.into_iter().rev() {
+            for (index, entry) in visible.into_iter().rev().enumerate() {
                 ui.horizontal_wrapped(|ui| {
                     ui.weak(entry.date.to_string());
                     match entry.subject {
                         // A subject makes the entry a way in.
                         Some(subject) => {
-                            if ui
+                            let response = ui
                                 .link(&entry.text)
-                                .on_hover_text(strings.text("ui.log.go-to-subject"))
-                                .clicked()
-                            {
+                                .on_hover_text(strings.text("ui.log.go-to-subject"));
+                            crate::ui::keyboard::capture_action(
+                                ui,
+                                crate::ui::keyboard::LogicalFocus::new(format!(
+                                    "log-subject:{index}:{}",
+                                    entry.date
+                                )),
+                                "log-subject",
+                                crate::ui::keyboard::inferred_band(ui.ctx(), response.rect),
+                                &response,
+                            )
+                            .register();
+                            if response.clicked() {
                                 match subject {
                                     LogSubject::Character(id) => {
                                         view.selected = Some(Selection::Character(id));

@@ -2117,3 +2117,36 @@ entities:
         - client-owned-versioned-interface-preferences
         - shared-native-and-web-delivery
         - headless-authoritative-simulation
+
+  - decision: rendered-order-keyboard-navigation
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Keyboard Focus Follows the Rendered Responsive Surface
+      summary: >-
+        The client keeps keyboard policy entirely in presentation. Egui's
+        registry is rebuilt from focusable response rectangles, paint layers,
+        and explicit visual surface bands after responsive reflow. Tab and
+        Shift+Tab traverse that sorted registry; arrow keys rove within visual groups.
+        Enter and Space activate the ordinary widget response. Escape unwinds
+        the nearest picker, assignment composition, settings, or search and
+        restores its invoker. Situation subjects, actions, leader choices,
+        custom icon controls, Confirm, and time controls expose a visible
+        audited focus boundary. Focused forecast-bearing controls disclose the
+        same authoritative forecast as hover. Neither focus nor navigation
+        emits a PlayerCommand or advances the campaign clock.
+      rationale:
+        - "[ai] Deriving traversal from widgets that were actually rendered prevents compact reflow from creating a second, stale spatial model."
+        - "[ai] Restoring the logical invoker makes Escape reversible even when a floating surface temporarily owns focus."
+        - "[ai] Stable logical keys let reflow resolve a changed egui ID and choose an adjacent visible fallback when the original control disappears."
+        - "[ai] Reusing normal activation, forecast, command, and clock paths keeps keyboard support presentation-only and headless-authoritative."
+        - "[ai] Raw action capture occurs before a separate explicit registry step: rendered tests independently sort every captured enabled response and require an exact logical-ID match with the traversal registry, while a deliberately unregistered negative fixture proves omissions fail the audit."
+        - "[ai] Situation repair is occurrence-scoped: an action carries occurrence and action identity, and only a newly created resolution for that same occurrence may receive focus after the action disappears."
+        - "[ai] Escape uses one shared per-press claim before strategic view hotkeys, in picker, assignment, settings, then search order; the egui pass consumes a claimed event so one press closes exactly one local layer, while an unclaimed press retains the normal Body-to-System fallback."
+        - "[ai] Settings stores the logical key of the real action that opened it and resolves that invoker, or the documented adjacent visible fallback, against the current rendered registry on Escape or visible close."
+        - "[ai] Floating campaign surfaces omit egui's unregistered title-bar close response and provide localized captured Close or Cancel actions instead, making visible closure part of the exact Tab registry and the same logical-invoker restoration path as Escape."
+      references:
+        - logical-point-responsive-campaign-shell
+        - egui-with-owned-design-tokens
+        - shared-native-and-web-delivery
+        - headless-authoritative-simulation

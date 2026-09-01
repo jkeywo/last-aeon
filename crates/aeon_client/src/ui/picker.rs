@@ -35,12 +35,23 @@ use crate::ui::theme::{TargetState, UiTheme};
 pub struct PickerState {
     /// Whether the window is showing.
     pub open: bool,
+    /// Control that opened the picker, for Escape/close return.
+    pub invoker: Option<crate::ui::keyboard::LogicalFocus>,
 }
 
 impl PickerState {
     /// Opens the picker.
-    pub fn open(&mut self) {
+    pub fn open_from(&mut self, invoker: crate::ui::keyboard::LogicalFocus) {
         self.open = true;
+        self.invoker = Some(invoker);
+    }
+
+    /// Closes the comparison without changing the selected candidate.
+    pub fn close(&mut self, ctx: &egui::Context) {
+        self.open = false;
+        if let Some(invoker) = self.invoker.take() {
+            crate::ui::keyboard::request_logical(ctx, invoker);
+        }
     }
 }
 
@@ -64,7 +75,7 @@ pub fn draw_picker(
     // nothing to be about, so it closes itself rather than showing an
     // empty frame.
     if form.assignment.is_none() {
-        picker.open = false;
+        picker.close(ctx);
         return;
     }
     let (Some(content), Some(strings)) = (content, strings) else {
@@ -78,10 +89,8 @@ pub fn draw_picker(
         .map(|view| strings.format("ui.picker.title", &[("assignment", &view.title)]))
         .unwrap_or_else(|| strings.text("ui.picker.title.generic").to_owned());
 
-    let mut open = true;
     egui::Window::new(title)
         .id(egui::Id::new("character-picker"))
-        .open(&mut open)
         .resizable(true)
         .default_width(f32::from(theme.components.picker_width))
         .show(ctx, |ui| {
@@ -103,22 +112,43 @@ pub fn draw_picker(
                     if free.is_empty() {
                         draw_empty_state(ui, &theme, strings, &committed);
                     }
+                    let mut responses = Vec::new();
                     for option in &free {
-                        draw_candidate(ui, &theme, strings, &mut form, option);
+                        responses.push(draw_candidate(ui, &theme, strings, &mut form, option));
                     }
 
                     if !committed.is_empty() {
                         ui.separator();
                         ui.weak(strings.text("ui.picker.committed"));
                         for option in &committed {
-                            draw_committed(ui, &theme, strings, option, &assignment_title);
+                            responses.push(draw_committed(
+                                ui,
+                                &theme,
+                                strings,
+                                option,
+                                &assignment_title,
+                            ));
                         }
                     }
+                    // Disabled committed leaders stay in the physical row so
+                    // the keyboard scope can prove that it skips them. The
+                    // roving policy itself filters non-enabled responses.
+                    crate::ui::keyboard::roving_group(ui, &responses);
                 });
+            ui.separator();
+            let response = ui.button(strings.text("ui.picker.close"));
+            crate::ui::keyboard::capture_action(
+                ui,
+                crate::ui::keyboard::LogicalFocus::new("picker-close"),
+                "picker-close",
+                crate::ui::keyboard::FocusBand::Floating,
+                &response,
+            )
+            .register();
+            if response.clicked() {
+                picker.close(ui.ctx());
+            }
         });
-    if !open {
-        picker.open = false;
-    }
 }
 
 /// One candidate who could take the assignment on now.
@@ -128,7 +158,7 @@ fn draw_candidate(
     strings: &TextDb,
     form: &mut AssignmentForm,
     option: &LeaderOption,
-) {
+) -> egui::Response {
     let chosen = form.leader == Some(option.id);
     let mut label = strings.format(
         "ui.picker.candidate",
@@ -163,11 +193,31 @@ fn draw_candidate(
             ui.separator();
             draw_forecast_body(ui, theme, strings, &option.forecast);
         });
+    crate::ui::keyboard::capture_action(
+        ui,
+        crate::ui::keyboard::LogicalFocus::new(format!("leader:{}", option.id.raw())),
+        "leader",
+        crate::ui::keyboard::FocusBand::Floating,
+        &response,
+    )
+    .register();
+    if response.has_focus() {
+        response.clone().show_tooltip_ui(|ui| {
+            ui.set_max_width(f32::from(theme.components.picker_hover_width));
+            ui.strong(&option.name);
+            if let Some(assignment) = &option.assignment {
+                ui.weak(assignment);
+            }
+            ui.separator();
+            draw_forecast_body(ui, theme, strings, &option.forecast);
+        });
+    }
     // Selecting writes the choice and leaves the window open, so the next
     // candidate can be weighed against this one without reopening it.
     if response.clicked() {
         form.leader = Some(option.id);
     }
+    response
 }
 
 /// One household member who cannot take this assignment on.
@@ -177,7 +227,7 @@ fn draw_committed(
     strings: &TextDb,
     option: &LeaderOption,
     assignment_title: &impl Fn(&aeon_data::ContentKey) -> String,
-) {
+) -> egui::Response {
     // The simulation's own account of where they are, which names the assignment
     // and when it ends rather than saying only that they are unavailable.
     let reason = option.availability.describe(strings, assignment_title);
@@ -186,32 +236,45 @@ fn draw_committed(
         aeon_sim::LeaderAvailability::Ineligible(_) => TargetState::StructurallyIneligible,
         _ => TargetState::IneligibleFixable,
     };
-    ui.add_enabled(
-        false,
-        egui::Button::new(
-            egui::RichText::new(strings.format(
-                "ui.picker.committed.row",
-                &[("name", &option.name), ("reason", &reason)],
-            ))
-            .color(theme.semantics.target(state)),
+    let response = ui
+        .add_enabled(
+            false,
+            egui::Button::new(
+                egui::RichText::new(strings.format(
+                    "ui.picker.committed.row",
+                    &[("name", &option.name), ("reason", &reason)],
+                ))
+                .color(theme.semantics.target(state)),
+            )
+            .frame(false),
         )
-        .frame(false),
+        .on_disabled_hover_text(
+            strings.format(
+                "ui.picker.committed.hover",
+                &[
+                    ("name", &option.name),
+                    (
+                        "reason",
+                        option
+                            .blocked()
+                            .as_deref()
+                            .unwrap_or_else(|| strings.text("ui.actions.unavailable")),
+                    ),
+                ],
+            ),
+        );
+    // Capture is unconditional even though disabled controls are excluded
+    // from the traversal registry. This makes disabled-member skipping
+    // independently observable in native and browser evidence.
+    crate::ui::keyboard::capture_action(
+        ui,
+        crate::ui::keyboard::LogicalFocus::new(format!("leader-committed:{}", option.id.raw())),
+        "leader",
+        crate::ui::keyboard::FocusBand::Floating,
+        &response,
     )
-    .on_disabled_hover_text(
-        strings.format(
-            "ui.picker.committed.hover",
-            &[
-                ("name", &option.name),
-                (
-                    "reason",
-                    option
-                        .blocked()
-                        .as_deref()
-                        .unwrap_or_else(|| strings.text("ui.actions.unavailable")),
-                ),
-            ],
-        ),
-    );
+    .register();
+    response
 }
 
 /// What to say when nobody is free.

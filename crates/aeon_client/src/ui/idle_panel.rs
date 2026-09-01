@@ -112,17 +112,29 @@ fn draw_member(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut, member: &M
             if let Some(posting) = &member.posting {
                 if posting.cancel_requested {
                     ui.weak(strings.text("ui.assignments.cancel-pending"));
-                } else if ui
-                    .add_enabled(
-                        posting.recallable,
-                        egui::Button::new(strings.text("ui.assignments.cancel")).small(),
+                } else {
+                    let response = ui
+                        .add_enabled(
+                            posting.recallable,
+                            egui::Button::new(strings.text("ui.assignments.cancel")).small(),
+                        )
+                        .on_disabled_hover_text(strings.text("ui.assignments.cannot-recall"));
+                    crate::ui::keyboard::capture_action(
+                        ui,
+                        crate::ui::keyboard::LogicalFocus::new(format!(
+                            "cancel-assignment:{}",
+                            posting.assignment.raw()
+                        )),
+                        "cancel-assignment",
+                        crate::ui::keyboard::inferred_band(ui.ctx(), response.rect),
+                        &response,
                     )
-                    .on_disabled_hover_text(strings.text("ui.assignments.cannot-recall"))
-                    .clicked()
-                {
-                    out.queue.0.push(PlayerCommand::CancelAssignment {
-                        assignment: posting.assignment,
-                    });
+                    .register();
+                    if response.clicked() {
+                        out.queue.0.push(PlayerCommand::CancelAssignment {
+                            assignment: posting.assignment,
+                        });
+                    }
                 }
             }
             // The same context actions the inspector shows for a member of

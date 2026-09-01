@@ -44,6 +44,8 @@ use crate::view::{MapMode, MapView, SearchState, ViewState};
 #[cfg(test)]
 use aeon_core::calendar::CalendarDate;
 #[cfg(test)]
+use aeon_sim::assignments::CharacterCondition;
+#[cfg(test)]
 use aeon_sim::command::PlayerCommand;
 #[cfg(test)]
 use aeon_sim::config::CampaignConfig;
@@ -54,7 +56,9 @@ use aeon_sim::politics::PlayerHouse;
 #[cfg(test)]
 use aeon_sim::situations::{SituationSubject, active_cards};
 #[cfg(test)]
-use bevy::prelude::{IntoScheduleConfigs, Schedule};
+use aeon_sim::{CampaignClock, LeaderAvailability, PoliticsIndex};
+#[cfg(test)]
+use bevy::prelude::{ButtonInput, IntoScheduleConfigs, KeyCode, Schedule};
 #[cfg(test)]
 use bevy::window::PrimaryWindow;
 #[cfg(test)]
@@ -246,6 +250,31 @@ mod tests {
                 })
                 .expect("opening creditor");
             host.world_mut().resource_mut::<PlayerHouse>().0 = Some(creditor);
+            // Keep one genuine household candidate unavailable so the real
+            // picker exercises a mixed enabled/disabled row. This is
+            // simulation state, not a presentation-only fake response.
+            let blocked = {
+                let world = host.world_mut();
+                let date = world.resource::<CampaignClock>().date;
+                world
+                    .resource::<PoliticsIndex>()
+                    .characters
+                    .iter()
+                    .find_map(|(id, entity)| {
+                        matches!(
+                            aeon_sim::leader_availability(world, creditor, *id, date),
+                            LeaderAvailability::Available
+                        )
+                        .then_some((*entity, date.add_days(30)))
+                    })
+                    .expect("an available household leader for disabled picker evidence")
+            };
+            host.world_mut()
+                .entity_mut(blocked.0)
+                .insert(CharacterCondition {
+                    injured_until: Some(blocked.1),
+                    ..Default::default()
+                });
             let world = host.world_mut();
             world.insert_resource(UiTheme::embedded());
             world.insert_resource(AvailabilityView::default());
@@ -267,6 +296,8 @@ mod tests {
             world.insert_resource(AssignmentPopup::default());
             world.insert_resource(LogFilter::default());
             world.insert_resource(PickerState::default());
+            world.insert_resource(ButtonInput::<KeyCode>::default());
+            world.insert_resource(crate::ui::shell::LocalEscapeClaim::default());
             world.insert_resource(EguiUserTextures::default());
             world.spawn((EguiContext::default(), PrimaryEguiContext, PrimaryWindow));
             refresh_situation_panel_view(world);
@@ -306,6 +337,24 @@ mod tests {
         ) -> egui::FullOutput {
             self.time += 0.6;
             let world = self.host.world_mut();
+            let physical_escape = events.iter().any(|event| {
+                matches!(
+                    event,
+                    egui::Event::Key {
+                        key: egui::Key::Escape,
+                        pressed: true,
+                        ..
+                    }
+                )
+            });
+            {
+                let mut keys = world.resource_mut::<ButtonInput<KeyCode>>();
+                keys.release(KeyCode::Escape);
+                keys.clear();
+                if physical_escape {
+                    keys.press(KeyCode::Escape);
+                }
+            }
             refresh_situation_panel_view(world);
             let ctx = {
                 let mut query = world
@@ -326,10 +375,14 @@ mod tests {
             let mut schedule = Schedule::default();
             schedule.add_systems(
                 (
+                    crate::ui::shell::claim_local_escape,
+                    crate::selection::view_hotkeys,
                     crate::ui::theme::apply_theme,
                     crate::forecast_view::refresh_forecast,
                     crate::ui::shell::draw_panels,
                     crate::ui::assignment_popup::draw_assignment_popup,
+                    crate::ui::picker::draw_picker,
+                    crate::ui::keyboard::finish_frame,
                 )
                     .chain(),
             );
@@ -578,6 +631,345 @@ mod tests {
         events
     }
 
+    fn key_event(key: egui::Key, shift: bool) -> Vec<egui::Event> {
+        vec![egui::Event::Key {
+            key,
+            physical_key: None,
+            pressed: true,
+            repeat: false,
+            modifiers: egui::Modifiers {
+                shift,
+                ..Default::default()
+            },
+        }]
+    }
+
+    fn registry_focus(ctx: &egui::Context) -> Option<crate::ui::keyboard::FocusEntry> {
+        let logical = crate::ui::keyboard::logical_focus(ctx)?;
+        let entry = crate::ui::keyboard::completed_registry(ctx)
+            .into_iter()
+            .find(|entry| entry.logical == logical)?;
+        (ctx.memory(|memory| memory.focused()) == Some(entry.id)).then_some(entry)
+    }
+
+    fn tab_until(
+        fixture: &mut ProductionFixture,
+        viewport: egui::Vec2,
+        role: &str,
+        backwards: bool,
+    ) -> (egui::FullOutput, Vec<String>) {
+        let mut visited = Vec::new();
+        for _ in 0..512 {
+            let ctx = fixture.full_egui_context();
+            let expected_sequence = independent_visual_sequence(&ctx);
+            let current = crate::ui::keyboard::logical_focus(&ctx);
+            let current_index = current.as_ref().and_then(|logical| {
+                expected_sequence
+                    .iter()
+                    .position(|entry| &entry.logical == logical)
+            });
+            let current_is_floating = current_index.is_some_and(|index| {
+                expected_sequence[index].band == crate::ui::keyboard::FocusBand::Floating
+            });
+            let mut floating = expected_sequence
+                .iter()
+                .enumerate()
+                .filter(|(_, entry)| entry.band == crate::ui::keyboard::FocusBand::Floating)
+                .map(|(index, _)| index);
+            let next = if !current_is_floating {
+                if backwards {
+                    floating.next_back()
+                } else {
+                    floating.next()
+                }
+            } else {
+                None
+            }
+            .unwrap_or_else(|| match (current_index, backwards) {
+                (Some(index), true) => {
+                    (index + expected_sequence.len() - 1) % expected_sequence.len()
+                }
+                (Some(index), false) => (index + 1) % expected_sequence.len(),
+                (None, true) => expected_sequence.len() - 1,
+                (None, false) => 0,
+            });
+            let expected_target = expected_sequence[next].logical.clone();
+            fixture.render_full_shell(viewport, key_event(egui::Key::Tab, backwards));
+            for _ in 0..12 {
+                fixture.render_full_shell(viewport, Vec::new());
+                if let Some(entry) = registry_focus(&fixture.full_egui_context()) {
+                    assert_eq!(
+                        entry.logical,
+                        expected_target,
+                        "exact independent {} Tab target; sequence={:?}",
+                        if backwards { "reverse" } else { "forward" },
+                        expected_sequence
+                            .iter()
+                            .map(|entry| &entry.logical)
+                            .collect::<Vec<_>>()
+                    );
+                    visited.push(entry.logical.0.clone());
+                    if entry.role == role {
+                        let viewport_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, viewport);
+                        for _ in 0..8 {
+                            let painted = fixture.render_full_shell(viewport, Vec::new());
+                            let settled = registry_focus(&fixture.full_egui_context())
+                                .expect("target remains focused for paint");
+                            assert_eq!(settled.logical, entry.logical);
+                            if settled.clip.contains_rect(settled.rect)
+                                && viewport_rect.contains_rect(settled.rect)
+                            {
+                                return (painted, visited);
+                            }
+                        }
+                        panic!("focused target did not scroll fully into view: {entry:?}");
+                    }
+                    break;
+                }
+            }
+        }
+        panic!("Tab traversal did not reach role {role}; visited={visited:?}");
+    }
+
+    fn independent_visual_sequence(
+        ctx: &egui::Context,
+    ) -> Vec<crate::ui::keyboard::AuditedResponse> {
+        let mut audited = crate::ui::keyboard::audited_responses(ctx);
+        audited.retain(|entry| entry.enabled);
+        audited.sort_by(|left, right| {
+            left.band
+                .cmp(&right.band)
+                .then_with(|| (left.layer.order as u8).cmp(&(right.layer.order as u8)))
+                .then_with(|| left.rect.top().round().total_cmp(&right.rect.top().round()))
+                .then_with(|| left.rect.left().total_cmp(&right.rect.left()))
+                .then_with(|| left.rect.bottom().total_cmp(&right.rect.bottom()))
+                .then_with(|| left.role.cmp(right.role))
+                .then_with(|| left.logical.cmp(&right.logical))
+        });
+        audited
+    }
+
+    fn independent_adjacent(
+        ctx: &egui::Context,
+        backwards: bool,
+    ) -> crate::ui::keyboard::LogicalFocus {
+        let sequence = independent_visual_sequence(ctx);
+        let current = crate::ui::keyboard::logical_focus(ctx).expect("logical focus before Tab");
+        let index = sequence
+            .iter()
+            .position(|entry| entry.logical == current)
+            .expect("focused logical ID in independent response oracle");
+        let next = if backwards {
+            (index + sequence.len() - 1) % sequence.len()
+        } else {
+            (index + 1) % sequence.len()
+        };
+        sequence[next].logical.clone()
+    }
+
+    fn role_sequence(ctx: &egui::Context, role: &str) -> Vec<crate::ui::keyboard::LogicalFocus> {
+        independent_visual_sequence(ctx)
+            .into_iter()
+            .filter(|entry| entry.enabled && entry.role == role)
+            .map(|entry| entry.logical)
+            .collect()
+    }
+
+    fn settle_registry_focus(
+        fixture: &mut ProductionFixture,
+        viewport: egui::Vec2,
+    ) -> crate::ui::keyboard::FocusEntry {
+        for _ in 0..8 {
+            fixture.render_full_shell(viewport, Vec::new());
+            if let Some(entry) = registry_focus(&fixture.full_egui_context()) {
+                return entry;
+            }
+        }
+        panic!("keyboard focus did not settle")
+    }
+
+    fn assert_real_group_wrap(
+        fixture: &mut ProductionFixture,
+        viewport: egui::Vec2,
+        role: &str,
+        spec: DisplaySpec,
+    ) {
+        let _ = tab_until(fixture, viewport, role, false);
+        let before = registry_focus(&fixture.full_egui_context()).expect("group focus");
+        let sequence = role_sequence(&fixture.full_egui_context(), role);
+        assert!(sequence.len() >= 2, "real {role} group at {spec:?}");
+        assert_eq!(before.logical, sequence[0], "Tab reaches first {role}");
+        fixture.render_full_shell(viewport, key_event(egui::Key::ArrowLeft, false));
+        let wrapped = settle_registry_focus(fixture, viewport);
+        assert_eq!(
+            wrapped.logical,
+            *sequence.last().expect("group tail"),
+            "ArrowLeft wraps real {role} row at {spec:?}"
+        );
+        fixture.render_full_shell(viewport, key_event(egui::Key::ArrowRight, false));
+        let restored = settle_registry_focus(fixture, viewport);
+        assert_eq!(
+            restored.logical, sequence[0],
+            "ArrowRight wraps real {role} row at {spec:?}"
+        );
+    }
+
+    fn assert_registry_visual_order(ctx: &egui::Context, spec: DisplaySpec) {
+        let entries = crate::ui::keyboard::completed_registry(ctx);
+        let mut audited = crate::ui::keyboard::audited_responses(ctx);
+        audited.retain(|entry| entry.enabled);
+        assert!(!entries.is_empty(), "rendered focus registry at {spec:?}");
+        assert!(
+            crate::ui::keyboard::audit_gaps(ctx).is_empty(),
+            "enabled production responses missing from registry at {spec:?}: {:?}",
+            crate::ui::keyboard::audit_gaps(ctx)
+        );
+        audited.sort_by(|left, right| {
+            left.band
+                .cmp(&right.band)
+                .then_with(|| (left.layer.order as u8).cmp(&(right.layer.order as u8)))
+                .then_with(|| left.rect.top().round().total_cmp(&right.rect.top().round()))
+                .then_with(|| left.rect.left().total_cmp(&right.rect.left()))
+                .then_with(|| left.rect.bottom().total_cmp(&right.rect.bottom()))
+                .then_with(|| left.role.cmp(right.role))
+                .then_with(|| left.logical.cmp(&right.logical))
+        });
+        let expected = audited
+            .iter()
+            .map(|response| response.logical.0.as_str())
+            .collect::<Vec<_>>();
+        let actual = entries
+            .iter()
+            .map(|entry| entry.logical.0.as_str())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            actual, expected,
+            "exact independent visual logical-ID sequence at {spec:?}"
+        );
+        for pair in entries.windows(2) {
+            let [left, right] = pair else { unreachable!() };
+            assert!(
+                left.band <= right.band,
+                "surface order at {spec:?}: {pair:?}"
+            );
+            if left.band == right.band && left.layer.order == right.layer.order {
+                let rows_advance = left.rect.top().round() <= right.rect.top().round();
+                let same_row_advances = left.rect.top().round() != right.rect.top().round()
+                    || left.rect.left() <= right.rect.left();
+                assert!(
+                    rows_advance && same_row_advances,
+                    "rectangle order at {spec:?}: {pair:?}"
+                );
+            }
+        }
+        let top = entries
+            .iter()
+            .filter(|entry| entry.band == crate::ui::keyboard::FocusBand::TopChrome)
+            .collect::<Vec<_>>();
+        assert!(
+            top.windows(2).all(
+                |pair| pair[0].rect.top().round() < pair[1].rect.top().round()
+                    || pair[0].rect.left() <= pair[1].rect.left()
+            ),
+            "right-to-left top chrome is traversed visually LTR at {spec:?}: {top:?}"
+        );
+    }
+
+    fn assert_focused_boundary(
+        output: &egui::FullOutput,
+        entry: &crate::ui::keyboard::FocusEntry,
+        viewport: egui::Rect,
+        spec: DisplaySpec,
+    ) {
+        assert!(
+            entry.clip.contains_rect(entry.rect),
+            "focus clip at {spec:?}: {entry:?}"
+        );
+        assert!(
+            viewport.contains_rect(entry.rect),
+            "focus viewport at {spec:?}: {entry:?}"
+        );
+        fn matching_focus(
+            shape: &egui::Shape,
+            rect: egui::Rect,
+        ) -> Option<(egui::Rect, egui::Stroke)> {
+            match shape {
+                egui::Shape::Rect(shape)
+                    if (shape.rect.min - rect.min).length_sq() <= 0.25
+                        && (shape.rect.max - rect.max).length_sq() <= 0.25
+                        && (shape.stroke.width - 2.0).abs() <= 0.01 =>
+                {
+                    Some((shape.rect, shape.stroke))
+                }
+                egui::Shape::Vec(shapes) => {
+                    shapes.iter().find_map(|shape| matching_focus(shape, rect))
+                }
+                _ => None,
+            }
+        }
+        let (painted_rect, observed_stroke, observed_clip) = output
+            .shapes
+            .iter()
+            .find_map(|clipped| {
+                matching_focus(&clipped.shape, entry.rect)
+                    .map(|(rect, stroke)| (rect, stroke, clipped.clip_rect))
+            })
+            .unwrap_or_else(|| panic!("exact 2px focus paint at {spec:?}: {entry:?}"));
+        assert!((observed_stroke.width - 2.0).abs() <= 0.01);
+        assert!(observed_clip.contains_rect(painted_rect));
+        assert!(viewport.contains_rect(painted_rect));
+
+        fn painted_rects(shape: &egui::Shape, out: &mut Vec<(egui::Rect, egui::Color32)>) {
+            match shape {
+                egui::Shape::Rect(rect) if rect.fill.a() > 0 => out.push((rect.rect, rect.fill)),
+                egui::Shape::Vec(shapes) => {
+                    for shape in shapes {
+                        painted_rects(shape, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+        let mut surfaces = Vec::new();
+        for clipped in &output.shapes {
+            painted_rects(&clipped.shape, &mut surfaces);
+        }
+        let observed_surface = surfaces
+            .into_iter()
+            .filter(|(rect, _)| rect.contains(entry.rect.center()))
+            .min_by(|(left, _), (right, _)| left.area().total_cmp(&right.area()))
+            .map(|(_, fill)| fill)
+            .expect("observed adjacent painted surface");
+
+        fn luminance(colour: egui::Color32) -> f32 {
+            fn channel(value: u8) -> f32 {
+                let value = f32::from(value) / 255.0;
+                if value <= 0.04045 {
+                    value / 12.92
+                } else {
+                    ((value + 0.055) / 1.055).powf(2.4)
+                }
+            }
+            0.2126 * channel(colour.r())
+                + 0.7152 * channel(colour.g())
+                + 0.0722 * channel(colour.b())
+        }
+        fn contrast(left: egui::Color32, right: egui::Color32) -> f32 {
+            let (light, dark) = if luminance(left) >= luminance(right) {
+                (luminance(left), luminance(right))
+            } else {
+                (luminance(right), luminance(left))
+            };
+            (light + 0.05) / (dark + 0.05)
+        }
+        assert!(
+            contrast(observed_stroke.color, observed_surface) >= 3.0,
+            "observed focus/surface contrast at {spec:?}: stroke={:?} surface={:?}",
+            observed_stroke.color,
+            observed_surface,
+        );
+    }
+
     const MATRIX: [DisplaySpec; 5] = [
         DisplaySpec {
             width_px: 1920.0,
@@ -616,7 +1008,7 @@ mod tests {
             let mut fixture = ProductionFixture::new();
             fixture.prepare_full_shell();
             fixture.render_full_shell(viewport, Vec::new());
-            let initial = fixture.render_full_shell(viewport, Vec::new());
+            let mut output = fixture.render_full_shell(viewport, Vec::new());
             for required in [
                 "Situations",
                 "Inspector",
@@ -626,11 +1018,11 @@ mod tests {
                 "Veyrin",
             ] {
                 assert!(
-                    materially_visible_text(&initial, viewport_rect, required).is_some(),
+                    materially_visible_text(&output, viewport_rect, required).is_some(),
                     "complete production shell component '{required}' at {spec:?}"
                 );
             }
-            let clip_failures = horizontal_clip_failures(&initial);
+            let clip_failures = horizontal_clip_failures(&output);
             assert!(
                 clip_failures.is_empty(),
                 "initial production shell clips at {spec:?}: {clip_failures:#?}"
@@ -679,7 +1071,7 @@ mod tests {
                 "production time control lies inside viewport at {spec:?}: {time:?}"
             );
             let mut pressed_time = time;
-            let mut output = fixture.render_full_shell(viewport, Vec::new());
+            fixture.render_full_shell(viewport, Vec::new());
             for _ in 0..3 {
                 let current = recorded_time_control(&fixture.full_egui_context())
                     .expect("time response before press");
@@ -849,5 +1241,496 @@ mod tests {
             exercised_vertical_overflow,
             "the accepted matrix exercises real vertical-only overflow"
         );
+    }
+
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    fn production_situation_path_is_keyboard_complete() {
+        for spec in MATRIX {
+            let viewport = egui::vec2(spec.width_px / spec.scale, spec.height_px / spec.scale);
+            let viewport_rect = egui::Rect::from_min_size(egui::Pos2::ZERO, viewport);
+            let mut fixture = ProductionFixture::new();
+            fixture.prepare_full_shell();
+            fixture.render_full_shell(viewport, Vec::new());
+            fixture.render_full_shell(viewport, Vec::new());
+            let ctx = fixture.full_egui_context();
+            assert_eq!(
+                ctx.memory(|memory| memory.focused()),
+                None,
+                "starts unfocused at {spec:?}"
+            );
+            assert_registry_visual_order(&ctx, spec);
+
+            // Enter activates the real time control, reached from an empty
+            // focus state solely through the visual-order registry.
+            let (time_output, time_path) = tab_until(&mut fixture, viewport, "time", false);
+            let time = registry_focus(&fixture.full_egui_context()).expect("time focus");
+            assert_eq!(time.role, "time");
+            assert!(!time_path.is_empty());
+            assert_focused_boundary(&time_output, &time, viewport_rect, spec);
+            fixture.render_full_shell(viewport, key_event(egui::Key::Enter, false));
+            assert!(!fixture.host.world_mut().resource::<TimeControl>().paused);
+
+            // These are production icon rows, reached only by Tab. Their
+            // physical ends wrap under real Arrow events.
+            assert_real_group_wrap(&mut fixture, viewport, "map-mode", spec);
+            assert_real_group_wrap(&mut fixture, viewport, "panel-toggle", spec);
+
+            // Search is the production TextEdit. ArrowLeft edits its cursor;
+            // it must not escape into either surrounding roving group.
+            let _ = tab_until(&mut fixture, viewport, "search", false);
+            let search = registry_focus(&fixture.full_egui_context()).expect("search focus");
+            assert_eq!(search.role, "search");
+            let before_cursor = egui::TextEdit::load_state(&fixture.full_egui_context(), search.id)
+                .and_then(|state| state.cursor.char_range())
+                .expect("search cursor before ArrowLeft")
+                .primary
+                .index
+                .0;
+            assert!(
+                before_cursor > 0,
+                "search cursor starts after text at {spec:?}"
+            );
+            fixture.render_full_shell(viewport, key_event(egui::Key::ArrowLeft, false));
+            let search_after = settle_registry_focus(&mut fixture, viewport);
+            let after_cursor =
+                egui::TextEdit::load_state(&fixture.full_egui_context(), search_after.id)
+                    .and_then(|state| state.cursor.char_range())
+                    .expect("search cursor after ArrowLeft")
+                    .primary
+                    .index
+                    .0;
+            assert_eq!(search_after.logical, search.logical);
+            assert_eq!(after_cursor + 1, before_cursor, "TextEdit owns ArrowLeft");
+
+            // Settings opens from its real top-bar action. Reflow while a
+            // preference owns focus, then one physical+egui Escape closes
+            // only settings and restores the logical invoker. Search remains
+            // open and the strategic view/selection are untouched.
+            let _ = tab_until(&mut fixture, viewport, "settings", false);
+            let settings_invoker = registry_focus(&fixture.full_egui_context())
+                .expect("settings action focus")
+                .logical;
+            fixture.render_full_shell(viewport, key_event(egui::Key::Enter, false));
+            fixture.render_full_shell(viewport, Vec::new());
+            assert!(fixture.host.world_mut().resource::<SettingsUi>().open);
+            assert_eq!(
+                fixture
+                    .host
+                    .world_mut()
+                    .resource::<SettingsUi>()
+                    .invoker
+                    .as_ref(),
+                Some(&settings_invoker)
+            );
+            let _ = tab_until(&mut fixture, viewport, "preference-scale", false);
+            let preference_focus = registry_focus(&fixture.full_egui_context())
+                .expect("real preference control focus");
+            assert_eq!(preference_focus.role, "preference-scale");
+            let settings_reflow = if viewport.x > 1_000.0 {
+                egui::vec2(900.0, 560.0)
+            } else {
+                egui::vec2(1_600.0, 800.0)
+            };
+            fixture.render_full_shell(settings_reflow, Vec::new());
+            fixture.render_full_shell(viewport, Vec::new());
+            let before_local_escape = *fixture.host.world_mut().resource::<ViewState>();
+            let _ = tab_until(&mut fixture, viewport, "settings-close", false);
+            fixture.render_full_shell(viewport, key_event(egui::Key::Space, false));
+            fixture.render_full_shell(viewport, Vec::new());
+            assert!(!fixture.host.world_mut().resource::<SettingsUi>().open);
+            assert_eq!(
+                registry_focus(&fixture.full_egui_context())
+                    .expect("explicit settings Close restores invoker")
+                    .logical,
+                settings_invoker
+            );
+            // Reopen and retain the semantic Escape evidence on the same
+            // production surface.
+            fixture.render_full_shell(viewport, key_event(egui::Key::Enter, false));
+            fixture.render_full_shell(viewport, Vec::new());
+            assert!(fixture.host.world_mut().resource::<SettingsUi>().open);
+            let _ = tab_until(&mut fixture, viewport, "preference-scale", false);
+            fixture.render_full_shell(viewport, key_event(egui::Key::Escape, false));
+            fixture.render_full_shell(viewport, Vec::new());
+            assert!(!fixture.host.world_mut().resource::<SettingsUi>().open);
+            assert_eq!(
+                fixture.host.world_mut().resource::<SearchState>().query,
+                "Veyrin"
+            );
+            let after_settings_escape = *fixture.host.world_mut().resource::<ViewState>();
+            assert_eq!(after_settings_escape.view, before_local_escape.view);
+            assert_eq!(after_settings_escape.selected, before_local_escape.selected);
+            assert_eq!(
+                registry_focus(&fixture.full_egui_context())
+                    .expect("settings invoker restoration")
+                    .logical,
+                settings_invoker
+            );
+
+            // Search is the final local layer. Escape clears it without
+            // changing the Body view; with no local layer left, the next
+            // press falls through to the real strategic Body -> System rule.
+            let _ = tab_until(&mut fixture, viewport, "search", false);
+            let search_invoker = registry_focus(&fixture.full_egui_context())
+                .expect("search focus before Escape")
+                .logical;
+            fixture.render_full_shell(viewport, key_event(egui::Key::Escape, false));
+            fixture.render_full_shell(viewport, Vec::new());
+            assert!(
+                fixture
+                    .host
+                    .world_mut()
+                    .resource::<SearchState>()
+                    .query
+                    .is_empty()
+            );
+            let after_search_escape = *fixture.host.world_mut().resource::<ViewState>();
+            assert_eq!(after_search_escape.view, before_local_escape.view);
+            assert_eq!(after_search_escape.selected, before_local_escape.selected);
+            assert_eq!(
+                registry_focus(&fixture.full_egui_context())
+                    .expect("search remains focused after clearing")
+                    .logical,
+                search_invoker
+            );
+            assert!(matches!(after_search_escape.view, MapView::Body(_)));
+            fixture.render_full_shell(viewport, key_event(egui::Key::Escape, false));
+            fixture.render_full_shell(viewport, Vec::new());
+            let strategic_escape = *fixture.host.world_mut().resource::<ViewState>();
+            assert_eq!(strategic_escape.view, MapView::System);
+            assert_eq!(strategic_escape.selected, before_local_escape.selected);
+
+            // Reach the actual Situation subject with forward Tab. A single
+            // reverse step and forward step must visit the exact adjacent IDs.
+            let (subject_output, subject_path) =
+                tab_until(&mut fixture, viewport, "situation-subject", false);
+            let subject = registry_focus(&fixture.full_egui_context()).expect("subject focus");
+            assert_eq!(subject.role, "situation-subject");
+            assert!(subject_path.windows(2).all(|pair| pair[0] != pair[1]));
+            assert_focused_boundary(&subject_output, &subject, viewport_rect, spec);
+            let expected_previous = independent_adjacent(&fixture.full_egui_context(), true);
+            fixture.render_full_shell(viewport, key_event(egui::Key::Tab, true));
+            let mut previous = None;
+            for _ in 0..6 {
+                fixture.render_full_shell(viewport, Vec::new());
+                previous = registry_focus(&fixture.full_egui_context());
+                if previous.is_some() {
+                    break;
+                }
+            }
+            let previous = previous.expect("reverse focus");
+            assert_eq!(
+                previous.logical, expected_previous,
+                "exact reverse sequence at {spec:?}"
+            );
+            let expected_forward = independent_adjacent(&fixture.full_egui_context(), false);
+            fixture.render_full_shell(viewport, key_event(egui::Key::Tab, false));
+            let mut restored_subject = None;
+            for _ in 0..6 {
+                fixture.render_full_shell(viewport, Vec::new());
+                if let Some(entry) = registry_focus(&fixture.full_egui_context()) {
+                    restored_subject = Some(entry);
+                    break;
+                }
+            }
+            let forward = restored_subject.expect("forward restore");
+            assert_eq!(
+                forward.logical, expected_forward,
+                "exact forward sequence at {spec:?}"
+            );
+            let output = fixture.render_full_shell(viewport, Vec::new());
+            let forward = registry_focus(&fixture.full_egui_context())
+                .expect("forward target remains focused for paint");
+            assert_focused_boundary(&output, &forward, viewport_rect, spec);
+            let (output, subject) = if forward.role == "situation-subject" {
+                (output, forward)
+            } else {
+                let (output, _) = tab_until(&mut fixture, viewport, "situation-subject", false);
+                let subject =
+                    registry_focus(&fixture.full_egui_context()).expect("subject refocus");
+                (output, subject)
+            };
+            assert_focused_boundary(&output, &subject, viewport_rect, spec);
+
+            fixture.render_full_shell(viewport, key_event(egui::Key::Space, false));
+            assert!(
+                fixture
+                    .host
+                    .world_mut()
+                    .resource::<ViewState>()
+                    .selected
+                    .is_some()
+            );
+
+            // Focus is the keyboard equivalent of hover for the real
+            // authoritative forecast. Responsive reflow retains its logical
+            // target even though the control receives a different egui ID.
+            let (mut focused, action_path) =
+                tab_until(&mut fixture, viewport, "situation-action", false);
+            let action = registry_focus(&fixture.full_egui_context()).expect("action focus");
+            assert_eq!(action.role, "situation-action");
+            assert!(action_path.windows(2).all(|pair| pair[0] != pair[1]));
+            let action_key = action.logical.clone();
+            assert_focused_boundary(&focused, &action, viewport_rect, spec);
+            for _ in 0..8 {
+                if recorded_situation_forecast(&fixture.full_egui_context())
+                    && materially_visible_text(&focused, viewport_rect, "Takes").is_some()
+                {
+                    break;
+                }
+                focused = fixture.render_full_shell(viewport, Vec::new());
+            }
+            assert!(recorded_situation_forecast(&fixture.full_egui_context()));
+            assert!(materially_visible_text(&focused, viewport_rect, "Takes").is_some());
+
+            let reflow = if viewport.x > 1_000.0 {
+                egui::vec2(900.0, 560.0)
+            } else {
+                egui::vec2(1_600.0, 800.0)
+            };
+            fixture.render_full_shell(reflow, Vec::new());
+            fixture.render_full_shell(reflow, Vec::new());
+            let reflowed = registry_focus(&fixture.full_egui_context()).expect("reflow focus");
+            assert_eq!(
+                reflowed.logical, action_key,
+                "logical reflow repair at {spec:?}"
+            );
+            fixture.render_full_shell(viewport, Vec::new());
+            focused = fixture.render_full_shell(viewport, Vec::new());
+            let mut action =
+                registry_focus(&fixture.full_egui_context()).expect("restored action focus");
+            for _ in 0..8 {
+                if action.clip.contains_rect(action.rect)
+                    && viewport_rect.contains_rect(action.rect)
+                {
+                    break;
+                }
+                focused = fixture.render_full_shell(viewport, Vec::new());
+                action = registry_focus(&fixture.full_egui_context())
+                    .expect("restored action stays focused while scrolling");
+            }
+            assert_eq!(action.logical, action_key);
+            assert_focused_boundary(&focused, &action, viewport_rect, spec);
+
+            fixture.render_full_shell(viewport, key_event(egui::Key::Enter, false));
+            assert!(fixture.host.world_mut().resource::<AssignmentPopup>().open);
+            let before_popup_escape = *fixture.host.world_mut().resource::<ViewState>();
+
+            let _ = tab_until(&mut fixture, viewport, "assignment-popup-cancel", false);
+            fixture.render_full_shell(viewport, key_event(egui::Key::Enter, false));
+            fixture.render_full_shell(viewport, Vec::new());
+            assert!(!fixture.host.world_mut().resource::<AssignmentPopup>().open);
+            assert_eq!(
+                registry_focus(&fixture.full_egui_context())
+                    .expect("explicit assignment Cancel restores invoker")
+                    .logical,
+                action_key
+            );
+            fixture.render_full_shell(viewport, key_event(egui::Key::Enter, false));
+            fixture.render_full_shell(viewport, Vec::new());
+            assert!(fixture.host.world_mut().resource::<AssignmentPopup>().open);
+
+            // Escape resolves the stable logical invoker against the freshly
+            // rendered registry, rather than retaining an obsolete egui ID.
+            fixture.render_full_shell(viewport, key_event(egui::Key::Escape, false));
+            fixture.render_full_shell(viewport, Vec::new());
+            assert!(!fixture.host.world_mut().resource::<AssignmentPopup>().open);
+            let after_popup_escape = *fixture.host.world_mut().resource::<ViewState>();
+            assert_eq!(after_popup_escape.view, before_popup_escape.view);
+            assert_eq!(after_popup_escape.selected, before_popup_escape.selected);
+            let restored = registry_focus(&fixture.full_egui_context()).expect("restored invoker");
+            assert_eq!(restored.logical, action_key);
+
+            fixture.render_full_shell(viewport, key_event(egui::Key::Enter, false));
+            fixture.render_full_shell(viewport, Vec::new());
+            assert!(
+                fixture.host.world_mut().resource::<AssignmentPopup>().open,
+                "keyboard reopened popup at {spec:?}"
+            );
+            assert!(
+                recorded_confirm(&fixture.full_egui_context()).is_some(),
+                "production Confirm rendered at {spec:?}"
+            );
+            {
+                let world = fixture.host.world_mut();
+                let form = world.resource::<AssignmentForm>();
+                assert!(
+                    form.assignment.is_some() && form.leader.is_some() && form.target.is_some(),
+                    "popup form ready at {spec:?}: assignment={:?} leader={:?} target={:?}",
+                    form.assignment,
+                    form.leader,
+                    form.target
+                );
+                let cache = world.resource::<ForecastCache>();
+                assert!(
+                    cache
+                        .forecast
+                        .as_ref()
+                        .is_some_and(|forecast| forecast.startable()),
+                    "popup forecast ready at {spec:?}: {:?}",
+                    cache.forecast
+                );
+            }
+            fixture.render_full_shell(viewport, Vec::new());
+            fixture.render_full_shell(viewport, Vec::new());
+
+            // The real leader picker is entered using only Tab and Enter.
+            // Its roving row includes captured disabled committed leaders;
+            // ArrowLeft must wrap among enabled candidates without landing on
+            // any of them, and Escape restores the logical invoker.
+            let _ = tab_until(&mut fixture, viewport, "choose-leader", false);
+            let choose_leader = registry_focus(&fixture.full_egui_context())
+                .expect("choose-leader focus")
+                .logical;
+            fixture.render_full_shell(viewport, key_event(egui::Key::Enter, false));
+            fixture.render_full_shell(viewport, Vec::new());
+            assert!(fixture.host.world_mut().resource::<PickerState>().open);
+            let local_view = *fixture.host.world_mut().resource::<ViewState>();
+            let _ = tab_until(&mut fixture, viewport, "leader", false);
+            let first_leader = registry_focus(&fixture.full_egui_context()).expect("leader focus");
+            let enabled_leaders = role_sequence(&fixture.full_egui_context(), "leader");
+            let raw_leaders = crate::ui::keyboard::audited_responses(&fixture.full_egui_context())
+                .into_iter()
+                .filter(|entry| entry.role == "leader")
+                .collect::<Vec<_>>();
+            assert!(
+                raw_leaders.iter().any(|entry| !entry.enabled),
+                "production picker captures a disabled member at {spec:?}: {raw_leaders:?}"
+            );
+            let first_index = enabled_leaders
+                .iter()
+                .position(|logical| logical == &first_leader.logical)
+                .expect("Tab-reached leader belongs to enabled row");
+            for expected in enabled_leaders.iter().skip(first_index + 1) {
+                fixture.render_full_shell(viewport, key_event(egui::Key::ArrowRight, false));
+                assert_eq!(
+                    settle_registry_focus(&mut fixture, viewport).logical,
+                    *expected,
+                    "real picker follows exact visual leader order at {spec:?}"
+                );
+            }
+            // The disabled rows are physically after the enabled candidates.
+            // One more ArrowRight crosses them and wraps to the enabled head.
+            fixture.render_full_shell(viewport, key_event(egui::Key::ArrowRight, false));
+            let wrapped_leader = settle_registry_focus(&mut fixture, viewport);
+            assert_eq!(
+                wrapped_leader.logical, enabled_leaders[0],
+                "real picker wraps while skipping disabled member at {spec:?}"
+            );
+            assert!(
+                raw_leaders
+                    .iter()
+                    .filter(|entry| !entry.enabled)
+                    .all(|entry| entry.logical != wrapped_leader.logical)
+            );
+            let _ = tab_until(&mut fixture, viewport, "picker-close", false);
+            fixture.render_full_shell(viewport, key_event(egui::Key::Space, false));
+            fixture.render_full_shell(viewport, Vec::new());
+            assert!(!fixture.host.world_mut().resource::<PickerState>().open);
+            assert!(fixture.host.world_mut().resource::<AssignmentPopup>().open);
+            let after_picker_escape = *fixture.host.world_mut().resource::<ViewState>();
+            assert_eq!(after_picker_escape.view, local_view.view);
+            assert_eq!(after_picker_escape.selected, local_view.selected);
+            assert_eq!(
+                registry_focus(&fixture.full_egui_context())
+                    .expect("picker invoker restoration")
+                    .logical,
+                choose_leader
+            );
+            // Reopen from the restored real invoker and retain the shared
+            // semantic Escape evidence too.
+            fixture.render_full_shell(viewport, key_event(egui::Key::Enter, false));
+            fixture.render_full_shell(viewport, Vec::new());
+            assert!(fixture.host.world_mut().resource::<PickerState>().open);
+            let _ = tab_until(&mut fixture, viewport, "leader", false);
+            fixture.render_full_shell(viewport, key_event(egui::Key::Escape, false));
+            fixture.render_full_shell(viewport, Vec::new());
+            assert!(!fixture.host.world_mut().resource::<PickerState>().open);
+            assert!(fixture.host.world_mut().resource::<AssignmentPopup>().open);
+            assert_eq!(
+                registry_focus(&fixture.full_egui_context())
+                    .expect("picker Escape restores invoker")
+                    .logical,
+                choose_leader
+            );
+            assert!(
+                crate::ui::keyboard::completed_registry(&fixture.full_egui_context())
+                    .iter()
+                    .any(|entry| entry.role == "confirm"),
+                "enabled Confirm entered registry at {spec:?}: {:?}",
+                crate::ui::keyboard::completed_registry(&fixture.full_egui_context())
+                    .iter()
+                    .map(|entry| (entry.role, &entry.logical))
+                    .collect::<Vec<_>>()
+            );
+            assert!(
+                crate::ui::keyboard::traversal_registry(&fixture.full_egui_context())
+                    .iter()
+                    .any(|entry| entry.role == "confirm"),
+                "Confirm promoted into traversal registry at {spec:?}: {:?}",
+                crate::ui::keyboard::traversal_registry(&fixture.full_egui_context())
+                    .iter()
+                    .map(|entry| (entry.role, &entry.logical))
+                    .collect::<Vec<_>>()
+            );
+            let (confirm_output, confirm_path) =
+                tab_until(&mut fixture, viewport, "confirm", false);
+            let confirm = registry_focus(&fixture.full_egui_context()).expect("confirm focus");
+            assert_eq!(confirm.role, "confirm");
+            assert!(confirm_path.windows(2).all(|pair| pair[0] != pair[1]));
+            assert_focused_boundary(&confirm_output, &confirm, viewport_rect, spec);
+            fixture.render_full_shell(viewport, key_event(egui::Key::Space, false));
+            assert!(
+                fixture
+                    .host
+                    .world_mut()
+                    .resource::<UiCommandQueue>()
+                    .0
+                    .iter()
+                    .any(|command| matches!(
+                        command,
+                        PlayerCommand::StartSituationAssignment { .. }
+                    ))
+            );
+
+            // Normal authoritative command and clock seams resolve the action.
+            // The focused action then disappears; finish-frame repair must
+            // choose the documented result-summary fallback without a test
+            // focus request or another Tab event.
+            fixture.submit_queued_and_resolve();
+            let mut resolved = fixture.render_full_shell(viewport, Vec::new());
+            for _ in 0..16 {
+                if materially_visible_text(&resolved, viewport_rect, "Resolved").is_some()
+                    && materially_visible_text(&resolved, viewport_rect, "History").is_some()
+                    && registry_focus(&fixture.full_egui_context())
+                        .is_some_and(|entry| entry.role == "resolution-summary")
+                {
+                    break;
+                }
+                resolved = fixture.render_full_shell(viewport, Vec::new());
+            }
+            resolved = fixture.render_full_shell(viewport, Vec::new());
+            let repaired = registry_focus(&fixture.full_egui_context()).expect("resolution repair");
+            assert_eq!(
+                repaired.role, "resolution-summary",
+                "action fallback at {spec:?}"
+            );
+            assert_focused_boundary(&resolved, &repaired, viewport_rect, spec);
+            assert_registry_visual_order(&fixture.full_egui_context(), spec);
+            assert!(
+                materially_visible_text(&resolved, viewport_rect, "Resolved").is_some(),
+                "resolution after keyboard focus at {spec:?}: focused={:?}, responses={:?}, painted={:?}",
+                fixture
+                    .full_egui_context()
+                    .memory(|memory| memory.focused()),
+                semantic_responses(&fixture.full_egui_context())
+                    .into_iter()
+                    .filter(|response| response.role == "resolution-dismiss")
+                    .collect::<Vec<_>>(),
+                painted_texts(&resolved),
+            );
+            assert!(materially_visible_text(&resolved, viewport_rect, "History").is_some());
+        }
     }
 }

@@ -151,11 +151,18 @@ pub fn draw_context_assignments(
     }
 
     for (key, def) in &offered {
-        if ui
+        let response = ui
             .button(&def.title)
-            .on_hover_text(assignment_hover(strings, def))
-            .clicked()
-        {
+            .on_hover_text(assignment_hover(strings, def));
+        crate::ui::keyboard::capture_action(
+            ui,
+            crate::ui::keyboard::LogicalFocus::new(format!("assignment-action:{key}")),
+            "assignment-action",
+            crate::ui::keyboard::inferred_band(ui.ctx(), response.rect),
+            &response,
+        )
+        .register();
+        if response.clicked() {
             form.reset();
             form.assignment = Some(key.clone());
             // Whatever the scope already settles is settled now, so the
@@ -194,7 +201,9 @@ pub fn draw_context_assignments(
                 }
             }
             let _ = player_org;
-            popup.open();
+            popup.open_from(crate::ui::keyboard::LogicalFocus::new(format!(
+                "assignment-action:{key}"
+            )));
         }
     }
 
@@ -227,6 +236,14 @@ pub fn confirm_assignment(
         ready,
         egui::Button::new(strings.text("ui.actions.confirm")).min_size(egui::vec2(24.0, 24.0)),
     );
+    crate::ui::keyboard::capture_action(
+        ui,
+        crate::ui::keyboard::LogicalFocus::new(format!("confirm:{key}")),
+        "confirm",
+        crate::ui::keyboard::FocusBand::Floating,
+        &response,
+    )
+    .register();
     #[cfg(test)]
     crate::ui::rendered_state::record_response(ui, "confirm", &response);
     ui.ctx().data_mut(|data| {
@@ -355,7 +372,7 @@ fn draw_leader_slot(
             .iter()
             .filter(|option| option.blocked().is_none())
             .count();
-        if ui
+        let response = ui
             .button(strings.text("ui.actions.choose-leader"))
             .on_hover_text(strings.format(
                 "ui.actions.choose-leader.hover",
@@ -363,10 +380,18 @@ fn draw_leader_slot(
                     ("free", &free.to_string()),
                     ("total", &cache.leaders.len().to_string()),
                 ],
-            ))
-            .clicked()
-        {
-            picker.open();
+            ));
+        let logical = crate::ui::keyboard::LogicalFocus::new("choose-leader");
+        crate::ui::keyboard::capture_action(
+            ui,
+            logical.clone(),
+            "choose-leader",
+            crate::ui::keyboard::FocusBand::Floating,
+            &response,
+        )
+        .register();
+        if response.clicked() {
+            picker.open_from(logical);
         }
     });
 }
@@ -431,7 +456,7 @@ pub fn pick_target(
                     .unwrap_or_default(),
                 _ => strings.text("ui.actions.choose-character").to_owned(),
             };
-            egui::ComboBox::from_id_salt("ctx-char")
+            let combo = egui::ComboBox::from_id_salt("ctx-char")
                 .selected_text(label)
                 .show_ui(ui, |ui| {
                     let mut people: Vec<(CharacterId, String)> = politics
@@ -445,17 +470,34 @@ pub fn pick_target(
                         .collect();
                     people.sort_by(|a, b| a.1.cmp(&b.1));
                     for (id, name) in people {
-                        if ui
-                            .selectable_label(
-                                form.target == Some(AssignmentTarget::Character(id)),
-                                &name,
-                            )
-                            .clicked()
-                        {
+                        let response = ui.selectable_label(
+                            form.target == Some(AssignmentTarget::Character(id)),
+                            &name,
+                        );
+                        crate::ui::keyboard::capture_action(
+                            ui,
+                            crate::ui::keyboard::LogicalFocus::new(format!(
+                                "assignment-character:{}",
+                                id.raw()
+                            )),
+                            "assignment-character",
+                            crate::ui::keyboard::FocusBand::Floating,
+                            &response,
+                        )
+                        .register();
+                        if response.clicked() {
                             form.target = Some(AssignmentTarget::Character(id));
                         }
                     }
                 });
+            crate::ui::keyboard::capture_action(
+                ui,
+                crate::ui::keyboard::LogicalFocus::new("assignment-character-combo"),
+                "assignment-character-combo",
+                crate::ui::keyboard::FocusBand::Floating,
+                &combo.response,
+            )
+            .register();
         }
         AssignmentTargetKind::Province => {
             let current = form.target;
@@ -494,18 +536,26 @@ fn filtered_list<T: Copy>(
     items: &[(T, String, Option<egui::Color32>)],
     selected: impl Fn(T) -> bool,
 ) -> Option<T> {
-    ui.add(
+    let filter_response = ui.add(
         egui::TextEdit::singleline(filter)
             .hint_text(hint)
             .desired_width(f32::INFINITY),
     );
+    crate::ui::keyboard::capture_action(
+        ui,
+        crate::ui::keyboard::LogicalFocus::new(format!("assignment-filter:{id_salt}")),
+        "assignment-filter",
+        crate::ui::keyboard::FocusBand::Floating,
+        &filter_response,
+    )
+    .register();
     let needle = filter.trim().to_lowercase();
     let mut picked = None;
     egui::ScrollArea::vertical()
         .max_height(160.0)
         .id_salt(id_salt)
         .show(ui, |ui| {
-            for (id, name, colour) in items {
+            for (index, (id, name, colour)) in items.iter().enumerate() {
                 if !needle.is_empty() && !name.to_lowercase().contains(&needle) {
                     continue;
                 }
@@ -513,7 +563,18 @@ fn filtered_list<T: Copy>(
                     Some(c) => egui::RichText::new(name).color(*c),
                     None => egui::RichText::new(name),
                 };
-                if ui.selectable_label(selected(*id), label).clicked() {
+                let response = ui.selectable_label(selected(*id), label);
+                crate::ui::keyboard::capture_action(
+                    ui,
+                    crate::ui::keyboard::LogicalFocus::new(format!(
+                        "assignment-choice:{id_salt}:{index}"
+                    )),
+                    "assignment-choice",
+                    crate::ui::keyboard::FocusBand::Floating,
+                    &response,
+                )
+                .register();
+                if response.clicked() {
                     picked = Some(*id);
                 }
             }
@@ -551,13 +612,19 @@ fn province_picker(
 /// visible rather than a mode they have silently entered.
 fn map_pick_button(ui: &mut egui::Ui, strings: &TextDb, awaiting: bool) -> bool {
     ui.horizontal(|ui| {
-        let clicked = ui
-            .selectable_label(awaiting, strings.text("ui.actions.pick-on-map"))
-            .clicked();
+        let response = ui.selectable_label(awaiting, strings.text("ui.actions.pick-on-map"));
+        crate::ui::keyboard::capture_action(
+            ui,
+            crate::ui::keyboard::LogicalFocus::new("assignment-pick-map"),
+            "assignment-pick-map",
+            crate::ui::keyboard::FocusBand::Floating,
+            &response,
+        )
+        .register();
         if awaiting {
             ui.weak(strings.text("ui.actions.pick-on-map.waiting"));
         }
-        clicked
+        response.clicked()
     })
     .inner
 }

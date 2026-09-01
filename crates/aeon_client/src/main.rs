@@ -67,6 +67,7 @@ fn main() {
         .init_resource::<ui::theme::UiTheme>()
         .init_resource::<preferences::UiPreferences>()
         .init_resource::<preferences::SettingsUi>()
+        .init_resource::<ui::shell::LocalEscapeClaim>()
         .init_resource::<ui::picker::PickerState>()
         .init_resource::<ui::assignment_popup::AssignmentPopup>()
         .init_resource::<ui::dock::DockState>()
@@ -101,6 +102,7 @@ fn main() {
                 sim_driver::drive_simulation,
                 sim_driver::time_hotkeys,
                 selection::attach_pickers,
+                ui::shell::claim_local_escape.before(selection::view_hotkeys),
                 selection::view_hotkeys,
                 scene::spawn_loaded_starbases,
                 scene::update_system_positions,
@@ -140,6 +142,7 @@ fn main() {
                     ui::assignment_popup::draw_assignment_popup,
                     ui::picker::draw_picker,
                     assignment_ui::draw_popups,
+                    ui::keyboard::finish_frame,
                 )
                     .run_if(in_state(title::Screen::Playing)),
                 preferences::persist_preferences,

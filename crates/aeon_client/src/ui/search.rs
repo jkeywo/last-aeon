@@ -77,16 +77,25 @@ pub fn draw_search_results(
                     egui::ScrollArea::vertical()
                         .max_height(f32::from(theme.components.search_max_height))
                         .show(ui, |ui| {
-                            for (label, hit) in &hits {
+                            for (index, (label, hit)) in hits.iter().enumerate() {
                                 let tag = match hit {
                                     SearchHit::Character(_) => "ui.search.tag.character",
                                     SearchHit::Org(_) => "ui.search.tag.house",
                                     SearchHit::Province(..) => "ui.search.tag.province",
                                 };
-                                if ui
-                                    .selectable_label(false, format!("{label}  ({tag})"))
-                                    .clicked()
-                                {
+                                let response =
+                                    ui.selectable_label(false, format!("{label}  ({tag})"));
+                                crate::ui::keyboard::capture_action(
+                                    ui,
+                                    crate::ui::keyboard::LogicalFocus::new(format!(
+                                        "search-result:{index}:{label}"
+                                    )),
+                                    "search-result",
+                                    crate::ui::keyboard::FocusBand::Overlay,
+                                    &response,
+                                )
+                                .register();
+                                if response.clicked() {
                                     match hit {
                                         SearchHit::Character(id) => {
                                             view.selected = Some(Selection::Character(*id));

@@ -57,6 +57,7 @@ pub struct MapUi<'w> {
     pub situation_ui: ResMut<'w, SituationUiState>,
     pub preferences: ResMut<'w, UiPreferences>,
     pub settings: ResMut<'w, SettingsUi>,
+    pub escape_claim: Res<'w, crate::ui::shell::LocalEscapeClaim>,
 }
 
 /// Character lookup shared across the panel helpers.

@@ -32,12 +32,23 @@ use crate::ui::theme::{TargetState, UiTheme};
 pub struct AssignmentPopup {
     /// Whether the window is showing.
     pub open: bool,
+    /// Control that opened the popup, for deterministic Escape/close return.
+    pub invoker: Option<crate::ui::keyboard::LogicalFocus>,
 }
 
 impl AssignmentPopup {
     /// Opens it.
-    pub fn open(&mut self) {
+    pub fn open_from(&mut self, invoker: crate::ui::keyboard::LogicalFocus) {
         self.open = true;
+        self.invoker = Some(invoker);
+    }
+
+    /// Closes a cancelled composition and returns keyboard focus.
+    pub fn cancel(&mut self, ctx: &egui::Context) {
+        self.open = false;
+        if let Some(invoker) = self.invoker.take() {
+            crate::ui::keyboard::request_logical(ctx, invoker);
+        }
     }
 }
 
@@ -68,7 +79,7 @@ pub fn draw_assignment_popup(
     // Nothing being composed means nothing to compose: the window closes
     // itself rather than standing empty.
     let Some(key) = form.assignment.clone() else {
-        popup.open = false;
+        popup.cancel(ctx);
         return;
     };
     let Some(def) = content.0.assignments.get(&key).cloned() else {
@@ -79,13 +90,11 @@ pub fn draw_assignment_popup(
         return;
     };
 
-    let mut open = true;
     let viewport = ctx.viewport_rect();
     let popup_width =
         f32::from(theme.components.picker_width).min((viewport.width() - 24.0).max(240.0));
     egui::Window::new(&def.title)
         .id(egui::Id::new("assignment-popup"))
-        .open(&mut open)
         .resizable(true)
         .default_width(popup_width)
         .max_width(popup_width)
@@ -171,11 +180,24 @@ pub fn draw_assignment_popup(
             );
             ui.separator();
             confirm_assignment(ui, &strings, &key, &data.cache, &mut form, &mut queue);
+            let response = ui.button(strings.text("ui.assignment-popup.cancel"));
+            crate::ui::keyboard::capture_action(
+                ui,
+                crate::ui::keyboard::LogicalFocus::new("assignment-popup-cancel"),
+                "assignment-popup-cancel",
+                crate::ui::keyboard::FocusBand::Floating,
+                &response,
+            )
+            .register();
+            if response.clicked() {
+                popup.cancel(ui.ctx());
+                form.reset();
+            }
         });
 
     // Confirming clears the form, which is what closes the window: the
     // order has been given and there is nothing left to compose.
-    if !open || form.assignment.is_none() {
-        popup.open = false;
+    if form.assignment.is_none() {
+        popup.cancel(ctx);
     }
 }

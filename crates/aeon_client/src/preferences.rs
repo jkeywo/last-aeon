@@ -107,6 +107,24 @@ pub struct UiPreferences {
 pub struct SettingsUi {
     /// The settings window is being shown.
     pub open: bool,
+    /// Stable control that opened settings, resolved against each new frame.
+    pub invoker: Option<crate::ui::keyboard::LogicalFocus>,
+}
+
+impl SettingsUi {
+    /// Opens settings from a rendered logical control.
+    pub fn open_from(&mut self, invoker: crate::ui::keyboard::LogicalFocus) {
+        self.open = true;
+        self.invoker = Some(invoker);
+    }
+
+    /// Closes settings and restores the current rendering of its invoker.
+    pub fn close(&mut self, ctx: &egui::Context) {
+        self.open = false;
+        if let Some(invoker) = self.invoker.take() {
+            crate::ui::keyboard::request_logical(ctx, invoker);
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -364,29 +382,63 @@ pub fn draw_controls(
     preferences: &mut UiPreferences,
 ) {
     ui.label(strings.text("ui.preferences.scale"));
-    egui::ComboBox::from_id_salt("ui-preference-scale")
+    let scale_combo = egui::ComboBox::from_id_salt("ui-preference-scale")
         .selected_text(strings.text(preferences.scale.label_key()))
         .show_ui(ui, |ui| {
             for scale in UiScale::ALL {
-                ui.selectable_value(
+                let response = ui.selectable_value(
                     &mut preferences.scale,
                     scale,
                     strings.text(scale.label_key()),
                 );
+                crate::ui::keyboard::capture_action(
+                    ui,
+                    crate::ui::keyboard::LogicalFocus::new(format!("preference-scale:{scale:?}")),
+                    "preference-scale-choice",
+                    crate::ui::keyboard::FocusBand::Floating,
+                    &response,
+                )
+                .register();
             }
         });
+    crate::ui::keyboard::capture_action(
+        ui,
+        crate::ui::keyboard::LogicalFocus::new("preference-scale"),
+        "preference-scale",
+        crate::ui::keyboard::FocusBand::Floating,
+        &scale_combo.response,
+    )
+    .register();
     ui.label(strings.text("ui.preferences.density"));
-    egui::ComboBox::from_id_salt("ui-preference-density")
+    let density_combo = egui::ComboBox::from_id_salt("ui-preference-density")
         .selected_text(strings.text(preferences.density.label_key()))
         .show_ui(ui, |ui| {
             for density in UiDensity::ALL {
-                ui.selectable_value(
+                let response = ui.selectable_value(
                     &mut preferences.density,
                     density,
                     strings.text(density.label_key()),
                 );
+                crate::ui::keyboard::capture_action(
+                    ui,
+                    crate::ui::keyboard::LogicalFocus::new(format!(
+                        "preference-density:{density:?}"
+                    )),
+                    "preference-density-choice",
+                    crate::ui::keyboard::FocusBand::Floating,
+                    &response,
+                )
+                .register();
             }
         });
+    crate::ui::keyboard::capture_action(
+        ui,
+        crate::ui::keyboard::LogicalFocus::new("preference-density"),
+        "preference-density",
+        crate::ui::keyboard::FocusBand::Floating,
+        &density_combo.response,
+    )
+    .register();
     ui.weak(strings.text("ui.preferences.note"));
 }
 
@@ -401,9 +453,23 @@ pub fn draw_campaign_settings(
         return;
     }
     egui::Window::new(strings.text("ui.preferences.title"))
-        .open(&mut settings.open)
         .resizable(false)
-        .show(ctx, |ui| draw_controls(ui, strings, preferences));
+        .show(ctx, |ui| {
+            draw_controls(ui, strings, preferences);
+            ui.separator();
+            let response = ui.button(strings.text("ui.preferences.close"));
+            crate::ui::keyboard::capture_action(
+                ui,
+                crate::ui::keyboard::LogicalFocus::new("settings-close"),
+                "settings-close",
+                crate::ui::keyboard::FocusBand::Floating,
+                &response,
+            )
+            .register();
+            if response.clicked() {
+                settings.close(ui.ctx());
+            }
+        });
 }
 
 #[cfg(test)]

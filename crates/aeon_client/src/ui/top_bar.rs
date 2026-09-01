@@ -29,6 +29,14 @@ pub(crate) fn recorded_time_control(ctx: &egui::Context) -> Option<egui::Rect> {
 
 pub(crate) fn draw_pause_control(ui: &mut egui::Ui, label: &str, control: &mut TimeControl) {
     let response = ui.add(egui::Button::new(label).min_size(egui::vec2(24.0, 24.0)));
+    crate::ui::keyboard::capture_action(
+        ui,
+        crate::ui::keyboard::LogicalFocus::new("time-control"),
+        "time",
+        crate::ui::keyboard::FocusBand::TopChrome,
+        &response,
+    )
+    .register();
     #[cfg(test)]
     crate::ui::rendered_state::record_response(ui, "time", &response);
     ui.ctx().data_mut(|data| {
@@ -105,10 +113,16 @@ pub fn draw_top_bar(
             draw_pause_control(ui, pause_label, control);
             for (index, speed) in SPEED_STEPS.iter().enumerate() {
                 let active = (control.days_per_second - speed).abs() < f32::EPSILON;
-                if ui
-                    .selectable_label(active, format!("{}x", index + 1))
-                    .clicked()
-                {
+                let response = ui.selectable_label(active, format!("{}x", index + 1));
+                crate::ui::keyboard::capture_action(
+                    ui,
+                    crate::ui::keyboard::LogicalFocus::new(format!("speed:{}", index + 1)),
+                    "speed",
+                    crate::ui::keyboard::FocusBand::TopChrome,
+                    &response,
+                )
+                .register();
+                if response.clicked() {
                     control.days_per_second = *speed;
                 }
             }
@@ -119,10 +133,16 @@ pub fn draw_top_bar(
                     ui.label(strings.text("ui.top-bar.local-system"));
                 }
                 MapView::Body(id) => {
-                    if ui
-                        .button(strings.text("ui.top-bar.back-to-system"))
-                        .clicked()
-                    {
+                    let back = ui.button(strings.text("ui.top-bar.back-to-system"));
+                    crate::ui::keyboard::capture_action(
+                        ui,
+                        crate::ui::keyboard::LogicalFocus::new("back-to-system"),
+                        "back-to-system",
+                        crate::ui::keyboard::FocusBand::TopChrome,
+                        &back,
+                    )
+                    .register();
+                    if back.clicked() {
                         view.view = MapView::System;
                     }
                     ui.add(egui::Label::new(lookup.body_name(id)).wrap());
@@ -134,11 +154,18 @@ pub fn draw_top_bar(
                     // Named for what pressing it gives you, not for what
                     // you are looking at now.
                     let other = view.projection.toggled();
-                    if ui
+                    let projection = ui
                         .button(strings.text(other.label_key()))
-                        .on_hover_text(strings.text("ui.projection.hover"))
-                        .clicked()
-                    {
+                        .on_hover_text(strings.text("ui.projection.hover"));
+                    crate::ui::keyboard::capture_action(
+                        ui,
+                        crate::ui::keyboard::LogicalFocus::new("projection-toggle"),
+                        "projection-toggle",
+                        crate::ui::keyboard::FocusBand::TopChrome,
+                        &projection,
+                    )
+                    .register();
+                    if projection.clicked() {
                         view.projection = other;
                     }
                 }
@@ -154,8 +181,21 @@ pub fn draw_top_bar(
 
             // Search box, pushed to the right end of the bar.
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if ui.button(strings.text("ui.preferences.open")).clicked() {
-                    settings.open = !settings.open;
+                let settings_response = ui.button(strings.text("ui.preferences.open"));
+                crate::ui::keyboard::capture_action(
+                    ui,
+                    crate::ui::keyboard::LogicalFocus::new("settings"),
+                    "settings",
+                    crate::ui::keyboard::FocusBand::TopChrome,
+                    &settings_response,
+                )
+                .register();
+                if settings_response.clicked() {
+                    if settings.open {
+                        settings.close(ui.ctx());
+                    } else {
+                        settings.open_from(crate::ui::keyboard::LogicalFocus::new("settings"));
+                    }
                 }
                 let _search_response = ui.add_sized(
                     [150.0, 24.0],
@@ -163,6 +203,14 @@ pub fn draw_top_bar(
                         .hint_text(strings.text("ui.top-bar.search-hint"))
                         .desired_width(150.0),
                 );
+                crate::ui::keyboard::capture_action(
+                    ui,
+                    crate::ui::keyboard::LogicalFocus::new("search"),
+                    "search",
+                    crate::ui::keyboard::FocusBand::TopChrome,
+                    &_search_response,
+                )
+                .register();
                 #[cfg(test)]
                 crate::ui::rendered_state::record_response(ui, "search", &_search_response);
                 ui.label("\u{1f50d}");
@@ -225,10 +273,16 @@ fn draw_compact_top_bar(
         draw_pause_control(ui, pause_label, control);
         for (index, speed) in SPEED_STEPS.iter().enumerate() {
             let active = (control.days_per_second - speed).abs() < f32::EPSILON;
-            if ui
-                .selectable_label(active, format!("{}x", index + 1))
-                .clicked()
-            {
+            let response = ui.selectable_label(active, format!("{}x", index + 1));
+            crate::ui::keyboard::capture_action(
+                ui,
+                crate::ui::keyboard::LogicalFocus::new(format!("speed:{}", index + 1)),
+                "speed",
+                crate::ui::keyboard::FocusBand::TopChrome,
+                &response,
+            )
+            .register();
+            if response.clicked() {
                 control.days_per_second = *speed;
             }
         }
@@ -238,10 +292,16 @@ fn draw_compact_top_bar(
                 ui.label(strings.text("ui.top-bar.local-system"));
             }
             MapView::Body(id) => {
-                if ui
-                    .button(strings.text("ui.top-bar.back-to-system"))
-                    .clicked()
-                {
+                let back = ui.button(strings.text("ui.top-bar.back-to-system"));
+                crate::ui::keyboard::capture_action(
+                    ui,
+                    crate::ui::keyboard::LogicalFocus::new("back-to-system"),
+                    "back-to-system",
+                    crate::ui::keyboard::FocusBand::TopChrome,
+                    &back,
+                )
+                .register();
+                if back.clicked() {
                     view.view = MapView::System;
                 }
                 ui.add(egui::Label::new(lookup.body_name(id)).wrap());
@@ -249,11 +309,18 @@ fn draw_compact_top_bar(
                     *mode = picked;
                 }
                 let other = view.projection.toggled();
-                if ui
+                let projection = ui
                     .button(strings.text(other.label_key()))
-                    .on_hover_text(strings.text("ui.projection.hover"))
-                    .clicked()
-                {
+                    .on_hover_text(strings.text("ui.projection.hover"));
+                crate::ui::keyboard::capture_action(
+                    ui,
+                    crate::ui::keyboard::LogicalFocus::new("projection-toggle"),
+                    "projection-toggle",
+                    crate::ui::keyboard::FocusBand::TopChrome,
+                    &projection,
+                )
+                .register();
+                if projection.clicked() {
                     view.projection = other;
                 }
             }
@@ -267,10 +334,31 @@ fn draw_compact_top_bar(
                 .hint_text(strings.text("ui.top-bar.search-hint"))
                 .desired_width(110.0),
         );
+        crate::ui::keyboard::capture_action(
+            ui,
+            crate::ui::keyboard::LogicalFocus::new("search"),
+            "search",
+            crate::ui::keyboard::FocusBand::TopChrome,
+            &_search_response,
+        )
+        .register();
         #[cfg(test)]
         crate::ui::rendered_state::record_response(ui, "search", &_search_response);
-        if ui.button(strings.text("ui.preferences.open")).clicked() {
-            settings.open = !settings.open;
+        let settings_response = ui.button(strings.text("ui.preferences.open"));
+        crate::ui::keyboard::capture_action(
+            ui,
+            crate::ui::keyboard::LogicalFocus::new("settings"),
+            "settings",
+            crate::ui::keyboard::FocusBand::TopChrome,
+            &settings_response,
+        )
+        .register();
+        if settings_response.clicked() {
+            if settings.open {
+                settings.close(ui.ctx());
+            } else {
+                settings.open_from(crate::ui::keyboard::LogicalFocus::new("settings"));
+            }
         }
     });
 }
@@ -283,6 +371,7 @@ fn draw_compact_top_bar(
 /// second function is invisible has, for most players, only one.
 fn draw_panel_toggles(ui: &mut egui::Ui, theme: &UiTheme, strings: &TextDb, dock: &mut DockState) {
     let button = f32::from(theme.components.icon_button);
+    let mut responses = Vec::new();
     for kind in PanelKind::ALL {
         let side = dock.side_of(*kind);
         // A stable id keyed by the panel kind, so egui's sizing and render
@@ -294,11 +383,19 @@ fn draw_panel_toggles(ui: &mut egui::Ui, theme: &UiTheme, strings: &TextDb, dock
             egui::Sense::click(),
         );
         let visuals = ui.style().interact_selectable(&response, side.is_some());
-        if side.is_some() || response.hovered() {
+        if side.is_some() || response.hovered() || response.has_focus() {
             ui.painter()
                 .rect_filled(rect, theme.shape.radius_small as f32, visuals.bg_fill);
         }
         draw_panel_icon(ui.painter(), theme, rect, *kind, visuals.fg_stroke.color);
+        crate::ui::keyboard::capture_action(
+            ui,
+            crate::ui::keyboard::LogicalFocus::new(format!("panel-toggle:{kind:?}")),
+            "panel-toggle",
+            crate::ui::keyboard::FocusBand::TopChrome,
+            &response,
+        )
+        .register();
 
         let where_now = match side {
             Some(side) => strings.format(
@@ -319,5 +416,7 @@ fn draw_panel_toggles(ui: &mut egui::Ui, theme: &UiTheme, strings: &TextDb, dock
         } else if response.secondary_clicked() {
             dock.toggle(*kind, DockSide::Right);
         }
+        responses.push(response);
     }
+    crate::ui::keyboard::roving_group(ui, &responses);
 }

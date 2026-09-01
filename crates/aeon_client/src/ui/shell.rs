@@ -11,7 +11,7 @@
 use aeon_sim::state::{CampaignMeta, ContentDb};
 use aeon_sim::{CampaignClock, CampaignOver, CharacterId, PlayerHouse, PoliticsIndex};
 use bevy::prelude::*;
-use bevy_egui::{EguiContexts, egui};
+use bevy_egui::{EguiContext, EguiContexts, PrimaryEguiContext, egui};
 
 use crate::assignment_ui::UiCommandQueue;
 use crate::sim_driver::TimeControl;
@@ -24,6 +24,60 @@ use crate::ui::panel::{HeaderAction, PanelCtx, PanelOut, draw_header, draw_panel
 use crate::ui::search::draw_search_results;
 use crate::ui::top_bar::draw_top_bar;
 use crate::view::{SearchState, ViewState};
+
+/// One physical Escape may be owned by exactly one local presentation layer.
+#[derive(Resource, Default)]
+pub struct LocalEscapeClaim {
+    /// The current press was handled before strategic view hotkeys.
+    pub claimed: bool,
+}
+
+/// Claims physical Escape for the nearest open local surface before the
+/// strategic Body -> System fallback runs in `selection::view_hotkeys`.
+pub fn claim_local_escape(world: &mut World) {
+    let pressed = world
+        .resource::<ButtonInput<KeyCode>>()
+        .just_pressed(KeyCode::Escape);
+    world.resource_mut::<LocalEscapeClaim>().claimed = false;
+    if !pressed {
+        return;
+    }
+    let ctx = {
+        let mut query = world.query_filtered::<&mut EguiContext, With<PrimaryEguiContext>>();
+        let Ok(mut context) = query.single_mut(world) else {
+            return;
+        };
+        context.get_mut().clone()
+    };
+    let claimed = if world.resource::<crate::ui::picker::PickerState>().open {
+        world
+            .resource_mut::<crate::ui::picker::PickerState>()
+            .close(&ctx);
+        true
+    } else if world
+        .resource::<crate::ui::assignment_popup::AssignmentPopup>()
+        .open
+    {
+        world
+            .resource_mut::<crate::ui::assignment_popup::AssignmentPopup>()
+            .cancel(&ctx);
+        world
+            .resource_mut::<crate::assignment_ui::AssignmentForm>()
+            .reset();
+        true
+    } else if world.resource::<crate::preferences::SettingsUi>().open {
+        world
+            .resource_mut::<crate::preferences::SettingsUi>()
+            .close(&ctx);
+        true
+    } else if !world.resource::<SearchState>().query.is_empty() {
+        world.resource_mut::<SearchState>().query.clear();
+        true
+    } else {
+        false
+    };
+    world.resource_mut::<LocalEscapeClaim>().claimed = claimed;
+}
 
 #[allow(clippy::too_many_arguments)]
 pub fn draw_panels(
@@ -54,10 +108,17 @@ pub fn draw_panels(
         mut situation_ui,
         mut preferences,
         mut settings,
+        escape_claim,
     } = map_ui;
     let Ok(ctx) = contexts.ctx_mut() else {
         return;
     };
+    crate::ui::keyboard::begin_frame(ctx);
+    // The Update-stage semantic claim already closed exactly one layer. Eat
+    // the matching egui event before any popup/window/widget can react too.
+    if escape_claim.claimed {
+        ctx.input_mut(|input| input.consume_key(egui::Modifiers::NONE, egui::Key::Escape));
+    }
     let (Some(clock), Some(meta), Some(content), Some(politics)) = (clock, meta, content, politics)
     else {
         return;
@@ -236,6 +297,14 @@ fn draw_side(
                         *bottom_selected == Some(*kind),
                         ctx.strings.text(kind.title_key()),
                     );
+                    crate::ui::keyboard::capture_action(
+                        ui,
+                        crate::ui::keyboard::LogicalFocus::new(format!("bottom-tab:{kind:?}")),
+                        "compact-tab",
+                        crate::ui::keyboard::FocusBand::BottomTabs,
+                        &response,
+                    )
+                    .register();
                     #[cfg(test)]
                     crate::ui::rendered_state::record_response(ui, "compact-tab", &response);
                     if response.clicked() {

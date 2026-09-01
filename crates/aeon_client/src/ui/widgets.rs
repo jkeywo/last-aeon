@@ -41,6 +41,18 @@ pub fn linked(ui: &mut egui::Ui, label: impl Into<egui::WidgetText>, summary: &s
                 .min_size(egui::vec2(24.0, 24.0)),
         )
         .on_hover_text(summary);
+    let band = crate::ui::keyboard::inferred_band(ui.ctx(), response.rect);
+    crate::ui::keyboard::capture_action(
+        ui,
+        crate::ui::keyboard::LogicalFocus::new(format!(
+            "subject:{band:?}:{}:{summary}",
+            ui.id().value()
+        )),
+        "subject",
+        band,
+        &response,
+    )
+    .register();
     #[cfg(test)]
     crate::ui::rendered_state::record_response(ui, "subject", &response);
     ui.ctx().data_mut(|data| {
