@@ -202,7 +202,11 @@ toward the house head under the tier's own stable reason: achievement
 silence -10 for 1,440, and a broken promise -20 for 1,800. One reason per
 tier means tiers can never stack on a single lifecycle, and a repeat of
 the same tier refreshes rather than accumulates — consistent with the
-one-modifier-per-(target, reason) rule above. The magnitudes and
+one-modifier-per-(target, reason) rule above. Reasons are also
+per-definition (Kessarin's Order and Aleyn's Levies each carry their own
+four), so when both demands pass to the same successor, each demand's
+tier lands under its own reason and the two never collapse into one
+modifier. The magnitudes and
 durations are authored scenario content, not Rust constants, and the
 modifiers are sentiment only: the demand's promise/refusal record lives
 on the Situation, not in the obligation ledger, respecting the accepted

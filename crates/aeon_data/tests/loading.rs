@@ -562,6 +562,79 @@ fn kessarins_demand_carries_responses_a_subject_binding_and_tiered_effects() {
 }
 
 #[test]
+fn aleyns_demand_carries_responses_a_subject_binding_and_tiered_effects() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/content");
+    let sources = aeon_data::fs::read_content_dir(&root).expect("assets/content readable");
+    let (strings, report) = aeon_data::fs::read_string_table(&root).expect("strings readable");
+    assert!(
+        !report.has_errors(),
+        "string findings: {:?}",
+        report.findings
+    );
+    let (set, report) = load_content(&sources, &strings.expect("valid string table"));
+    assert!(
+        !report.has_errors(),
+        "content findings: {:?}",
+        report.findings
+    );
+    let set = set.expect("repository content loads");
+    let demand = &set.situations[&aeon_data::ContentKey::new("aleyn-levies").unwrap()];
+
+    // The demand acts for the house and its consequences fall on the bound
+    // requester; its pure choices are the two authored responses, and its
+    // one action is the honest single route to fielded strength.
+    assert_eq!(demand.owner_binding.as_deref(), Some("house"));
+    assert_eq!(demand.subject_binding.as_deref(), Some("requester"));
+    let responses: Vec<&str> = demand
+        .responses
+        .iter()
+        .map(|response| response.key.as_str())
+        .collect();
+    assert_eq!(responses, ["promise", "refuse"]);
+    assert!(
+        demand
+            .responses
+            .iter()
+            .all(|response| !response.label.is_empty()),
+        "response labels are table-decided and filled"
+    );
+    let actions: Vec<&str> = demand
+        .actions
+        .iter()
+        .map(|action| action.key.as_str())
+        .collect();
+    assert_eq!(actions, ["muster"]);
+    assert!(demand.announcement.is_some());
+    assert!(demand.guidance_objective.is_some());
+    assert!(demand.guidance_how.is_some());
+    assert!(demand.guidance_why.is_some());
+
+    // Exactly the four relationship tiers carry effects; passing the demand
+    // on carries none.
+    let effects: Vec<&str> = demand
+        .outcomes
+        .iter()
+        .filter(|outcome| outcome.effects_fn.is_some())
+        .map(|outcome| outcome.key.as_str())
+        .collect();
+    assert_eq!(effects, ["achieved", "refused", "broken", "ignored"]);
+
+    // The derived key mirror covers the new rows, so the orphan and
+    // missing-row audits keep covering them.
+    let keys = aeon_data::text_keys(&set);
+    for expected in [
+        "situation.aleyn-levies.response.promise.label",
+        "situation.aleyn-levies.response.refuse.label",
+        "situation.aleyn-levies.action.muster.label",
+        "situation.aleyn-levies.announcement",
+        "situation.aleyn-levies.resolution.passed-on.text",
+        "situation.aleyn-levies.guidance.objective",
+    ] {
+        assert!(keys.contains(expected), "missing derived key {expected}");
+    }
+}
+
+#[test]
 fn the_court_awaits_carries_announcement_guidance_and_outcome_effects() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/content");
     let sources = aeon_data::fs::read_content_dir(&root).expect("assets/content readable");

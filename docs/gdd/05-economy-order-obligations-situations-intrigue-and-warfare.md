@@ -270,6 +270,7 @@ The current reusable deck contains:
 | Formal war | Scenario, bound to one exact war | Sides, participating forces, objectives, adoption, operations, and peace |
 | The Court Awaits | Scenario, bound to House Harrow | Day-one authority test: any accepted ordinary assignment within seven days, or a 10-Influence forfeit |
 | Kessarin's Order | Scenario, bound to House Harrow and its requester | Household demand: every held province at 850+ Order by the shared 120-day deadline, with four-tier relationship consequences |
+| Aleyn's Levies | Scenario, bound to House Harrow and its requester | Household demand: at least 1,000 total fielded army manpower by the same shared deadline, with the same four-tier consequences |
 
 [ai] The Court Awaits slice added three reusable seams the deck may now use.
 Situation call contexts carry the instance's activation date (triggers see
@@ -306,6 +307,16 @@ on the first settled day they hold (achievement beats any recorded
 answer) or by answer tier on the shared deadline day; all magnitudes —
 the 850 target, the 120 days, the four opinion tiers — are authored in
 scenario content.
+
+[ai] Aleyn's Levies, the second household demand, reuses those seams
+unchanged — no new Rust was needed. Its predicate aggregates fielded
+manpower over the armies the house owns (the shared world view's army
+records), its per-army card rows and navigation links use the existing
+army subject kind, and its muster action is an ordinary assignment whose
+forecast can fail with costs paid up front and never refunded; a failed
+attempt receives no protection and a retry is the same ordinary command.
+The 1,000-manpower target and every tier live in scenario content beside
+Kessarin's.
 
 Visibility follows authoritative audience rules. In particular, favour debt is
 private to its parties in player-led play while spectator mode can inspect it.

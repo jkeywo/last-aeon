@@ -131,6 +131,22 @@ completion is history while provincial Order keeps moving normally; and a
 requester who dies or is replaced passes the demand on without penalty to
 a deterministically chosen successor.
 
+**Implemented/current.** [ai] The second household demand, **Aleyn's
+Levies**, opens beside Kessarin's on the same shared anchor and runs the
+same accepted lifecycle: Aleyn asks that House Harrow field at least
+1,000 total army manpower by the shared 120-day household deadline. The
+goal is a live military-strength predicate summed over the armies the
+house actually owns — any legitimate route to the strength satisfies it,
+and losing or disbanding soldiers counts against it while the demand is
+open. The card offers the one honest ordinary route, the muster
+assignment, whose wealth and Influence costs are paid on acceptance and
+whose roll can genuinely fail: a failed muster refunds nothing, forms
+nothing, carries no tutorial protection, and leaves the same open
+lifecycle awaiting an ordinary retry. Promise, refusal, silence,
+achievement, and requester replacement carry the same four authored
+relationship tiers and passed-on rule as Kessarin's demand, under
+Aleyn's own stable opinion reasons.
+
 **Proposal.** Onboarding should use a short, dismissible sequence of goals over
 the live campaign rather than a separate rules sandbox. It should teach the
 normal interface and issue ordinary logged commands, without changing odds,

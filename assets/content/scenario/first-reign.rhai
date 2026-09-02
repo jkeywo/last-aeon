@@ -394,3 +394,192 @@ fn kessarin_broken_effects(ctx) {
         amount: household_broken_opinion(), days: household_broken_days(),
         reason: "kessarin-order-broken" }]
 }
+
+// --- Aleyn's Levies ----------------------------------------------------------
+//
+// Aleyn asks that the house field at least the authored total army
+// manpower by the shared deadline. The goal is a live-state predicate
+// over the armies the house actually owns — any legitimate route to the
+// strength satisfies it, mustered levies or anything the future adds —
+// and losses count against an open demand exactly as gains count for it.
+
+fn aleyn_manpower_target() { 1000 }
+
+fn aleyn_fielded_manpower(world, house) {
+    let total = 0;
+    for army in world.armies {
+        if army.owner == house { total += army.manpower; }
+    }
+    total
+}
+
+fn aleyn_goal_met(world, house) {
+    aleyn_fielded_manpower(world, house) >= aleyn_manpower_target()
+}
+
+define_situation(#{
+    id: "aleyn-levies",
+    source: "scenario",
+    bindings: #{ house: "organisation", requester: "character" },
+    owner_binding: "house",
+    subject_binding: "requester",
+    trigger_fn: "aleyn_levies_instances",
+    projection_fn: "aleyn_levies_projection",
+    priority: 109,
+    log_activation: true,
+    audience: ["house"],
+    stages: ["open", "promised", "refused"],
+    actions: [
+        #{ id: "muster", assignment: "muster" },
+    ],
+    responses: [
+        #{ id: "promise" },
+        #{ id: "refuse" },
+    ],
+    outcomes: [
+        #{ id: "achieved", when_fn: "aleyn_goal_reached", effects_fn: "aleyn_achieved_effects" },
+        #{ id: "passed-on", when_fn: "aleyn_demand_passed_on" },
+        #{ id: "refused", when_fn: "aleyn_was_refused", effects_fn: "aleyn_refused_effects" },
+        #{ id: "broken", when_fn: "aleyn_promise_broken", effects_fn: "aleyn_broken_effects" },
+        #{ id: "ignored", fallback: true, effects_fn: "aleyn_ignored_effects" },
+    ],
+});
+
+fn aleyn_levies_instances(ctx) {
+    let house = first_reign_house(ctx.world);
+    if house == 0 { return []; }
+    if ctx.world.date >= household_deadline(ctx.world) { return []; }
+    if aleyn_goal_met(ctx.world, house) { return []; }
+    let requester = household_requester(ctx.world, "aleyn-harrow", house);
+    if requester == 0 { return []; }
+    if type_of(ctx.activated) != "i64" && !household_demands_open(ctx.world, house) {
+        return [];
+    }
+    [#{ house: house, requester: requester }]
+}
+
+fn aleyn_levies_projection(ctx) {
+    let house = ctx.bindings.house;
+    let requester = ctx.bindings.requester;
+    let deadline = household_deadline(ctx.world);
+    let head = 0;
+    for organisation in ctx.world.organisations {
+        if organisation.id == house {
+            if type_of(organisation.head) == "i64" { head = organisation.head; }
+        }
+    }
+    let stage = "open";
+    if type_of(ctx.answer) == "string" {
+        if ctx.answer == "promise" { stage = "promised"; }
+        if ctx.answer == "refuse" { stage = "refused"; }
+    }
+    let total = 0;
+    let links = [];
+    let metrics = [
+        #{ label_key: "situation.metric.manpower-target", value: aleyn_manpower_target() },
+        #{ label_key: "situation.metric.days-left", value: deadline - ctx.world.date },
+    ];
+    for army in ctx.world.armies {
+        if army.owner == house {
+            total += army.manpower;
+            metrics.push(#{
+                label_key: "situation.metric.army-strength",
+                value: `${army.name} — ${army.manpower}`,
+            });
+            links.push(#{ kind: "army", id: army.id });
+        }
+    }
+    metrics.push(#{ label_key: "situation.metric.army-manpower", value: total });
+    let shortfall = aleyn_manpower_target() - total;
+    if shortfall < 0 { shortfall = 0; }
+    metrics.push(#{ label_key: "situation.metric.manpower-shortfall", value: shortfall });
+    metrics.push(#{
+        label_key: "situation.metric.on-achieved",
+        value: `+${household_achieved_opinion()} / ${household_achieved_days()}`,
+    });
+    metrics.push(#{
+        label_key: "situation.metric.on-refused",
+        value: `${household_refused_opinion()} / ${household_refused_days()}`,
+    });
+    metrics.push(#{
+        label_key: "situation.metric.on-ignored",
+        value: `${household_ignored_opinion()} / ${household_ignored_days()}`,
+    });
+    metrics.push(#{
+        label_key: "situation.metric.on-broken",
+        value: `${household_broken_opinion()} / ${household_broken_days()}`,
+    });
+    let actions = [];
+    if head > 0 {
+        actions.push(#{ id: "muster", leader: head });
+    }
+    // A refusal quiets the card; an open or promised demand raises the
+    // shared attention strip once the window narrows.
+    let warning = stage != "refused" && deadline - ctx.world.date <= 30;
+    #{
+        stage: stage,
+        deadline: deadline,
+        warning: warning,
+        metrics: metrics,
+        participants: [
+            #{ kind: "character", id: requester },
+            #{ kind: "organisation", id: house },
+        ],
+        links: links,
+        actions: actions,
+        resolution_values: #{
+            requester: first_reign_character_name(ctx.world, requester),
+            house: court_house_name(ctx.world, house),
+            target: `${aleyn_manpower_target()}`,
+        },
+    }
+}
+
+fn aleyn_goal_reached(ctx) {
+    aleyn_goal_met(ctx.world, ctx.bindings.house)
+}
+
+// Before the shared deadline, a lifecycle that ended because its requester
+// died, left, or was replaced — or because the house itself is gone —
+// carries no relationship consequence; the successor's own lifecycle
+// takes over from authoritative state.
+fn aleyn_demand_passed_on(ctx) {
+    if ctx.world.date >= household_deadline(ctx.world) { return false; }
+    let house = first_reign_house(ctx.world);
+    if house == 0 { return true; }
+    household_requester(ctx.world, "aleyn-harrow", house) != ctx.bindings.requester
+}
+
+fn aleyn_was_refused(ctx) {
+    type_of(ctx.answer) == "string" && ctx.answer == "refuse"
+}
+
+fn aleyn_promise_broken(ctx) {
+    type_of(ctx.answer) == "string" && ctx.answer == "promise"
+}
+
+// The four authored relationship tiers, each under its own stable reason so
+// no two tiers can ever stack on one lifecycle.
+fn aleyn_achieved_effects(ctx) {
+    [#{ kind: "opinion", from: "target", toward: "owner-head",
+        amount: household_achieved_opinion(), days: household_achieved_days(),
+        reason: "aleyn-levies-achieved" }]
+}
+
+fn aleyn_refused_effects(ctx) {
+    [#{ kind: "opinion", from: "target", toward: "owner-head",
+        amount: household_refused_opinion(), days: household_refused_days(),
+        reason: "aleyn-levies-refused" }]
+}
+
+fn aleyn_ignored_effects(ctx) {
+    [#{ kind: "opinion", from: "target", toward: "owner-head",
+        amount: household_ignored_opinion(), days: household_ignored_days(),
+        reason: "aleyn-levies-ignored" }]
+}
+
+fn aleyn_broken_effects(ctx) {
+    [#{ kind: "opinion", from: "target", toward: "owner-head",
+        amount: household_broken_opinion(), days: household_broken_days(),
+        reason: "aleyn-levies-broken" }]
+}

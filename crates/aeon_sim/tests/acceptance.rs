@@ -363,6 +363,7 @@ fn snapshot_20_replays_connected_situations_and_formal_wars() {
     assert_eq!(
         content.situations.keys().cloned().collect::<BTreeSet<_>>(),
         [
+            key("aleyn-levies"),
             key("consular-vacancy"),
             key("court-awaits"),
             key("favour-debt"),
@@ -372,7 +373,7 @@ fn snapshot_20_replays_connected_situations_and_formal_wars() {
         ]
         .into_iter()
         .collect(),
-        "acceptance runs the complete six-definition authored deck"
+        "acceptance runs the complete seven-definition authored deck"
     );
 
     let mut original = scenario_host(Arc::clone(&content), 18_1818);
@@ -556,6 +557,9 @@ fn snapshot_20_replays_connected_situations_and_formal_wars() {
             .map(|instance| instance.definition.clone())
             .collect::<BTreeSet<_>>(),
         [
+            // The campaign never fields 1,000 manpower, so Aleyn's demand
+            // is live at the midpoint alongside Kessarin's.
+            key("aleyn-levies"),
             key("consular-vacancy"),
             key("favour-debt"),
             key("formal-war"),

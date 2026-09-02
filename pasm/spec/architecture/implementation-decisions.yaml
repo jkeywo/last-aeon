@@ -2399,10 +2399,14 @@ entities:
       confidence: confirmed
       title: Household Demands Are Live-State Predicates on One Shared Anchor
       summary: >-
-        Kessarin's Order is the household-demand exemplar. Its goal is a
-        pure live-state predicate — every Harrow-held province at or above
-        the authored 850 Order — recomputed from current holders and Order,
-        never from assignment starts or interface interaction. All three
+        Kessarin's Order is the household-demand exemplar, and Aleyn's
+        Levies is the second instance of the same shape: where Kessarin's
+        goal is universal over holdings (every held province at or above
+        the authored 850 Order), Aleyn's is an aggregate over owned armies
+        (total fielded manpower at or above the authored 1,000), each a
+        pure live-state predicate recomputed from current authoritative
+        state — holders and Order, or army ownership and manpower — never
+        from assignment starts or interface interaction. All three
         demands share one deadline derived from pure campaign facts:
         world.start_date plus the authored court window plus the authored
         120-day household window, so the anchor never depends on when the
@@ -2427,6 +2431,7 @@ entities:
         - "[ai] Resolving at first achievement makes completion historical — the notice, the opinion tier, and the log survive while provincial Order keeps moving normally — rather than freezing a checkbox until the deadline."
         - "[ai] Achievement overriding refusal follows the accepted rule that achieving a goal satisfies it whether or not the player promised; a promise (or refusal) changes only the consequence of failure."
         - "[ai] The passed-on outcome keeps death from converting into a silence penalty from a dead requester, while the deterministic successor rule keeps trigger and projection in exact agreement."
+        - "[ai] Aleyn's demand proves the predicate seam needs no per-route wiring: no assignment or click is required, so a muster, a retried muster after an ordinary unrefunded failure, or any future manpower source satisfies it identically, and a disbanded or destroyed army un-satisfies it while the demand is open — all through the one live predicate, with no tutorial protection anywhere."
       references:
         - situation-responses-are-recorded-occurrence-answers
         - situation-effects-may-address-a-bound-subject
