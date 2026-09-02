@@ -57,6 +57,15 @@ pub enum PlayerCommand {
         /// Exact formal war authorising the action, when any.
         war: Option<WarId>,
     },
+    /// Records the player's answer to one of a Situation's authored
+    /// responses — a pure political choice with no assignment behind it.
+    /// The first recorded answer per activation is final.
+    AnswerSituation {
+        /// Exact structural Situation instance being answered.
+        situation: crate::situations::SituationInstanceKey,
+        /// Authored response ID within the Situation definition.
+        response: ContentKey,
+    },
     /// Dismisses one persistent Situation resolution notice.
     DismissSituationResolution {
         /// Monotonic notice ID.
@@ -399,6 +408,17 @@ pub fn validate_command(world: &World, command: &PlayerCommand) -> Result<(), Co
             assignments::validate_start_in_war(world, org, &assignment, *leader, *target, *war)?;
             Ok(())
         }
+        PlayerCommand::AnswerSituation {
+            situation,
+            response,
+        } => {
+            world
+                .get_resource::<PlayerHouse>()
+                .and_then(|player| player.0)
+                .ok_or(AssignmentRejection::NoPlayerOrg)?;
+            crate::situations::validate_answer(world, situation, response)?;
+            Ok(())
+        }
         PlayerCommand::DismissSituationResolution { resolution } => {
             world
                 .get_resource::<PlayerHouse>()
@@ -685,6 +705,14 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
                     situation.clone(),
                 );
             }
+        }
+        PlayerCommand::AnswerSituation {
+            situation,
+            response,
+        } => {
+            // Conditions may have changed since submission; the recorder
+            // re-validates and drops a stale answer silently.
+            crate::situations::record_answer(world, situation, response);
         }
         PlayerCommand::DismissSituationResolution { resolution } => {
             let visible = world

@@ -537,6 +537,20 @@ pub struct SituationActionDef {
     pub label: String,
 }
 
+/// One pure political answer a Situation may record — a choice with no
+/// assignment behind it, such as promising or refusing a demand.
+///
+/// The chosen response is durable authoritative state keyed by the exact
+/// activation, so outcome predicates can read what the player said long
+/// after the words were spoken.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SituationResponseDef {
+    /// Stable response key within the Situation.
+    pub key: ContentKey,
+    /// Player-facing response label, filled from the string table.
+    pub label: String,
+}
+
 /// One ordered way an ended Situation may resolve.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SituationOutcomeDef {
@@ -574,6 +588,11 @@ pub struct SituationDef {
     /// Declared organisation binding whose bound organisation stands behind
     /// outcome effects and the activation announcement, when any.
     pub owner_binding: Option<String>,
+    /// Declared character binding standing behind the `target` effect role
+    /// when outcome effects or announcements resolve, when any. Lets a
+    /// consequence address the bound person — a requester, a petitioner —
+    /// rather than only organisation-derived roles.
+    pub subject_binding: Option<String>,
     /// Pure function returning zero or more active instance bindings.
     pub trigger_fn: ScriptFnRef,
     /// Pure function returning the fixed presentation blocks for an instance.
@@ -598,6 +617,9 @@ pub struct SituationDef {
     pub stages: Vec<SituationStageDef>,
     /// Assignment shortcuts the projection may offer.
     pub actions: Vec<SituationActionDef>,
+    /// Pure recorded answers the player may give, at most one per
+    /// activation.
+    pub responses: Vec<SituationResponseDef>,
     /// Ordered resolutions, ending in one mandatory fallback.
     pub outcomes: Vec<SituationOutcomeDef>,
 }

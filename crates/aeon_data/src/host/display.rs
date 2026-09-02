@@ -121,6 +121,9 @@ pub(super) fn fill_display_text(builder: &mut BuilderState, strings: &StringTabl
         for action in &mut def.actions {
             action.label = fill.at(&format!("situation.{key}.action.{}.label", action.key));
         }
+        for response in &mut def.responses {
+            response.label = fill.at(&format!("situation.{key}.response.{}.label", response.key));
+        }
         for outcome in &mut def.outcomes {
             outcome.text = fill.at(&format!("situation.{key}.resolution.{}.text", outcome.key));
         }
@@ -241,6 +244,9 @@ pub fn text_keys(set: &ContentSet) -> BTreeSet<String> {
         }
         for action in &def.actions {
             add(format!("situation.{key}.action.{}.label", action.key));
+        }
+        for response in &def.responses {
+            add(format!("situation.{key}.response.{}.label", response.key));
         }
         for outcome in &def.outcomes {
             add(format!("situation.{key}.resolution.{}.text", outcome.key));

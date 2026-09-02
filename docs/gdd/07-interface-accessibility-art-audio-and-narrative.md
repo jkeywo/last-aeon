@@ -206,6 +206,17 @@ guidance block. Situation activations may also raise a pausing announcement
 popup through the ordinary popup channel, which is authoritative simulation
 state independent of the preference.
 
+**Implemented.** [ai] Situation cards gained a second interaction kind
+beside assignment actions: pure recorded responses. A card whose content
+declares responses (Kessarin's demand offers Promise and Refuse) draws
+them under a "How will you answer?" heading as ordinary focusable
+buttons — keyboard-registered and traversed like every other card
+control — and clicking one queues the ordinary logged `AnswerSituation`
+command. Once the authoritative answer exists the buttons are replaced by
+a persistent "Answer given" line, so the recorded choice is readable
+without hover on every supported client; spectators and unavailable cards
+offer no response controls.
+
 There is no evidenced full first-campaign tutorial sequence,
 codex/manual surface, control-remapping screen, or difficulty-selection flow.
 The wider onboarding questions and the campaign opening belong in [Player

@@ -288,6 +288,13 @@ pub struct SituationState {
     /// Diagnostic fingerprints already written to the permanent log.
     #[serde(default)]
     pub logged_diagnostics: BTreeSet<String>,
+    /// Durable recorded answers, keyed by the exact activation they were
+    /// given to. At most one per occurrence — the first answer is final —
+    /// and a reactivation is a new occurrence, so it starts unanswered.
+    /// Entries for ended lifecycles are pruned once their resolution has
+    /// read them.
+    #[serde(default)]
+    pub answers: BTreeMap<SituationOccurrence, ContentKey>,
 }
 
 /// A derived card ready for fixed client layout.
@@ -406,6 +413,7 @@ fn bindings_map(key: &SituationInstanceKey) -> Map {
 fn call_context_with_world(
     key: &SituationInstanceKey,
     activated: Option<GameDate>,
+    answer: Option<&ContentKey>,
     world_view: &Map,
 ) -> Map {
     let mut context = Map::new();
@@ -419,6 +427,14 @@ fn call_context_with_world(
         "activated".into(),
         activated
             .map(|date| Dynamic::from(date.days_since_epoch()))
+            .unwrap_or(Dynamic::UNIT),
+    );
+    // The answer recorded for the same activation `activated` describes —
+    // a response key, or the unit value while the player has said nothing.
+    context.insert(
+        "answer".into(),
+        answer
+            .map(|response| Dynamic::from(response.as_str().to_owned()))
             .unwrap_or(Dynamic::UNIT),
     );
     context.insert("world".into(), world_view.clone().into());
@@ -928,7 +944,24 @@ fn project(
     activated: GameDate,
 ) -> Result<SituationProjection, SituationError> {
     let world_view = crate::script_world::context_value(world);
-    project_with_world(world, content, key, activated, &world_view)
+    let answer = answer_for(world, key, activated);
+    project_with_world(world, content, key, activated, answer.as_ref(), &world_view)
+}
+
+/// The recorded answer for one exact activation, from snapshotted state.
+fn answer_for(
+    world: &World,
+    key: &SituationInstanceKey,
+    activated: GameDate,
+) -> Option<ContentKey> {
+    world
+        .get_resource::<SituationState>()?
+        .answers
+        .get(&SituationOccurrence {
+            situation: key.clone(),
+            activated,
+        })
+        .cloned()
 }
 
 fn project_with_world(
@@ -936,6 +969,7 @@ fn project_with_world(
     content: &ContentSet,
     key: &SituationInstanceKey,
     activated: GameDate,
+    answer: Option<&ContentKey>,
     world_view: &Map,
 ) -> Result<SituationProjection, SituationError> {
     let def = content.situations.get(&key.definition).ok_or_else(|| {
@@ -948,7 +982,7 @@ fn project_with_world(
         world,
         content,
         &def.projection_fn,
-        call_context_with_world(key, Some(activated), world_view),
+        call_context_with_world(key, Some(activated), answer, world_view),
     )?;
     parse_projection(def, dynamic)
 }
@@ -967,13 +1001,14 @@ fn resolve_with_world(
     active: &ActiveSituation,
     id: u64,
     date: GameDate,
+    answer: Option<&ContentKey>,
     world_view: &Map,
 ) -> Result<SituationResolution, SituationError> {
     let def = content
         .situations
         .get(&active.key.definition)
         .ok_or_else(|| SituationError::Undeclared("missing Situation definition".to_owned()))?;
-    let context = call_context_with_world(&active.key, Some(active.activated), world_view);
+    let context = call_context_with_world(&active.key, Some(active.activated), answer, world_view);
     let mut selected = None;
     for outcome in &def.outcomes {
         let Some(predicate) = &outcome.predicate_fn else {
@@ -995,7 +1030,14 @@ fn resolve_with_world(
     let outcome = selected.ok_or_else(|| {
         SituationError::Undeclared("Situation has no fallback outcome".to_owned())
     })?;
-    let projection = project_with_world(world, content, &active.key, active.activated, world_view)?;
+    let projection = project_with_world(
+        world,
+        content,
+        &active.key,
+        active.activated,
+        answer,
+        world_view,
+    )?;
     Ok(SituationResolution {
         id,
         situation: active.key.clone(),
@@ -1099,20 +1141,28 @@ pub fn evaluate(world: &mut World) {
         };
         // The oldest live activation for this definition and source; exact
         // for single-instance Situations, and the unit value when no
-        // lifecycle is currently active.
-        let earliest_activation = old
+        // lifecycle is currently active. Its recorded answer rides along so
+        // a trigger reads the same facts its outcomes will.
+        let earliest = old
             .active
             .values()
             .filter(|lifecycle| {
                 lifecycle.key.definition == def.key && lifecycle.key.source == attachment.source
             })
-            .map(|lifecycle| lifecycle.activated)
-            .min();
+            .min_by_key(|lifecycle| lifecycle.activated);
+        let earliest_activation = earliest.map(|lifecycle| lifecycle.activated);
+        let earliest_answer =
+            earliest.and_then(|lifecycle| old.answers.get(&lifecycle.occurrence()));
         let result = call_dynamic(
             world,
             &content,
             &def.trigger_fn,
-            call_context_with_world(&synthetic, earliest_activation, &world_view),
+            call_context_with_world(
+                &synthetic,
+                earliest_activation,
+                earliest_answer,
+                &world_view,
+            ),
         )
         .and_then(|dynamic| parse_trigger(world, def, &attachment.source, dynamic));
         match result {
@@ -1182,12 +1232,14 @@ pub fn evaluate(world: &mut World) {
     let mut resolution_effects = Vec::new();
     for ended in ended {
         next_resolution_id += 1;
+        let answer = old.answers.get(&ended.occurrence()).cloned();
         match resolve_with_world(
             world,
             &content,
             &ended,
             next_resolution_id,
             date,
+            answer.as_ref(),
             &world_view,
         ) {
             Ok(notice) => {
@@ -1208,7 +1260,12 @@ pub fn evaluate(world: &mut World) {
                     resolution_effects.push((
                         notice.occurrence(),
                         effects_fn,
-                        call_context_with_world(&ended.key, Some(ended.activated), &world_view),
+                        call_context_with_world(
+                            &ended.key,
+                            Some(ended.activated),
+                            answer.as_ref(),
+                            &world_view,
+                        ),
                     ));
                 }
                 resolutions.push(notice);
@@ -1232,6 +1289,7 @@ pub fn evaluate(world: &mut World) {
             &content,
             &lifecycle.key,
             lifecycle.activated,
+            old.answers.get(&lifecycle.occurrence()),
             &world_view,
         ) {
             errors.insert(key.clone(), error.to_string());
@@ -1250,12 +1308,27 @@ pub fn evaluate(world: &mut World) {
         })
         .collect();
 
+    // Answers outlive their lifecycles only long enough for the resolution
+    // above to read them; a reactivation is a new occurrence and starts
+    // unanswered.
+    let answers: BTreeMap<SituationOccurrence, ContentKey> = old
+        .answers
+        .iter()
+        .filter(|(occurrence, _)| {
+            active
+                .get(&occurrence.situation)
+                .is_some_and(|lifecycle| lifecycle.activated == occurrence.activated)
+        })
+        .map(|(occurrence, answer)| (occurrence.clone(), answer.clone()))
+        .collect();
+
     world.insert_resource(SituationState {
         active,
         resolutions,
         next_resolution_id,
         runtime_errors: errors,
         logged_diagnostics,
+        answers,
     });
 
     for occurrence in activations {
@@ -1279,14 +1352,8 @@ pub fn evaluate(world: &mut World) {
         if let Some(announcement) = &def.announcement
             && visible_to_player(world, &occurrence.situation)
         {
-            let owner = outcome_owner(def, &occurrence.situation);
-            let roles = crate::assignments::AssignmentRoles::resolve(
-                world,
-                crate::assignments::RoleSeed {
-                    owner,
-                    ..Default::default()
-                },
-            );
+            let roles =
+                crate::assignments::AssignmentRoles::resolve(world, role_seed(def, &occurrence));
             let acknowledge = world
                 .resource::<crate::text::TextDb>()
                 .text("sim.situation.acknowledge")
@@ -1332,10 +1399,7 @@ pub fn evaluate(world: &mut World) {
             Ok(effects) => {
                 let roles = crate::assignments::AssignmentRoles::resolve(
                     world,
-                    crate::assignments::RoleSeed {
-                        owner,
-                        ..Default::default()
-                    },
+                    role_seed(def, &occurrence),
                 );
                 crate::assignments::apply_effects_with_origin(
                     world,
@@ -1359,6 +1423,26 @@ fn outcome_owner(def: &SituationDef, key: &SituationInstanceKey) -> Option<crate
     match key.bindings.get(binding) {
         Some(SituationSubject::Organisation(org)) => Some(*org),
         _ => None,
+    }
+}
+
+/// The character bound by a definition's declared subject binding, if any.
+fn outcome_subject(def: &SituationDef, key: &SituationInstanceKey) -> Option<CharacterId> {
+    let binding = def.subject_binding.as_ref()?;
+    match key.bindings.get(binding) {
+        Some(SituationSubject::Character(character)) => Some(*character),
+        _ => None,
+    }
+}
+
+/// The one role seed behind Situation announcements and outcome effects:
+/// the declared owner binding names the acting organisation, and the
+/// declared subject binding stands behind the `target` role.
+fn role_seed(def: &SituationDef, occurrence: &SituationOccurrence) -> crate::assignments::RoleSeed {
+    crate::assignments::RoleSeed {
+        owner: outcome_owner(def, &occurrence.situation),
+        target: outcome_subject(def, &occurrence.situation),
+        ..Default::default()
     }
 }
 
@@ -1579,6 +1663,116 @@ pub fn forecast_for_action(
         action_war(situation, target),
     )
     .ok_or_else(|| SituationError::Undeclared("missing assignment definition".to_owned()))
+}
+
+/// Whether the player may record `response` on this active instance now.
+///
+/// Deterministic and side-effect free: command validation and delayed
+/// application both run it, so an answer that stopped being possible while
+/// its envelope waited is dropped rather than applied.
+pub fn validate_answer(
+    world: &World,
+    situation: &SituationInstanceKey,
+    response: &ContentKey,
+) -> Result<(), SituationError> {
+    if !visible_to_player(world, situation) {
+        return Err(SituationError::Undeclared(
+            "Situation is not visible to the player".to_owned(),
+        ));
+    }
+    let content = world
+        .get_resource::<ContentDb>()
+        .ok_or_else(|| SituationError::Undeclared("no content database".to_owned()))?;
+    let def = content
+        .0
+        .situations
+        .get(&situation.definition)
+        .ok_or_else(|| SituationError::Undeclared("missing Situation definition".to_owned()))?;
+    if !def
+        .responses
+        .iter()
+        .any(|declared| &declared.key == response)
+    {
+        return Err(SituationError::Undeclared(format!(
+            "undeclared response '{response}'"
+        )));
+    }
+    let state = world
+        .get_resource::<SituationState>()
+        .ok_or_else(|| SituationError::Undeclared("no Situation state".to_owned()))?;
+    let Some(lifecycle) = state.active.get(situation) else {
+        return Err(SituationError::Undeclared(
+            "Situation is not currently available".to_owned(),
+        ));
+    };
+    if state.runtime_errors.contains_key(situation) {
+        return Err(SituationError::Undeclared(
+            "Situation is not currently available".to_owned(),
+        ));
+    }
+    if state.answers.contains_key(&lifecycle.occurrence()) {
+        return Err(SituationError::Undeclared(
+            "this Situation has already been answered".to_owned(),
+        ));
+    }
+    Ok(())
+}
+
+/// The answer recorded on the currently active lifecycle of an instance.
+pub fn recorded_answer(world: &World, situation: &SituationInstanceKey) -> Option<ContentKey> {
+    let state = world.get_resource::<SituationState>()?;
+    let lifecycle = state.active.get(situation)?;
+    state.answers.get(&lifecycle.occurrence()).cloned()
+}
+
+/// Records a durable answer on the active lifecycle and writes its tagged
+/// history line. Silently drops an answer that is no longer valid — the
+/// command log still records the attempt deterministically.
+pub fn record_answer(world: &mut World, situation: &SituationInstanceKey, response: &ContentKey) {
+    if world
+        .get_resource::<crate::politics::PlayerHouse>()
+        .and_then(|player| player.0)
+        .is_none()
+    {
+        return;
+    }
+    if validate_answer(world, situation, response).is_err() {
+        return;
+    }
+    let occurrence = world
+        .resource::<SituationState>()
+        .active
+        .get(situation)
+        .expect("validated above")
+        .occurrence();
+    let (title, label) = {
+        let content = world.resource::<ContentDb>();
+        let def = content
+            .0
+            .situations
+            .get(&situation.definition)
+            .expect("validated above");
+        let label = def
+            .responses
+            .iter()
+            .find(|declared| &declared.key == response)
+            .expect("validated above")
+            .label
+            .clone();
+        (def.title.clone(), label)
+    };
+    world
+        .resource_mut::<SituationState>()
+        .answers
+        .insert(occurrence.clone(), response.clone());
+    let text = world.resource::<crate::text::TextDb>().format(
+        "sim.situation.answered",
+        &[("situation", &title), ("answer", &label)],
+    );
+    crate::access::log(
+        world,
+        situation_log_entry(world, &occurrence, LogEntry::line(text, LogChannel::Events)),
+    );
 }
 
 /// Removes an undismissed resolution notice.

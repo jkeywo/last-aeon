@@ -1213,6 +1213,69 @@ mod tests {
 
     #[cfg_attr(not(target_arch = "wasm32"), test)]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    fn household_demand_responses_render_and_are_keyboard_reachable() {
+        let viewport = egui::vec2(1920.0, 1080.0);
+        let mut fixture = ProductionFixture::new();
+        {
+            // Open the household demands: the court's window lapses on day
+            // seven and Kessarin's demand activates that same settled day.
+            fixture.host.advance_days(7);
+            let world = fixture.host.world_mut();
+            let harrow = world.resource::<PoliticsIndex>().org_keys
+                [&aeon_data::ContentKey::new("harrow").unwrap()];
+            world.resource_mut::<PlayerHouse>().0 = Some(harrow);
+            // Pending popups are authoritative state that would float over
+            // the geometry under test; clear them like the fixture does.
+            world
+                .resource_mut::<aeon_sim::PendingPopups>()
+                .popups
+                .clear();
+        }
+        let hash_before = fixture.host.state_hash();
+
+        // The pure responses render as focusable controls registered for
+        // keyboard traversal like every other card action.
+        fixture.render_full_shell(viewport, Vec::new());
+        let ctx = fixture.full_egui_context();
+        let responses: Vec<_> = semantic_responses(&ctx)
+            .into_iter()
+            .filter(|entry| entry.role == "situation-response")
+            .collect();
+        assert_eq!(
+            responses.len(),
+            2,
+            "Promise and Refuse render as pure recorded choices"
+        );
+        let registry = crate::ui::keyboard::completed_registry(&ctx);
+        assert_eq!(
+            registry
+                .iter()
+                .filter(|entry| entry.logical.0.starts_with("situation-response:"))
+                .count(),
+            2,
+            "response controls are keyboard-reachable"
+        );
+
+        // Rendering the choices records nothing: answering is an ordinary
+        // queued command, never a presentation side effect.
+        assert!(
+            fixture
+                .host
+                .world_mut()
+                .resource::<UiCommandQueue>()
+                .0
+                .is_empty(),
+            "rendering the responses emitted no commands"
+        );
+        assert_eq!(
+            fixture.host.state_hash(),
+            hash_before,
+            "the response surface is presentation only"
+        );
+    }
+
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn duplicate_explanation_titles_keep_distinct_invokers() {
         let viewport = egui::vec2(960.0, 720.0);
         let mut fixture = ProductionFixture::new();

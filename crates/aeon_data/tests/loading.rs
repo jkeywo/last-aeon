@@ -433,6 +433,135 @@ fn view(ctx) { #{ stage: "open" } }
 }
 
 #[test]
+fn situation_subject_bindings_and_responses_are_validated() {
+    // A subject binding must be declared and typed as a character, and
+    // response ids must be unique — a mistake is a loud load error.
+    let bad = r#"
+define_situation(#{
+    id: "bad-subject",
+    source: "scenario",
+    bindings: #{ battlefield: "province" },
+    subject_binding: "nobody",
+    trigger_fn: "none",
+    projection_fn: "view",
+    stages: ["open"],
+    outcomes: [#{ id: "ended", fallback: true }],
+});
+define_situation(#{
+    id: "wrong-kind-subject",
+    source: "scenario",
+    bindings: #{ battlefield: "province" },
+    subject_binding: "battlefield",
+    trigger_fn: "none",
+    projection_fn: "view",
+    stages: ["open"],
+    outcomes: [#{ id: "ended", fallback: true }],
+});
+define_situation(#{
+    id: "twice-answered",
+    source: "scenario",
+    responses: [#{ id: "promise" }, #{ id: "promise" }],
+    trigger_fn: "none",
+    projection_fn: "view",
+    stages: ["open"],
+    outcomes: [#{ id: "ended", fallback: true }],
+});
+fn none(ctx) { [] }
+fn view(ctx) { #{ stage: "open" } }
+"#;
+    let (set, report) = load_content(
+        &[source("bad/subject-bindings.rhai", bad)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    let messages: Vec<&str> = report
+        .findings
+        .iter()
+        .map(|finding| finding.message.as_str())
+        .collect();
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("subject_binding 'nobody' is not a declared binding"))
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("it must bind a character"))
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("duplicate Situation response id 'promise'"))
+    );
+}
+
+#[test]
+fn kessarins_demand_carries_responses_a_subject_binding_and_tiered_effects() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/content");
+    let sources = aeon_data::fs::read_content_dir(&root).expect("assets/content readable");
+    let (strings, report) = aeon_data::fs::read_string_table(&root).expect("strings readable");
+    assert!(
+        !report.has_errors(),
+        "string findings: {:?}",
+        report.findings
+    );
+    let (set, report) = load_content(&sources, &strings.expect("valid string table"));
+    assert!(
+        !report.has_errors(),
+        "content findings: {:?}",
+        report.findings
+    );
+    let set = set.expect("repository content loads");
+    let demand = &set.situations[&aeon_data::ContentKey::new("kessarin-order").unwrap()];
+
+    // The demand acts for the house and its consequences fall on the bound
+    // requester; its pure choices are the two authored responses.
+    assert_eq!(demand.owner_binding.as_deref(), Some("house"));
+    assert_eq!(demand.subject_binding.as_deref(), Some("requester"));
+    let responses: Vec<&str> = demand
+        .responses
+        .iter()
+        .map(|response| response.key.as_str())
+        .collect();
+    assert_eq!(responses, ["promise", "refuse"]);
+    assert!(
+        demand
+            .responses
+            .iter()
+            .all(|response| !response.label.is_empty()),
+        "response labels are table-decided and filled"
+    );
+    assert!(demand.announcement.is_some());
+    assert!(demand.guidance_objective.is_some());
+    assert!(demand.guidance_how.is_some());
+    assert!(demand.guidance_why.is_some());
+
+    // Exactly the four relationship tiers carry effects; passing the demand
+    // on carries none.
+    let effects: Vec<&str> = demand
+        .outcomes
+        .iter()
+        .filter(|outcome| outcome.effects_fn.is_some())
+        .map(|outcome| outcome.key.as_str())
+        .collect();
+    assert_eq!(effects, ["achieved", "refused", "broken", "ignored"]);
+
+    // The derived key mirror covers the new response rows, so the orphan
+    // and missing-row audits keep covering them.
+    let keys = aeon_data::text_keys(&set);
+    for expected in [
+        "situation.kessarin-order.response.promise.label",
+        "situation.kessarin-order.response.refuse.label",
+        "situation.kessarin-order.announcement",
+        "situation.kessarin-order.resolution.passed-on.text",
+        "situation.kessarin-order.guidance.objective",
+    ] {
+        assert!(keys.contains(expected), "missing derived key {expected}");
+    }
+}
+
+#[test]
 fn the_court_awaits_carries_announcement_guidance_and_outcome_effects() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/content");
     let sources = aeon_data::fs::read_content_dir(&root).expect("assets/content readable");

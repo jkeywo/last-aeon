@@ -14,7 +14,7 @@ use aeon_sim::politics::PlayerHouse;
 use aeon_sim::situations::{
     SituationAction, SituationCard, SituationInstanceKey, SituationLink, SituationMetricValue,
     SituationOccurrence, SituationParticipantGroup, SituationResolution, SituationState,
-    active_cards, forecast_for_action, situation_war, visible_to_player,
+    active_cards, forecast_for_action, recorded_answer, situation_war, visible_to_player,
 };
 use aeon_sim::state::ContentDb;
 use aeon_sim::{
@@ -81,6 +81,13 @@ pub struct SituationActionView {
     pub unavailable: Option<String>,
 }
 
+/// One pure authored response the player may still record on a card.
+#[derive(Clone, Debug)]
+pub struct SituationResponseView {
+    pub id: aeon_data::ContentKey,
+    pub label: String,
+}
+
 /// One active card with its authored stage copy and forecasted actions.
 #[derive(Clone, Debug)]
 pub struct ActiveSituationView {
@@ -89,6 +96,11 @@ pub struct ActiveSituationView {
     pub stage_summary: Option<String>,
     pub warning: Option<String>,
     pub actions: Vec<SituationActionView>,
+    /// Authored responses still open to the player; empty once answered,
+    /// for spectators, and while the card is unavailable.
+    pub responses: Vec<SituationResponseView>,
+    /// The label of the durable answer already recorded, when any.
+    pub answer: Option<String>,
     pub history: Vec<LogEntry>,
 }
 
@@ -197,6 +209,27 @@ pub fn refresh_situation_panel_view(world: &mut World) {
                 });
             }
         }
+        // A recorded answer is durable authoritative state; the open
+        // responses are the authored choices minus that possibility. Both
+        // read the simulation — the client owns no answer rule of its own.
+        let answer = recorded_answer(world, &card.active.key).map(|answer| {
+            def.responses
+                .iter()
+                .find(|declared| declared.key == answer)
+                .map(|declared| declared.label.clone())
+                .unwrap_or_else(|| answer.to_string())
+        });
+        let responses = if answer.is_none() && player.is_some() && card.unavailable.is_none() {
+            def.responses
+                .iter()
+                .map(|declared| SituationResponseView {
+                    id: declared.key.clone(),
+                    label: declared.label.clone(),
+                })
+                .collect()
+        } else {
+            Vec::new()
+        };
         active.push(ActiveSituationView {
             stage_title: stage.map(|stage| stage.title.clone()),
             stage_summary: stage.map(|stage| stage.summary.clone()),
@@ -204,6 +237,8 @@ pub fn refresh_situation_panel_view(world: &mut World) {
             history: tagged_history(log_entries, &card.active.occurrence()),
             card,
             actions,
+            responses,
+            answer,
         });
     }
 
@@ -418,12 +453,68 @@ fn draw_active_card(
                 }
                 crate::ui::keyboard::roving_group(ui, &responses);
             }
+            draw_responses(ui, view, ctx, out);
         })
         .response;
     if focused {
         response.scroll_to_me(Some(egui::Align::Center));
         out.situation_ui.focused = None;
     }
+}
+
+/// A card's pure recorded answer surface: either the durable answer already
+/// given, or the authored response choices still open.
+///
+/// Answering queues an ordinary logged command — the client records no
+/// choice of its own, and the buttons simply stop being offered once the
+/// authoritative answer exists.
+fn draw_responses(
+    ui: &mut egui::Ui,
+    view: &ActiveSituationView,
+    ctx: &PanelCtx,
+    out: &mut PanelOut,
+) {
+    if let Some(answer) = &view.answer {
+        ui.separator();
+        ui.weak(
+            ctx.strings
+                .format("ui.situations.answered", &[("answer", answer)]),
+        );
+        return;
+    }
+    if ctx.player_org.is_none() || view.responses.is_empty() {
+        return;
+    }
+    ui.separator();
+    ui.strong(ctx.strings.text("ui.situations.responses"));
+    let occurrence = format!("{:?}@{}", view.card.active.key, view.card.active.activated);
+    ui.horizontal_wrapped(|ui| {
+        let mut responses = Vec::new();
+        for response in &view.responses {
+            let button = draw_wrapped_action(ui, true, response.label.clone());
+            crate::ui::keyboard::capture_action(
+                ui,
+                crate::ui::keyboard::LogicalFocus::new(format!(
+                    "situation-response:{occurrence}:{}",
+                    response.id
+                )),
+                "situation-response",
+                crate::ui::keyboard::FocusBand::Right,
+                &button,
+            )
+            .register();
+            #[cfg(test)]
+            crate::ui::rendered_state::record_response(ui, "situation-response", &button);
+            if button.clicked() {
+                out.queue.0.push(PlayerCommand::AnswerSituation {
+                    situation: view.card.active.key.clone(),
+                    response: response.id.clone(),
+                });
+            }
+            responses.push(button);
+        }
+        crate::ui::keyboard::roving_group(ui, &responses);
+    });
 }
 
 /// Optional authored guidance under a card: an objective line plus the

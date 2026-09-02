@@ -195,6 +195,19 @@ Self-opinion is +100. Expired modifiers stop contributing and are cleaned up.
 The client exposes mutual opinion in character inspection and visualises other
 heads' opinions of the player head in the relations map mode.
 
+[ai] Household demands are now a stored-modifier origin. When a First
+Reign demand resolves, the bound requester gains one directional modifier
+toward the house head under the tier's own stable reason: achievement
++10 for 1,440 days, an explicit refusal left to stand -5 for 1,080,
+silence -10 for 1,440, and a broken promise -20 for 1,800. One reason per
+tier means tiers can never stack on a single lifecycle, and a repeat of
+the same tier refreshes rather than accumulates — consistent with the
+one-modifier-per-(target, reason) rule above. The magnitudes and
+durations are authored scenario content, not Rust constants, and the
+modifiers are sentiment only: the demand's promise/refusal record lives
+on the Situation, not in the obligation ledger, respecting the accepted
+rule that opinion must not substitute for separate political facts.
+
 ### Accepted design
 
 There is deliberately no generic relationship entity. Marriage, lineage,

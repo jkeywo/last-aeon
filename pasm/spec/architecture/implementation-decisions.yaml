@@ -2336,3 +2336,99 @@ entities:
         - core-explanations-are-owned-focusable-snapshots
         - the-court-awaits-is-an-ordinary-one-shot-demand
         - headless-authoritative-simulation
+
+  - decision: situation-responses-are-recorded-occurrence-answers
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Situation Responses Are Durable Occurrence-Keyed Answers
+      summary: >-
+        A Situation definition may declare pure responses — political
+        answers with no assignment behind them, such as promising or
+        refusing a demand. The player records one through a new
+        AnswerSituation player command, validated and delayed like every
+        other command; the accepted answer is stored on SituationState
+        keyed by the exact occurrence (structural key plus activation
+        date), snapshotted with the rest of Situation state, logged as
+        tagged permanent history, and exposed to scripts as ctx.answer
+        beside ctx.activated. The first recorded answer per occurrence is
+        final; a reactivation or a requester replacement is a new
+        occurrence and starts unanswered. Answers for ended lifecycles are
+        pruned once their resolution has read them, so the map stays
+        bounded. This amends the initial-deck rule that every gameplay
+        action opens an assignment flow: recorded answers are the second
+        Situation interaction kind, and they still mutate nothing directly
+        — outcome predicates read them as authoritative state.
+      rationale:
+        - "[ai] Recording the answer on the occurrence rather than in a popup or a one-day assignment is what makes promise, refusal, and silence distinguishable months later at the deadline — popups delete on answer and completed assignments leave the live world view."
+        - "[ai] First-answer-final with re-validation at delayed application keeps two same-day answers deterministic: the earlier envelope wins and the later one drops exactly as other stale commands do."
+        - "[ai] Threading ctx.answer through trigger, projection, and outcome calls keeps the whole lifecycle a pure function of authoritative state, so save, replay, and equal-hash guarantees need no new machinery."
+        - "[ai] The answers map changes CampaignState's serialised shape, so it rode a SNAPSHOT_FORMAT_VERSION bump to 20 — pre-release, no migration."
+      references:
+        - situation-actions-launch-authoritative-assignments
+        - situation-instances-have-structural-identity
+        - versioned-snapshots-plus-command-log
+        - scripted-command-boundary
+
+  - decision: situation-effects-may-address-a-bound-subject
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Situation Outcome Effects May Address a Bound Character Subject
+      summary: >-
+        A Situation definition may declare a subject_binding naming one of
+        its declared character bindings. When an outcome's effects or an
+        activation announcement resolve their roles, the bound character
+        seeds the existing `target` effect role beside the owner binding's
+        organisation, through the one shared role resolver. Content can
+        therefore write directional personal consequences — the requester's
+        opinion of the owner's head — without widening the seven-role
+        effect vocabulary or teaching Rust who a requester is. Validation
+        requires the binding to be declared and character-typed.
+      rationale:
+        - "[ai] Reusing the target role through RoleSeed keeps the effect vocabulary closed and the resolver single-sourced, instead of inventing a Situation-only role name."
+        - "[ai] Without a character seam, situation outcome effects could only address organisation-derived roles, and a household demand's personal consequence would silently address nobody."
+      references:
+        - situation-outcomes-emit-owned-effects
+        - situation-activations-may-announce-through-popups
+        - scripted-command-boundary
+
+  - decision: household-demands-are-live-state-predicates-on-a-shared-anchor
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Household Demands Are Live-State Predicates on One Shared Anchor
+      summary: >-
+        Kessarin's Order is the household-demand exemplar. Its goal is a
+        pure live-state predicate — every Harrow-held province at or above
+        the authored 850 Order — recomputed from current holders and Order,
+        never from assignment starts or interface interaction. All three
+        demands share one deadline derived from pure campaign facts:
+        world.start_date plus the authored court window plus the authored
+        120-day household window, so the anchor never depends on when the
+        court was actually answered or on per-definition activation
+        quirks. A demand activates once the court's test is behind the
+        reign, resolves the first settled day its goal holds (achievement
+        wins over any recorded answer, refusal included), and otherwise
+        resolves on the deadline day by tiers: refusal -5/1,080, broken
+        promise -20/1,800, silence -10/1,440, achievement +10/1,440 —
+        each tier a distinct stable opinion reason from the bound
+        requester toward the owner's head, with every magnitude authored
+        in scenario content. A requester who dies or is replaced before
+        the deadline ends the lifecycle with a no-effect passed-on
+        outcome, and the authored pure replacement rule (the named family
+        member, else the first living adult non-head member in stable ID
+        order) binds the successor's new lifecycle. If an achieved goal
+        later slips below target inside the shared window, the household
+        may raise the demand again as a new unanswered lifecycle; opinion
+        modifiers replace by (target, reason), so tiers never stack.
+      rationale:
+        - "[ai] Anchoring the shared deadline to start_date keeps issues 13 and 14 attachable without coordination state: each demand computes the same date from the same pure facts."
+        - "[ai] Resolving at first achievement makes completion historical — the notice, the opinion tier, and the log survive while provincial Order keeps moving normally — rather than freezing a checkbox until the deadline."
+        - "[ai] Achievement overriding refusal follows the accepted rule that achieving a goal satisfies it whether or not the player promised; a promise (or refusal) changes only the consequence of failure."
+        - "[ai] The passed-on outcome keeps death from converting into a silence penalty from a dead requester, while the deterministic successor rule keeps trigger and projection in exact agreement."
+      references:
+        - situation-responses-are-recorded-occurrence-answers
+        - situation-effects-may-address-a-bound-subject
+        - the-court-awaits-is-an-ordinary-one-shot-demand
+        - situation-context-carries-activation-and-start-facts

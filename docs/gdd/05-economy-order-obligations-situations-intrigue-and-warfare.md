@@ -210,6 +210,12 @@ Order also changes military defence through a factor of
 `600 + floor(order / 2)` permille. The same authoritative order component survives
 snapshots and replay.
 
+[ai] The First Reign household demand leans on this shape deliberately:
+Kessarin asks for every held province at 850 or better, above the 800
+attendance ceiling, so meeting her requires the deliberate authored
+routes (estate management, holding court, touring) rather than waiting
+out passive recovery.
+
 ## Political obligations
 
 ### Implemented/current and accepted
@@ -263,6 +269,7 @@ The current reusable deck contains:
 | Favour debt | One obligation | Private, actionable debt between its two parties |
 | Formal war | Scenario, bound to one exact war | Sides, participating forces, objectives, adoption, operations, and peace |
 | The Court Awaits | Scenario, bound to House Harrow | Day-one authority test: any accepted ordinary assignment within seven days, or a 10-Influence forfeit |
+| Kessarin's Order | Scenario, bound to House Harrow and its requester | Household demand: every held province at 850+ Order by the shared 120-day deadline, with four-tier relationship consequences |
 
 [ai] The Court Awaits slice added three reusable seams the deck may now use.
 Situation call contexts carry the instance's activation date (triggers see
@@ -278,6 +285,27 @@ signed `resources` effect) are applied once for the bound organisation,
 through the same effect boundary and provenance tagging as assignment
 results. All authored magnitudes — the seven days, the 10 Influence — live
 in scenario content, not in Rust.
+
+[ai] Kessarin's Order added two further reusable seams. A definition may
+declare pure **responses** — political answers with no assignment behind
+them, such as promise and refuse. The player records one through the new
+`AnswerSituation` command; the accepted answer is durable authoritative
+state keyed by the exact activation, snapshotted, logged as tagged
+history, shown on the card, and exposed to scripts as `ctx.answer` beside
+`ctx.activated`, so outcome predicates can distinguish achievement,
+refusal, silence, and a broken promise months later. The first answer per
+activation is final, and a reactivation or requester replacement is a new
+activation that starts unanswered. A definition may also declare a
+`subject_binding` naming a character binding: when outcome effects or the
+activation announcement resolve their roles, that character stands behind
+the existing `target` effect role, so content can write directional
+personal consequences — the requester's opinion of the head — through the
+unchanged seven-role vocabulary. Household goals themselves are
+live-state predicates recomputed from current holders and Order, resolved
+on the first settled day they hold (achievement beats any recorded
+answer) or by answer tier on the shared deadline day; all magnitudes —
+the 850 target, the 120 days, the four opinion tiers — are authored in
+scenario content.
 
 Visibility follows authoritative audience rules. In particular, favour debt is
 private to its parties in player-led play while spectator mode can inspect it.

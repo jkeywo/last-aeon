@@ -241,7 +241,7 @@ outcomes match the displayed odds within tolerance.
 
 **Implemented.** A campaign snapshot is a complete authoritative state capture
 with an explicit format version and canonical state hash. The current format is
-version 18. Snapshots include the campaign seed and dates, content hash, stable
+version 20. Snapshots include the campaign seed and dates, content hash, stable
 ID allocator, map and political state, assignments, forces, obligations,
 events, plans, goals, directives, claims, wars, Situations, pending commands,
 applied commands, and next command sequence.

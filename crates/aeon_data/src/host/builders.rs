@@ -25,9 +25,9 @@ use crate::model::{
     OrgDef, OrgKind, OutcomeDef, OutcomeKind, PlanArmySelector, PlanDef, PlanMethodDef,
     PlanRequires, PlanStepAction, PlanStepDef, PlanTargetSelector, PopupChoiceDef, ProvinceDef,
     RiskTag, RouteDef, RouteKind, ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SituationActionDef,
-    SituationDef, SituationOutcomeDef, SituationStageDef, SituationSubjectKind,
-    SituationVisibilityDef, SkillsDef, StageDef, TitleDef, TitleHolderDef, TitleKindDef, TitleNeed,
-    TraitDef, Urgency,
+    SituationDef, SituationOutcomeDef, SituationResponseDef, SituationStageDef,
+    SituationSubjectKind, SituationVisibilityDef, SkillsDef, StageDef, TitleDef, TitleHolderDef,
+    TitleKindDef, TitleNeed, TraitDef, Urgency,
 };
 use crate::report::{ContentReport, Severity};
 
@@ -1453,6 +1453,39 @@ fn situation_actions(f: &mut Fields<'_>) -> Option<Vec<SituationActionDef>> {
     Some(actions)
 }
 
+fn situation_responses(f: &mut Fields<'_>) -> Option<Vec<SituationResponseDef>> {
+    let Some(raw) = f.take_raw("responses") else {
+        return Some(Vec::new());
+    };
+    let Some(array) = raw.try_cast::<rhai::Array>() else {
+        f.error("field 'responses' must be an array of maps");
+        return None;
+    };
+    let definition = f.key_str();
+    let mut responses = Vec::with_capacity(array.len());
+    for value in array {
+        let Some(map) = value.try_cast::<Map>() else {
+            f.error("field 'responses' entries must be maps");
+            return None;
+        };
+        warn_unknown_fields(f.state, &map, Some(&definition), &["id", "label"]);
+        reject_authored_text(f.state, &definition, &map, "label");
+        let raw_id = req_str(f.state, Some(&definition), &map, "id")?;
+        let id = match ContentKey::new(&raw_id) {
+            Ok(id) => id,
+            Err(error) => {
+                f.error(format!("response id '{raw_id}': {error}"));
+                return None;
+            }
+        };
+        responses.push(SituationResponseDef {
+            key: id,
+            label: String::new(),
+        });
+    }
+    Some(responses)
+}
+
 fn situation_outcomes(f: &mut Fields<'_>) -> Option<Vec<SituationOutcomeDef>> {
     let Some(raw) = f.take_raw("outcomes") else {
         return Some(Vec::new());
@@ -1533,12 +1566,16 @@ fn define_situation(state: &mut BuilderState, map: Map) {
         f.error(format!("unknown Situation source kind '{source}'"));
         return;
     };
-    let (Some(bindings), Some(owner_binding), Some(trigger_name), Some(projection_name)) = (
+    let (Some(bindings), Some(owner_binding), Some(subject_binding)) = (
         situation_bindings(&mut f),
         f.opt_str("owner_binding"),
-        f.req_str("trigger_fn"),
-        f.req_str("projection_fn"),
+        f.opt_str("subject_binding"),
     ) else {
+        return;
+    };
+    let (Some(trigger_name), Some(projection_name)) =
+        (f.req_str("trigger_fn"), f.req_str("projection_fn"))
+    else {
         return;
     };
     let (Some(priority), Some(log_activation), Some(visibility)) = (
@@ -1552,9 +1589,10 @@ fn define_situation(state: &mut BuilderState, map: Map) {
         f.error("field 'priority' must fit a signed 32-bit integer");
         return;
     };
-    let (Some(stages), Some(actions), Some(outcomes)) = (
+    let (Some(stages), Some(actions), Some(responses), Some(outcomes)) = (
         situation_stages(&mut f),
         situation_actions(&mut f),
+        situation_responses(&mut f),
         situation_outcomes(&mut f),
     ) else {
         return;
@@ -1574,6 +1612,7 @@ fn define_situation(state: &mut BuilderState, map: Map) {
             source,
             bindings,
             owner_binding,
+            subject_binding,
             trigger_fn: ScriptFnRef {
                 path: path.clone(),
                 name: trigger_name,
@@ -1593,6 +1632,7 @@ fn define_situation(state: &mut BuilderState, map: Map) {
             visibility,
             stages,
             actions,
+            responses,
             outcomes,
         },
     );

@@ -1280,3 +1280,654 @@ fn equal_seed_and_commands_reproduce_the_court_lifecycle_exactly() {
     );
     assert_eq!(a.state_hash(), b.state_hash());
 }
+
+// ---------------------------------------------------------------------------
+// Kessarin's Order: the household-demand exemplar of the First Reign arc.
+// ---------------------------------------------------------------------------
+
+use aeon_sim::CharacterId;
+use aeon_sim::order::{adjust_order, held_provinces, province_order};
+use aeon_sim::politics::{OpinionLedger, opinion_between, process_death};
+use aeon_sim::situations::SituationCard;
+
+/// The authored shared household deadline: the court window plus 120 days.
+const HOUSEHOLD_DEADLINE_DAYS: i64 = 7 + 120;
+
+fn kessarin_card(host: &mut SimHost) -> Option<SituationCard> {
+    active_cards(host.world_mut())
+        .into_iter()
+        .find(|card| card.active.key.definition == key("kessarin-order"))
+}
+
+fn character(host: &mut SimHost, name: &str) -> CharacterId {
+    host.world_mut().resource::<PoliticsIndex>().character_keys[&key(name)]
+}
+
+fn start_date(host: &mut SimHost) -> aeon_core::calendar::GameDate {
+    host.world_mut()
+        .resource::<aeon_sim::CampaignClock>()
+        .start_date
+}
+
+/// Answers the court with an ordinary head-led assignment and advances to
+/// the settled day it is accepted, which is also the day the household's
+/// demands open.
+fn open_household_demands(host: &mut SimHost) {
+    let harrow = org(host, "harrow");
+    let edrun = aeon_sim::access::org_head(host.world_mut(), harrow).expect("harrow head");
+    let envelope = host
+        .submit(PlayerCommand::StartAssignment {
+            assignment: key("manage-estates"),
+            leader: edrun,
+            target: AssignmentTarget::None,
+        })
+        .expect("the court answer is an ordinary valid command");
+    while host.date() < envelope.day {
+        host.advance_days(1);
+    }
+}
+
+/// Raises every Harrow-held province to at least the authored 850 target.
+fn raise_held_provinces_to_target(host: &mut SimHost) {
+    let harrow = org(host, "harrow");
+    let held = held_provinces(host.world_mut(), harrow);
+    assert!(!held.is_empty(), "Harrow holds provinces");
+    for province in held {
+        let current = province_order(host.world_mut(), province).order;
+        if current < 850 {
+            adjust_order(host.world_mut(), province, 850 - current);
+        }
+    }
+}
+
+fn opinion_modifier(
+    host: &mut SimHost,
+    from: CharacterId,
+    reason: &str,
+) -> Option<aeon_sim::politics::OpinionEntry> {
+    let world = host.world_mut();
+    let entity = world.resource::<PoliticsIndex>().characters[&from];
+    world
+        .get::<OpinionLedger>(entity)
+        .and_then(|ledger| ledger.0.iter().find(|entry| entry.reason == reason))
+        .cloned()
+}
+
+fn kessarin_resolution(host: &mut SimHost) -> Option<aeon_sim::situations::SituationResolution> {
+    host.world_mut()
+        .resource::<SituationState>()
+        .resolutions
+        .iter()
+        .find(|notice| notice.situation.definition == key("kessarin-order"))
+        .cloned()
+}
+
+fn answer_kessarin(
+    host: &mut SimHost,
+    response: &str,
+) -> Result<aeon_sim::CommandEnvelope, CommandRejection> {
+    let situation = kessarin_card(host).expect("live demand").active.key;
+    host.submit(PlayerCommand::AnswerSituation {
+        situation,
+        response: key(response),
+    })
+}
+
+#[test]
+fn kessarins_demand_opens_after_the_court_with_the_shared_deadline_and_live_metrics() {
+    let mut host = scenario_host(311, repository_content());
+    let start = start_date(&mut host);
+    assert!(
+        kessarin_card(&mut host).is_none(),
+        "the household waits until the court's test is behind the reign"
+    );
+
+    open_household_demands(&mut host);
+    let card = kessarin_card(&mut host).expect("the demand opens with the court answered");
+    assert_eq!(card.unavailable, None);
+    let kessarin = character(&mut host, "kessarin-harrow");
+    assert_eq!(
+        card.active.key.bindings.get("requester"),
+        Some(&SituationSubject::Character(kessarin)),
+        "Kessarin herself is the bound requester"
+    );
+
+    let projection = card.projection.clone().expect("projection");
+    // One shared deadline, anchored to pure campaign facts: the day the
+    // court's window would have closed, plus the authored 120 days.
+    assert_eq!(
+        projection.deadline,
+        Some(start.add_days(HOUSEHOLD_DEADLINE_DAYS))
+    );
+    let integer_metric = |label: &str| {
+        projection.metrics.iter().find_map(|metric| {
+            (metric.label_key == label).then(|| match &metric.value {
+                aeon_sim::situations::SituationMetricValue::Integer(value) => *value,
+                aeon_sim::situations::SituationMetricValue::Text(text) => {
+                    panic!("expected integer metric, got '{text}'")
+                }
+            })
+        })
+    };
+    assert_eq!(integer_metric("situation.metric.order-target"), Some(850));
+    let harrow = org(&mut host, "harrow");
+    let held = held_provinces(host.world_mut(), harrow).len() as i64;
+    assert_eq!(
+        projection
+            .metrics
+            .iter()
+            .filter(|metric| metric.label_key == "situation.metric.province-order")
+            .count() as i64,
+        held,
+        "every held province shows its live Order"
+    );
+    assert_eq!(
+        integer_metric("situation.metric.provinces-below-target"),
+        Some(held),
+        "all holdings start below the target"
+    );
+    for consequence in [
+        "situation.metric.on-achieved",
+        "situation.metric.on-refused",
+        "situation.metric.on-ignored",
+        "situation.metric.on-broken",
+    ] {
+        assert!(
+            projection
+                .metrics
+                .iter()
+                .any(|metric| metric.label_key == consequence),
+            "the card states the relationship consequence {consequence}"
+        );
+    }
+    assert!(
+        projection
+            .actions
+            .iter()
+            .any(|action| action.id == key("manage-estates"))
+            && projection
+                .actions
+                .iter()
+                .any(|action| action.id == key("hold-court"))
+            && projection
+                .actions
+                .iter()
+                .any(|action| action.id == key("tour-holdings")),
+        "the card offers the known ordinary routes"
+    );
+    assert_eq!(
+        projection.links.len() as i64,
+        held,
+        "lagging provinces are navigable links"
+    );
+
+    // Activation raised a pausing announcement and permanent tagged history.
+    let occurrence = card.active.occurrence();
+    assert!(
+        host.world_mut()
+            .resource::<MessageLog>()
+            .entries
+            .iter()
+            .any(|entry| entry.situations.contains(&occurrence))
+    );
+    let popup = host
+        .world_mut()
+        .resource::<PendingPopups>()
+        .popups
+        .iter()
+        .find(|popup| popup.assignment == key("kessarin-order"))
+        .cloned()
+        .expect("activation announcement popup");
+    assert!(popup.text.contains("850"));
+    assert!(popup.text.contains("120-day"));
+}
+
+#[test]
+fn achieving_the_goal_resolves_the_demand_and_completion_is_historical() {
+    let content = repository_content();
+    let mut host = scenario_host(312, Arc::clone(&content));
+    open_household_demands(&mut host);
+    let kessarin = character(&mut host, "kessarin-harrow");
+    let harrow = org(&mut host, "harrow");
+    let edrun = aeon_sim::access::org_head(host.world_mut(), harrow).expect("harrow head");
+    let before = opinion_between(host.world_mut(), kessarin, edrun);
+
+    // No promise was ever given; the provinces themselves satisfy her.
+    raise_held_provinces_to_target(&mut host);
+    host.advance_days(1);
+    let resolved_on = host.date();
+    assert!(kessarin_card(&mut host).is_none());
+    let notice = kessarin_resolution(&mut host).expect("durable resolution");
+    assert_eq!(notice.outcome, key("achieved"));
+
+    // The stated +10 for 1,440 days, directional: Kessarin's opinion of the
+    // head, under the tier's own stable reason.
+    let entry = opinion_modifier(&mut host, kessarin, "kessarin-order-achieved")
+        .expect("achievement modifier");
+    assert_eq!(entry.target, edrun);
+    assert_eq!(entry.amount, 10);
+    assert_eq!(entry.expires, Some(resolved_on.add_days(1440)));
+    assert_eq!(
+        opinion_between(host.world_mut(), kessarin, edrun),
+        before + 10
+    );
+
+    // Completion is history, not a frozen checkbox: past the shared window
+    // the provinces keep moving and nothing reopens or retracts.
+    let start = start_date(&mut host);
+    let deadline = start.add_days(HOUSEHOLD_DEADLINE_DAYS);
+    let remaining = host.date().days_until(deadline);
+    host.advance_days(remaining as u32 + 3);
+    let held = held_provinces(host.world_mut(), harrow);
+    adjust_order(host.world_mut(), held[0], -200);
+    host.advance_days(2);
+    assert!(province_order(host.world_mut(), held[0]).order < 850);
+    assert!(
+        kessarin_card(&mut host).is_none(),
+        "no reactivation after the window"
+    );
+    assert_eq!(
+        host.world_mut()
+            .resource::<SituationState>()
+            .resolutions
+            .iter()
+            .filter(|notice| notice.situation.definition == key("kessarin-order"))
+            .count(),
+        1
+    );
+    assert!(
+        opinion_modifier(&mut host, kessarin, "kessarin-order-achieved").is_some(),
+        "the achieved tier still stands while provincial Order moves on"
+    );
+
+    let mut restored = SimHost::restore_with_content(host.snapshot(), content).unwrap();
+    assert!(
+        restored
+            .world_mut()
+            .resource::<SituationState>()
+            .resolutions
+            .iter()
+            .any(|notice| notice.situation.definition == key("kessarin-order")),
+        "the resolution is durable across save and load"
+    );
+}
+
+#[test]
+fn a_partly_met_goal_stays_live_and_names_the_one_lagging_province() {
+    let mut host = scenario_host(322, repository_content());
+    open_household_demands(&mut host);
+    let kessarin = character(&mut host, "kessarin-harrow");
+    let harrow = org(&mut host, "harrow");
+    let edrun = aeon_sim::access::org_head(host.world_mut(), harrow).expect("harrow head");
+
+    // Raise every held province but one. The goal is universal — every
+    // holding at or above the target — so near-success is not success.
+    let held = held_provinces(host.world_mut(), harrow);
+    assert!(
+        held.len() >= 2,
+        "a strict-subset case needs at least two holdings"
+    );
+    let (lagging, raised) = held.split_last().expect("non-empty holdings");
+    let lagging = *lagging;
+    for &province in raised {
+        let current = province_order(host.world_mut(), province).order;
+        if current < 850 {
+            adjust_order(host.world_mut(), province, 850 - current);
+        }
+    }
+    host.advance_days(1);
+
+    // The demand is still live and unresolved, and the card counts and
+    // links exactly the one province still short of the target.
+    let card = kessarin_card(&mut host).expect("a partly met demand stays live");
+    assert!(
+        kessarin_resolution(&mut host).is_none(),
+        "no resolution is recorded while any holding lags"
+    );
+    let projection = card.projection.clone().expect("projection");
+    let below = projection.metrics.iter().find_map(|metric| {
+        (metric.label_key == "situation.metric.provinces-below-target").then(|| {
+            match &metric.value {
+                aeon_sim::situations::SituationMetricValue::Integer(value) => *value,
+                aeon_sim::situations::SituationMetricValue::Text(text) => {
+                    panic!("expected integer metric, got '{text}'")
+                }
+            }
+        })
+    });
+    assert_eq!(below, Some(1), "exactly one holding is still below target");
+    assert_eq!(
+        projection.links.len(),
+        1,
+        "only the lagging province stays navigable"
+    );
+    assert_eq!(
+        projection.links[0].kind,
+        aeon_data::model::SituationSubjectKind::Province
+    );
+    assert_eq!(projection.links[0].id, lagging.raw());
+
+    // Raising the last holding completes the universal goal, with the
+    // stated achieved tier and nothing else.
+    let before = opinion_between(host.world_mut(), kessarin, edrun);
+    let current = province_order(host.world_mut(), lagging).order;
+    adjust_order(host.world_mut(), lagging, 850 - current);
+    host.advance_days(1);
+    let resolved_on = host.date();
+    assert!(kessarin_card(&mut host).is_none());
+    let notice = kessarin_resolution(&mut host).expect("resolution once every holding stands");
+    assert_eq!(notice.outcome, key("achieved"));
+    let entry = opinion_modifier(&mut host, kessarin, "kessarin-order-achieved")
+        .expect("achievement modifier");
+    assert_eq!(entry.target, edrun);
+    assert_eq!(entry.amount, 10);
+    assert_eq!(entry.expires, Some(resolved_on.add_days(1440)));
+    assert_eq!(
+        opinion_between(host.world_mut(), kessarin, edrun),
+        before + 10
+    );
+}
+
+#[test]
+fn refusal_costs_its_stated_tier_and_achievement_still_overrides_it() {
+    let content = repository_content();
+    let kessarin_key = "kessarin-harrow";
+
+    // An honest refusal, left to stand: -5 for 1,080 days at the deadline.
+    let mut refused = scenario_host(313, Arc::clone(&content));
+    open_household_demands(&mut refused);
+    answer_kessarin(&mut refused, "refuse").expect("refusing is an ordinary command");
+    refused.advance_days(1);
+    let card = kessarin_card(&mut refused).expect("a refused demand stays live");
+    assert_eq!(
+        card.projection.as_ref().expect("projection").stage,
+        key("refused")
+    );
+    let start = start_date(&mut refused);
+    let deadline = start.add_days(HOUSEHOLD_DEADLINE_DAYS);
+    let remaining = refused.date().days_until(deadline);
+    refused.advance_days(remaining as u32);
+    let notice = kessarin_resolution(&mut refused).expect("deadline resolution");
+    assert_eq!(notice.outcome, key("refused"));
+    assert_eq!(notice.resolved, deadline, "the boundary day is exact");
+    let kessarin = character(&mut refused, kessarin_key);
+    let harrow = org(&mut refused, "harrow");
+    let edrun = aeon_sim::access::org_head(refused.world_mut(), harrow).expect("head");
+    let entry = opinion_modifier(&mut refused, kessarin, "kessarin-order-refused")
+        .expect("refusal modifier");
+    assert_eq!(entry.target, edrun);
+    assert_eq!(entry.amount, -5);
+    assert_eq!(entry.expires, Some(deadline.add_days(1080)));
+
+    // The same refusal followed by the goal anyway: achievement counts
+    // whatever was said, and only the achieved tier applies.
+    let mut anyway = scenario_host(314, Arc::clone(&content));
+    open_household_demands(&mut anyway);
+    answer_kessarin(&mut anyway, "refuse").expect("refusal accepted");
+    anyway.advance_days(1);
+    raise_held_provinces_to_target(&mut anyway);
+    anyway.advance_days(1);
+    let notice = kessarin_resolution(&mut anyway).expect("resolution");
+    assert_eq!(notice.outcome, key("achieved"));
+    let kessarin = character(&mut anyway, kessarin_key);
+    assert!(opinion_modifier(&mut anyway, kessarin, "kessarin-order-achieved").is_some());
+    assert!(
+        opinion_modifier(&mut anyway, kessarin, "kessarin-order-refused").is_none(),
+        "tiers never stack on one lifecycle"
+    );
+}
+
+#[test]
+fn silence_and_broken_promises_cost_their_tiers_at_the_exact_deadline() {
+    let content = repository_content();
+
+    // Silence: the demand opens when the court window lapses, is never
+    // answered, and the goal is never met.
+    let mut silent = scenario_host(315, Arc::clone(&content));
+    let start = start_date(&mut silent);
+    let deadline = start.add_days(HOUSEHOLD_DEADLINE_DAYS);
+    silent.advance_days(7);
+    assert!(
+        kessarin_card(&mut silent).is_some(),
+        "a lapsed court still opens the household demands"
+    );
+    let remaining = silent.date().days_until(deadline);
+    silent.advance_days(remaining as u32 - 1);
+    assert!(
+        kessarin_card(&mut silent).is_some(),
+        "the demand is still live the day before the deadline"
+    );
+    silent.advance_days(1);
+    let notice = kessarin_resolution(&mut silent).expect("deadline resolution");
+    assert_eq!(notice.outcome, key("ignored"));
+    assert_eq!(notice.resolved, deadline);
+    let kessarin = character(&mut silent, "kessarin-harrow");
+    let harrow = org(&mut silent, "harrow");
+    let edrun = aeon_sim::access::org_head(silent.world_mut(), harrow).expect("head");
+    let entry = opinion_modifier(&mut silent, kessarin, "kessarin-order-ignored")
+        .expect("silence modifier");
+    assert_eq!(entry.target, edrun);
+    assert_eq!(entry.amount, -10);
+    assert_eq!(entry.expires, Some(deadline.add_days(1440)));
+
+    // A promise given and missed: -20 for 1,800 days.
+    let mut broken = scenario_host(316, Arc::clone(&content));
+    open_household_demands(&mut broken);
+    answer_kessarin(&mut broken, "promise").expect("promising is an ordinary command");
+    broken.advance_days(1);
+    assert_eq!(
+        kessarin_card(&mut broken)
+            .expect("live demand")
+            .projection
+            .expect("projection")
+            .stage,
+        key("promised")
+    );
+    let remaining = broken.date().days_until(deadline);
+    broken.advance_days(remaining as u32);
+    let notice = kessarin_resolution(&mut broken).expect("deadline resolution");
+    assert_eq!(notice.outcome, key("broken"));
+    let kessarin = character(&mut broken, "kessarin-harrow");
+    let entry = opinion_modifier(&mut broken, kessarin, "kessarin-order-broken")
+        .expect("broken-promise modifier");
+    assert_eq!(entry.amount, -20);
+    assert_eq!(entry.expires, Some(deadline.add_days(1800)));
+
+    // The goal met exactly on the deadline day still counts as achievement.
+    let mut boundary = scenario_host(317, Arc::clone(&content));
+    boundary.advance_days(7);
+    let remaining = boundary.date().days_until(deadline);
+    boundary.advance_days(remaining as u32 - 1);
+    assert!(kessarin_card(&mut boundary).is_some());
+    raise_held_provinces_to_target(&mut boundary);
+    boundary.advance_days(1);
+    let notice = kessarin_resolution(&mut boundary).expect("boundary resolution");
+    assert_eq!(notice.outcome, key("achieved"));
+    assert_eq!(notice.resolved, deadline);
+}
+
+#[test]
+fn the_demand_passes_on_when_kessarin_dies_and_the_successor_takes_it_up() {
+    let mut host = scenario_host(318, repository_content());
+    open_household_demands(&mut host);
+    answer_kessarin(&mut host, "promise").expect("promise accepted");
+    host.advance_days(1);
+    let kessarin = character(&mut host, "kessarin-harrow");
+    let aleyn = character(&mut host, "aleyn-harrow");
+
+    let date = host.date();
+    process_death(host.world_mut(), kessarin, date);
+    evaluate(host.world_mut());
+
+    // The dead requester's lifecycle ends without a relationship penalty.
+    let notice = kessarin_resolution(&mut host).expect("passed-on resolution");
+    assert_eq!(notice.outcome, key("passed-on"));
+    for reason in [
+        "kessarin-order-achieved",
+        "kessarin-order-refused",
+        "kessarin-order-ignored",
+        "kessarin-order-broken",
+    ] {
+        assert!(
+            opinion_modifier(&mut host, kessarin, reason).is_none(),
+            "death carries no household tier ({reason})"
+        );
+    }
+
+    // The replacement is the authored pure rule: the first living adult
+    // non-head member in stable ID order — Aleyn. Her lifecycle is a new
+    // occurrence, so the promise made to Kessarin does not transfer.
+    let card = kessarin_card(&mut host).expect("the successor presses the demand");
+    assert_eq!(
+        card.active.key.bindings.get("requester"),
+        Some(&SituationSubject::Character(aleyn))
+    );
+    assert_eq!(
+        aeon_sim::situations::recorded_answer(host.world_mut(), &card.active.key),
+        None,
+        "a reactivation starts unanswered"
+    );
+}
+
+#[test]
+fn answers_validate_apply_once_and_survive_snapshots() {
+    let content = repository_content();
+    let mut host = scenario_host(319, Arc::clone(&content));
+    open_household_demands(&mut host);
+    let situation = kessarin_card(&mut host).expect("live demand").active.key;
+
+    // Spectators and other houses cannot answer, and only declared
+    // responses exist.
+    host.world_mut().resource_mut::<PlayerHouse>().0 = None;
+    assert!(matches!(
+        host.submit(PlayerCommand::AnswerSituation {
+            situation: situation.clone(),
+            response: key("promise"),
+        }),
+        Err(CommandRejection::Assignment(
+            AssignmentRejection::NoPlayerOrg
+        ))
+    ));
+    let veyrin = org(&mut host, "veyrin");
+    host.world_mut().resource_mut::<PlayerHouse>().0 = Some(veyrin);
+    assert!(matches!(
+        host.submit(PlayerCommand::AnswerSituation {
+            situation: situation.clone(),
+            response: key("promise"),
+        }),
+        Err(CommandRejection::Situation(_))
+    ));
+    let harrow = org(&mut host, "harrow");
+    host.world_mut().resource_mut::<PlayerHouse>().0 = Some(harrow);
+    assert!(matches!(
+        host.submit(PlayerCommand::AnswerSituation {
+            situation: situation.clone(),
+            response: key("dither"),
+        }),
+        Err(CommandRejection::Situation(_))
+    ));
+
+    // Two answers queued the same day: the first applies, the second is
+    // dropped by the same re-validation every delayed command runs.
+    answer_kessarin(&mut host, "refuse").expect("first answer accepted");
+    answer_kessarin(&mut host, "promise").expect("second accepted at submission");
+    host.advance_days(1);
+    assert_eq!(
+        aeon_sim::situations::recorded_answer(host.world_mut(), &situation),
+        Some(key("refuse")),
+        "the first recorded answer is final"
+    );
+    assert!(matches!(
+        host.submit(PlayerCommand::AnswerSituation {
+            situation: situation.clone(),
+            response: key("promise"),
+        }),
+        Err(CommandRejection::Situation(_))
+    ));
+
+    // The recorded answer is tagged permanent history and durable state.
+    let occurrence = kessarin_card(&mut host)
+        .expect("live demand")
+        .active
+        .occurrence();
+    assert!(
+        host.world_mut()
+            .resource::<MessageLog>()
+            .entries
+            .iter()
+            .any(|entry| entry.situations.contains(&occurrence) && entry.text.contains("Refuse")),
+        "the answer wrote a tagged history line"
+    );
+    let hash = host.state_hash();
+    let mut restored = SimHost::restore_with_content(host.snapshot(), content).unwrap();
+    assert_eq!(restored.state_hash(), hash);
+    assert_eq!(
+        aeon_sim::situations::recorded_answer(restored.world_mut(), &situation),
+        Some(key("refuse")),
+        "the answer survives save and load"
+    );
+}
+
+#[test]
+fn kessarin_lifecycles_snapshot_and_replay_across_their_resolutions() {
+    let content = repository_content();
+
+    // Path one: an early achievement. The direct Order mutation lands
+    // before the resolution day is settled, so every checkpoint is a
+    // settled state and every replay is command-driven from there.
+    let mut achieved = scenario_host(320, Arc::clone(&content));
+    open_household_demands(&mut achieved);
+    achieved.advance_days(12);
+    raise_held_provinces_to_target(&mut achieved);
+    achieved.advance_days(1);
+    let mut achieved_checkpoints = vec![achieved.snapshot()];
+    achieved.advance_days(10);
+    achieved_checkpoints.push(achieved.snapshot());
+
+    // Path two: a promise left to break, checkpointed before, at, and after
+    // the shared deadline.
+    let mut broken = scenario_host(321, Arc::clone(&content));
+    open_household_demands(&mut broken);
+    answer_kessarin(&mut broken, "promise").expect("promise accepted");
+    broken.advance_days(1);
+    let start = start_date(&mut broken);
+    let deadline = start.add_days(HOUSEHOLD_DEADLINE_DAYS);
+    let remaining = broken.date().days_until(deadline);
+    broken.advance_days(remaining as u32 - 3);
+    let mid = broken.snapshot();
+    assert!(
+        !mid.state.situations.answers.is_empty(),
+        "the promise is snapshotted authoritative state"
+    );
+    let mut broken_checkpoints = vec![mid];
+    broken.advance_days(3);
+    broken_checkpoints.push(broken.snapshot());
+    broken.advance_days(3);
+    broken_checkpoints.push(broken.snapshot());
+
+    for (index, (mut host, checkpoints)) in [
+        (achieved, achieved_checkpoints),
+        (broken, broken_checkpoints),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let final_day = start_date(&mut host).add_days(150);
+        let remaining = host.date().days_until(final_day);
+        host.advance_days(remaining as u32);
+        let final_hash = host.state_hash();
+        for snapshot in checkpoints {
+            let expected_mid = snapshot.state_hash;
+            let mut replayed =
+                SimHost::restore_with_content(snapshot, Arc::clone(&content)).unwrap();
+            assert_eq!(replayed.state_hash(), expected_mid, "restore is exact");
+            let remaining = replayed.date().days_until(final_day);
+            replayed.advance_days(remaining as u32);
+            assert_eq!(
+                replayed.state_hash(),
+                final_hash,
+                "every checkpoint replays to the same final state (path {index})"
+            );
+        }
+    }
+}

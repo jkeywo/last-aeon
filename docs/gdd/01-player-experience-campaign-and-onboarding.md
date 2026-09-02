@@ -110,6 +110,27 @@ onboarding datum is the preference itself, stored in the client's versioned
 local preferences document rather than in any campaign save. The wider
 guided-sequence design below remains proposal.
 
+**Implemented/current.** [ai] The first household demand follows the court's
+test. Once The Court Awaits is behind the reign — answered, or lapsed —
+**Kessarin's Order** opens as an ordinary urgent Situation: Kessarin asks
+that every Harrow-held province reach at least 850 Order by a shared
+120-day household deadline anchored to the campaign start (the day the
+court's window would have closed, plus 120 days — the anchor the two
+remaining household demands will share). The goal is a live-state
+predicate over current holders and Order; the card shows the live
+per-province metric, the target, the deadline, the known ordinary routes
+(estate management, holding court, touring the holdings), and the exact
+four-tier relationship consequences. The player may promise, refuse,
+remain silent, or simply deliver the provinces: achievement resolves the
+demand whatever was said (+10 opinion for 1,440 days, Kessarin of Edrun),
+an explicit refusal left to stand costs -5 for 1,080 days, silence costs
+-10 for 1,440, and a broken promise -20 for 1,800 — every magnitude
+authored in scenario content. Promising and refusing are pure recorded
+answers through an ordinary logged command, durable in saves and replays;
+completion is history while provincial Order keeps moving normally; and a
+requester who dies or is replaced passes the demand on without penalty to
+a deterministically chosen successor.
+
 **Proposal.** Onboarding should use a short, dismissible sequence of goals over
 the live campaign rather than a separate rules sandbox. It should teach the
 normal interface and issue ordinary logged commands, without changing odds,

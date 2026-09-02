@@ -936,6 +936,23 @@ fn validate_situations(
             );
         }
 
+        // A recorded answer's opinion consequences fall on a person, so the
+        // subject binding must be declared and typed as a character — an
+        // effect must never quietly address nobody.
+        if let Some(subject) = &situation.subject_binding {
+            match situation.bindings.get(subject) {
+                None => error(
+                    situation.trigger_fn.path.clone(),
+                    format!("subject_binding '{subject}' is not a declared binding"),
+                ),
+                Some(SituationSubjectKind::Character) => {}
+                Some(other) => error(
+                    situation.trigger_fn.path.clone(),
+                    format!("subject_binding '{subject}' is {other:?}; it must bind a character"),
+                ),
+            }
+        }
+
         if situation.stages.is_empty() {
             error(
                 situation.trigger_fn.path.clone(),
@@ -967,6 +984,16 @@ fn validate_situations(
                         "Situation action '{}' names undefined assignment '{}'",
                         action.key, action.assignment
                     ),
+                );
+            }
+        }
+
+        let mut response_ids = BTreeSet::new();
+        for response in &situation.responses {
+            if !response_ids.insert(&response.key) {
+                error(
+                    situation.trigger_fn.path.clone(),
+                    format!("duplicate Situation response id '{}'", response.key),
                 );
             }
         }

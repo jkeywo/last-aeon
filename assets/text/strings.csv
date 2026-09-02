@@ -862,3 +862,37 @@ ui.situations.why-matters,"Focusable trigger for the optional ""Why this matters
 situation.metric.days-left,Situation metric label: whole days remaining before an authoritative deadline.,[Days remaining]
 situation.metric.influence-at-stake,Situation metric label: the exact Influence forfeited if the deadline lapses.,[Influence at stake]
 situation.metric.house-influence,Situation metric label: the house's current spendable Influence.,[Current Influence]
+situation.kessarin-order.title,Title of Kessarin's household demand for provincial Order.,[Kessarin's Order]
+situation.kessarin-order.summary,Summary of Kessarin's household demand.,"[Kessarin asks that every province the house holds be brought to good order — at least the stated Order in each — before the household's patience runs out.]"
+situation.kessarin-order.announcement,"Pausing announcement shown when Kessarin presents her demand. States the goal, the shared deadline, and the relationship stakes in advance.","[Kessarin puts her expectation plainly: every province House Harrow holds at 850 Order or better, within the household's 120-day window. Promise it, refuse it, or say nothing — she will remember which, and she will watch the provinces rather than your words.]"
+situation.kessarin-order.stage.open.title,Stage title while the demand stands unanswered.,[An expectation unanswered]
+situation.kessarin-order.stage.open.summary,Stage summary while the demand stands unanswered.,[Kessarin awaits an answer — or simply the result. Any route to well-ordered provinces satisfies her.]
+situation.kessarin-order.stage.open.warning,Warning as the shared household deadline nears with the goal unmet.,[The household's window is closing with holdings still below target.]
+situation.kessarin-order.stage.promised.title,Stage title after the player promises the goal.,[A promise given]
+situation.kessarin-order.stage.promised.summary,Stage summary after the player promises the goal.,[You have given Kessarin your word. Only the provinces themselves can keep it.]
+situation.kessarin-order.stage.promised.warning,Warning as the deadline nears on a promised but unmet goal.,[Your promise to Kessarin comes due soon and holdings remain below target.]
+situation.kessarin-order.stage.refused.title,Stage title after the player refuses the demand.,[A request refused]
+situation.kessarin-order.stage.refused.summary,Stage summary after the player refuses the demand.,[You told Kessarin no. Meeting the goal anyway would still be remembered kindly.]
+situation.kessarin-order.action.manage-estates.label,Button label for the estate-management route to the Order goal.,[Manage the estates]
+situation.kessarin-order.action.hold-court.label,Button label for the hold-court route to the Order goal.,[Hold court]
+situation.kessarin-order.action.tour-holdings.label,Button label for the risky touring route to the Order goal.,[Tour the holdings]
+situation.kessarin-order.response.promise.label,Response button recording a promise to meet the demand.,[Promise it will be done]
+situation.kessarin-order.response.refuse.label,Response button recording an explicit refusal.,[Refuse the request]
+situation.kessarin-order.resolution.achieved.text,Resolution when every held province reached the target. {requester} asked; {house} is the house; {target} the Order target.,"[{requester} asked for order, and {house} delivered it: every holding stands at {target} or better. Being heard will not be forgotten.]"
+situation.kessarin-order.resolution.passed-on.text,Resolution when the requester died or was replaced before the deadline. {requester} is the original requester.,[The demand no longer rests with {requester}. The household's expectation passes to other hands.]
+situation.kessarin-order.resolution.refused.text,Resolution when an explicit refusal stood at the deadline. {requester} asked.,"[{requester} was refused to her face. Honesty stings less than silence, but it stings.]"
+situation.kessarin-order.resolution.broken.text,Resolution when a promise stood unmet at the deadline. {requester} asked; {target} is the Order target.,"[A promise was given to {requester}, and the provinces never reached {target}. A broken word weighs heaviest of all.]"
+situation.kessarin-order.resolution.ignored.text,Fallback resolution when the deadline passed with no answer and no achievement. {requester} asked.,[{requester} received no answer and no result. Silence carries its own political cost.]
+situation.kessarin-order.guidance.objective,First Reign guidance objective for Kessarin's demand. Shown only when guidance is enabled; never read by the simulation.,"[Objective: bring every Harrow-held province to at least 850 Order before the shared 120-day household deadline. The goal is judged from the provinces themselves — promising, refusing, or staying silent changes only the relationship consequence.]"
+situation.kessarin-order.guidance.how,"First Reign ""Show me how"" help for Kessarin's demand. Presentation only.","[Daily attention restores Order only to 800, so reaching 850 takes deliberate work: Manage the estates lifts every holding a little, Hold court lifts the province where it is held, and a Tour of the holdings can lift them all substantially at personal risk. Watch each province's row on this card, and leave time — assignments take tens of days to complete.]"
+situation.kessarin-order.guidance.why,"First Reign ""Why this matters"" help for Kessarin's demand. Presentation only.","[Well-ordered provinces pay more, defend better, and resist hostile interference later in the reign. Kessarin's opinion of Edrun shifts with how the demand ends — achievement, refusal, silence, and a broken promise each carry a stated, lasting effect — and her goodwill is a political asset in its own right.]"
+situation.metric.order-target,Situation metric label: the provincial Order every held province must reach.,[Order target]
+situation.metric.province-order,Situation metric label for one held province's live Order; the value is the province name then its current Order.,[Holding (current Order)]
+situation.metric.provinces-below-target,Situation metric label: how many held provinces still sit below the Order target.,[Holdings below target]
+situation.metric.on-achieved,"Situation metric label for the achievement consequence; the value is the requester's opinion change of the head, then its duration in days.",[If achieved: requester's opinion of the head (change / days)]
+situation.metric.on-refused,Situation metric label for the refusal consequence; the value is the opinion change then its duration in days.,[If refused and unmet: (change / days)]
+situation.metric.on-ignored,Situation metric label for the silence consequence; the value is the opinion change then its duration in days.,[If ignored and unmet: (change / days)]
+situation.metric.on-broken,Situation metric label for the broken-promise consequence; the value is the opinion change then its duration in days.,[If promised and unmet: (change / days)]
+ui.situations.responses,Heading above a Situation's pure recorded answers.,[How will you answer?]
+ui.situations.answered,Line showing the durable answer already recorded on a Situation. {answer} is the chosen response's label.,[Answer given: {answer}]
+sim.situation.answered,Log line written when a Situation answer is recorded. {situation} is the Situation title and {answer} the chosen response's label.,[{situation}: the answer was given — {answer}.]
