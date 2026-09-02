@@ -271,6 +271,7 @@ The current reusable deck contains:
 | The Court Awaits | Scenario, bound to House Harrow | Day-one authority test: any accepted ordinary assignment within seven days, or a 10-Influence forfeit |
 | Kessarin's Order | Scenario, bound to House Harrow and its requester | Household demand: every held province at 850+ Order by the shared 120-day deadline, with four-tier relationship consequences |
 | Aleyn's Levies | Scenario, bound to House Harrow and its requester | Household demand: at least 1,000 total fielded army manpower by the same shared deadline, with the same four-tier consequences |
+| Torvald's Standing | Scenario, bound to House Harrow, its requester, and the exact liege head | Household demand: the bound liege head's opinion of the house head at 0 or higher by the same shared deadline, with the same four-tier consequences |
 
 [ai] The Court Awaits slice added three reusable seams the deck may now use.
 Situation call contexts carry the instance's activation date (triggers see
@@ -317,6 +318,27 @@ forecast can fail with costs paid up front and never refunded; a failed
 attempt receives no protection and a retry is the same ordinary command.
 The 1,000-manpower target and every tier live in scenario content beside
 Kessarin's.
+
+[ai] Torvald's Standing, the third household demand, adds the
+derived-relationship predicate class and one structural seam. The
+demand binds the exact liege head beside the house and requester, so a
+changed liege or a dead or deposed liege head is a different structural
+instance: the old lifecycle ends passed-on with no tier, and any
+remaining concern is judged afresh from live state. Its achieved
+outcome is judged only against the bound man while he still stands as
+the liege's living head — the ended lifecycle's outcome predicates run
+against the live world with the old bindings, so without that clause a
+liege succession would pay the achievement tier from the successor's
+warmer derived affinity in the very pass that should pass the demand
+on. The goal itself follows the office of head-of-house, matching the
+owner-head role the tiers pay toward; it reads the same derived opinion
+facts scripts already see, is satisfied by any legitimate relationship
+effect, and its one authored route is the ordinary court assignment,
+org-targeted at the liege. With the three demands live together, an
+unmet shared deadline resolves all of them in the one evaluate pass, in
+stable definition order with distinct tiers on distinct requesters'
+ledgers, and each demand otherwise resolves independently with durable
+history.
 
 Visibility follows authoritative audience rules. In particular, favour debt is
 private to its parties in player-led play while spectator mode can inspect it.

@@ -635,6 +635,102 @@ fn aleyns_demand_carries_responses_a_subject_binding_and_tiered_effects() {
 }
 
 #[test]
+fn torvalds_demand_carries_responses_a_liege_head_binding_and_tiered_effects() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/content");
+    let sources = aeon_data::fs::read_content_dir(&root).expect("assets/content readable");
+    let (strings, report) = aeon_data::fs::read_string_table(&root).expect("strings readable");
+    assert!(
+        !report.has_errors(),
+        "string findings: {:?}",
+        report.findings
+    );
+    let (set, report) = load_content(&sources, &strings.expect("valid string table"));
+    assert!(
+        !report.has_errors(),
+        "content findings: {:?}",
+        report.findings
+    );
+    let set = set.expect("repository content loads");
+    let demand = &set.situations[&aeon_data::ContentKey::new("torvald-standing").unwrap()];
+
+    // The demand acts for the house and its consequences fall on the bound
+    // requester, and it additionally binds the exact liege head whose
+    // regard the goal is judged against — a changed liege or head is a
+    // different structural instance.
+    assert_eq!(demand.owner_binding.as_deref(), Some("house"));
+    assert_eq!(demand.subject_binding.as_deref(), Some("requester"));
+    let bindings: Vec<(&str, aeon_data::model::SituationSubjectKind)> = demand
+        .bindings
+        .iter()
+        .map(|(name, kind)| (name.as_str(), *kind))
+        .collect();
+    assert_eq!(
+        bindings,
+        [
+            (
+                "house",
+                aeon_data::model::SituationSubjectKind::Organisation
+            ),
+            (
+                "liege-head",
+                aeon_data::model::SituationSubjectKind::Character
+            ),
+            (
+                "requester",
+                aeon_data::model::SituationSubjectKind::Character
+            ),
+        ]
+    );
+    let responses: Vec<&str> = demand
+        .responses
+        .iter()
+        .map(|response| response.key.as_str())
+        .collect();
+    assert_eq!(responses, ["promise", "refuse"]);
+    assert!(
+        demand
+            .responses
+            .iter()
+            .all(|response| !response.label.is_empty()),
+        "response labels are table-decided and filled"
+    );
+    let actions: Vec<&str> = demand
+        .actions
+        .iter()
+        .map(|action| action.key.as_str())
+        .collect();
+    assert_eq!(actions, ["court"]);
+    assert!(demand.announcement.is_some());
+    assert!(demand.guidance_objective.is_some());
+    assert!(demand.guidance_how.is_some());
+    assert!(demand.guidance_why.is_some());
+
+    // Exactly the four relationship tiers carry effects; passing the demand
+    // on carries none.
+    let effects: Vec<&str> = demand
+        .outcomes
+        .iter()
+        .filter(|outcome| outcome.effects_fn.is_some())
+        .map(|outcome| outcome.key.as_str())
+        .collect();
+    assert_eq!(effects, ["achieved", "refused", "broken", "ignored"]);
+
+    // The derived key mirror covers the new rows, so the orphan and
+    // missing-row audits keep covering them.
+    let keys = aeon_data::text_keys(&set);
+    for expected in [
+        "situation.torvald-standing.response.promise.label",
+        "situation.torvald-standing.response.refuse.label",
+        "situation.torvald-standing.action.court.label",
+        "situation.torvald-standing.announcement",
+        "situation.torvald-standing.resolution.passed-on.text",
+        "situation.torvald-standing.guidance.objective",
+    ] {
+        assert!(keys.contains(expected), "missing derived key {expected}");
+    }
+}
+
+#[test]
 fn the_court_awaits_carries_announcement_guidance_and_outcome_effects() {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/content");
     let sources = aeon_data::fs::read_content_dir(&root).expect("assets/content readable");

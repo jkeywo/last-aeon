@@ -2649,3 +2649,1037 @@ fn a_failed_muster_is_an_ordinary_forecast_loss_with_no_special_protection() {
     })
     .expect("a retry is an ordinary assignment again");
 }
+
+// ---------------------------------------------------------------------------
+// Torvald's Standing: the third household demand — a live derived-opinion
+// predicate over the bound liege head's regard for the house's head.
+// ---------------------------------------------------------------------------
+
+use aeon_sim::politics::{OpinionEntry, OrgRecord};
+
+/// The authored derived-opinion target of Torvald's demand.
+const TORVALD_OPINION_TARGET: i32 = 0;
+
+/// Casimir's derived opening opinion of Edrun: grasping opposing
+/// magnanimous, and nothing else — exactly -15.
+const STARTING_LIEGE_OPINION: i32 = -15;
+
+fn torvald_card(host: &mut SimHost) -> Option<SituationCard> {
+    active_cards(host.world_mut())
+        .into_iter()
+        .find(|card| card.active.key.definition == key("torvald-standing"))
+}
+
+fn torvald_resolution(host: &mut SimHost) -> Option<aeon_sim::situations::SituationResolution> {
+    host.world_mut()
+        .resource::<SituationState>()
+        .resolutions
+        .iter()
+        .find(|notice| notice.situation.definition == key("torvald-standing"))
+        .cloned()
+}
+
+fn answer_torvald(
+    host: &mut SimHost,
+    response: &str,
+) -> Result<aeon_sim::CommandEnvelope, CommandRejection> {
+    let situation = torvald_card(host).expect("live demand").active.key;
+    host.submit(PlayerCommand::AnswerSituation {
+        situation,
+        response: key(response),
+    })
+}
+
+/// The live derived opinion of the Veyrin head named Casimir about the
+/// current Harrow head.
+fn liege_opinion(host: &mut SimHost) -> i32 {
+    let casimir = character(host, "casimir-veyrin");
+    let harrow = org(host, "harrow");
+    let head = aeon_sim::access::org_head(host.world_mut(), harrow).expect("harrow head");
+    opinion_between(host.world_mut(), casimir, head)
+}
+
+/// Sets (or replaces) one direct test modifier on Casimir's ledger toward
+/// the live Harrow head — a stand-in for any legitimate relationship
+/// effect, in the spirit of `adjust_order` and `form_fixture_army` above.
+/// One stable reason means repeated calls replace rather than stack.
+fn set_liege_esteem(host: &mut SimHost, amount: i32) {
+    let casimir = character(host, "casimir-veyrin");
+    let harrow = org(host, "harrow");
+    let head = aeon_sim::access::org_head(host.world_mut(), harrow).expect("harrow head");
+    let world = host.world_mut();
+    let entity = world.resource::<PoliticsIndex>().characters[&casimir];
+    world
+        .get_mut::<OpinionLedger>(entity)
+        .expect("characters carry opinion ledgers")
+        .set(OpinionEntry {
+            target: head,
+            amount,
+            reason: "test-esteem".to_owned(),
+            expires: None,
+        });
+}
+
+#[test]
+fn torvalds_demand_opens_after_the_court_with_the_shared_deadline_and_live_metrics() {
+    let mut host = scenario_host(342, repository_content());
+    let start = start_date(&mut host);
+    assert!(
+        torvald_card(&mut host).is_none(),
+        "the household waits until the court's test is behind the reign"
+    );
+
+    open_household_demands(&mut host);
+    let card = torvald_card(&mut host).expect("the demand opens with the court answered");
+    assert_eq!(card.unavailable, None);
+    let torvald = character(&mut host, "torvald-harrow");
+    let casimir = character(&mut host, "casimir-veyrin");
+    assert_eq!(
+        card.active.key.bindings.get("requester"),
+        Some(&SituationSubject::Character(torvald)),
+        "Torvald himself is the bound requester"
+    );
+    assert_eq!(
+        card.active.key.bindings.get("liege-head"),
+        Some(&SituationSubject::Character(casimir)),
+        "the exact liege head whose regard is demanded is structurally bound"
+    );
+
+    let projection = card.projection.clone().expect("projection");
+    // The same shared deadline as the other demands: the day the court's
+    // window would have closed, plus the authored 120 days.
+    assert_eq!(
+        projection.deadline,
+        Some(start.add_days(HOUSEHOLD_DEADLINE_DAYS))
+    );
+    let integer_metric = |label: &str| {
+        projection.metrics.iter().find_map(|metric| {
+            (metric.label_key == label).then(|| match &metric.value {
+                aeon_sim::situations::SituationMetricValue::Integer(value) => *value,
+                aeon_sim::situations::SituationMetricValue::Text(text) => {
+                    panic!("expected integer metric, got '{text}'")
+                }
+            })
+        })
+    };
+    assert_eq!(
+        integer_metric("situation.metric.opinion-target"),
+        Some(i64::from(TORVALD_OPINION_TARGET))
+    );
+    assert_eq!(
+        integer_metric("situation.metric.opinion-shortfall"),
+        Some(i64::from(TORVALD_OPINION_TARGET - STARTING_LIEGE_OPINION)),
+        "the shortfall reads the exact remaining gap"
+    );
+    let regard = projection
+        .metrics
+        .iter()
+        .find(|metric| metric.label_key == "situation.metric.liege-opinion")
+        .expect("the card names the liege head and his live regard");
+    match &regard.value {
+        aeon_sim::situations::SituationMetricValue::Text(text) => {
+            assert!(
+                text.contains("Casimir") && text.ends_with(&STARTING_LIEGE_OPINION.to_string()),
+                "the row names the bound man and the live derived value, got '{text}'"
+            );
+        }
+        aeon_sim::situations::SituationMetricValue::Integer(value) => {
+            panic!("expected a named text metric, got {value}")
+        }
+    }
+    assert_eq!(
+        i64::from(liege_opinion(&mut host)),
+        i64::from(STARTING_LIEGE_OPINION),
+        "the card reads the authoritative derived opinion"
+    );
+    for consequence in [
+        "situation.metric.on-achieved",
+        "situation.metric.on-refused",
+        "situation.metric.on-ignored",
+        "situation.metric.on-broken",
+    ] {
+        assert!(
+            projection
+                .metrics
+                .iter()
+                .any(|metric| metric.label_key == consequence),
+            "the card states the relationship consequence {consequence}"
+        );
+    }
+    // The one honest ordinary route: the head courting the liege's house.
+    let veyrin = org(&mut host, "veyrin");
+    let harrow = org(&mut host, "harrow");
+    let edrun = aeon_sim::access::org_head(host.world_mut(), harrow).expect("harrow head");
+    let court = projection
+        .actions
+        .iter()
+        .find(|action| action.id == key("court"))
+        .expect("the card offers the courting route");
+    assert_eq!(court.leader, Some(edrun));
+    assert_eq!(court.target, AssignmentTarget::Org(veyrin));
+    // The bound liege head is a navigable link while his regard lags.
+    assert_eq!(projection.links.len(), 1);
+    assert_eq!(
+        projection.links[0].kind,
+        aeon_data::model::SituationSubjectKind::Character
+    );
+    assert_eq!(projection.links[0].id, casimir.raw());
+
+    // Activation raised a pausing announcement and permanent tagged history.
+    let occurrence = card.active.occurrence();
+    assert!(
+        host.world_mut()
+            .resource::<MessageLog>()
+            .entries
+            .iter()
+            .any(|entry| entry.situations.contains(&occurrence))
+    );
+    let popup = host
+        .world_mut()
+        .resource::<PendingPopups>()
+        .popups
+        .iter()
+        .find(|popup| popup.assignment == key("torvald-standing"))
+        .cloned()
+        .expect("activation announcement popup");
+    assert!(popup.text.contains("Casimir"));
+    assert!(popup.text.contains("120-day"));
+}
+
+#[test]
+fn all_three_household_demands_open_together_and_expire_on_one_date() {
+    let mut host = scenario_host(343, repository_content());
+    let start = start_date(&mut host);
+    for definition in ["kessarin-order", "aleyn-levies", "torvald-standing"] {
+        assert!(
+            !active_cards(host.world_mut())
+                .iter()
+                .any(|card| card.active.key.definition == key(definition)),
+            "{definition} waits for the court"
+        );
+    }
+
+    open_household_demands(&mut host);
+    let deadline = start.add_days(HOUSEHOLD_DEADLINE_DAYS);
+    let expected = [
+        ("kessarin-order", "kessarin-harrow"),
+        ("aleyn-levies", "aleyn-harrow"),
+        ("torvald-standing", "torvald-harrow"),
+    ];
+    for (definition, requester) in expected {
+        let card = active_cards(host.world_mut())
+            .into_iter()
+            .find(|card| card.active.key.definition == key(definition))
+            .unwrap_or_else(|| panic!("{definition} opens with the others"));
+        assert_eq!(
+            card.projection.expect("projection").deadline,
+            Some(deadline),
+            "{definition} shares the one visible deadline"
+        );
+        let who = character(&mut host, requester);
+        assert_eq!(
+            card.active.key.bindings.get("requester"),
+            Some(&SituationSubject::Character(who)),
+            "{definition} is pressed by its own named family member"
+        );
+    }
+}
+
+#[test]
+fn unmet_demands_resolve_together_at_the_shared_boundary_in_stable_order() {
+    let mut host = scenario_host(344, repository_content());
+    let start = start_date(&mut host);
+    let deadline = start.add_days(HOUSEHOLD_DEADLINE_DAYS);
+    let household = [
+        key("aleyn-levies"),
+        key("kessarin-order"),
+        key("torvald-standing"),
+    ];
+
+    // Let the court lapse; all three demands open together, unanswered.
+    host.advance_days(7);
+    let remaining = host.date().days_until(deadline);
+    host.advance_days(remaining as u32 - 1);
+    let live: Vec<_> = active_cards(host.world_mut())
+        .into_iter()
+        .map(|card| card.active.key.definition)
+        .filter(|definition| household.contains(definition))
+        .collect();
+    assert_eq!(
+        live.len(),
+        3,
+        "nothing resolves the day before the shared deadline"
+    );
+    assert!(
+        host.world_mut()
+            .resource::<SituationState>()
+            .resolutions
+            .iter()
+            .all(|notice| !household.contains(&notice.situation.definition)),
+        "no household resolution exists before the boundary"
+    );
+
+    // The boundary day: all three resolve in the one evaluate pass, each
+    // with its own tier on its own requester's ledger, in stable
+    // definition-key order with strictly increasing resolution ids.
+    host.advance_days(1);
+    let mut notices: Vec<_> = host
+        .world_mut()
+        .resource::<SituationState>()
+        .resolutions
+        .iter()
+        .filter(|notice| household.contains(&notice.situation.definition))
+        .cloned()
+        .collect();
+    assert_eq!(
+        notices.len(),
+        3,
+        "all three demands resolve on the boundary"
+    );
+    notices.sort_by_key(|notice| notice.id);
+    assert!(
+        notices.windows(2).all(|pair| pair[0].id < pair[1].id),
+        "resolution ids are strictly increasing"
+    );
+    assert_eq!(
+        notices
+            .iter()
+            .map(|notice| notice.situation.definition.clone())
+            .collect::<Vec<_>>(),
+        household.to_vec(),
+        "one pass resolves the demands in stable definition-key order"
+    );
+    for notice in &notices {
+        assert_eq!(notice.outcome, key("ignored"));
+        assert_eq!(notice.resolved, deadline, "the boundary day is exact");
+    }
+
+    // Three distinct silence modifiers on three distinct ledgers.
+    let harrow = org(&mut host, "harrow");
+    let edrun = aeon_sim::access::org_head(host.world_mut(), harrow).expect("head");
+    for (who, reason) in [
+        ("kessarin-harrow", "kessarin-order-ignored"),
+        ("aleyn-harrow", "aleyn-levies-ignored"),
+        ("torvald-harrow", "torvald-standing-ignored"),
+    ] {
+        let requester = character(&mut host, who);
+        let entry = opinion_modifier(&mut host, requester, reason)
+            .unwrap_or_else(|| panic!("{who} carries {reason}"));
+        assert_eq!(entry.target, edrun);
+        assert_eq!(entry.amount, -10);
+        assert_eq!(entry.expires, Some(deadline.add_days(1440)));
+    }
+}
+
+#[test]
+fn partial_esteem_stays_live_and_the_exact_zero_boundary_achieves() {
+    let mut host = scenario_host(345, repository_content());
+    open_household_demands(&mut host);
+    let torvald = character(&mut host, "torvald-harrow");
+    let harrow = org(&mut host, "harrow");
+    let edrun = aeon_sim::access::org_head(host.world_mut(), harrow).expect("harrow head");
+
+    // One point short of the inclusive target: near-regard is not regard.
+    set_liege_esteem(
+        &mut host,
+        TORVALD_OPINION_TARGET - STARTING_LIEGE_OPINION - 1,
+    );
+    host.advance_days(1);
+    assert_eq!(liege_opinion(&mut host), TORVALD_OPINION_TARGET - 1);
+    let card = torvald_card(&mut host).expect("a partly met demand stays live");
+    assert!(
+        torvald_resolution(&mut host).is_none(),
+        "no resolution is recorded while the regard lags"
+    );
+    let projection = card.projection.clone().expect("projection");
+    let shortfall = projection.metrics.iter().find_map(|metric| {
+        (metric.label_key == "situation.metric.opinion-shortfall").then(|| match &metric.value {
+            aeon_sim::situations::SituationMetricValue::Integer(value) => *value,
+            aeon_sim::situations::SituationMetricValue::Text(text) => {
+                panic!("expected integer metric, got '{text}'")
+            }
+        })
+    });
+    assert_eq!(shortfall, Some(1), "the shortfall reads the exact gap");
+
+    // The goal met at exactly the target is achievement — the boundary is
+    // inclusive, and any legitimate relationship effect may close it.
+    let before = opinion_between(host.world_mut(), torvald, edrun);
+    set_liege_esteem(&mut host, TORVALD_OPINION_TARGET - STARTING_LIEGE_OPINION);
+    host.advance_days(1);
+    assert_eq!(liege_opinion(&mut host), TORVALD_OPINION_TARGET);
+    let resolved_on = host.date();
+    assert!(torvald_card(&mut host).is_none());
+    let notice = torvald_resolution(&mut host).expect("resolution at exactly the target");
+    assert_eq!(notice.outcome, key("achieved"));
+    let entry = opinion_modifier(&mut host, torvald, "torvald-standing-achieved")
+        .expect("achievement modifier");
+    assert_eq!(entry.target, edrun);
+    assert_eq!(entry.amount, 10);
+    assert_eq!(entry.expires, Some(resolved_on.add_days(1440)));
+    assert_eq!(
+        opinion_between(host.world_mut(), torvald, edrun),
+        before + 10
+    );
+}
+
+#[test]
+fn esteem_that_never_stands_on_a_settled_day_resolves_nothing() {
+    let mut host = scenario_host(346, repository_content());
+    let start = start_date(&mut host);
+    let deadline = start.add_days(HOUSEHOLD_DEADLINE_DAYS);
+    open_household_demands(&mut host);
+    let occurrence = torvald_card(&mut host)
+        .expect("live demand")
+        .active
+        .occurrence();
+
+    // Regard that rises above the target and falls back inside the same
+    // day never stands at a settled evaluation, so it resolves nothing:
+    // the predicate is genuinely non-monotonic while the demand is open.
+    set_liege_esteem(&mut host, 20);
+    set_liege_esteem(&mut host, 10);
+    host.advance_days(1);
+    assert_eq!(liege_opinion(&mut host), STARTING_LIEGE_OPINION + 10);
+    assert!(torvald_resolution(&mut host).is_none());
+    let card = torvald_card(&mut host).expect("the demand stays live");
+    assert_eq!(
+        card.active.occurrence(),
+        occurrence,
+        "the same lifecycle continues through the swing"
+    );
+
+    // The partial gain later withdrawn entirely: still the same lifecycle,
+    // and the deadline settles it by the silence tier.
+    host.advance_days(5);
+    set_liege_esteem(&mut host, 0);
+    host.advance_days(1);
+    assert_eq!(liege_opinion(&mut host), STARTING_LIEGE_OPINION);
+    assert!(torvald_card(&mut host).is_some());
+    let remaining = host.date().days_until(deadline);
+    host.advance_days(remaining as u32);
+    let notice = torvald_resolution(&mut host).expect("deadline resolution");
+    assert_eq!(notice.outcome, key("ignored"));
+    assert_eq!(notice.resolved, deadline);
+    let torvald = character(&mut host, "torvald-harrow");
+    let entry =
+        opinion_modifier(&mut host, torvald, "torvald-standing-ignored").expect("silence modifier");
+    assert_eq!(entry.amount, -10);
+    assert_eq!(entry.expires, Some(deadline.add_days(1440)));
+}
+
+#[test]
+fn refusing_torvald_costs_its_stated_tier_and_achievement_still_overrides_it() {
+    let content = repository_content();
+
+    // An honest refusal, left to stand: -5 for 1,080 days at the deadline.
+    let mut refused = scenario_host(347, Arc::clone(&content));
+    open_household_demands(&mut refused);
+    answer_torvald(&mut refused, "refuse").expect("refusing is an ordinary command");
+    refused.advance_days(1);
+    let card = torvald_card(&mut refused).expect("a refused demand stays live");
+    assert_eq!(
+        card.projection.as_ref().expect("projection").stage,
+        key("refused")
+    );
+    let start = start_date(&mut refused);
+    let deadline = start.add_days(HOUSEHOLD_DEADLINE_DAYS);
+    let remaining = refused.date().days_until(deadline);
+    refused.advance_days(remaining as u32);
+    let notice = torvald_resolution(&mut refused).expect("deadline resolution");
+    assert_eq!(notice.outcome, key("refused"));
+    assert_eq!(notice.resolved, deadline, "the boundary day is exact");
+    let torvald = character(&mut refused, "torvald-harrow");
+    let harrow = org(&mut refused, "harrow");
+    let edrun = aeon_sim::access::org_head(refused.world_mut(), harrow).expect("head");
+    let entry = opinion_modifier(&mut refused, torvald, "torvald-standing-refused")
+        .expect("refusal modifier");
+    assert_eq!(entry.target, edrun);
+    assert_eq!(entry.amount, -5);
+    assert_eq!(entry.expires, Some(deadline.add_days(1080)));
+
+    // The same refusal followed by the regard anyway: achievement counts
+    // whatever was said, and only the achieved tier applies.
+    let mut anyway = scenario_host(348, Arc::clone(&content));
+    open_household_demands(&mut anyway);
+    answer_torvald(&mut anyway, "refuse").expect("refusal accepted");
+    anyway.advance_days(1);
+    set_liege_esteem(&mut anyway, 40);
+    anyway.advance_days(1);
+    let notice = torvald_resolution(&mut anyway).expect("resolution");
+    assert_eq!(notice.outcome, key("achieved"));
+    let torvald = character(&mut anyway, "torvald-harrow");
+    assert!(opinion_modifier(&mut anyway, torvald, "torvald-standing-achieved").is_some());
+    assert!(
+        opinion_modifier(&mut anyway, torvald, "torvald-standing-refused").is_none(),
+        "tiers never stack on one lifecycle"
+    );
+}
+
+#[test]
+fn silence_and_broken_promises_to_torvald_cost_their_tiers_at_the_exact_deadline() {
+    let content = repository_content();
+
+    // Silence: the demand opens when the court window lapses, is never
+    // answered, and the regard is never won.
+    let mut silent = scenario_host(349, Arc::clone(&content));
+    let start = start_date(&mut silent);
+    let deadline = start.add_days(HOUSEHOLD_DEADLINE_DAYS);
+    silent.advance_days(7);
+    assert!(
+        torvald_card(&mut silent).is_some(),
+        "a lapsed court still opens the household demands"
+    );
+    let remaining = silent.date().days_until(deadline);
+    silent.advance_days(remaining as u32 - 1);
+    assert!(
+        torvald_card(&mut silent).is_some(),
+        "the demand is still live the day before the deadline"
+    );
+    silent.advance_days(1);
+    let notice = torvald_resolution(&mut silent).expect("deadline resolution");
+    assert_eq!(notice.outcome, key("ignored"));
+    assert_eq!(notice.resolved, deadline);
+    let torvald = character(&mut silent, "torvald-harrow");
+    let harrow = org(&mut silent, "harrow");
+    let edrun = aeon_sim::access::org_head(silent.world_mut(), harrow).expect("head");
+    let entry = opinion_modifier(&mut silent, torvald, "torvald-standing-ignored")
+        .expect("silence modifier");
+    assert_eq!(entry.target, edrun);
+    assert_eq!(entry.amount, -10);
+    assert_eq!(entry.expires, Some(deadline.add_days(1440)));
+
+    // A promise given and missed: -20 for 1,800 days.
+    let mut broken = scenario_host(350, Arc::clone(&content));
+    open_household_demands(&mut broken);
+    answer_torvald(&mut broken, "promise").expect("promising is an ordinary command");
+    broken.advance_days(1);
+    assert_eq!(
+        torvald_card(&mut broken)
+            .expect("live demand")
+            .projection
+            .expect("projection")
+            .stage,
+        key("promised")
+    );
+    let remaining = broken.date().days_until(deadline);
+    broken.advance_days(remaining as u32);
+    let notice = torvald_resolution(&mut broken).expect("deadline resolution");
+    assert_eq!(notice.outcome, key("broken"));
+    let torvald = character(&mut broken, "torvald-harrow");
+    let entry = opinion_modifier(&mut broken, torvald, "torvald-standing-broken")
+        .expect("broken-promise modifier");
+    assert_eq!(entry.amount, -20);
+    assert_eq!(entry.expires, Some(deadline.add_days(1800)));
+
+    // The regard won exactly on the deadline day still counts as
+    // achievement.
+    let mut boundary = scenario_host(351, Arc::clone(&content));
+    boundary.advance_days(7);
+    let remaining = boundary.date().days_until(deadline);
+    boundary.advance_days(remaining as u32 - 1);
+    assert!(torvald_card(&mut boundary).is_some());
+    set_liege_esteem(
+        &mut boundary,
+        TORVALD_OPINION_TARGET - STARTING_LIEGE_OPINION,
+    );
+    boundary.advance_days(1);
+    let notice = torvald_resolution(&mut boundary).expect("boundary resolution");
+    assert_eq!(notice.outcome, key("achieved"));
+    assert_eq!(notice.resolved, deadline);
+}
+
+#[test]
+fn a_veyrin_succession_passes_the_demand_on_and_never_pays_the_achievement_tier() {
+    let mut host = scenario_host(352, repository_content());
+    open_household_demands(&mut host);
+    answer_torvald(&mut host, "promise").expect("promise accepted");
+    host.advance_days(1);
+    let torvald = character(&mut host, "torvald-harrow");
+    let casimir = character(&mut host, "casimir-veyrin");
+    let aldric = character(&mut host, "aldric-veyrin");
+    let harrow = org(&mut host, "harrow");
+    let veyrin = org(&mut host, "veyrin");
+    let edrun = aeon_sim::access::org_head(host.world_mut(), harrow).expect("harrow head");
+
+    let date = host.date();
+    process_death(host.world_mut(), casimir, date);
+    evaluate(host.world_mut());
+
+    // Succession installs Casimir's heir, whose derived regard for Edrun
+    // (shared forthright, no opposed pair) already clears the target. The
+    // achieved outcome must judge the BOUND man, not the live liege head:
+    // the same evaluation that ends this lifecycle must pass it on, not
+    // quietly pay the achievement tier from a warmer successor.
+    assert_eq!(
+        aeon_sim::access::org_head(host.world_mut(), veyrin),
+        Some(aldric),
+        "the heir heads House Veyrin"
+    );
+    assert_eq!(
+        opinion_between(host.world_mut(), aldric, edrun),
+        15,
+        "the hazard is real: the live liege head clears the target at once"
+    );
+    let notice = torvald_resolution(&mut host).expect("passed-on resolution");
+    assert_eq!(notice.outcome, key("passed-on"));
+    for reason in [
+        "torvald-standing-achieved",
+        "torvald-standing-refused",
+        "torvald-standing-ignored",
+        "torvald-standing-broken",
+    ] {
+        assert!(
+            opinion_modifier(&mut host, torvald, reason).is_none(),
+            "a liege succession carries no household tier ({reason})"
+        );
+    }
+
+    // With the live liege head's regard already at the target, no fresh
+    // demand exists to press — the household's concern is settled state,
+    // not a checkbox.
+    assert!(
+        torvald_card(&mut host).is_none(),
+        "no lifecycle opens when live state already satisfies the goal"
+    );
+    assert_eq!(
+        host.world_mut()
+            .resource::<SituationState>()
+            .resolutions
+            .iter()
+            .filter(|notice| notice.situation.definition == key("torvald-standing"))
+            .count(),
+        1
+    );
+}
+
+#[test]
+fn a_changed_liege_passes_the_demand_on_and_binds_the_new_lieges_head() {
+    let mut host = scenario_host(353, repository_content());
+    open_household_demands(&mut host);
+    answer_torvald(&mut host, "promise").expect("promise accepted");
+    host.advance_days(1);
+    let torvald = character(&mut host, "torvald-harrow");
+    let zorka = character(&mut host, "zorka-draksha");
+    let harrow = org(&mut host, "harrow");
+    let draksha = org(&mut host, "draksha");
+
+    // Harrow's liege changes: the bound Veyrin head is no longer the head
+    // of the house's liege, so the old lifecycle ends without any tier and
+    // a new unanswered demand binds the new liege's head.
+    {
+        let world = host.world_mut();
+        let entity = aeon_sim::access::org_entity(world, harrow).expect("indexed organisation");
+        world
+            .get_mut::<OrgRecord>(entity)
+            .expect("organisations carry records")
+            .liege = Some(draksha);
+    }
+    evaluate(host.world_mut());
+
+    let notice = torvald_resolution(&mut host).expect("passed-on resolution");
+    assert_eq!(notice.outcome, key("passed-on"));
+    for reason in [
+        "torvald-standing-achieved",
+        "torvald-standing-refused",
+        "torvald-standing-ignored",
+        "torvald-standing-broken",
+    ] {
+        assert!(
+            opinion_modifier(&mut host, torvald, reason).is_none(),
+            "a changed liege carries no household tier ({reason})"
+        );
+    }
+    let card = torvald_card(&mut host).expect("the concern renews against the new liege");
+    assert_eq!(
+        card.active.key.bindings.get("liege-head"),
+        Some(&SituationSubject::Character(zorka)),
+        "the new liege's head is the newly bound judge"
+    );
+    assert_eq!(
+        aeon_sim::situations::recorded_answer(host.world_mut(), &card.active.key),
+        None,
+        "the promise made under the old liege does not transfer"
+    );
+}
+
+#[test]
+fn the_demand_follows_the_office_of_head_of_house() {
+    let mut host = scenario_host(354, repository_content());
+    open_household_demands(&mut host);
+    let torvald = character(&mut host, "torvald-harrow");
+    let casimir = character(&mut host, "casimir-veyrin");
+    let mikael = character(&mut host, "mikael-harrow");
+    let harrow = org(&mut host, "harrow");
+    let card = torvald_card(&mut host).expect("live demand");
+    assert_eq!(
+        card.active.key.bindings.get("liege-head"),
+        Some(&SituationSubject::Character(casimir))
+    );
+
+    // The house head changes while the same requester and the same bound
+    // liege head stand: the demand is about the house's standing, so the
+    // goal follows the office. Casimir's derived regard for Mikael carries
+    // no opposed pair, so the head swap itself clears the target — and the
+    // achieved tier lands toward the live head, through the ordinary
+    // owner-head effect role.
+    {
+        let world = host.world_mut();
+        let entity = aeon_sim::access::org_entity(world, harrow).expect("indexed organisation");
+        world
+            .get_mut::<OrgRecord>(entity)
+            .expect("organisations carry records")
+            .head = Some(mikael);
+    }
+    assert_eq!(opinion_between(host.world_mut(), casimir, mikael), 0);
+    evaluate(host.world_mut());
+    let resolved_on = host.date();
+
+    let notice = torvald_resolution(&mut host).expect("resolution");
+    assert_eq!(notice.outcome, key("achieved"));
+    let entry = opinion_modifier(&mut host, torvald, "torvald-standing-achieved")
+        .expect("achievement modifier");
+    assert_eq!(
+        entry.target, mikael,
+        "the tier falls on the live head of house"
+    );
+    assert_eq!(entry.amount, 10);
+    assert_eq!(entry.expires, Some(resolved_on.add_days(1440)));
+    assert!(torvald_card(&mut host).is_none());
+}
+
+#[test]
+fn the_demand_passes_on_when_torvald_dies_and_the_successor_takes_it_up() {
+    let mut host = scenario_host(355, repository_content());
+    open_household_demands(&mut host);
+    answer_torvald(&mut host, "promise").expect("promise accepted");
+    host.advance_days(1);
+    let torvald = character(&mut host, "torvald-harrow");
+    let aleyn = character(&mut host, "aleyn-harrow");
+    let casimir = character(&mut host, "casimir-veyrin");
+
+    let date = host.date();
+    process_death(host.world_mut(), torvald, date);
+    evaluate(host.world_mut());
+
+    // The dead requester's lifecycle ends without a relationship penalty.
+    let notice = torvald_resolution(&mut host).expect("passed-on resolution");
+    assert_eq!(notice.outcome, key("passed-on"));
+    for reason in [
+        "torvald-standing-achieved",
+        "torvald-standing-refused",
+        "torvald-standing-ignored",
+        "torvald-standing-broken",
+    ] {
+        assert!(
+            opinion_modifier(&mut host, torvald, reason).is_none(),
+            "death carries no household tier ({reason})"
+        );
+    }
+
+    // The replacement is the authored pure rule: the first living adult
+    // non-head member in stable ID order — Aleyn, who now presses two
+    // demands at once. Her lifecycle is a new occurrence bound to the same
+    // liege head, so the promise made by Torvald does not transfer.
+    let card = torvald_card(&mut host).expect("the successor presses the demand");
+    assert_eq!(
+        card.active.key.bindings.get("requester"),
+        Some(&SituationSubject::Character(aleyn))
+    );
+    assert_eq!(
+        card.active.key.bindings.get("liege-head"),
+        Some(&SituationSubject::Character(casimir)),
+        "the bound judge of the demand is unchanged"
+    );
+    assert_eq!(
+        aeon_sim::situations::recorded_answer(host.world_mut(), &card.active.key),
+        None,
+        "a reactivation starts unanswered"
+    );
+}
+
+#[test]
+fn an_early_achievement_resolves_independently_of_the_other_demands() {
+    let content = repository_content();
+    let mut host = scenario_host(356, Arc::clone(&content));
+    open_household_demands(&mut host);
+    let start = start_date(&mut host);
+    let deadline = start.add_days(HOUSEHOLD_DEADLINE_DAYS);
+
+    // Torvald alone is satisfied early; the other two run to the boundary.
+    set_liege_esteem(&mut host, 40);
+    host.advance_days(1);
+    let torvald_notice = torvald_resolution(&mut host).expect("early resolution");
+    assert_eq!(torvald_notice.outcome, key("achieved"));
+    assert!(torvald_notice.resolved < deadline);
+    assert!(
+        kessarin_card(&mut host).is_some() && aleyn_card(&mut host).is_some(),
+        "the sibling demands stay live and unresolved"
+    );
+
+    let remaining = host.date().days_until(deadline);
+    host.advance_days(remaining as u32);
+    assert_eq!(
+        kessarin_resolution(&mut host)
+            .expect("boundary tier")
+            .outcome,
+        key("ignored")
+    );
+    assert_eq!(
+        aleyn_resolution(&mut host).expect("boundary tier").outcome,
+        key("ignored")
+    );
+
+    // Completion is history while the metric keeps moving: the regard
+    // later collapses, and nothing reopens or retracts past the window.
+    set_liege_esteem(&mut host, -40);
+    host.advance_days(2);
+    assert!(liege_opinion(&mut host) < TORVALD_OPINION_TARGET);
+    assert!(torvald_card(&mut host).is_none());
+    assert_eq!(
+        host.world_mut()
+            .resource::<SituationState>()
+            .resolutions
+            .iter()
+            .filter(|notice| notice.situation.definition == key("torvald-standing"))
+            .count(),
+        1
+    );
+    let torvald = character(&mut host, "torvald-harrow");
+    assert!(
+        opinion_modifier(&mut host, torvald, "torvald-standing-achieved").is_some(),
+        "the achieved tier still stands while the liege's regard moves on"
+    );
+
+    let mut restored = SimHost::restore_with_content(host.snapshot(), content).unwrap();
+    assert!(
+        restored
+            .world_mut()
+            .resource::<SituationState>()
+            .resolutions
+            .iter()
+            .any(|notice| notice.situation.definition == key("torvald-standing")),
+        "the resolution is durable across save and load"
+    );
+}
+
+#[test]
+fn torvald_answers_validate_apply_once_and_survive_snapshots() {
+    let content = repository_content();
+    let mut host = scenario_host(357, Arc::clone(&content));
+    open_household_demands(&mut host);
+    let situation = torvald_card(&mut host).expect("live demand").active.key;
+
+    // Spectators and other houses cannot answer, and only declared
+    // responses exist.
+    host.world_mut().resource_mut::<PlayerHouse>().0 = None;
+    assert!(matches!(
+        host.submit(PlayerCommand::AnswerSituation {
+            situation: situation.clone(),
+            response: key("promise"),
+        }),
+        Err(CommandRejection::Assignment(
+            AssignmentRejection::NoPlayerOrg
+        ))
+    ));
+    let veyrin = org(&mut host, "veyrin");
+    host.world_mut().resource_mut::<PlayerHouse>().0 = Some(veyrin);
+    assert!(matches!(
+        host.submit(PlayerCommand::AnswerSituation {
+            situation: situation.clone(),
+            response: key("promise"),
+        }),
+        Err(CommandRejection::Situation(_))
+    ));
+    let harrow = org(&mut host, "harrow");
+    host.world_mut().resource_mut::<PlayerHouse>().0 = Some(harrow);
+    assert!(matches!(
+        host.submit(PlayerCommand::AnswerSituation {
+            situation: situation.clone(),
+            response: key("dither"),
+        }),
+        Err(CommandRejection::Situation(_))
+    ));
+
+    // Two answers queued the same day: the first applies, the second is
+    // dropped by the same re-validation every delayed command runs.
+    answer_torvald(&mut host, "refuse").expect("first answer accepted");
+    answer_torvald(&mut host, "promise").expect("second accepted at submission");
+    host.advance_days(1);
+    assert_eq!(
+        aeon_sim::situations::recorded_answer(host.world_mut(), &situation),
+        Some(key("refuse")),
+        "the first recorded answer is final"
+    );
+    assert!(matches!(
+        host.submit(PlayerCommand::AnswerSituation {
+            situation: situation.clone(),
+            response: key("promise"),
+        }),
+        Err(CommandRejection::Situation(_))
+    ));
+
+    // The recorded answer is tagged permanent history and durable state.
+    let occurrence = torvald_card(&mut host)
+        .expect("live demand")
+        .active
+        .occurrence();
+    assert!(
+        host.world_mut()
+            .resource::<MessageLog>()
+            .entries
+            .iter()
+            .any(|entry| entry.situations.contains(&occurrence) && entry.text.contains("Refuse")),
+        "the answer wrote a tagged history line"
+    );
+    let hash = host.state_hash();
+    let mut restored = SimHost::restore_with_content(host.snapshot(), content).unwrap();
+    assert_eq!(restored.state_hash(), hash);
+    assert_eq!(
+        aeon_sim::situations::recorded_answer(restored.world_mut(), &situation),
+        Some(key("refuse")),
+        "the answer survives save and load"
+    );
+}
+
+#[test]
+fn torvald_lifecycles_snapshot_and_replay_across_their_resolutions() {
+    let content = repository_content();
+
+    // Path one: an early achievement. The direct esteem fixture lands
+    // before the resolution day is settled, so every checkpoint is a
+    // settled state and every replay is command-driven from there.
+    let mut achieved = scenario_host(358, Arc::clone(&content));
+    open_household_demands(&mut achieved);
+    achieved.advance_days(12);
+    set_liege_esteem(&mut achieved, 40);
+    achieved.advance_days(1);
+    let mut achieved_checkpoints = vec![achieved.snapshot()];
+    achieved.advance_days(10);
+    achieved_checkpoints.push(achieved.snapshot());
+
+    // Path two: a promise left to break, checkpointed before, exactly on,
+    // and after the shared deadline. The middle checkpoint lands on the
+    // triple-resolution day itself: the two unanswered sibling demands and
+    // the broken promise all resolve in that one evaluate pass.
+    let mut broken = scenario_host(359, Arc::clone(&content));
+    open_household_demands(&mut broken);
+    answer_torvald(&mut broken, "promise").expect("promise accepted");
+    broken.advance_days(1);
+    let start = start_date(&mut broken);
+    let deadline = start.add_days(HOUSEHOLD_DEADLINE_DAYS);
+    let remaining = broken.date().days_until(deadline);
+    broken.advance_days(remaining as u32 - 3);
+    let mid = broken.snapshot();
+    assert!(
+        !mid.state.situations.answers.is_empty(),
+        "the promise is snapshotted authoritative state"
+    );
+    let mut broken_checkpoints = vec![mid];
+    broken.advance_days(3);
+    assert_eq!(broken.date(), deadline);
+    assert_eq!(
+        broken
+            .world_mut()
+            .resource::<SituationState>()
+            .resolutions
+            .iter()
+            .filter(|notice| {
+                [
+                    key("aleyn-levies"),
+                    key("kessarin-order"),
+                    key("torvald-standing"),
+                ]
+                .contains(&notice.situation.definition)
+            })
+            .count(),
+        3,
+        "the checkpoint day carries all three boundary resolutions"
+    );
+    broken_checkpoints.push(broken.snapshot());
+    broken.advance_days(3);
+    broken_checkpoints.push(broken.snapshot());
+
+    for (index, (mut host, checkpoints)) in [
+        (achieved, achieved_checkpoints),
+        (broken, broken_checkpoints),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let final_day = start_date(&mut host).add_days(150);
+        let remaining = host.date().days_until(final_day);
+        host.advance_days(remaining as u32);
+        let final_hash = host.state_hash();
+        for snapshot in checkpoints {
+            let expected_mid = snapshot.state_hash;
+            let mut replayed =
+                SimHost::restore_with_content(snapshot, Arc::clone(&content)).unwrap();
+            assert_eq!(replayed.state_hash(), expected_mid, "restore is exact");
+            let remaining = replayed.date().days_until(final_day);
+            replayed.advance_days(remaining as u32);
+            assert_eq!(
+                replayed.state_hash(),
+                final_hash,
+                "every checkpoint replays to the same final state (path {index})"
+            );
+        }
+    }
+}
+
+/// A campaign seed under which Edrun's courting of House Veyrin rolls a
+/// plain success and nothing else moves Casimir's opinion of him first.
+const COURT_SUCCESS_SEED: u64 = 360;
+
+#[test]
+fn courting_the_liege_is_the_authored_route_and_its_success_achieves_the_demand() {
+    let mut host = scenario_host(COURT_SUCCESS_SEED, repository_content());
+
+    // Let the court lapse so the head is free and the demands are open.
+    host.advance_days(7);
+    let harrow = org(&mut host, "harrow");
+    let veyrin = org(&mut host, "veyrin");
+    let edrun = aeon_sim::access::org_head(host.world_mut(), harrow).expect("harrow head");
+    let casimir = character(&mut host, "casimir-veyrin");
+    let torvald = character(&mut host, "torvald-harrow");
+    assert!(torvald_card(&mut host).is_some());
+
+    // The card's own route, issued as the ordinary org-targeted command it
+    // launches: Edrun personally courting House Veyrin.
+    let envelope = host
+        .submit(PlayerCommand::StartAssignment {
+            assignment: key("court"),
+            leader: edrun,
+            target: AssignmentTarget::Org(veyrin),
+        })
+        .expect("courting the liege is an ordinary valid command");
+    while host.date() < envelope.day {
+        host.advance_days(1);
+    }
+    host.advance_days(46);
+
+    // A plain success led by the head lands both authored modifiers on
+    // Casimir — his regard for Edrun the man and for the house Edrun
+    // heads — and their sum lifts the derived opinion over the target.
+    let courted = opinion_modifier(&mut host, casimir, "courted").expect("personal regard");
+    assert_eq!(courted.target, edrun);
+    assert_eq!(courted.amount, 10);
+    let courted_house =
+        opinion_modifier(&mut host, casimir, "courted-house").expect("house regard");
+    assert_eq!(courted_house.target, edrun);
+    assert_eq!(courted_house.amount, 10);
+    assert_eq!(
+        liege_opinion(&mut host),
+        STARTING_LIEGE_OPINION + 20,
+        "the two modifiers are the only movement on the pair"
+    );
+
+    // The live predicate resolves the demand with the achieved tier.
+    let notice = torvald_resolution(&mut host).expect("achievement resolution");
+    assert_eq!(notice.outcome, key("achieved"));
+    assert!(torvald_card(&mut host).is_none());
+    let entry = opinion_modifier(&mut host, torvald, "torvald-standing-achieved")
+        .expect("achievement modifier");
+    assert_eq!(entry.target, edrun);
+    assert_eq!(entry.amount, 10);
+}

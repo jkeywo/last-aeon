@@ -1241,12 +1241,13 @@ mod tests {
             .into_iter()
             .filter(|entry| entry.role == "situation-response")
             .collect();
-        // Two household demands are open on day seven — Kessarin's Order
-        // and Aleyn's Levies — and each renders its own Promise and Refuse.
+        // Three household demands are open on day seven — Kessarin's Order,
+        // Aleyn's Levies, and Torvald's Standing — and each renders its own
+        // Promise and Refuse.
         assert_eq!(
             responses.len(),
-            4,
-            "both demands' Promise and Refuse render as pure recorded choices"
+            6,
+            "all three demands' Promise and Refuse render as pure recorded choices"
         );
         let registry = crate::ui::keyboard::completed_registry(&ctx);
         assert_eq!(
@@ -1254,7 +1255,7 @@ mod tests {
                 .iter()
                 .filter(|entry| entry.logical.0.starts_with("situation-response:"))
                 .count(),
-            4,
+            6,
             "response controls are keyboard-reachable"
         );
 

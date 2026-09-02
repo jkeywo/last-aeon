@@ -208,7 +208,8 @@ state independent of the preference.
 
 **Implemented.** [ai] Situation cards gained a second interaction kind
 beside assignment actions: pure recorded responses. A card whose content
-declares responses (Kessarin's demand offers Promise and Refuse) draws
+declares responses (each household demand — Kessarin's, Aleyn's, and
+Torvald's — offers Promise and Refuse) draws
 them under a "How will you answer?" heading as ordinary focusable
 buttons — keyboard-registered and traversed like every other card
 control — and clicking one queues the ordinary logged `AnswerSituation`

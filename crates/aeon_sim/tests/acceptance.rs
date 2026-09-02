@@ -370,10 +370,11 @@ fn snapshot_20_replays_connected_situations_and_formal_wars() {
             key("formal-war"),
             key("kessarin-order"),
             key("planetary-succession"),
+            key("torvald-standing"),
         ]
         .into_iter()
         .collect(),
-        "acceptance runs the complete seven-definition authored deck"
+        "acceptance runs the complete eight-definition authored deck"
     );
 
     let mut original = scenario_host(Arc::clone(&content), 18_1818);
@@ -567,6 +568,10 @@ fn snapshot_20_replays_connected_situations_and_formal_wars() {
             // first demand is live by the midpoint.
             key("kessarin-order"),
             key("planetary-succession"),
+            // Nothing in the AI-only run courts House Veyrin for Harrow,
+            // so the liege head's opinion never reaches zero and Torvald's
+            // demand is live at the midpoint alongside the other two.
+            key("torvald-standing"),
         ]
         .into_iter()
         .collect(),

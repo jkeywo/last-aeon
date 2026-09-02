@@ -2400,14 +2400,19 @@ entities:
       title: Household Demands Are Live-State Predicates on One Shared Anchor
       summary: >-
         Kessarin's Order is the household-demand exemplar, and Aleyn's
-        Levies is the second instance of the same shape: where Kessarin's
-        goal is universal over holdings (every held province at or above
-        the authored 850 Order), Aleyn's is an aggregate over owned armies
-        (total fielded manpower at or above the authored 1,000), each a
-        pure live-state predicate recomputed from current authoritative
-        state — holders and Order, or army ownership and manpower — never
-        from assignment starts or interface interaction. All three
-        demands share one deadline derived from pure campaign facts:
+        Levies and Torvald's Standing are the second and third instances
+        of the same shape: where Kessarin's goal is universal over
+        holdings (every held province at or above the authored 850
+        Order), Aleyn's is an aggregate over owned armies (total fielded
+        manpower at or above the authored 1,000), and Torvald's is a
+        derived relationship (the bound liege head's net opinion of the
+        house's current head at or above the authored zero) that the
+        player influences only indirectly and third parties move in both
+        directions — each a pure live-state predicate recomputed from
+        current authoritative state — holders and Order, army ownership
+        and manpower, or derived opinion facts — never from assignment
+        starts or interface interaction. All three demands share one
+        deadline derived from pure campaign facts:
         world.start_date plus the authored court window plus the authored
         120-day household window, so the anchor never depends on when the
         court was actually answered or on per-definition activation
@@ -2427,7 +2432,10 @@ entities:
         may raise the demand again as a new unanswered lifecycle; opinion
         modifiers replace by (target, reason), so tiers never stack.
       rationale:
-        - "[ai] Anchoring the shared deadline to start_date keeps issues 13 and 14 attachable without coordination state: each demand computes the same date from the same pure facts."
+        - "[ai] Anchoring the shared deadline to start_date kept issues 13 and 14 attachable without coordination state: each demand computed the same date from the same pure facts, both later demands landed on the anchor unchanged, and an unmet shared boundary now resolves all three lifecycles in the one evaluate pass, in stable definition-key order with strictly increasing resolution ids and each tier on its own requester's ledger."
+        - "[ai] Torvald's demand binds the exact liege head as a third character binding beside house and requester, because its goal is one man's regard: a changed liege, a dead liege head, or a deposed one changes the structural key, so the old lifecycle ends passed-on with no tier. The achieved outcome additionally requires the bound man to still stand as the liege's living head — the ended lifecycle resolves its outcome predicates against the live world with the old bindings, and without that clause a Veyrin succession would pay the achievement tier from the successor's warmer derived affinity in the very pass that should pass the demand on."
+        - "[ai] Torvald's goal reads the bound liege head's opinion of the live house head: the demand follows the office of head-of-house, matching the owner-head effect role its tiers pay toward, so a replaced Harrow head continues the same lifecycle (same house, requester, and liege head bindings) and the tier lands on whoever heads the house when the demand resolves."
+        - "[ai] The authored cost of the third demand is the ordinary court assignment, org-targeted at the liege: led by the head it lands the courted and courted-house modifiers on the same pair (+20 on plain success, enough from the authored -15 opening affinity), pricing the goal at 45 of the head's days and 15 wealth against the sibling demands that also want the head — and idle AI agency never starts costed org-targeted assignments for the player's house, so the number moves only through deliberate play or third-party relationship effects."
         - "[ai] Resolving at first achievement makes completion historical — the notice, the opinion tier, and the log survive while provincial Order keeps moving normally — rather than freezing a checkbox until the deadline."
         - "[ai] Achievement overriding refusal follows the accepted rule that achieving a goal satisfies it whether or not the player promised; a promise (or refusal) changes only the consequence of failure."
         - "[ai] The passed-on outcome keeps death from converting into a silence penalty from a dead requester, while the deterministic successor rule keeps trigger and projection in exact agreement."

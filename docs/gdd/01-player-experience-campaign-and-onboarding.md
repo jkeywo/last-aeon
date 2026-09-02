@@ -147,6 +147,25 @@ achievement, and requester replacement carry the same four authored
 relationship tiers and passed-on rule as Kessarin's demand, under
 Aleyn's own stable opinion reasons.
 
+**Implemented/current.** [ai] The third household demand, **Torvald's
+Standing**, completes the simultaneous allocation choice: Kessarin,
+Aleyn, and Torvald press their competing expectations together once the
+court's test is behind the reign, and all three cards expire on exactly
+the same visible 120-day deadline. Torvald asks that Casimir Veyrin's
+opinion of Edrun reach at least zero — a live derived-relationship
+predicate the player influences only indirectly: any legitimate
+relationship effect counts toward it, and third parties move the same
+number in both directions while the demand is open. The card shows the
+bound liege head's live regard, the target, the exact shortfall, the
+shared deadline, and the four-tier consequences, and offers the one
+authored route — the head personally courting House Veyrin, whose plain
+success led by Edrun closes the opening gap at the price of forty-five
+of the head's days and 15 wealth, against sibling demands that also
+want the head's time. Each demand resolves independently with the
+accepted lifecycle and durable history, and a changed liege, dead or
+deposed liege head, or replaced requester passes Torvald's concern on
+without penalty, judged afresh from live state.
+
 **Proposal.** Onboarding should use a short, dismissible sequence of goals over
 the live campaign rather than a separate rules sandbox. It should teach the
 normal interface and issue ordinary logged commands, without changing odds,

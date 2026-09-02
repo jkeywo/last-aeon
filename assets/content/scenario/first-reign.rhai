@@ -583,3 +583,265 @@ fn aleyn_broken_effects(ctx) {
         amount: household_broken_opinion(), days: household_broken_days(),
         reason: "aleyn-levies-broken" }]
 }
+
+// --- Torvald's Standing ------------------------------------------------------
+//
+// Torvald asks that the house stand well with its liege: the liege's head
+// must think no ill of the head of House Harrow — derived opinion at or
+// above the authored target — by the shared deadline. The goal is a live
+// derived-opinion predicate over authoritative relationship state: any
+// legitimate relationship effect satisfies it, and third parties can move
+// the same number in either direction while the demand is open. The
+// liege's head is bound structurally: the demand is the bound man's
+// regard, so a changed liege, a dead liege head, or a deposed one ends
+// the lifecycle passed-on, and any further expectation is judged afresh
+// from live state — a successor's warmer heart never quietly pays the
+// achievement tier.
+
+fn torvald_opinion_target() { 0 }
+
+// The living head of the house's liege, or 0 when the house has no
+// liege, the liege has no head, or that head is no longer alive.
+fn torvald_liege_head(world, house) {
+    let liege = 0;
+    for organisation in world.organisations {
+        if organisation.id == house {
+            if type_of(organisation.liege) == "i64" { liege = organisation.liege; }
+        }
+    }
+    if liege == 0 { return 0; }
+    let head = 0;
+    for organisation in world.organisations {
+        if organisation.id == liege {
+            if type_of(organisation.head) == "i64" { head = organisation.head; }
+        }
+    }
+    if head == 0 { return 0; }
+    for character in world.characters {
+        if character.id == head && character.alive { return head; }
+    }
+    0
+}
+
+// One character's derived net opinion of another, read from the shared
+// world view's authoritative opinion facts.
+fn torvald_opinion(world, from, to) {
+    for opinion in world.opinions {
+        if opinion.from == from && opinion.to == to { return opinion.value; }
+    }
+    0
+}
+
+fn torvald_house_head(world, house) {
+    for organisation in world.organisations {
+        if organisation.id == house {
+            if type_of(organisation.head) == "i64" { return organisation.head; }
+        }
+    }
+    0
+}
+
+// Whether the bound liege head still is what the demand bound: alive and
+// the head of the house's current liege. The achieved outcome and the
+// passed-on rule share this one test, so a liege succession can never
+// pay a relationship tier in the pass that should pass the demand on.
+fn torvald_liege_head_stands(world, house, liege_head) {
+    liege_head != 0 && torvald_liege_head(world, house) == liege_head
+}
+
+// The goal, judged from the bound liege head toward the house's current
+// head. The demand follows the office of head-of-house — Torvald's
+// concern is the house's standing, whoever leads it — while the judging
+// liege head stays the exact bound person.
+fn torvald_goal_met(world, liege_head, house) {
+    let head = torvald_house_head(world, house);
+    if head == 0 { return false; }
+    torvald_opinion(world, liege_head, head) >= torvald_opinion_target()
+}
+
+define_situation(#{
+    id: "torvald-standing",
+    source: "scenario",
+    bindings: #{
+        house: "organisation",
+        requester: "character",
+        "liege-head": "character",
+    },
+    owner_binding: "house",
+    subject_binding: "requester",
+    trigger_fn: "torvald_standing_instances",
+    projection_fn: "torvald_standing_projection",
+    priority: 108,
+    log_activation: true,
+    audience: ["house"],
+    stages: ["open", "promised", "refused"],
+    actions: [
+        #{ id: "court", assignment: "court" },
+    ],
+    responses: [
+        #{ id: "promise" },
+        #{ id: "refuse" },
+    ],
+    outcomes: [
+        #{ id: "achieved", when_fn: "torvald_goal_reached", effects_fn: "torvald_achieved_effects" },
+        #{ id: "passed-on", when_fn: "torvald_demand_passed_on" },
+        #{ id: "refused", when_fn: "torvald_was_refused", effects_fn: "torvald_refused_effects" },
+        #{ id: "broken", when_fn: "torvald_promise_broken", effects_fn: "torvald_broken_effects" },
+        #{ id: "ignored", fallback: true, effects_fn: "torvald_ignored_effects" },
+    ],
+});
+
+fn torvald_standing_instances(ctx) {
+    let house = first_reign_house(ctx.world);
+    if house == 0 { return []; }
+    if ctx.world.date >= household_deadline(ctx.world) { return []; }
+    let liege_head = torvald_liege_head(ctx.world, house);
+    if liege_head == 0 { return []; }
+    if torvald_goal_met(ctx.world, liege_head, house) { return []; }
+    let requester = household_requester(ctx.world, "torvald-harrow", house);
+    if requester == 0 { return []; }
+    if type_of(ctx.activated) != "i64" && !household_demands_open(ctx.world, house) {
+        return [];
+    }
+    [#{ house: house, requester: requester, "liege-head": liege_head }]
+}
+
+fn torvald_standing_projection(ctx) {
+    let house = ctx.bindings.house;
+    let requester = ctx.bindings.requester;
+    let liege_head = ctx.bindings["liege-head"];
+    let deadline = household_deadline(ctx.world);
+    let head = torvald_house_head(ctx.world, house);
+    let stage = "open";
+    if type_of(ctx.answer) == "string" {
+        if ctx.answer == "promise" { stage = "promised"; }
+        if ctx.answer == "refuse" { stage = "refused"; }
+    }
+    let current = 0;
+    if head != 0 { current = torvald_opinion(ctx.world, liege_head, head); }
+    let links = [];
+    let metrics = [
+        #{ label_key: "situation.metric.opinion-target", value: torvald_opinion_target() },
+        #{ label_key: "situation.metric.days-left", value: deadline - ctx.world.date },
+        #{
+            label_key: "situation.metric.liege-opinion",
+            value: `${first_reign_character_name(ctx.world, liege_head)} — ${current}`,
+        },
+    ];
+    let shortfall = torvald_opinion_target() - current;
+    if shortfall < 0 { shortfall = 0; }
+    metrics.push(#{ label_key: "situation.metric.opinion-shortfall", value: shortfall });
+    metrics.push(#{
+        label_key: "situation.metric.on-achieved",
+        value: `+${household_achieved_opinion()} / ${household_achieved_days()}`,
+    });
+    metrics.push(#{
+        label_key: "situation.metric.on-refused",
+        value: `${household_refused_opinion()} / ${household_refused_days()}`,
+    });
+    metrics.push(#{
+        label_key: "situation.metric.on-ignored",
+        value: `${household_ignored_opinion()} / ${household_ignored_days()}`,
+    });
+    metrics.push(#{
+        label_key: "situation.metric.on-broken",
+        value: `${household_broken_opinion()} / ${household_broken_days()}`,
+    });
+    if current < torvald_opinion_target() {
+        links.push(#{ kind: "character", id: liege_head });
+    }
+    let liege = 0;
+    for organisation in ctx.world.organisations {
+        if organisation.id == house {
+            if type_of(organisation.liege) == "i64" { liege = organisation.liege; }
+        }
+    }
+    let actions = [];
+    if head > 0 && liege > 0 {
+        actions.push(#{
+            id: "court", leader: head,
+            target_kind: "organisation", target_a: liege,
+        });
+    }
+    // A refusal quiets the card; an open or promised demand raises the
+    // shared attention strip once the window narrows.
+    let warning = stage != "refused" && deadline - ctx.world.date <= 30;
+    #{
+        stage: stage,
+        deadline: deadline,
+        warning: warning,
+        metrics: metrics,
+        participants: [
+            #{ kind: "character", id: requester },
+            #{ kind: "organisation", id: house },
+        ],
+        links: links,
+        actions: actions,
+        resolution_values: #{
+            requester: first_reign_character_name(ctx.world, requester),
+            house: court_house_name(ctx.world, house),
+            liege: first_reign_character_name(ctx.world, liege_head),
+            target: `${torvald_opinion_target()}`,
+        },
+    }
+}
+
+// Achievement is judged against the exact bound liege head, and only
+// while that binding still stands: if the liege changed or the bound
+// head died or was deposed, this lifecycle can only pass on — the
+// successor's own regard is a new demand's business.
+fn torvald_goal_reached(ctx) {
+    let house = ctx.bindings.house;
+    let liege_head = ctx.bindings["liege-head"];
+    if !torvald_liege_head_stands(ctx.world, house, liege_head) { return false; }
+    torvald_goal_met(ctx.world, liege_head, house)
+}
+
+// Before the shared deadline, a lifecycle that ended because its
+// requester died, left, or was replaced — or because the house is gone,
+// the liege changed, or the bound liege head died or was deposed —
+// carries no relationship consequence; whatever expectation remains is
+// judged afresh from authoritative state.
+fn torvald_demand_passed_on(ctx) {
+    if ctx.world.date >= household_deadline(ctx.world) { return false; }
+    let house = first_reign_house(ctx.world);
+    if house == 0 { return true; }
+    if !torvald_liege_head_stands(ctx.world, house, ctx.bindings["liege-head"]) {
+        return true;
+    }
+    household_requester(ctx.world, "torvald-harrow", house) != ctx.bindings.requester
+}
+
+fn torvald_was_refused(ctx) {
+    type_of(ctx.answer) == "string" && ctx.answer == "refuse"
+}
+
+fn torvald_promise_broken(ctx) {
+    type_of(ctx.answer) == "string" && ctx.answer == "promise"
+}
+
+// The four authored relationship tiers, each under its own stable reason so
+// no two tiers can ever stack on one lifecycle.
+fn torvald_achieved_effects(ctx) {
+    [#{ kind: "opinion", from: "target", toward: "owner-head",
+        amount: household_achieved_opinion(), days: household_achieved_days(),
+        reason: "torvald-standing-achieved" }]
+}
+
+fn torvald_refused_effects(ctx) {
+    [#{ kind: "opinion", from: "target", toward: "owner-head",
+        amount: household_refused_opinion(), days: household_refused_days(),
+        reason: "torvald-standing-refused" }]
+}
+
+fn torvald_ignored_effects(ctx) {
+    [#{ kind: "opinion", from: "target", toward: "owner-head",
+        amount: household_ignored_opinion(), days: household_ignored_days(),
+        reason: "torvald-standing-ignored" }]
+}
+
+fn torvald_broken_effects(ctx) {
+    [#{ kind: "opinion", from: "target", toward: "owner-head",
+        amount: household_broken_opinion(), days: household_broken_days(),
+        reason: "torvald-standing-broken" }]
+}
