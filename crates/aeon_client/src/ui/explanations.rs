@@ -25,11 +25,15 @@ const PINNED_EXPLANATION: &str = "production-pinned-explanation";
 const EXPLANATION_DISMISS: &str = "production-explanation-dismiss";
 
 /// An immutable explanation captured at the point where it was requested.
+///
+/// A forecast-bearing topic explains a concrete action; a prose-only topic
+/// (`forecast: None`) carries guidance or strategic meaning with no
+/// simulation numbers attached.
 #[derive(Clone, Debug)]
 pub struct ExplanationTopic {
     pub title: String,
     pub summary: String,
-    pub forecast: AssignmentForecast,
+    pub forecast: Option<AssignmentForecast>,
 }
 
 /// Client-only explanation state. It is neither saved nor sent to the sim.
@@ -141,8 +145,10 @@ pub(crate) fn clear_explanation_frame_evidence(ctx: &egui::Context) {
 fn draw_topic(ui: &mut egui::Ui, theme: &UiTheme, strings: &TextDb, topic: &ExplanationTopic) {
     ui.strong(&topic.title);
     ui.add(egui::Label::new(&topic.summary).wrap());
-    ui.separator();
-    draw_forecast_body(ui, theme, strings, &topic.forecast);
+    if let Some(forecast) = &topic.forecast {
+        ui.separator();
+        draw_forecast_body(ui, theme, strings, forecast);
+    }
 }
 
 /// Gives an existing control identical hover and keyboard-focus preview.
@@ -184,8 +190,34 @@ pub fn explanation_trigger(
     logical: crate::ui::keyboard::LogicalFocus,
     band: crate::ui::keyboard::FocusBand,
 ) -> egui::Response {
+    labelled_explanation_trigger(
+        ui,
+        theme,
+        strings,
+        strings.text("ui.explanation.pin"),
+        topic,
+        state,
+        logical,
+        band,
+    )
+}
+
+/// The same preview-and-pin control under a caller-supplied label, for
+/// named help routes such as the guidance "Show me how" and "Why this
+/// matters" triggers.
+#[allow(clippy::too_many_arguments)]
+pub fn labelled_explanation_trigger(
+    ui: &mut egui::Ui,
+    theme: &UiTheme,
+    strings: &TextDb,
+    label: &str,
+    topic: &ExplanationTopic,
+    state: &mut ExplanationState,
+    logical: crate::ui::keyboard::LogicalFocus,
+    band: crate::ui::keyboard::FocusBand,
+) -> egui::Response {
     let response = ui.add(
-        egui::Button::new(strings.text("ui.explanation.pin"))
+        egui::Button::new(label)
             .min_size(egui::vec2(24.0, 24.0))
             .wrap(),
     );

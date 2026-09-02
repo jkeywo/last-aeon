@@ -66,6 +66,9 @@ pub struct PanelCtx<'a, 'w, 's> {
     pub issued_directives: Option<&'a aeon_sim::goals::IssuedDirectives>,
     /// Active Situation cards and undismissed resolutions.
     pub situations: &'a SituationPanelView,
+    /// Whether the client-owned scenario guidance preference is enabled.
+    /// Presentation-only: it gates authored guidance prose, never rules.
+    pub guidance: bool,
 }
 
 /// Everything a panel writes.

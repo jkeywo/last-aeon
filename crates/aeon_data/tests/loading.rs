@@ -353,6 +353,136 @@ fn view(ctx) { #{ stage: "open" } }
 }
 
 #[test]
+fn situation_outcome_effects_require_a_declared_organisation_owner_binding() {
+    // effects_fn with no owner_binding: the consequence would address nobody.
+    let orphan_effects = r#"
+define_situation(#{
+    id: "orphan-effects",
+    source: "scenario",
+    trigger_fn: "none",
+    projection_fn: "view",
+    stages: ["open"],
+    outcomes: [#{ id: "ended", fallback: true, effects_fn: "consequence" }],
+});
+fn none(ctx) { [] }
+fn view(ctx) { #{ stage: "open" } }
+fn consequence(ctx) { [#{ kind: "resources", influence: -10 }] }
+"#;
+    let (set, report) = load_content(
+        &[source("bad/orphan-effects.rhai", orphan_effects)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    assert!(report.findings.iter().any(|finding| {
+        finding
+            .message
+            .contains("outcomes with effects_fn require an owner_binding")
+    }));
+
+    // An undeclared or wrongly typed owner binding, and a missing effects
+    // function, are each named errors.
+    let bad_bindings = r#"
+define_situation(#{
+    id: "bad-owner",
+    source: "scenario",
+    bindings: #{ battlefield: "province" },
+    owner_binding: "nobody",
+    trigger_fn: "none",
+    projection_fn: "view",
+    stages: ["open"],
+    outcomes: [#{ id: "ended", fallback: true, effects_fn: "missing_effects" }],
+});
+define_situation(#{
+    id: "wrong-kind-owner",
+    source: "scenario",
+    bindings: #{ battlefield: "province" },
+    owner_binding: "battlefield",
+    trigger_fn: "none",
+    projection_fn: "view",
+    stages: ["open"],
+    outcomes: [#{ id: "ended", fallback: true }],
+});
+fn none(ctx) { [] }
+fn view(ctx) { #{ stage: "open" } }
+"#;
+    let (set, report) = load_content(
+        &[source("bad/owner-bindings.rhai", bad_bindings)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    let messages: Vec<&str> = report
+        .findings
+        .iter()
+        .map(|finding| finding.message.as_str())
+        .collect();
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("owner_binding 'nobody' is not a declared binding"))
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("it must bind an organisation"))
+    );
+    assert!(
+        messages
+            .iter()
+            .any(|message| message.contains("effects_fn 'missing_effects' is not defined"))
+    );
+}
+
+#[test]
+fn the_court_awaits_carries_announcement_guidance_and_outcome_effects() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/content");
+    let sources = aeon_data::fs::read_content_dir(&root).expect("assets/content readable");
+    let (strings, report) = aeon_data::fs::read_string_table(&root).expect("strings readable");
+    assert!(
+        !report.has_errors(),
+        "string findings: {:?}",
+        report.findings
+    );
+    let (set, report) = load_content(&sources, &strings.expect("valid string table"));
+    assert!(
+        !report.has_errors(),
+        "content findings: {:?}",
+        report.findings
+    );
+    let set = set.expect("repository content loads");
+    let court = &set.situations[&aeon_data::ContentKey::new("court-awaits").unwrap()];
+
+    // The activation announcement and the client-only guidance prose are
+    // table-decided and filled; the simulation reads only the announcement.
+    assert!(court.announcement.is_some());
+    assert!(court.guidance_objective.is_some());
+    assert!(court.guidance_how.is_some());
+    assert!(court.guidance_why.is_some());
+    assert_eq!(court.owner_binding.as_deref(), Some("house"));
+
+    // Only the lapsed outcome carries effects: the stated Influence forfeit.
+    let effects: Vec<_> = court
+        .outcomes
+        .iter()
+        .filter(|outcome| outcome.effects_fn.is_some())
+        .map(|outcome| outcome.key.as_str())
+        .collect();
+    assert_eq!(effects, ["lapsed"]);
+
+    // The derived key mirror knows about the optional prose, so the orphan
+    // and missing-row audits keep covering it.
+    let keys = aeon_data::text_keys(&set);
+    for expected in [
+        "situation.court-awaits.announcement",
+        "situation.court-awaits.guidance.objective",
+        "situation.court-awaits.guidance.how",
+        "situation.court-awaits.guidance.why",
+        "situation.court-awaits.resolution.lapsed.text",
+    ] {
+        assert!(keys.contains(expected), "missing derived key {expected}");
+    }
+}
+
+#[test]
 fn missing_mandatory_results_are_errors() {
     let bad = r#"
 define_assignment(#{

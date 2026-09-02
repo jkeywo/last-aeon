@@ -12,7 +12,7 @@ define_scenario(#{
     id: "ashkarr-succession",
     start_year: 411, start_month: 1, start_day: 1,
     player_house: "harrow",
-    situations: ["formal-war"],
+    situations: ["formal-war", "court-awaits"],
 });
 
 define_name_pool(#{

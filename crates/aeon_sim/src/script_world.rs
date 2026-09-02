@@ -139,9 +139,12 @@ fn assignment_target(target: AssignmentTarget) -> Map {
 /// Arrays follow stable-ID order. Maps contain only semantic, serialisable
 /// values; missing optional IDs are Rhai unit values.
 pub fn context_value(world: &World) -> Map {
-    let date = world.resource::<CampaignClock>().date;
+    let clock = world.resource::<CampaignClock>();
+    let date = clock.date;
+    let start_date = clock.start_date;
     let mut view = Map::new();
     view.insert("date".into(), date.days_since_epoch().into());
+    view.insert("start_date".into(), start_date.days_since_epoch().into());
     view.insert(
         "player_org".into(),
         optional_id(
@@ -781,6 +784,7 @@ mod tests {
         });
         let view = context_value(host.world_mut());
         assert_eq!(view["date"].as_int().unwrap(), 7);
+        assert_eq!(view["start_date"].as_int().unwrap(), 7);
         for key in [
             "characters",
             "organisations",

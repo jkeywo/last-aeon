@@ -364,13 +364,14 @@ fn snapshot_19_replays_connected_situations_and_formal_wars() {
         content.situations.keys().cloned().collect::<BTreeSet<_>>(),
         [
             key("consular-vacancy"),
+            key("court-awaits"),
             key("favour-debt"),
             key("formal-war"),
             key("planetary-succession"),
         ]
         .into_iter()
         .collect(),
-        "acceptance runs the complete four-definition authored deck"
+        "acceptance runs the complete five-definition authored deck"
     );
 
     let mut original = scenario_host(Arc::clone(&content), 18_1818);
@@ -383,9 +384,13 @@ fn snapshot_19_replays_connected_situations_and_formal_wars() {
         .collect();
     assert_eq!(
         opening_definitions,
-        [key("planetary-succession"), key("favour-debt")]
-            .into_iter()
-            .collect(),
+        [
+            key("planetary-succession"),
+            key("favour-debt"),
+            key("court-awaits"),
+        ]
+        .into_iter()
+        .collect(),
         "every applicable non-war Situation is live on day one"
     );
 

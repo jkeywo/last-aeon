@@ -211,6 +211,12 @@ pub fn draw_popups(
                     .get(&popup.assignment)
                     .map(|def| def.title.clone())
             })
+            // A Situation activation announcement carries its definition key.
+            .or_else(|| {
+                set.situations
+                    .get(&popup.assignment)
+                    .map(|def| def.title.clone())
+            })
     });
     // Who it turns on: the leader who acted, else the character it fell to.
     let subject = popup

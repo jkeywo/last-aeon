@@ -258,6 +258,13 @@ mod tests {
                 })
                 .expect("opening creditor");
             host.world_mut().resource_mut::<PlayerHouse>().0 = Some(creditor);
+            // The day-one Court Awaits announcement popup addresses the
+            // scenario protagonist; this fixture pins the creditor's view,
+            // so the popup would only float over the geometry under test.
+            host.world_mut()
+                .resource_mut::<aeon_sim::PendingPopups>()
+                .popups
+                .clear();
             // Keep one genuine household candidate unavailable so the real
             // picker exercises a mixed enabled/disabled row. This is
             // simulation state, not a presentation-only fake response.
@@ -838,7 +845,7 @@ mod tests {
             // never this title, must distinguish the controls.
             title: "The same displayed title".to_owned(),
             summary: crate::ui::forecast::forecast_summary(&strings, &forecast),
-            forecast,
+            forecast: Some(forecast),
         };
         egui::Area::new(egui::Id::new("duplicate-explanation-fixture")).show(ctx, |ui| {
             for logical in ["duplicate-source:first", "duplicate-source:second"] {
@@ -1134,6 +1141,75 @@ mod tests {
             scale: 1.5,
         },
     ];
+
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    fn first_reign_guidance_is_optional_presentation_over_the_same_card() {
+        let viewport = egui::vec2(1920.0, 1080.0);
+        let mut fixture = ProductionFixture::new();
+        {
+            // Guidance addresses the scenario protagonist; pin that view.
+            let world = fixture.host.world_mut();
+            let harrow = world.resource::<PoliticsIndex>().org_keys
+                [&aeon_data::ContentKey::new("harrow").unwrap()];
+            world.resource_mut::<PlayerHouse>().0 = Some(harrow);
+            refresh_situation_panel_view(world);
+        }
+        let hash_before = fixture.host.state_hash();
+
+        // Guidance on (the default): the card renders its help triggers,
+        // registered for keyboard traversal like any other control.
+        fixture.render_full_shell(viewport, Vec::new());
+        let ctx = fixture.full_egui_context();
+        let guidance: Vec<_> = semantic_responses(&ctx)
+            .into_iter()
+            .filter(|entry| entry.role == "situation-guidance")
+            .collect();
+        assert_eq!(
+            guidance.len(),
+            2,
+            "Show me how and Why this matters render with guidance enabled"
+        );
+        let registry = crate::ui::keyboard::completed_registry(&ctx);
+        assert_eq!(
+            registry
+                .iter()
+                .filter(|entry| entry.logical.0.starts_with("situation-guidance:"))
+                .count(),
+            2,
+            "guidance triggers are keyboard-reachable"
+        );
+
+        // Guidance off: the same card renders without guidance, and neither
+        // state queued a command or moved authoritative state.
+        fixture
+            .host
+            .world_mut()
+            .resource_mut::<UiPreferences>()
+            .guidance = false;
+        fixture.render_full_shell(viewport, Vec::new());
+        let ctx = fixture.full_egui_context();
+        assert!(
+            semantic_responses(&ctx)
+                .into_iter()
+                .all(|entry| entry.role != "situation-guidance"),
+            "disabling the preference removes guidance and nothing else"
+        );
+        assert!(
+            fixture
+                .host
+                .world_mut()
+                .resource::<UiCommandQueue>()
+                .0
+                .is_empty(),
+            "guidance rendering emitted no commands"
+        );
+        assert_eq!(
+            fixture.host.state_hash(),
+            hash_before,
+            "the guidance preference is presentation only"
+        );
+    }
 
     #[cfg_attr(not(target_arch = "wasm32"), test)]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]

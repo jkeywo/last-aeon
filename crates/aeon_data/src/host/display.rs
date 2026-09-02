@@ -104,6 +104,14 @@ pub(super) fn fill_display_text(builder: &mut BuilderState, strings: &StringTabl
     for (key, def) in &mut builder.situations {
         def.title = fill.req("situation", key, "title");
         def.summary = fill.req("situation", key, "summary");
+        // Optional activation and guidance prose: the row decides. An
+        // announcement row makes activation raise a pausing popup; guidance
+        // rows feed the client's optional scenario guidance and never reach
+        // the simulation.
+        def.announcement = fill.opt(&format!("situation.{key}.announcement"));
+        def.guidance_objective = fill.opt(&format!("situation.{key}.guidance.objective"));
+        def.guidance_how = fill.opt(&format!("situation.{key}.guidance.how"));
+        def.guidance_why = fill.opt(&format!("situation.{key}.guidance.why"));
         for stage in &mut def.stages {
             let stem = format!("situation.{key}.stage.{}", stage.key);
             stage.title = fill.at(&format!("{stem}.title"));
@@ -211,6 +219,18 @@ pub fn text_keys(set: &ContentSet) -> BTreeSet<String> {
     for (key, def) in &set.situations {
         add(format!("situation.{key}.title"));
         add(format!("situation.{key}.summary"));
+        if def.announcement.is_some() {
+            add(format!("situation.{key}.announcement"));
+        }
+        if def.guidance_objective.is_some() {
+            add(format!("situation.{key}.guidance.objective"));
+        }
+        if def.guidance_how.is_some() {
+            add(format!("situation.{key}.guidance.how"));
+        }
+        if def.guidance_why.is_some() {
+            add(format!("situation.{key}.guidance.why"));
+        }
         for stage in &def.stages {
             let stem = format!("situation.{key}.stage.{}", stage.key);
             add(format!("{stem}.title"));

@@ -545,6 +545,10 @@ pub struct SituationOutcomeDef {
     /// Pure predicate selecting this outcome. `None` is the mandatory
     /// fallback and must be the final outcome.
     pub predicate_fn: Option<ScriptFnRef>,
+    /// Pure function returning typed effects applied once when this outcome
+    /// resolves. Requires the definition to declare an `owner_binding` so
+    /// the effects act for a concrete bound organisation.
+    pub effects_fn: Option<ScriptFnRef>,
     /// Player-facing resolution text, filled from the string table.
     pub text: String,
 }
@@ -567,6 +571,9 @@ pub struct SituationDef {
     pub source: SituationSubjectKind,
     /// Additional typed bindings returned by the trigger, by stable name.
     pub bindings: BTreeMap<String, SituationSubjectKind>,
+    /// Declared organisation binding whose bound organisation stands behind
+    /// outcome effects and the activation announcement, when any.
+    pub owner_binding: Option<String>,
     /// Pure function returning zero or more active instance bindings.
     pub trigger_fn: ScriptFnRef,
     /// Pure function returning the fixed presentation blocks for an instance.
@@ -575,6 +582,16 @@ pub struct SituationDef {
     pub priority: i32,
     /// Whether activation writes a permanent tagged log entry.
     pub log_activation: bool,
+    /// Optional activation announcement, filled from the string table.
+    /// When present, activation raises a pausing player popup with this text.
+    pub announcement: Option<String>,
+    /// Optional guidance objective shown by the client when scenario
+    /// guidance is enabled. Presentation-only; the simulation ignores it.
+    pub guidance_objective: Option<String>,
+    /// Optional "Show me how" guidance prose. Presentation-only.
+    pub guidance_how: Option<String>,
+    /// Optional "Why this matters" guidance prose. Presentation-only.
+    pub guidance_why: Option<String>,
     /// Authored audience, public by default.
     pub visibility: SituationVisibilityDef,
     /// Stages the projection may select.

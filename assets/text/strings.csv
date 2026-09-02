@@ -840,3 +840,25 @@ ui.forecast.compact,Always-visible compact forecast summary. {days} is duration 
 sim.refusal.paramount-claim-unavailable,Authoritative refusal when a personal Paramount claim action does not meet the live claim rules.,[This character cannot take that step in the Paramount succession now.]
 sim.refusal.formal-war-unavailable,Authoritative refusal when a formal-war action does not meet the live war rules.,[This formal-war action is not available under the present sides and hierarchy.]
 sim.refusal.not-war-leader,Authoritative refusal when someone without whole-side peace authority tries to negotiate.,[Only the current leader of a war side may settle the whole conflict.]
+situation.court-awaits.title,Title of the day-one authority Situation demanding a first order.,[The Court Awaits]
+situation.court-awaits.summary,Summary of the day-one authority Situation.,"[The assembled court of House Harrow waits on its new head. It expects a substantive order — any ordinary assignment, accepted within seven days.]"
+situation.court-awaits.announcement,"Pausing announcement shown once when the court gathers on day one. States the demand, the deadline, and the exact consequence in advance.","[The court has gathered and waits on your word. Give the household a substantive order — any ordinary assignment — within seven days, or House Harrow forfeits 10 Influence.]"
+situation.court-awaits.stage.waiting.title,Stage title while the court's demand stands unanswered.,[The court waits]
+situation.court-awaits.stage.waiting.summary,Stage summary while the court's demand stands unanswered.,[No order has yet been accepted. The court's patience ends on the stated day.]
+situation.court-awaits.stage.waiting.warning,Warning while the court's demand stands unanswered.,[Give an order before the deadline or forfeit Influence.]
+situation.court-awaits.action.hold-court.label,Button label for answering the court by holding court.,[Hold court]
+situation.court-awaits.resolution.answered.text,Resolution text when an accepted assignment answered the court in time. {house} is the house's name.,[{house} gave its court a substantive order within the week. The reign begins with its authority affirmed.]
+situation.court-awaits.resolution.lapsed.text,Resolution text when the deadline passed with no accepted assignment. {house} is the house's name and {penalty} the exact Influence forfeited.,[The court dispersed unanswered. {house} forfeited {penalty} Influence before the reign had fairly begun.]
+situation.court-awaits.resolution.closed.text,Fallback resolution text if the demand ends any other way.,[The court dispersed.]
+situation.court-awaits.guidance.objective,First Reign guidance objective for the day-one authority test. Shown only when guidance is enabled; never read by the simulation.,"[Objective: have any ordinary House Harrow assignment accepted within seven days. Invalid or unaffordable attempts are refused as normal, and do not count.]"
+situation.court-awaits.guidance.how,"First Reign ""Show me how"" help for the day-one authority test. Presentation only.","[Open an action from this card or from a character's inspector, choose an eligible leader, read the forecast, and confirm. Orders take a day or more to arrive, so leave time before the deadline. Any accepted assignment answers the court — there is no single correct opening.]"
+situation.court-awaits.guidance.why,"First Reign ""Why this matters"" help for the day-one authority test. Presentation only.","[A new head who cannot move the household loses standing. Influence is the spendable political capital behind petitions, musters, and claims; the stated forfeit is real, but the campaign continues either way and Influence slowly recovers with legitimacy.]"
+sim.situation.acknowledge,Single acknowledgement choice on a Situation activation announcement popup.,[Understood]
+ui.preferences.guidance,Tickbox label for the default-on First Reign scenario guidance preference.,[First Reign guidance]
+ui.preferences.guidance-note,Small print under the guidance tickbox.,"[Adds objectives and optional help to scenario Situations. The campaign's rules, deadlines, and consequences are identical with it off.]"
+ui.situations.guidance-heading,Heading above optional First Reign guidance on a Situation card.,[Guidance]
+ui.situations.show-how,"Focusable trigger for the optional ""Show me how"" guidance help.",[Show me how]
+ui.situations.why-matters,"Focusable trigger for the optional ""Why this matters"" guidance help.",[Why this matters]
+situation.metric.days-left,Situation metric label: whole days remaining before an authoritative deadline.,[Days remaining]
+situation.metric.influence-at-stake,Situation metric label: the exact Influence forfeited if the deadline lapses.,[Influence at stake]
+situation.metric.house-influence,Situation metric label: the house's current spendable Influence.,[Current Influence]

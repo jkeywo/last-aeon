@@ -403,10 +403,24 @@ fn bindings_map(key: &SituationInstanceKey) -> Map {
     bindings
 }
 
-fn call_context_with_world(key: &SituationInstanceKey, world_view: &Map) -> Map {
+fn call_context_with_world(
+    key: &SituationInstanceKey,
+    activated: Option<GameDate>,
+    world_view: &Map,
+) -> Map {
     let mut context = Map::new();
     context.insert("source".into(), source_map(&key.source).into());
     context.insert("bindings".into(), bindings_map(key).into());
+    // Projection and outcome calls receive the exact instance's activation
+    // date. A trigger receives the oldest live activation for its
+    // definition and source — exact for single-instance Situations — and
+    // the unit value when nothing is currently active.
+    context.insert(
+        "activated".into(),
+        activated
+            .map(|date| Dynamic::from(date.days_since_epoch()))
+            .unwrap_or(Dynamic::UNIT),
+    );
     context.insert("world".into(), world_view.clone().into());
     context
 }
@@ -911,15 +925,17 @@ fn project(
     world: &World,
     content: &ContentSet,
     key: &SituationInstanceKey,
+    activated: GameDate,
 ) -> Result<SituationProjection, SituationError> {
     let world_view = crate::script_world::context_value(world);
-    project_with_world(world, content, key, &world_view)
+    project_with_world(world, content, key, activated, &world_view)
 }
 
 fn project_with_world(
     world: &World,
     content: &ContentSet,
     key: &SituationInstanceKey,
+    activated: GameDate,
     world_view: &Map,
 ) -> Result<SituationProjection, SituationError> {
     let def = content.situations.get(&key.definition).ok_or_else(|| {
@@ -932,7 +948,7 @@ fn project_with_world(
         world,
         content,
         &def.projection_fn,
-        call_context_with_world(key, world_view),
+        call_context_with_world(key, Some(activated), world_view),
     )?;
     parse_projection(def, dynamic)
 }
@@ -957,7 +973,7 @@ fn resolve_with_world(
         .situations
         .get(&active.key.definition)
         .ok_or_else(|| SituationError::Undeclared("missing Situation definition".to_owned()))?;
-    let context = call_context_with_world(&active.key, world_view);
+    let context = call_context_with_world(&active.key, Some(active.activated), world_view);
     let mut selected = None;
     for outcome in &def.outcomes {
         let Some(predicate) = &outcome.predicate_fn else {
@@ -979,7 +995,7 @@ fn resolve_with_world(
     let outcome = selected.ok_or_else(|| {
         SituationError::Undeclared("Situation has no fallback outcome".to_owned())
     })?;
-    let projection = project_with_world(world, content, &active.key, world_view)?;
+    let projection = project_with_world(world, content, &active.key, active.activated, world_view)?;
     Ok(SituationResolution {
         id,
         situation: active.key.clone(),
@@ -1081,11 +1097,22 @@ pub fn evaluate(world: &mut World) {
             source: attachment.source.clone(),
             bindings: BTreeMap::new(),
         };
+        // The oldest live activation for this definition and source; exact
+        // for single-instance Situations, and the unit value when no
+        // lifecycle is currently active.
+        let earliest_activation = old
+            .active
+            .values()
+            .filter(|lifecycle| {
+                lifecycle.key.definition == def.key && lifecycle.key.source == attachment.source
+            })
+            .map(|lifecycle| lifecycle.activated)
+            .min();
         let result = call_dynamic(
             world,
             &content,
             &def.trigger_fn,
-            call_context_with_world(&synthetic, &world_view),
+            call_context_with_world(&synthetic, earliest_activation, &world_view),
         )
         .and_then(|dynamic| parse_trigger(world, def, &attachment.source, dynamic));
         match result {
@@ -1152,6 +1179,7 @@ pub fn evaluate(world: &mut World) {
         .map(|(_, active)| active.clone())
         .collect();
     let mut resolution_logs = Vec::new();
+    let mut resolution_effects = Vec::new();
     for ended in ended {
         next_resolution_id += 1;
         match resolve_with_world(
@@ -1164,6 +1192,25 @@ pub fn evaluate(world: &mut World) {
         ) {
             Ok(notice) => {
                 resolution_logs.push((notice.occurrence(), notice.text.clone()));
+                // A selected outcome may carry authored effects. They apply
+                // once, after the new lifecycle state is installed, against
+                // the organisation named by the declared owner binding.
+                if let Some(effects_fn) = content
+                    .situations
+                    .get(&notice.situation.definition)
+                    .and_then(|def| {
+                        def.outcomes
+                            .iter()
+                            .find(|outcome| outcome.key == notice.outcome)
+                    })
+                    .and_then(|outcome| outcome.effects_fn.clone())
+                {
+                    resolution_effects.push((
+                        notice.occurrence(),
+                        effects_fn,
+                        call_context_with_world(&ended.key, Some(ended.activated), &world_view),
+                    ));
+                }
                 resolutions.push(notice);
             }
             Err(error) => {
@@ -1180,7 +1227,13 @@ pub fn evaluate(world: &mut World) {
         if errors.contains_key(key) {
             continue;
         }
-        if let Err(error) = project_with_world(world, &content, &lifecycle.key, &world_view) {
+        if let Err(error) = project_with_world(
+            world,
+            &content,
+            &lifecycle.key,
+            lifecycle.activated,
+            &world_view,
+        ) {
             errors.insert(key.clone(), error.to_string());
         }
     }
@@ -1206,19 +1259,56 @@ pub fn evaluate(world: &mut World) {
     });
 
     for occurrence in activations {
-        if content
-            .situations
-            .get(&occurrence.situation.definition)
-            .is_some_and(|def| def.log_activation)
-        {
-            let title = &content.situations[&occurrence.situation.definition].title;
+        let Some(def) = content.situations.get(&occurrence.situation.definition) else {
+            continue;
+        };
+        if def.log_activation {
             let text = world
                 .resource::<crate::text::TextDb>()
-                .format("sim.situation.activated", &[("situation", title)]);
+                .format("sim.situation.activated", &[("situation", &def.title)]);
             crate::access::log(
                 world,
                 situation_log_entry(world, &occurrence, LogEntry::line(text, LogChannel::Events)),
             );
+        }
+        // An authored announcement gives the activation a popup-bearing
+        // path: the popup enters ordinary authoritative popup state, so the
+        // existing popup auto-pause covers it without touching the
+        // deliberately non-pausing warning attention model. Both the check
+        // and the content are pure functions of authoritative state.
+        if let Some(announcement) = &def.announcement
+            && visible_to_player(world, &occurrence.situation)
+        {
+            let owner = outcome_owner(def, &occurrence.situation);
+            let roles = crate::assignments::AssignmentRoles::resolve(
+                world,
+                crate::assignments::RoleSeed {
+                    owner,
+                    ..Default::default()
+                },
+            );
+            let acknowledge = world
+                .resource::<crate::text::TextDb>()
+                .text("sim.situation.acknowledge")
+                .to_owned();
+            if let Some(mut popups) = world.get_resource_mut::<crate::assignments::PendingPopups>()
+            {
+                let id = popups.next_id;
+                popups.next_id += 1;
+                popups.popups.push(crate::assignments::PendingPopup {
+                    id,
+                    date,
+                    assignment: occurrence.situation.definition.clone(),
+                    result: aeon_data::model::OutcomeKind::Success,
+                    text: announcement.clone(),
+                    choices: vec![(
+                        ContentKey::new("acknowledged").expect("static key"),
+                        acknowledge,
+                    )],
+                    roles,
+                    origin_situation: Some(occurrence.clone()),
+                });
+            }
         }
     }
     for (occurrence, text) in resolution_logs {
@@ -1227,8 +1317,48 @@ pub fn evaluate(world: &mut World) {
             situation_log_entry(world, &occurrence, LogEntry::line(text, LogChannel::Events)),
         );
     }
+    // Outcome effects run last, after lifecycle state and resolution history
+    // are in place, in deterministic resolution order.
+    for (occurrence, effects_fn, context) in resolution_effects {
+        let Some(def) = content.situations.get(&occurrence.situation.definition) else {
+            continue;
+        };
+        let owner = outcome_owner(def, &occurrence.situation);
+        let effects = {
+            let runtime = world.resource::<ScriptRuntime>();
+            runtime.0.call_effect_fn(&content, &effects_fn, context)
+        };
+        match effects {
+            Ok(effects) => {
+                let roles = crate::assignments::AssignmentRoles::resolve(
+                    world,
+                    crate::assignments::RoleSeed {
+                        owner,
+                        ..Default::default()
+                    },
+                );
+                crate::assignments::apply_effects_with_origin(
+                    world,
+                    &effects,
+                    &roles,
+                    owner,
+                    Some(&occurrence),
+                );
+            }
+            Err(error) => log_diagnostic(world, &occurrence, &error.to_string()),
+        }
+    }
     for (occurrence, error) in new_diagnostics {
         log_diagnostic(world, &occurrence, &error);
+    }
+}
+
+/// The organisation bound by a definition's declared owner binding, if any.
+fn outcome_owner(def: &SituationDef, key: &SituationInstanceKey) -> Option<crate::ids::OrgId> {
+    let binding = def.owner_binding.as_ref()?;
+    match key.bindings.get(binding) {
+        Some(SituationSubject::Organisation(org)) => Some(*org),
+        _ => None,
     }
 }
 
@@ -1247,7 +1377,7 @@ pub fn active_cards(world: &World) -> Vec<SituationCard> {
             let def = content.0.situations.get(&active.key.definition)?;
             let mut unavailable = state.runtime_errors.get(&active.key).cloned();
             let projection = if unavailable.is_none() {
-                match project(world, &content.0, &active.key) {
+                match project(world, &content.0, &active.key, active.activated) {
                     Ok(projection) => Some(projection),
                     Err(error) => {
                         unavailable = Some(error.to_string());
@@ -1390,7 +1520,12 @@ pub fn assignment_for_action(
     let state = world
         .get_resource::<SituationState>()
         .ok_or_else(|| SituationError::Undeclared("no Situation state".to_owned()))?;
-    if !state.active.contains_key(situation) || state.runtime_errors.contains_key(situation) {
+    let Some(lifecycle) = state.active.get(situation) else {
+        return Err(SituationError::Undeclared(
+            "Situation is not currently available".to_owned(),
+        ));
+    };
+    if state.runtime_errors.contains_key(situation) {
         return Err(SituationError::Undeclared(
             "Situation is not currently available".to_owned(),
         ));
@@ -1400,7 +1535,7 @@ pub fn assignment_for_action(
         .situations
         .get(&situation.definition)
         .ok_or_else(|| SituationError::Undeclared("missing Situation definition".to_owned()))?;
-    let projection = project(world, &content.0, situation)?;
+    let projection = project(world, &content.0, situation, lifecycle.activated)?;
     projection
         .actions
         .iter()

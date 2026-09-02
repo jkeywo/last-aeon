@@ -193,9 +193,22 @@ show; unavailable leaders and actions name their blockers; Situation cards
 state the problem, stage, warning, deadline, participants, related subjects,
 history, and available responses. The title screen explains spectator mode.
 
-There is no evidenced first-campaign tutorial, guided opening sequence,
+**Implemented.** [ai] The First Reign slice adds an optional guidance layer
+over those same surfaces. A default-on **First Reign guidance** tickbox sits
+with the interface preferences on both the title screen and campaign
+settings, persisting in the same client-owned versioned preferences
+document. When enabled, a Situation whose content authors guidance prose
+shows a Guidance heading with its objective plus "Show me how" and "Why this
+matters" triggers — the shared focusable, pinnable explanation surface
+carrying prose-only topics with no forecast body. Guidance is additive
+presentation: it emits no commands, and disabling it removes only the
+guidance block. Situation activations may also raise a pausing announcement
+popup through the ordinary popup channel, which is authoritative simulation
+state independent of the preference.
+
+There is no evidenced full first-campaign tutorial sequence,
 codex/manual surface, control-remapping screen, or difficulty-selection flow.
-The wider onboarding questions and proposed campaign opening belong in [Player
+The wider onboarding questions and the campaign opening belong in [Player
 Experience, Campaign, and Onboarding](01-player-experience-campaign-and-onboarding.md).
 
 **Proposal.** Treat the first-play onboarding design as a separate acceptance

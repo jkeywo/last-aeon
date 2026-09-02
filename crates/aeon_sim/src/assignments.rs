@@ -1844,6 +1844,28 @@ pub fn apply_effects(
                     buildings.0.pop();
                 }
             }
+            ScriptEffect::Resources {
+                wealth,
+                manpower,
+                supplies,
+                influence,
+            } => {
+                // Exact signed changes to the owning organisation's pools.
+                // Applied verbatim: an authored consequence names its own
+                // magnitude, and a pool may go negative when it says so.
+                let Some(owner) = owner else {
+                    continue;
+                };
+                let Some(entity) = crate::access::org_entity(world, owner) else {
+                    continue;
+                };
+                if let Some(mut resources) = world.get_mut::<crate::economy::OrgResources>(entity) {
+                    resources.wealth += *wealth;
+                    resources.manpower += *manpower;
+                    resources.supplies += *supplies;
+                    resources.influence += *influence;
+                }
+            }
             ScriptEffect::Construct { building } => {
                 // Raise the building on the province the work was aimed
                 // at. Only what content defines can be built.
@@ -1868,7 +1890,7 @@ pub fn apply_effects(
 /// Situation action that caused them. Nested domain helpers may write their
 /// own lines, so tagging the appended slice keeps provenance complete without
 /// teaching each effect vocabulary entry about presentation lifecycles.
-fn apply_effects_with_origin(
+pub(crate) fn apply_effects_with_origin(
     world: &mut World,
     effects: &[ScriptEffect],
     roles: &AssignmentRoles,

@@ -366,6 +366,7 @@ fn draw_active_card(
                     warning,
                 );
             }
+            draw_guidance(ui, view, ctx, out);
             if let Some(reason) = &view.card.unavailable {
                 ui.colored_label(
                     egui::Color32::from(ctx.data.theme.semantics.urgent),
@@ -423,6 +424,71 @@ fn draw_active_card(
         response.scroll_to_me(Some(egui::Align::Center));
         out.situation_ui.focused = None;
     }
+}
+
+/// Optional authored guidance under a card: an objective line plus the
+/// "Show me how" and "Why this matters" help routes.
+///
+/// Purely additive presentation gated by the client-owned guidance
+/// preference: the prose is authored content on the Situation definition,
+/// the triggers reuse the shared pinnable-explanation surface, and nothing
+/// here reads or writes simulation rules, commands, or state.
+fn draw_guidance(
+    ui: &mut egui::Ui,
+    view: &ActiveSituationView,
+    ctx: &PanelCtx,
+    out: &mut PanelOut,
+) {
+    if !ctx.guidance {
+        return;
+    }
+    let Some(def) = ctx.content.situations.get(&view.card.active.key.definition) else {
+        return;
+    };
+    let has_help = def.guidance_how.is_some() || def.guidance_why.is_some();
+    if def.guidance_objective.is_none() && !has_help {
+        return;
+    }
+    ui.separator();
+    ui.strong(ctx.strings.text("ui.situations.guidance-heading"));
+    if let Some(objective) = &def.guidance_objective {
+        ui.label(objective);
+    }
+    if !has_help {
+        return;
+    }
+    let occurrence = format!("{:?}@{}", view.card.active.key, view.card.active.activated);
+    ui.horizontal_wrapped(|ui| {
+        for (kind, label_key, prose) in [
+            ("how", "ui.situations.show-how", &def.guidance_how),
+            ("why", "ui.situations.why-matters", &def.guidance_why),
+        ] {
+            let Some(prose) = prose else {
+                continue;
+            };
+            let topic = ExplanationTopic {
+                title: format!("{} — {}", view.card.title, ctx.strings.text(label_key)),
+                summary: prose.clone(),
+                forecast: None,
+            };
+            let response = crate::ui::explanations::labelled_explanation_trigger(
+                ui,
+                &ctx.data.theme,
+                ctx.strings,
+                ctx.strings.text(label_key),
+                &topic,
+                out.explanations,
+                crate::ui::keyboard::LogicalFocus::new(format!(
+                    "situation-guidance:{occurrence}:{kind}"
+                )),
+                crate::ui::keyboard::FocusBand::Right,
+            );
+            #[cfg(test)]
+            crate::ui::rendered_state::record_response(ui, "situation-guidance", &response);
+            #[cfg(not(test))]
+            let _ = response;
+        }
+    });
 }
 
 /// Exact structural tags are the only membership test. Iterating the
@@ -507,7 +573,7 @@ fn draw_action(
         let topic = ExplanationTopic {
             title: label,
             summary: forecast_summary(ctx.strings, forecast),
-            forecast: forecast.clone(),
+            forecast: Some(forecast.clone()),
         };
         response = preview_for_response(response, &ctx.data.theme, ctx.strings, &topic);
         #[cfg(test)]

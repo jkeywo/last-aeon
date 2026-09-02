@@ -14,7 +14,8 @@ use aeon_sim::wars::{
     WarConclusionKind, WarSideId, can_adopt_side, conclude_war, declare_war, war,
 };
 use aeon_sim::{
-    CampaignConfig, CommandRejection, MapIndex, OrgId, PlayerCommand, PoliticsIndex, SimHost,
+    CampaignConfig, CommandRejection, MapIndex, OrgId, PendingPopups, PlayerCommand, PoliticsIndex,
+    SimHost,
 };
 
 fn key(text: &str) -> ContentKey {
@@ -27,7 +28,17 @@ fn sources() -> Vec<aeon_data::ContentSource> {
 }
 
 fn load_sources(sources: &[aeon_data::ContentSource]) -> Arc<ContentSet> {
-    let (set, report) = load_content(sources, &aeon_data::StringTable::blank());
+    // The real string table: authored optional prose (stage warnings,
+    // announcements) is table-decided, so a blank table would change which
+    // projections are even legal.
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/content");
+    let (strings, report) = aeon_data::fs::read_string_table(&root).expect("strings readable");
+    assert!(
+        !report.has_errors(),
+        "string findings: {:?}",
+        report.findings
+    );
+    let (set, report) = load_content(sources, &strings.expect("valid string table"));
     assert!(
         set.is_some(),
         "repository content must load: {:?}",
@@ -89,7 +100,11 @@ fn opening_deck_projects_day_one_situations_without_runtime_errors() {
         .into_iter()
         .map(|card| card.active.key.definition)
         .collect();
-    for expected in [key("planetary-succession"), key("favour-debt")] {
+    for expected in [
+        key("planetary-succession"),
+        key("favour-debt"),
+        key("court-awaits"),
+    ] {
         assert!(definitions.contains(&expected), "missing {expected}");
     }
 }
@@ -858,4 +873,410 @@ fn projection_error_is_unavailable_logged_once_and_snapshot_stable() {
             .count(),
         log_count
     );
+}
+
+// ---------------------------------------------------------------------------
+// The Court Awaits: the day-one authority test of the First Reign arc.
+// ---------------------------------------------------------------------------
+
+fn court_card(host: &mut SimHost) -> Option<aeon_sim::situations::SituationCard> {
+    active_cards(host.world_mut())
+        .into_iter()
+        .find(|card| card.active.key.definition == key("court-awaits"))
+}
+
+fn influence_of(host: &mut SimHost, org: OrgId) -> i64 {
+    let world = host.world_mut();
+    let entity = aeon_sim::access::org_entity(world, org).expect("indexed organisation");
+    world
+        .get::<aeon_sim::OrgResources>(entity)
+        .expect("organisations carry resources")
+        .influence
+}
+
+#[test]
+fn court_awaits_activates_on_day_one_with_deadline_announcement_and_history() {
+    let mut host = scenario_host(301, repository_content());
+    let start = host
+        .world_mut()
+        .resource::<aeon_sim::CampaignClock>()
+        .start_date;
+    let card = court_card(&mut host).expect("day-one court demand");
+    assert_eq!(card.unavailable, None);
+    let projection = card.projection.clone().expect("court projection");
+    // The seven-day deadline is authored content projected authoritatively.
+    assert_eq!(projection.deadline, Some(start.add_days(7)));
+    assert!(projection.warning, "the demand is urgent from day one");
+    assert!(
+        projection
+            .actions
+            .iter()
+            .any(|action| action.id == key("hold-court")),
+        "the card offers an ordinary assignment route"
+    );
+
+    // Activation wrote permanent tagged history.
+    let occurrence = card.active.occurrence();
+    assert_eq!(occurrence.activated, start);
+    assert!(
+        host.world_mut()
+            .resource::<MessageLog>()
+            .entries
+            .iter()
+            .any(|entry| entry.situations.contains(&occurrence)),
+        "activation is permanent tagged history"
+    );
+
+    // Activation raised an ordinary pausing popup stating the demand: the
+    // popup path is what auto-pauses the client, and its single choice is
+    // acknowledgeable through the ordinary command pipeline.
+    let popup = host
+        .world_mut()
+        .resource::<PendingPopups>()
+        .popups
+        .iter()
+        .find(|popup| popup.assignment == key("court-awaits"))
+        .cloned()
+        .expect("activation announcement popup");
+    assert!(popup.text.contains("seven days"));
+    assert!(popup.text.contains("10 Influence"));
+    let choice = popup.choices[0].0.clone();
+    host.submit(PlayerCommand::AnswerPopup {
+        popup: popup.id,
+        choice,
+    })
+    .expect("announcement acknowledgement is an ordinary command");
+    host.advance_days(1);
+    assert!(
+        !host
+            .world_mut()
+            .resource::<PendingPopups>()
+            .popups
+            .iter()
+            .any(|candidate| candidate.id == popup.id),
+        "the acknowledged announcement is cleared"
+    );
+}
+
+#[test]
+fn court_awaits_is_private_to_harrow_and_visible_to_spectators() {
+    let mut host = scenario_host(302, repository_content());
+    let situation = court_card(&mut host).expect("court demand").active.key;
+    assert!(aeon_sim::situations::visible_to_player(
+        host.world_mut(),
+        &situation
+    ));
+    let veyrin = org(&mut host, "veyrin");
+    host.world_mut().resource_mut::<PlayerHouse>().0 = Some(veyrin);
+    assert!(!aeon_sim::situations::visible_to_player(
+        host.world_mut(),
+        &situation
+    ));
+    host.world_mut().resource_mut::<PlayerHouse>().0 = None;
+    assert!(aeon_sim::situations::visible_to_player(
+        host.world_mut(),
+        &situation
+    ));
+}
+
+#[test]
+fn any_accepted_ordinary_assignment_answers_the_court_without_penalty() {
+    let content = repository_content();
+    let mut host = scenario_host(303, Arc::clone(&content));
+    let harrow = org(&mut host, "harrow");
+    let opening_influence = influence_of(&mut host, harrow);
+    let occurrence = court_card(&mut host)
+        .expect("court demand")
+        .active
+        .occurrence();
+    let kessarin =
+        host.world_mut().resource::<PoliticsIndex>().character_keys[&key("kessarin-harrow")];
+
+    // Any ordinary assignment counts — not only the card's own shortcut.
+    let envelope = host
+        .submit(PlayerCommand::StartAssignment {
+            assignment: key("manage-estates"),
+            leader: kessarin,
+            target: AssignmentTarget::None,
+        })
+        .expect("an ordinary valid command is accepted");
+    while host.date() < envelope.day {
+        host.advance_days(1);
+    }
+
+    assert!(
+        court_card(&mut host).is_none(),
+        "the demand resolves on the day the assignment is accepted"
+    );
+    let notice = host
+        .world_mut()
+        .resource::<SituationState>()
+        .resolutions
+        .iter()
+        .find(|notice| notice.situation.definition == key("court-awaits"))
+        .cloned()
+        .expect("durable resolution notice");
+    assert_eq!(notice.outcome, key("answered"));
+    assert_eq!(notice.occurrence(), occurrence);
+    assert_eq!(
+        influence_of(&mut host, harrow),
+        opening_influence,
+        "answering the court costs nothing beyond the assignment itself"
+    );
+
+    // The resolution and its history are private to the house but open to
+    // spectators.
+    let tagged: Vec<_> = host
+        .world_mut()
+        .resource::<MessageLog>()
+        .entries
+        .iter()
+        .filter(|entry| entry.situations.contains(&occurrence))
+        .cloned()
+        .collect();
+    assert!(tagged.len() >= 2, "activation and resolution history");
+    let veyrin = org(&mut host, "veyrin");
+    for entry in &tagged {
+        assert!(entry.audience.visible_to(Some(harrow)));
+        assert!(!entry.audience.visible_to(Some(veyrin)));
+        assert!(entry.audience.visible_to(None));
+    }
+
+    // No reactivation: the court gathers once per campaign.
+    host.advance_days(60);
+    assert!(court_card(&mut host).is_none());
+    assert_eq!(
+        host.world_mut()
+            .resource::<SituationState>()
+            .resolutions
+            .iter()
+            .filter(|notice| notice.situation.definition == key("court-awaits"))
+            .count(),
+        1
+    );
+
+    let mut restored = SimHost::restore_with_content(host.snapshot(), content).unwrap();
+    assert!(
+        restored
+            .world_mut()
+            .resource::<SituationState>()
+            .resolutions
+            .iter()
+            .any(|notice| notice.situation.definition == key("court-awaits")),
+        "the resolution is durable across save and load"
+    );
+}
+
+#[test]
+fn an_assignment_accepted_on_the_deadline_day_still_answers_the_court() {
+    let mut host = scenario_host(304, repository_content());
+    let harrow = org(&mut host, "harrow");
+    let opening_influence = influence_of(&mut host, harrow);
+    let start = host
+        .world_mut()
+        .resource::<aeon_sim::CampaignClock>()
+        .start_date;
+    let edrun = aeon_sim::access::org_head(host.world_mut(), harrow).expect("harrow head");
+
+    // The head's own orders carry no delivery delay: submitted on day six,
+    // the assignment is accepted exactly on the deadline day.
+    host.advance_days(6);
+    let envelope = host
+        .submit(PlayerCommand::StartAssignment {
+            assignment: key("manage-estates"),
+            leader: edrun,
+            target: AssignmentTarget::None,
+        })
+        .expect("a valid command on day six");
+    assert_eq!(
+        envelope.day,
+        start.add_days(7),
+        "accepted on the deadline day"
+    );
+    host.advance_days(1);
+
+    let notice = host
+        .world_mut()
+        .resource::<SituationState>()
+        .resolutions
+        .iter()
+        .find(|notice| notice.situation.definition == key("court-awaits"))
+        .cloned()
+        .expect("boundary resolution");
+    assert_eq!(notice.outcome, key("answered"));
+    assert_eq!(influence_of(&mut host, harrow), opening_influence);
+}
+
+#[test]
+fn invalid_and_unaffordable_attempts_do_not_answer_and_the_lapse_forfeits_influence() {
+    let content = repository_content();
+    let mut host = scenario_host(305, Arc::clone(&content));
+    let harrow = org(&mut host, "harrow");
+    let opening_influence = influence_of(&mut host, harrow);
+
+    // An ineligible leader is refused by ordinary command validation.
+    let casimir =
+        host.world_mut().resource::<PoliticsIndex>().character_keys[&key("casimir-veyrin")];
+    assert!(matches!(
+        host.submit(PlayerCommand::StartAssignment {
+            assignment: key("manage-estates"),
+            leader: casimir,
+            target: AssignmentTarget::None,
+        }),
+        Err(CommandRejection::Assignment(
+            AssignmentRejection::IneligibleLeader
+        ))
+    ));
+
+    // An unaffordable assignment is refused by the same affordability rule
+    // as everywhere else; guidance has no bypass.
+    {
+        let world = host.world_mut();
+        let entity = aeon_sim::access::org_entity(world, harrow).expect("indexed");
+        world
+            .get_mut::<aeon_sim::OrgResources>(entity)
+            .expect("resources")
+            .wealth = 0;
+    }
+    let edrun = aeon_sim::access::org_head(host.world_mut(), harrow).expect("harrow head");
+    assert!(matches!(
+        host.submit(PlayerCommand::StartAssignment {
+            assignment: key("muster"),
+            leader: edrun,
+            target: AssignmentTarget::None,
+        }),
+        Err(CommandRejection::Assignment(
+            AssignmentRejection::CannotAfford
+        ))
+    ));
+
+    // Neither refused attempt answered the court; the deadline lapses and
+    // exactly the stated Influence is forfeited.
+    host.advance_days(7);
+    let notice = host
+        .world_mut()
+        .resource::<SituationState>()
+        .resolutions
+        .iter()
+        .find(|notice| notice.situation.definition == key("court-awaits"))
+        .cloned()
+        .expect("lapsed resolution");
+    assert_eq!(notice.outcome, key("lapsed"));
+    assert!(notice.text.contains("10 Influence"));
+    assert_eq!(influence_of(&mut host, harrow), opening_influence - 10);
+
+    // The campaign stays playable with a durable resolution: ordinary
+    // commands still work, the demand never reactivates, and the penalty is
+    // applied exactly once.
+    host.advance_days(53);
+    host.submit(PlayerCommand::StartAssignment {
+        assignment: key("manage-estates"),
+        leader: edrun,
+        target: AssignmentTarget::None,
+    })
+    .expect("the campaign continues after the forfeit");
+    host.advance_days(2);
+    assert!(court_card(&mut host).is_none(), "no reactivation");
+    assert_eq!(
+        host.world_mut()
+            .resource::<SituationState>()
+            .resolutions
+            .iter()
+            .filter(|notice| notice.situation.definition == key("court-awaits"))
+            .count(),
+        1
+    );
+    // Influence has only moved through the ordinary monthly recharge since.
+    assert!(influence_of(&mut host, harrow) >= opening_influence - 10);
+
+    let mut restored = SimHost::restore_with_content(host.snapshot(), content).unwrap();
+    assert_eq!(
+        restored
+            .world_mut()
+            .resource::<SituationState>()
+            .resolutions
+            .iter()
+            .filter(|notice| notice.situation.definition == key("court-awaits"))
+            .count(),
+        1,
+        "the lapsed resolution is durable across save and load"
+    );
+}
+
+#[test]
+fn court_awaits_snapshots_replay_before_at_and_after_the_deadline() {
+    let content = repository_content();
+
+    // Both lifecycles: one campaign answers the court, one lets it lapse.
+    for answered in [false, true] {
+        let seed = if answered { 306 } else { 307 };
+        let mut original = scenario_host(seed, Arc::clone(&content));
+        if answered {
+            let kessarin = original
+                .world_mut()
+                .resource::<PoliticsIndex>()
+                .character_keys[&key("kessarin-harrow")];
+            original
+                .submit(PlayerCommand::StartAssignment {
+                    assignment: key("manage-estates"),
+                    leader: kessarin,
+                    target: AssignmentTarget::None,
+                })
+                .unwrap();
+        }
+
+        // Snapshot before, at, and after the deadline day.
+        let mut checkpoints = Vec::new();
+        original.advance_days(3);
+        checkpoints.push(original.snapshot());
+        original.advance_days(4);
+        checkpoints.push(original.snapshot());
+        original.advance_days(3);
+        checkpoints.push(original.snapshot());
+        original.advance_days(20);
+        let final_hash = original.state_hash();
+        let final_date = original.date();
+
+        for snapshot in checkpoints {
+            let expected_mid = snapshot.state_hash;
+            let mut replayed =
+                SimHost::restore_with_content(snapshot, Arc::clone(&content)).unwrap();
+            assert_eq!(replayed.state_hash(), expected_mid, "restore is exact");
+            let remaining = replayed.date().days_until(final_date);
+            replayed.advance_days(remaining as u32);
+            assert_eq!(
+                replayed.state_hash(),
+                final_hash,
+                "every checkpoint replays to the same final state (answered: {answered})"
+            );
+        }
+    }
+}
+
+#[test]
+fn equal_seed_and_commands_reproduce_the_court_lifecycle_exactly() {
+    let content = repository_content();
+    let run = |seed: u64| {
+        let mut host = scenario_host(seed, Arc::clone(&content));
+        let edrun = {
+            let harrow = org(&mut host, "harrow");
+            aeon_sim::access::org_head(host.world_mut(), harrow).expect("harrow head")
+        };
+        host.submit(PlayerCommand::StartAssignment {
+            assignment: key("manage-estates"),
+            leader: edrun,
+            target: AssignmentTarget::None,
+        })
+        .unwrap();
+        host.advance_days(30);
+        host
+    };
+    let mut a = run(308);
+    let mut b = run(308);
+    assert_eq!(
+        a.world_mut().resource::<PendingPopups>(),
+        b.world_mut().resource::<PendingPopups>(),
+        "announcement popups are deterministic state"
+    );
+    assert_eq!(a.state_hash(), b.state_hash());
 }

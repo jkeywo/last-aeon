@@ -262,6 +262,22 @@ The current reusable deck contains:
 | Consular vacancy | Consular title | Candidate standings and political actions |
 | Favour debt | One obligation | Private, actionable debt between its two parties |
 | Formal war | Scenario, bound to one exact war | Sides, participating forces, objectives, adoption, operations, and peace |
+| The Court Awaits | Scenario, bound to House Harrow | Day-one authority test: any accepted ordinary assignment within seven days, or a 10-Influence forfeit |
+
+[ai] The Court Awaits slice added three reusable seams the deck may now use.
+Situation call contexts carry the instance's activation date (triggers see
+the oldest live activation for their definition and source, or none), and
+the shared world view exposes the campaign start date, so authored deadlines
+such as "seven days after activation" are computed in content. A definition
+may declare an optional table-decided activation announcement: activation
+then raises an ordinary pausing acknowledgement popup for audiences the
+player may see, stating the demand and its consequence in advance. And an
+outcome may declare an `effects_fn` plus a definition-level `owner_binding`:
+when that outcome resolves, its typed effects (including the new exact
+signed `resources` effect) are applied once for the bound organisation,
+through the same effect boundary and provenance tagging as assignment
+results. All authored magnitudes — the seven days, the 10 Influence — live
+in scenario content, not in Rust.
 
 Visibility follows authoritative audience rules. In particular, favour debt is
 private to its parties in player-led play while spectator mode can inspect it.

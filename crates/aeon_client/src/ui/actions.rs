@@ -329,7 +329,7 @@ pub fn draw_forecast(
             &ExplanationTopic {
                 title: view.title.clone(),
                 summary: forecast_summary(strings, view),
-                forecast: view.clone(),
+                forecast: Some(view.clone()),
             },
             explanations,
             crate::ui::keyboard::LogicalFocus::new(format!(

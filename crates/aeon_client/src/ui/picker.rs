@@ -206,7 +206,7 @@ fn draw_candidate(
     let topic = ExplanationTopic {
         title: option.name.clone(),
         summary: forecast_summary(strings, &option.forecast),
-        forecast: option.forecast.clone(),
+        forecast: Some(option.forecast.clone()),
     };
     let response = preview_for_response(response, theme, strings, &topic);
     explanation_trigger(

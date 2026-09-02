@@ -94,12 +94,28 @@ impl UiDensity {
 }
 
 /// Client-owned preferences shared by the title and campaign surfaces.
-#[derive(Resource, Copy, Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Resource, Copy, Clone, Debug, PartialEq, Eq)]
 pub struct UiPreferences {
     /// Whole-interface scale.
     pub scale: UiScale,
     /// Spacing and control density.
     pub density: UiDensity,
+    /// Whether scenario guidance (First Reign objectives and optional help)
+    /// is shown. Default-on, presentation-only: it adds explanation to
+    /// Situation cards and never reaches commands, snapshots, or hashes.
+    pub guidance: bool,
+}
+
+impl Default for UiPreferences {
+    fn default() -> Self {
+        Self {
+            scale: UiScale::default(),
+            density: UiDensity::default(),
+            // Guidance defaults on so a first campaign offers help without
+            // requiring the player to discover a setting.
+            guidance: true,
+        }
+    }
 }
 
 /// Whether the campaign settings window is open.
@@ -132,6 +148,15 @@ struct PreferenceDocument {
     version: u32,
     ui_scale: UiScale,
     density: UiDensity,
+    /// Added after version 1 shipped. Absent in older documents, so it
+    /// defaults on rather than bumping the version: a missing field means
+    /// the player has never chosen, and the default is guidance enabled.
+    #[serde(default = "default_guidance")]
+    first_reign_guidance: bool,
+}
+
+fn default_guidance() -> bool {
+    true
 }
 
 impl From<UiPreferences> for PreferenceDocument {
@@ -140,6 +165,7 @@ impl From<UiPreferences> for PreferenceDocument {
             version: DOCUMENT_VERSION,
             ui_scale: value.scale,
             density: value.density,
+            first_reign_guidance: value.guidance,
         }
     }
 }
@@ -160,6 +186,7 @@ fn decode(document: &str) -> Result<UiPreferences, String> {
     Ok(UiPreferences {
         scale: document.ui_scale,
         density: document.density,
+        guidance: document.first_reign_guidance,
     })
 }
 
@@ -440,6 +467,19 @@ pub fn draw_controls(
     )
     .register();
     ui.weak(strings.text("ui.preferences.note"));
+    let guidance = ui.checkbox(
+        &mut preferences.guidance,
+        strings.text("ui.preferences.guidance").to_owned(),
+    );
+    crate::ui::keyboard::capture_action(
+        ui,
+        crate::ui::keyboard::LogicalFocus::new("preference-guidance"),
+        "preference-guidance",
+        crate::ui::keyboard::FocusBand::Floating,
+        &guidance,
+    )
+    .register();
+    ui.weak(strings.text("ui.preferences.guidance-note"));
 }
 
 /// Draws the campaign settings surface.
@@ -556,18 +596,45 @@ mod tests {
         let preferences = UiPreferences::default();
         assert_eq!(preferences.scale, UiScale::Percent100);
         assert_eq!(preferences.density, UiDensity::Compact);
+        assert!(
+            preferences.guidance,
+            "scenario guidance is on until the player turns it off"
+        );
     }
 
     #[test]
     fn every_supported_choice_round_trips_through_the_storage_contract() {
         for scale in UiScale::ALL {
             for density in UiDensity::ALL {
-                let expected = UiPreferences { scale, density };
-                let store = MemoryStore::default();
-                save_to(&store, expected).expect("memory store accepts the document");
-                assert_eq!(load_from(&store), expected);
+                for guidance in [true, false] {
+                    let expected = UiPreferences {
+                        scale,
+                        density,
+                        guidance,
+                    };
+                    let store = MemoryStore::default();
+                    save_to(&store, expected).expect("memory store accepts the document");
+                    assert_eq!(load_from(&store), expected);
+                }
             }
         }
+    }
+
+    #[test]
+    fn documents_written_before_the_guidance_field_keep_guidance_on() {
+        // A version-1 document from before the field existed stays valid:
+        // the absent field means "never chosen", which defaults on.
+        let store = MemoryStore(RefCell::new(Some(
+            r#"{"version":1,"ui_scale":"percent150","density":"comfortable"}"#.to_owned(),
+        )));
+        assert_eq!(
+            load_from(&store),
+            UiPreferences {
+                scale: UiScale::Percent150,
+                density: UiDensity::Comfortable,
+                guidance: true,
+            }
+        );
     }
 
     #[test]
@@ -593,6 +660,7 @@ mod tests {
         let expected = UiPreferences {
             scale: UiScale::Percent200,
             density: UiDensity::Comfortable,
+            guidance: false,
         };
         assert_eq!(load_from(&store), UiPreferences::default());
         save_to(&store, expected).expect("key/value backend accepts preferences");
@@ -642,6 +710,7 @@ mod tests {
         let expected = UiPreferences {
             scale: UiScale::Percent150,
             density: UiDensity::Comfortable,
+            guidance: false,
         };
         save_to(&NativeStore::at(&path), expected).expect("native preferences are written");
         assert!(path.is_file(), "the versioned document was created");
@@ -709,6 +778,7 @@ mod tests {
         let preferences = UiPreferences {
             scale: UiScale::Percent200,
             density: UiDensity::Comfortable,
+            guidance: false,
         };
         let store = MemoryStore::default();
         save_to(&store, preferences).expect("presentation preference persists");

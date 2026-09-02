@@ -112,6 +112,19 @@ pub enum ScriptEffect {
     /// province, if it has one. The saboteur's answer to what a rival has
     /// built.
     Wreck,
+    /// Change the owning organisation's strategic resources by exact signed
+    /// amounts. Applied verbatim — content owns the magnitudes, and a pool
+    /// may go negative when an authored consequence says so.
+    Resources {
+        /// Signed wealth change.
+        wealth: i64,
+        /// Signed manpower change.
+        manpower: i64,
+        /// Signed supplies change.
+        supplies: i64,
+        /// Signed influence change.
+        influence: i64,
+    },
 }
 
 /// A assignment-context role an authored effect may address.
@@ -466,6 +479,28 @@ pub fn parse_effects(value: Dynamic) -> Result<Vec<ScriptEffect>, EffectParseErr
             "wreck" => {
                 effects.push(ScriptEffect::Wreck);
             }
+            "resources" => {
+                // Each pool is optional and defaults to no change, but a
+                // present field must actually be an integer: a mistyped
+                // amount is a loud parse error, not a silent zero.
+                let get_amount = |field: &str| -> Result<i64, EffectParseError> {
+                    match map.get(field) {
+                        None => Ok(0),
+                        Some(value) => value.as_int().map_err(|_| EffectParseError::BadField {
+                            index,
+                            kind: kind.clone(),
+                            field: field.to_owned(),
+                            expected: "integer".to_owned(),
+                        }),
+                    }
+                };
+                effects.push(ScriptEffect::Resources {
+                    wealth: get_amount("wealth")?,
+                    manpower: get_amount("manpower")?,
+                    supplies: get_amount("supplies")?,
+                    influence: get_amount("influence")?,
+                });
+            }
             other => {
                 return Err(EffectParseError::UnknownKind {
                     index,
@@ -534,6 +569,26 @@ mod tests {
         assert!(matches!(
             parse_effects(not_map),
             Err(EffectParseError::NotAMap { .. })
+        ));
+    }
+
+    #[test]
+    fn parses_resources_effects_with_exact_signed_amounts() {
+        let value = dynamic_from(r#"[#{ kind: "resources", influence: -10 }]"#);
+        assert_eq!(
+            parse_effects(value).unwrap(),
+            vec![ScriptEffect::Resources {
+                wealth: 0,
+                manpower: 0,
+                supplies: 0,
+                influence: -10,
+            }]
+        );
+
+        let mistyped = dynamic_from(r#"[#{ kind: "resources", wealth: "lots" }]"#);
+        assert!(matches!(
+            parse_effects(mistyped),
+            Err(EffectParseError::BadField { field, .. }) if field == "wealth"
         ));
     }
 

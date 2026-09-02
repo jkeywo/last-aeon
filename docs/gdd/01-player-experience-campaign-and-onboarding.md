@@ -83,13 +83,32 @@ This opening should convey four truths quickly:
 
 ### Onboarding experience
 
-**Implemented/current.** There is no dedicated tutorial, guided opening, or
-first-run campaign flow in the current client. Learning support is contextual:
+**Implemented/current.** There is no separate tutorial mode or first-run
+campaign flow in the current client. Learning support is contextual:
 the game starts paused; Situation cards expose live strategic problems and
 available responses; unavailable actions give authoritative reasons; forecasts
 show cost, delay, duration, skill contest, current result odds, effects, recall
 limits, and personal risk; panel and map-mode tooltips explain their readings;
 the filterable log preserves consequences and links to subjects.
+
+**Implemented/current.** [ai] The First Reign arc now gives that support an
+authored day-one shape. The Ashkarr scenario opens with **The Court Awaits**,
+an ordinary urgent Situation: the assembled court demands a substantive order,
+any accepted ordinary House Harrow assignment answers it within seven days,
+and letting the deadline lapse forfeits exactly 10 Influence with a durable
+resolution and the campaign continuing. The activation raises a pausing
+announcement popup that states the deadline and consequence in advance;
+invalid or unaffordable attempts are refused by ordinary command validation
+and do not count. A default-on, client-owned **First Reign guidance**
+preference (editable on the title screen and in campaign settings) adds an
+objective line and optional "Show me how" / "Why this matters" help to guided
+cards; the Situation, its deadline, and its consequence exist identically
+with guidance disabled, and equal seed and commands produce equal
+authoritative hashes either way. [ai] The resolved persistence rule: guidance
+shows only facts derived from authoritative state, and the sole persisted
+onboarding datum is the preference itself, stored in the client's versioned
+local preferences document rather than in any campaign save. The wider
+guided-sequence design below remains proposal.
 
 **Proposal.** Onboarding should use a short, dismissible sequence of goals over
 the live campaign rather than a separate rules sandbox. It should teach the
@@ -195,8 +214,11 @@ data rather than from a separate campaign script:
 **Proposal.** If guided onboarding is accepted, its progress should be explicit,
 versioned campaign or profile data with stable objective identities. It should
 observe authoritative state and submitted commands, never infer completion
-from transient UI clicks alone. Whether progress belongs to a campaign save or
-a player profile is an open product decision.
+from transient UI clicks alone. [ai] The First Reign slice resolves this for
+its own scope: guided objectives are read directly from authoritative
+Situation lifecycles and resolutions, so no separate progress store exists,
+and the guidance preference persists in the client's versioned interface
+preferences document — a local profile datum, never campaign state.
 
 ## Edge cases and recovery
 
@@ -245,7 +267,11 @@ The campaign should answer four questions at every stage:
 
 **Proposal.** A guided objective should explain why it appeared, show how to
 reach the relevant normal surface, and disappear without penalty when skipped.
-It should never obscure a higher-priority Situation warning. On succession, a
+It should never obscure a higher-priority Situation warning. [ai] The
+implemented day-one guidance meets this contract: it renders inside the
+ordinary Situation card beneath the card's own warning, its "Show me how" and
+"Why this matters" help uses the shared focusable pinnable-explanation
+surface, and disabling the preference removes only the guidance prose. On succession, a
 brief reign transition summary could gather the new head, inherited position,
 lost personal claims, active work, and urgent Situations; this is not currently
 an accepted or implemented feature.
@@ -311,6 +337,13 @@ an accepted or implemented feature.
    command evidence; manual review proves that wording does not prescribe a
    single Ashkarr strategy.
 
+[ai] The Court Awaits slice satisfies criteria 2 and 3 for its scope — the
+guidance preference is presentation-only with an explicit persistence rule,
+and any ordinary forecasted, logged command answers the demand — and its
+external-behaviour tests prove resolution, the day-seven boundary, and the
+10-Influence forfeit from authoritative state and command evidence alone.
+Criteria 1, 4, and the manual wording review remain open for the wider arc.
+
 ## Evidence
 
 - `pasm/spec/core/game-vision.yaml` — accepted campaign identity, open-ended MVP,
@@ -342,10 +375,6 @@ an accepted or implemented feature.
 
 - Who is the primary audience, and how much prior grand-strategy literacy may
   onboarding assume?
-- Should guidance be opt-in from the title screen, enabled by default on a
-  first campaign, or offered contextually after hesitation?
-- Where should tutorial progress persist: in one campaign, in a local profile,
-  or nowhere beyond the current session?
 - What session length and campaign horizon should UI pacing and content density
   target?
 - Does the finished game remain purely open-ended, or add optional ambitions,

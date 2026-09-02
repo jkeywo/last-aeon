@@ -2199,3 +2199,140 @@ entities:
         - forecasts-derive-from-shared-resolution-code
         - logical-point-responsive-campaign-shell
         - headless-authoritative-simulation
+
+  - decision: situation-context-carries-activation-and-start-facts
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Situation Contexts Carry Activation and Campaign-Start Dates
+      summary: >-
+        Every Situation script call context gains an `activated` field and
+        the shared semantic world view gains `start_date`. Projection and
+        outcome calls receive the exact instance's activation date; a
+        trigger receives the oldest live activation for its definition and
+        source — exact for single-instance Situations — or the unit value
+        when nothing is active. Both values are copies of authoritative
+        clock and lifecycle facts, so authored content can compute
+        deadlines such as "seven days after activation" and one-shot
+        opening-day gates without any Rust-side special case.
+      rationale:
+        - "[ai] Deadlines are gameplay values, so their arithmetic belongs in authored content; without the activation date in context, every dated demand would need a bespoke Rust rule."
+        - "[ai] Giving triggers the oldest live activation rather than a per-instance date keeps the synthetic trigger context honest: bindings are the trigger's own output and cannot key a lookup before they exist."
+        - "[ai] The start date makes 'the campaign's first day' expressible, which is what lets a scenario author a demand that activates exactly once and never reactivates after resolving."
+      references:
+        - situations-project-live-facts-into-authored-context
+        - situation-instances-have-structural-identity
+        - deterministic-campaign-simulation
+
+  - decision: situation-outcomes-emit-owned-effects
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Situation Outcomes May Emit Effects for a Bound Organisation
+      summary: >-
+        A Situation outcome may declare an `effects_fn` returning the same
+        typed effect vocabulary assignment results use. Because a Situation
+        has no leader or target, the definition names an `owner_binding` —
+        a declared organisation binding — and validation refuses effects
+        without one, an undeclared name, or a non-organisation kind. When
+        the outcome resolves, the effects are parsed, resolved against
+        roles seeded from that owner, applied once after the new lifecycle
+        state is installed, and tagged with the exact Situation occurrence
+        and audience. The vocabulary gains a `resources` effect applying
+        exact signed wealth, manpower, supplies, and influence changes to
+        the owner, verbatim: content owns the magnitudes, and a pool may go
+        negative when an authored consequence says so.
+      rationale:
+        - "[ai] Situations previously only described; a deadline whose lapse costs the stated Influence needs a consequence path, and reusing the assignment effect boundary keeps scripts pure and the vocabulary single."
+        - "[ai] An explicit validated owner binding stops a consequence from silently addressing nobody, which a role-vocabulary default would have allowed."
+        - "[ai] Applying effects after state installation in resolution order keeps the day's evaluation deterministic and lets the resolution's own log line precede any effect logs."
+        - "[ai] Exact-amount application is the contract the player was promised in advance; clamping would make the stated forfeit a lie at low pools."
+      references:
+        - situation-lifecycle-leaves-dismissible-resolutions
+        - scripts-emit-validated-effects-only
+        - situations-project-live-facts-into-authored-context
+        - deterministic-campaign-simulation
+
+  - decision: situation-activations-may-announce-through-popups
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Situation Activations May Announce Through Ordinary Popups
+      summary: >-
+        A Situation definition may carry a table-decided activation
+        announcement: when the row `situation.<id>.announcement` exists,
+        each activation the current player may see pushes one ordinary
+        pending popup carrying the announcement text, the definition key,
+        a single acknowledgement choice, roles seeded from the owner
+        binding, and the exact occurrence. The popup is authoritative
+        popup state, so the client's existing popup auto-pause covers the
+        activation and acknowledgement is an ordinary logged AnswerPopup
+        command with no effects. Situation warnings keep the deliberately
+        non-pausing attention model; only authored announcements pause.
+      rationale:
+        - "[ai] The day-one demand must interrupt, and the popup channel already owns deterministic pause-worthy interruptions with snapshot, replay, and answer semantics — a parallel pause path would drift."
+        - "[ai] Table-decided prose follows the house rule that the row decides optional text, so an announcement cannot exist without its words or point at the wrong ones."
+        - "[ai] Gating on authored visibility keeps a private house's demand from interrupting a rival player while remaining a pure function of authoritative state."
+      references:
+        - result-level-popups
+        - situations-own-one-dock-and-attention-links
+        - situation-instances-have-structural-identity
+        - scripted-command-boundary
+
+  - decision: the-court-awaits-is-an-ordinary-one-shot-demand
+    core:
+      status: accepted
+      confidence: confirmed
+      title: The Court Awaits Is an Ordinary One-Shot Scenario Demand
+      summary: >-
+        The Ashkarr scenario attaches The Court Awaits, a scenario-sourced
+        Situation bound to House Harrow that activates exactly once, on the
+        campaign's first day, and never reactivates. Its trigger counts an
+        ordinary accepted assignment — owner is the bound house, started on
+        or after activation and no later than activation plus the authored
+        seven days — so acceptance, not completion, answers the court, and
+        the deadline day itself still counts. Missing the window selects a
+        lapsed outcome whose effects remove exactly the authored 10
+        Influence, leaving a durable resolution and a playable campaign.
+        Both numbers live in the scenario content; houses start with
+        influence equal to authored legitimacy, so the forfeit is
+        meaningful without new authored resources.
+      rationale:
+        - "[ai] Counting accepted work keeps the promise 'any valid command within seven days' honest even though every authored assignment outlasts the window."
+        - "[ai] Satisfaction is checked before expiry so an order accepted on the deadline day answers the court, giving the boundary one deterministic reading."
+        - "[ai] The start-date gate makes the demand one-shot without new snapshot state: after any resolution the trigger stays silent because the opening day never returns."
+        - "[ai] The simulation rules exist identically with guidance on or off, which is what makes the equal-hash guarantee structural rather than tested-in."
+      references:
+        - situation-context-carries-activation-and-start-facts
+        - situation-outcomes-emit-owned-effects
+        - situation-activations-may-announce-through-popups
+        - scripted-content-with-ci-validation
+
+  - decision: first-reign-guidance-is-client-preference-prose
+    core:
+      status: accepted
+      confidence: confirmed
+      title: First Reign Guidance Is a Client Preference over Authored Prose
+      summary: >-
+        Scenario guidance is a default-on boolean in the client-owned
+        versioned interface preferences, edited beside scale and density on
+        the title and campaign settings surfaces. The stored document stays
+        at version one: the added field defaults on when absent, so
+        pre-guidance documents keep their meaning. Guidance prose is
+        table-decided content on the Situation definition —
+        `situation.<id>.guidance.objective`, `.how`, and `.why` — which the
+        simulation never reads. When the preference is on, a guided card
+        shows the objective plus "Show me how" and "Why this matters"
+        triggers reusing the shared pinnable-explanation surface, whose
+        topic now carries an optional forecast so prose-only help renders
+        without inventing numbers. Guidance emits no commands, and the
+        preference isolation proof covers it.
+      rationale:
+        - "[ai] Making guidance a preference rather than campaign state is what lets one campaign produce identical authoritative hashes with it on or off, and lets an expert disable it in one action before starting."
+        - "[ai] Authoring guidance as definition prose keeps native and web byte-identical, keeps the orphan-row and missing-row audits covering it, and gives later guided Situations the same three rows to fill."
+        - "[ai] Reusing the pinned-explanation surface keeps keyboard reach, focus restoration, and dismissal semantics identical to every other explanation instead of adding a tutorial-only widget."
+      references:
+        - client-owned-versioned-interface-preferences
+        - core-explanations-are-owned-focusable-snapshots
+        - the-court-awaits-is-an-ordinary-one-shot-demand
+        - headless-authoritative-simulation

@@ -205,6 +205,7 @@ pub fn draw_panels(
         goals: data.goals.as_deref(),
         issued_directives: data.issued_directives.as_deref(),
         situations: &data.situations,
+        guidance: preferences.guidance,
     };
     let mut out = PanelOut {
         view: &mut view,

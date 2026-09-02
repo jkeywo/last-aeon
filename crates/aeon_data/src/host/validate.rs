@@ -880,6 +880,12 @@ fn validate_situations(
                     .as_ref()
                     .map(|function| ("when_fn", function))
             }))
+            .chain(situation.outcomes.iter().filter_map(|outcome| {
+                outcome
+                    .effects_fn
+                    .as_ref()
+                    .map(|function| ("effects_fn", function))
+            }))
         {
             let exists = fn_names
                 .get(&fn_ref.path)
@@ -899,6 +905,34 @@ fn validate_situations(
             error(
                 situation.trigger_fn.path.clone(),
                 "binding name 'source' is reserved for the authored attachment".to_owned(),
+            );
+        }
+
+        // Outcome effects act for a concrete organisation, so the owning
+        // binding must be declared, typed, and present whenever any outcome
+        // emits effects — a consequence must never silently address nobody.
+        if let Some(owner) = &situation.owner_binding {
+            match situation.bindings.get(owner) {
+                None => error(
+                    situation.trigger_fn.path.clone(),
+                    format!("owner_binding '{owner}' is not a declared binding"),
+                ),
+                Some(SituationSubjectKind::Organisation) => {}
+                Some(other) => error(
+                    situation.trigger_fn.path.clone(),
+                    format!("owner_binding '{owner}' is {other:?}; it must bind an organisation"),
+                ),
+            }
+        } else if situation
+            .outcomes
+            .iter()
+            .any(|outcome| outcome.effects_fn.is_some())
+        {
+            error(
+                situation.trigger_fn.path.clone(),
+                "outcomes with effects_fn require an owner_binding naming the \
+                 organisation the effects act for"
+                    .to_owned(),
             );
         }
 

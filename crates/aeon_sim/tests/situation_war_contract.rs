@@ -28,7 +28,17 @@ fn sources() -> Vec<ContentSource> {
 }
 
 fn load_sources(sources: &[ContentSource]) -> Arc<ContentSet> {
-    let (set, report) = load_content(sources, &aeon_data::StringTable::blank());
+    // The real string table: authored optional prose (stage warnings,
+    // announcements) is table-decided, so a blank table would change which
+    // projections are even legal.
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/content");
+    let (strings, report) = aeon_data::fs::read_string_table(&root).expect("strings readable");
+    assert!(
+        !report.has_errors(),
+        "string findings: {:?}",
+        report.findings
+    );
+    let (set, report) = load_content(sources, &strings.expect("valid string table"));
     assert!(
         set.is_some(),
         "repository content must load: {:?}",

@@ -1473,7 +1473,7 @@ fn situation_outcomes(f: &mut Fields<'_>) -> Option<Vec<SituationOutcomeDef>> {
             f.state,
             &map,
             Some(&definition),
-            &["id", "when_fn", "fallback", "text"],
+            &["id", "when_fn", "fallback", "effects_fn", "text"],
         );
         reject_authored_text(f.state, &definition, &map, "text");
         let raw_id = req_str(f.state, Some(&definition), &map, "id")?;
@@ -1486,6 +1486,11 @@ fn situation_outcomes(f: &mut Fields<'_>) -> Option<Vec<SituationOutcomeDef>> {
         };
         let when_fn = opt_str(f.state, Some(&definition), &map, "when_fn")?;
         let fallback = opt_bool(f.state, Some(&definition), &map, "fallback", false)?;
+        let effects_fn =
+            opt_str(f.state, Some(&definition), &map, "effects_fn")?.map(|name| ScriptFnRef {
+                path: path.clone(),
+                name,
+            });
         let predicate_fn = match (when_fn, fallback) {
             (Some(_), true) => {
                 f.error(format!(
@@ -1508,6 +1513,7 @@ fn situation_outcomes(f: &mut Fields<'_>) -> Option<Vec<SituationOutcomeDef>> {
         outcomes.push(SituationOutcomeDef {
             key: id,
             predicate_fn,
+            effects_fn,
             text: String::new(),
         });
     }
@@ -1527,8 +1533,9 @@ fn define_situation(state: &mut BuilderState, map: Map) {
         f.error(format!("unknown Situation source kind '{source}'"));
         return;
     };
-    let (Some(bindings), Some(trigger_name), Some(projection_name)) = (
+    let (Some(bindings), Some(owner_binding), Some(trigger_name), Some(projection_name)) = (
         situation_bindings(&mut f),
+        f.opt_str("owner_binding"),
         f.req_str("trigger_fn"),
         f.req_str("projection_fn"),
     ) else {
@@ -1566,6 +1573,7 @@ fn define_situation(state: &mut BuilderState, map: Map) {
             summary,
             source,
             bindings,
+            owner_binding,
             trigger_fn: ScriptFnRef {
                 path: path.clone(),
                 name: trigger_name,
@@ -1576,6 +1584,12 @@ fn define_situation(state: &mut BuilderState, map: Map) {
             },
             priority,
             log_activation,
+            // Optional activation and guidance prose is table-decided:
+            // the display pass fills these when their rows exist.
+            announcement: None,
+            guidance_objective: None,
+            guidance_how: None,
+            guidance_why: None,
             visibility,
             stages,
             actions,
