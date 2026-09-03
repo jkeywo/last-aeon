@@ -223,6 +223,50 @@ pub fn requires_met(
             return false;
         }
     }
+    if req.min_campaign_day.is_some() || req.max_campaign_day.is_some() {
+        let clock = world.resource::<CampaignClock>();
+        let day = clock.date.days_since_epoch() - clock.start_date.days_since_epoch();
+        if req.min_campaign_day.is_some_and(|earliest| day < earliest)
+            || req.max_campaign_day.is_some_and(|latest| day > latest)
+        {
+            return false;
+        }
+    }
+    if let Some(floor) = req.max_target_head_opinion {
+        // The authored hostility floor: the authority head's live regard
+        // for the target's head, at or below the authored value. A
+        // missing head on either side is not hostility.
+        let AssignmentTarget::Org(rival) = target else {
+            return false;
+        };
+        let hostile = crate::access::org_head(world, authority)
+            .zip(crate::access::org_head(world, rival))
+            .is_some_and(|(own, theirs)| {
+                crate::politics::opinion_between(world, own, theirs) <= floor
+            });
+        if !hostile {
+            return false;
+        }
+    }
+    if req.target_owes_grievance {
+        // Hostility's other authored ground: the target owes the
+        // authority an open grievance — they wronged us, and it stands.
+        let AssignmentTarget::Org(rival) = target else {
+            return false;
+        };
+        let owed = world
+            .get_resource::<crate::obligations::Obligations>()
+            .is_some_and(|ledger| {
+                ledger.open().any(|entry| {
+                    entry.kind == crate::obligations::ObligationKind::Grievance
+                        && entry.debtor == rival
+                        && entry.creditor == authority
+                })
+            });
+        if !owed {
+            return false;
+        }
+    }
     true
 }
 
@@ -426,6 +470,7 @@ pub fn try_adopt(
     };
     world.resource_mut::<Plans>().active.insert(actor, plan);
 
+    let covert = crate::covert::plan_is_covert(world, &key, authority);
     let text = world.resource::<TextDb>().format(
         "sim.plan.adopted",
         &[
@@ -438,11 +483,19 @@ pub fn try_adopt(
     if let Some(subject) = top.subject {
         entry = entry.about(subject);
     }
+    // A covert campaign's adoption is written for its owner alone —
+    // spectators and replay still read it — so authoritative history is
+    // complete while no ordinary player surface learns whose hand moved.
+    if covert {
+        entry = entry.for_audience(crate::covert::owner_only(authority));
+    }
     crate::access::log(world, entry);
 
     // When the campaign is aimed at the player, a rumour reaches them:
     // the modest hint, deliberately short of an espionage system — no
-    // probability gate, no detail beyond who and about what.
+    // probability gate, no detail beyond who and about what. A covert
+    // campaign whispers nothing: deniability is its whole point, and
+    // discovery belongs to investigation, not to a free rumour.
     let player = world
         .get_resource::<crate::politics::PlayerHouse>()
         .and_then(|p| p.0);
@@ -453,7 +506,7 @@ pub fn try_adopt(
         }
         _ => false,
     };
-    if concerns_player && player.is_some() {
+    if concerns_player && player.is_some() && !covert {
         let text = world.resource::<TextDb>().format(
             "sim.plan.rumour",
             &[
@@ -596,6 +649,13 @@ pub fn advance_plans(world: &mut World) {
                             }),
                             _ => None,
                         },
+                        PlanTargetSelector::TargetBorderProvince => match plan.target {
+                            AssignmentTarget::Org(rival) => {
+                                target_border_province(world, authority, rival)
+                                    .map(|province| (AssignmentTarget::Province(province), None))
+                            }
+                            _ => None,
+                        },
                     };
                     let Some((target, war)) = resolved else {
                         break;
@@ -688,6 +748,58 @@ pub fn spend_free(content: &aeon_data::ContentSet, def: &PlanDef) -> bool {
 /// choice never depends on iteration luck.
 fn worst_holding(world: &World, authority: OrgId) -> Option<crate::ids::ProvinceId> {
     crate::order::held_provinces(world, authority)
+        .into_iter()
+        .min_by_key(|province| {
+            (
+                crate::order::province_order(world, *province).order,
+                *province,
+            )
+        })
+}
+
+/// The target's provinces sharing a surface route with a province the
+/// authority holds, in stable ID order.
+///
+/// Adjacency is read from the same authored route graph real travel
+/// uses — a surface leg between a held province and a target-held one —
+/// so "the border" means what the map says, not a hardcoded neighbour
+/// list.
+pub fn border_provinces_of(
+    world: &World,
+    authority: OrgId,
+    target: OrgId,
+) -> Vec<crate::ids::ProvinceId> {
+    let Some(graph) = world.get_resource::<crate::routes::RouteGraph>() else {
+        return Vec::new();
+    };
+    let own: std::collections::BTreeSet<_> = crate::order::held_provinces(world, authority)
+        .into_iter()
+        .collect();
+    let theirs: std::collections::BTreeSet<_> = crate::order::held_provinces(world, target)
+        .into_iter()
+        .collect();
+    let mut bordering = std::collections::BTreeSet::new();
+    for leg in graph.routes() {
+        if leg.kind != aeon_data::model::RouteKind::Surface {
+            continue;
+        }
+        for (near, far) in [(leg.from, leg.to), (leg.to, leg.from)] {
+            if own.contains(&near) && theirs.contains(&far) {
+                bordering.insert(far);
+            }
+        }
+    }
+    bordering.into_iter().collect()
+}
+
+/// The plan target's most disordered border province — lowest order,
+/// lowest stable ID on a tie — or nothing when no border is shared.
+fn target_border_province(
+    world: &World,
+    authority: OrgId,
+    target: OrgId,
+) -> Option<crate::ids::ProvinceId> {
+    border_provinces_of(world, authority, target)
         .into_iter()
         .min_by_key(|province| {
             (
@@ -904,12 +1016,15 @@ fn announce_end(world: &mut World, actor: CharacterId, plan: &ActivePlan, key: &
             ("plan", &title),
         ],
     );
-    crate::access::log(
-        world,
-        LogEntry::line(text, LogChannel::Politics)
-            .by(Some(authority))
-            .about(LogSubject::Character(actor)),
-    );
+    let mut entry = LogEntry::line(text, LogChannel::Politics)
+        .by(Some(authority))
+        .about(LogSubject::Character(actor));
+    // A covert campaign ends as quietly as it began: owner-only, with
+    // spectators and replay still reading the full account.
+    if crate::covert::plan_is_covert(world, &plan.def, authority) {
+        entry = entry.for_audience(crate::covert::owner_only(authority));
+    }
+    crate::access::log(world, entry);
 }
 
 /// Captures plan state for a snapshot.

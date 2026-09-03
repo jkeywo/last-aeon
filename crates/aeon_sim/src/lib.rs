@@ -27,6 +27,7 @@ pub mod assignments;
 pub mod clock;
 pub mod command;
 pub mod config;
+pub mod covert;
 pub mod crisis;
 pub mod economy;
 pub mod events;

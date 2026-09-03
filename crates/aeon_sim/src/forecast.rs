@@ -13,7 +13,8 @@
 
 use aeon_data::ContentKey;
 use aeon_data::model::{
-    AssignmentDef, GoverningSkill, MilitaryOp, OpinionModifierDef, OutcomeKind, RiskTag,
+    AssignmentDef, GoverningSkill, MilitaryOp, OpinionModifierDef, OrderModifierDef, OutcomeKind,
+    RiskTag,
 };
 use bevy::prelude::*;
 
@@ -85,8 +86,14 @@ pub struct AssignmentForecast {
     pub opinion_value: Option<i32>,
     /// The effectiveness shift that opinion produced; zero without one.
     pub opinion_shift: i32,
-    /// Skill minus difficulty, plus any authored live-opinion shift;
-    /// drives the weight shift.
+    /// The target province's live Order the assignment's authored
+    /// modifier read, when it authors one and the target names a
+    /// province. Reported for the same reason as the opinion.
+    pub order_value: Option<i32>,
+    /// The effectiveness shift that Order produced; zero without one.
+    pub order_shift: i32,
+    /// Skill minus difficulty, plus any authored live-opinion and
+    /// live-Order shifts; drives the weight shift.
     pub effectiveness: i32,
     /// Every possible outcome, most favourable first; chances sum to 1000.
     pub results: Vec<ForecastResult>,
@@ -261,17 +268,64 @@ pub fn opinion_modifier_reading(
     Some((opinion, opinion_effectiveness_shift(opinion, modifier)))
 }
 
+/// The clamped effectiveness shift a live provincial Order produces
+/// under an authored modifier.
+///
+/// The same pure integer arithmetic as the opinion shift: the shortfall
+/// below the authored reference, times `per_hundred` hundredths, truncated
+/// toward zero and clamped to the authored bounds. Order above the
+/// reference reads as resistance — a negative shift.
+pub fn order_effectiveness_shift(order: i32, modifier: &OrderModifierDef) -> i32 {
+    (((modifier.reference - order) * modifier.per_hundred) / 100).clamp(modifier.min, modifier.max)
+}
+
+/// The province a target names, when it names one.
+fn target_province(target: AssignmentTarget) -> Option<crate::ids::ProvinceId> {
+    match target {
+        AssignmentTarget::Province(province)
+        | AssignmentTarget::ArmyToProvince(_, province)
+        | AssignmentTarget::ShipToProvince(_, province) => Some(province),
+        _ => None,
+    }
+}
+
+/// The live provincial Order an assignment's authored modifier reads, and
+/// the effectiveness shift it produces.
+///
+/// `None` when the assignment authors no modifier or the target names no
+/// province: an unresolvable reading is neutral, never a penalty invented
+/// on the spot — the same contract the opinion modifier keeps.
+pub fn order_modifier_reading(
+    world: &World,
+    target: AssignmentTarget,
+    def: &AssignmentDef,
+) -> Option<(i32, i32)> {
+    let modifier = def.order_modifier.as_ref()?;
+    let province = target_province(target)?;
+    let order = crate::order::province_order(world, province).order;
+    Some((order, order_effectiveness_shift(order, modifier)))
+}
+
 /// The leader's effectiveness on a assignment: governing skill minus
-/// difficulty, plus any authored live-opinion shift.
+/// difficulty, plus any authored live-opinion and live-Order shifts.
 ///
 /// The single choke point behind both the forecast and resolution — the
-/// modifier lives *inside* it, never beside it, so the two cannot read
-/// the relationship differently.
-pub fn effectiveness(world: &World, org: OrgId, leader: CharacterId, def: &AssignmentDef) -> i32 {
-    let shift = opinion_modifier_reading(world, org, leader, def)
+/// modifiers live *inside* it, never beside it, so the two cannot read
+/// the relationship or the province differently.
+pub fn effectiveness(
+    world: &World,
+    org: OrgId,
+    leader: CharacterId,
+    target: AssignmentTarget,
+    def: &AssignmentDef,
+) -> i32 {
+    let opinion = opinion_modifier_reading(world, org, leader, def)
         .map(|(_, shift)| shift)
         .unwrap_or(0);
-    governing_skill(world, leader, def.skill) - def.difficulty + shift
+    let order = order_modifier_reading(world, target, def)
+        .map(|(_, shift)| shift)
+        .unwrap_or(0);
+    governing_skill(world, leader, def.skill) - def.difficulty + opinion + order
 }
 
 /// The leader's value in a governing skill; zero when unknown.
@@ -389,7 +443,8 @@ pub fn forecast_in_war(
     let def = content.0.assignments.get(def_key)?.clone();
 
     let opinion = opinion_modifier_reading(world, org, leader, &def);
-    let effectiveness = effectiveness(world, org, leader, &def);
+    let order = order_modifier_reading(world, target, &def);
+    let effectiveness = effectiveness(world, org, leader, target, &def);
     let odds = result_odds(&def, effectiveness);
     let results = odds
         .into_iter()
@@ -431,6 +486,8 @@ pub fn forecast_in_war(
         difficulty: def.difficulty,
         opinion_value: opinion.map(|(value, _)| value),
         opinion_shift: opinion.map(|(_, shift)| shift).unwrap_or(0),
+        order_value: order.map(|(value, _)| value),
+        order_shift: order.map(|(_, shift)| shift).unwrap_or(0),
         effectiveness,
         results,
         risks,
@@ -484,6 +541,8 @@ mod tests {
             supplies_cost: 0,
             influence_cost: 0,
             opinion_modifier: None,
+            order_modifier: None,
+            covert: false,
             requires: Default::default(),
             urgency: Default::default(),
             stages: vec![aeon_data::model::StageDef {
@@ -612,6 +671,54 @@ mod tests {
         let cushioned = modifier(50, -3, 9);
         assert_eq!(opinion_effectiveness_shift(-100, &cushioned), -3);
         assert_eq!(opinion_effectiveness_shift(100, &cushioned), 9);
+    }
+
+    fn order_modifier(reference: i32, per_hundred: i32, min: i32, max: i32) -> OrderModifierDef {
+        OrderModifierDef {
+            reference,
+            per_hundred,
+            min,
+            max,
+        }
+    }
+
+    #[test]
+    fn order_shifts_scale_truncate_and_clamp_with_integer_arithmetic() {
+        // Four hundredths of an effectiveness point per point of Order
+        // below the reference, capped at zero: the resistance shape.
+        let resisted = order_modifier(800, 4, -8, 0);
+        assert_eq!(order_effectiveness_shift(800, &resisted), 0);
+        // Order above the reference resists the work...
+        assert_eq!(order_effectiveness_shift(900, &resisted), -4);
+        assert_eq!(order_effectiveness_shift(1000, &resisted), -8);
+        // ...and the clamp is authored, so resistance cannot swamp skill.
+        let deep = order_modifier(800, 40, -8, 0);
+        assert_eq!(order_effectiveness_shift(0, &deep), 0);
+        assert_eq!(order_effectiveness_shift(1000, &deep), -8);
+        // A max of zero means disorder never helps beyond neutral.
+        assert_eq!(order_effectiveness_shift(300, &resisted), 0);
+        // Truncation toward zero, like the opinion shift.
+        assert_eq!(order_effectiveness_shift(820, &resisted), 0);
+        assert_eq!(order_effectiveness_shift(825, &resisted), -1);
+    }
+
+    #[test]
+    fn order_shifts_move_the_same_odds_the_sampler_rolls() {
+        // The shift feeds the one shared effectiveness number, exactly as
+        // the opinion shift does: higher Order lowers the hostile work's
+        // favourable share through result_odds at a shifted input.
+        let def = def_with(&[(OutcomeKind::Success, 5), (OutcomeKind::Failure, 5)]);
+        let resisted = order_modifier(800, 4, -8, 0);
+        let success = |order: i32| -> Permille {
+            let effectiveness = order_effectiveness_shift(order, &resisted);
+            result_odds(&def, effectiveness)
+                .into_iter()
+                .find(|(kind, _)| *kind == OutcomeKind::Success)
+                .map(|(_, chance)| chance)
+                .unwrap()
+        };
+        assert!(success(1000) < success(800), "high Order resists");
+        assert_eq!(success(400), success(800), "disorder never helps");
     }
 
     #[test]

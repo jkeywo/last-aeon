@@ -595,6 +595,20 @@ pub fn context_value(world: &World) -> Map {
         .map(|index| {
             index.assignments.values().filter_map(|entity| {
                 let record = world.get::<ActiveAssignment>(*entity)?;
+                // Covertness and the live Order resistance are read from
+                // the same authored definition and the same shared
+                // calculation the resolution roll will use, so a
+                // projection can quote the exact number without owning a
+                // second copy of the rule.
+                let covert = crate::covert::assignment_is_covert(world, &record.def, record.owner);
+                let order_shift = world
+                    .get_resource::<crate::state::ContentDb>()
+                    .and_then(|content| content.0.assignments.get(&record.def).cloned())
+                    .and_then(|def| {
+                        crate::forecast::order_modifier_reading(world, record.target, &def)
+                    })
+                    .map(|(_, shift)| i64::from(shift))
+                    .unwrap_or(0);
                 Some(
                     map([
                         ("id", integer(record.id.raw()).into()),
@@ -606,6 +620,8 @@ pub fn context_value(world: &World) -> Map {
                         ("started", record.started.days_since_epoch().into()),
                         ("completes", record.completes.days_since_epoch().into()),
                         ("cancel_requested", record.cancel_requested.into()),
+                        ("covert", covert.into()),
+                        ("order_shift", order_shift.into()),
                     ])
                     .into(),
                 )

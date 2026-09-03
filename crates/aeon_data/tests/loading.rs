@@ -1982,3 +1982,406 @@ fn oops(ctx) { [#{ kind: "condition", target: "target", tag: "curse" }] }
         "an unknown harm is refused"
     );
 }
+
+#[test]
+fn order_modifier_shapes_fail_loudly_at_load() {
+    let with_modifier = |target: &str, modifier: &str| {
+        format!(
+            r#"
+define_assignment(#{{
+    id: "resisted-work",
+    category: "routine", duration_days: 10,
+    skill: "intrigue", difficulty: 5,
+    target: {target},
+    order_modifier: {modifier},
+    results: #{{ success: #{{ weight: 800 }}, failure: #{{ weight: 200 }} }},
+}});
+"#
+        )
+    };
+    let failing = [
+        (
+            r#""province""#,
+            r#"#{ reference: 1200, per_hundred: 4, min: -8, max: 0 }"#,
+            "reference must be 0..=1000",
+        ),
+        (
+            r#""province""#,
+            r#"#{ reference: 800, per_hundred: 0, min: -8, max: 0 }"#,
+            "per_hundred must be 1..=1000",
+        ),
+        (
+            // A positive floor would turn settled ground into a bonus.
+            r#""province""#,
+            r#"#{ reference: 800, per_hundred: 4, min: 2, max: 6 }"#,
+            "min must be -40..=0",
+        ),
+        (
+            r#""province""#,
+            r#"#{ reference: 800, per_hundred: 4, min: -8, max: -1 }"#,
+            "max must be 0..=40",
+        ),
+        (
+            r#""province""#,
+            r#"#{ per_hundred: 4, min: -8, max: 0 }"#,
+            "needs an integer 'reference'",
+        ),
+        (
+            // The modifier reads the target province's live Order, so a
+            // targetless assignment cannot author one.
+            r#""none""#,
+            r#"#{ reference: 800, per_hundred: 4, min: -8, max: 0 }"#,
+            "province-bearing target kind",
+        ),
+    ];
+    for (target, modifier, expected) in failing {
+        let (set, report) = load_content(
+            &[source("bad.rhai", &with_modifier(target, modifier))],
+            &aeon_data::StringTable::blank(),
+        );
+        assert!(set.is_none(), "{modifier} on {target} must fail to load");
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|f| f.severity == Severity::Error && f.message.contains(expected)),
+            "{modifier}: findings {:?}",
+            report.findings
+        );
+    }
+}
+
+/// Content authoring covertness, campaign-day windows, and the hostility
+/// predicates parses into the model, and every malformed combination
+/// fails loudly at load rather than quietly gating nothing at play.
+#[test]
+fn covert_flags_windows_and_hostility_predicates_load_and_validate() {
+    const SHADOW_FIXTURE: &str = r#"
+define_assignment(#{
+    id: "quiet-work",
+    category: "consequential", duration_days: 10,
+    skill: "intrigue", difficulty: 5, target: "province",
+    ai_available: false, ai_intent: "subvert", covert: true,
+    order_modifier: #{ reference: 800, per_hundred: 4, min: -8, max: 0 },
+    results: #{ success: #{ weight: 800 }, failure: #{ weight: 200 } },
+});
+define_plan(#{
+    id: "quiet-campaign",
+    goal: "subvert",
+    target: "organisation",
+    covert: true,
+    max_days: 100,
+    methods: [
+        #{ id: "from-ill-will",
+           requires: #{ max_target_head_opinion: -10, min_campaign_day: 180,
+                        max_campaign_day: 260 },
+           steps: [ #{ start: "quiet-work", target: "target-border-province" } ] },
+        #{ id: "from-grievance",
+           requires: #{ target_owes_grievance: true },
+           steps: [ #{ start: "quiet-work", target: "target-border-province" } ] },
+    ],
+});
+define_goal(#{
+    id: "quiet-ambition",
+    favours: ["subvert"],
+    favour_bonus: 60,
+    target: "organisation",
+    target_selector: #{ kind: "hostile-border-neighbour", max_head_opinion: -10,
+                        with_grievance: true },
+    covert: true,
+    trigger: #{ min_campaign_day: 180, max_campaign_day: 260 },
+    max_days: 100,
+});
+"#;
+    let (set, report) = load_content(
+        &[source("shadow.rhai", SHADOW_FIXTURE)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(
+        !report.has_errors(),
+        "unexpected findings: {:?}",
+        report.findings
+    );
+    let set = set.expect("the covert fixture loads");
+    let work = &set.assignments[&aeon_data::ContentKey::new("quiet-work").unwrap()];
+    assert!(work.covert);
+    assert_eq!(work.ai_intent, aeon_data::model::AiIntent::Subvert);
+    let modifier = work.order_modifier.as_ref().expect("order modifier");
+    assert_eq!(
+        (
+            modifier.reference,
+            modifier.per_hundred,
+            modifier.min,
+            modifier.max
+        ),
+        (800, 4, -8, 0)
+    );
+    let plan = &set.plans[&aeon_data::ContentKey::new("quiet-campaign").unwrap()];
+    assert!(plan.covert);
+    let ill_will = &plan.methods[0].requires;
+    assert_eq!(ill_will.max_target_head_opinion, Some(-10));
+    assert_eq!(ill_will.min_campaign_day, Some(180));
+    assert_eq!(ill_will.max_campaign_day, Some(260));
+    assert!(plan.methods[1].requires.target_owes_grievance);
+    let goal = &set.goals[&aeon_data::ContentKey::new("quiet-ambition").unwrap()];
+    assert!(goal.covert);
+    assert_eq!(goal.trigger.min_campaign_day, Some(180));
+    assert_eq!(goal.trigger.max_campaign_day, Some(260));
+    assert_eq!(
+        goal.target_selector,
+        aeon_data::model::GoalTargetSelector::HostileBorderNeighbour {
+            max_head_opinion: -10,
+            with_grievance: true,
+        }
+    );
+
+    // The malformed combinations, each with the finding it must raise.
+    let failing = [
+        (
+            // A hostility floor without an organisation target reads
+            // nobody's head.
+            r#"
+define_assignment(#{
+    id: "quiet-work", category: "consequential", duration_days: 10,
+    skill: "intrigue", difficulty: 5, ai_available: false,
+    results: #{ success: #{ weight: 800 }, failure: #{ weight: 200 } },
+});
+define_plan(#{
+    id: "aimless", goal: "subvert", max_days: 100,
+    methods: [ #{ id: "only",
+        requires: #{ max_target_head_opinion: -10 },
+        steps: [ #{ start: "quiet-work" } ] } ],
+});
+"#,
+            "compares an organisation target's head",
+        ),
+        (
+            r#"
+define_assignment(#{
+    id: "quiet-work", category: "consequential", duration_days: 10,
+    skill: "intrigue", difficulty: 5, ai_available: false,
+    results: #{ success: #{ weight: 800 }, failure: #{ weight: 200 } },
+});
+define_plan(#{
+    id: "aimless", goal: "subvert", max_days: 100,
+    methods: [ #{ id: "only",
+        requires: #{ target_owes_grievance: true },
+        steps: [ #{ start: "quiet-work" } ] } ],
+});
+"#,
+            "reads an organisation target's ledger",
+        ),
+        (
+            // An inverted window can never open.
+            r#"
+define_assignment(#{
+    id: "quiet-work", category: "consequential", duration_days: 10,
+    skill: "intrigue", difficulty: 5, ai_available: false,
+    results: #{ success: #{ weight: 800 }, failure: #{ weight: 200 } },
+});
+define_plan(#{
+    id: "inverted", goal: "subvert", max_days: 100,
+    methods: [ #{ id: "only",
+        requires: #{ min_campaign_day: 260, max_campaign_day: 180 },
+        steps: [ #{ start: "quiet-work" } ] } ],
+});
+"#,
+            "is after max_campaign_day",
+        ),
+        (
+            r#"
+define_goal(#{
+    id: "early", favours: ["subvert"], max_days: 100,
+    trigger: #{ min_campaign_day: -5 },
+});
+"#,
+            "days must be >= 0",
+        ),
+        (
+            // A selector with nothing to select.
+            r#"
+define_goal(#{
+    id: "aimless", favours: ["subvert"], max_days: 100,
+    target_selector: #{ kind: "hostile-border-neighbour", max_head_opinion: -10 },
+});
+"#,
+            "target_selector needs the goal to target an organisation",
+        ),
+        (
+            r#"
+define_goal(#{
+    id: "floorless", favours: ["subvert"], target: "organisation", max_days: 100,
+    target_selector: #{ kind: "hostile-border-neighbour" },
+});
+"#,
+            "needs an integer 'max_head_opinion'",
+        ),
+        (
+            r#"
+define_goal(#{
+    id: "unknown", favours: ["subvert"], target: "organisation", max_days: 100,
+    target_selector: #{ kind: "friendliest-neighbour" },
+});
+"#,
+            "unknown target_selector kind",
+        ),
+        (
+            // The border selector needs an organisation whose border it
+            // walks.
+            r#"
+define_assignment(#{
+    id: "quiet-work", category: "consequential", duration_days: 10,
+    skill: "intrigue", difficulty: 5, target: "province", ai_available: false,
+    results: #{ success: #{ weight: 800 }, failure: #{ weight: 200 } },
+});
+define_plan(#{
+    id: "borderless", goal: "subvert", max_days: 100,
+    methods: [ #{ id: "only",
+        steps: [ #{ start: "quiet-work", target: "target-border-province" } ] } ],
+});
+"#,
+            "selects the target's border province",
+        ),
+    ];
+    for (fixture, expected) in failing {
+        let (set, report) = load_content(
+            &[source("bad.rhai", fixture)],
+            &aeon_data::StringTable::blank(),
+        );
+        assert!(set.is_none(), "must fail: {expected}");
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|f| f.severity == Severity::Error && f.message.contains(expected)),
+            "{expected}: findings {:?}",
+            report.findings
+        );
+    }
+}
+
+/// The shipped shadow arc: the covert ambition, the covert campaign, the
+/// Order-resisted sabotage, and the Unquiet Holdings card that shows the
+/// province while structurally — never visibly — binding the culprit.
+#[test]
+fn the_shadow_arc_carries_covert_provenance_and_order_resistance() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/content");
+    let sources = aeon_data::fs::read_content_dir(&root).expect("assets/content readable");
+    let (strings, report) = aeon_data::fs::read_string_table(&root).expect("strings readable");
+    assert!(
+        !report.has_errors(),
+        "string findings: {:?}",
+        report.findings
+    );
+    let (set, report) = load_content(&sources, &strings.expect("valid string table"));
+    assert!(
+        !report.has_errors(),
+        "content findings: {:?}",
+        report.findings
+    );
+    let set = set.expect("repository content loads");
+
+    // The Situation: the audience is the targeted house alone; the actor
+    // binding gives spectators, replay, and future investigation their
+    // authoritative provenance without ever entering the audience.
+    let unquiet = &set.situations[&aeon_data::ContentKey::new("unquiet-holdings").unwrap()];
+    let bindings: Vec<(&str, aeon_data::model::SituationSubjectKind)> = unquiet
+        .bindings
+        .iter()
+        .map(|(name, kind)| (name.as_str(), *kind))
+        .collect();
+    assert_eq!(
+        bindings,
+        [
+            (
+                "actor",
+                aeon_data::model::SituationSubjectKind::Organisation
+            ),
+            (
+                "house",
+                aeon_data::model::SituationSubjectKind::Organisation
+            ),
+            ("province", aeon_data::model::SituationSubjectKind::Province),
+        ]
+    );
+    assert_eq!(
+        unquiet.visibility,
+        aeon_data::model::SituationVisibilityDef::Bound(vec!["house".to_owned()]),
+        "the culprit binding must never join the audience"
+    );
+    assert!(unquiet.owner_binding.is_none());
+    assert!(unquiet.announcement.is_some());
+    assert!(
+        unquiet
+            .outcomes
+            .iter()
+            .all(|outcome| outcome.effects_fn.is_none()),
+        "the sabotage's own authored effect does the damage; outcomes only narrate"
+    );
+    let outcomes: Vec<&str> = unquiet
+        .outcomes
+        .iter()
+        .map(|outcome| outcome.key.as_str())
+        .collect();
+    assert_eq!(outcomes, ["passed-on", "struck", "weathered"]);
+
+    // The vehicle: covert, closed to the reactive scorer, answering the
+    // subvert pressure, resisted by the target province's live Order.
+    let sabotage = &set.assignments[&aeon_data::ContentKey::new("foment-unrest").unwrap()];
+    assert!(sabotage.covert);
+    assert!(!sabotage.ai_available);
+    assert_eq!(sabotage.ai_intent, aeon_data::model::AiIntent::Subvert);
+    let resistance = sabotage.order_modifier.as_ref().expect("order modifier");
+    assert!(resistance.per_hundred > 0);
+    assert_eq!(resistance.max, 0, "disorder never helps beyond neutral");
+    assert!(resistance.min < 0, "high Order genuinely resists");
+
+    // The campaign: covert, organisation-aimed, gated on authored
+    // hostility both ways — ill will or an open grievance — plus the
+    // capability floor.
+    let campaign = &set.plans[&aeon_data::ContentKey::new("deniable-pressure").unwrap()];
+    assert!(campaign.covert);
+    assert_eq!(campaign.goal, aeon_data::model::AiIntent::Subvert);
+    assert_eq!(campaign.methods.len(), 2);
+    assert_eq!(
+        campaign.methods[0].requires.max_target_head_opinion,
+        Some(-10),
+        "the accepted hostility floor"
+    );
+    assert!(campaign.methods[1].requires.target_owes_grievance);
+    for method in &campaign.methods {
+        assert_eq!(method.requires.min_wealth, Some(40), "capability is data");
+    }
+
+    // The ambition: covert, windowed in data to the accepted intrigue
+    // stretch, resolved against a hostile border neighbour.
+    let ambition = &set.goals[&aeon_data::ContentKey::new("undermine-a-neighbour").unwrap()];
+    assert!(ambition.covert);
+    assert_eq!(ambition.trigger.min_campaign_day, Some(180));
+    assert_eq!(ambition.trigger.max_campaign_day, Some(260));
+    assert_eq!(
+        ambition.target_selector,
+        aeon_data::model::GoalTargetSelector::HostileBorderNeighbour {
+            max_head_opinion: -10,
+            with_grievance: true,
+        }
+    );
+    assert!(
+        ambition.directives.is_empty(),
+        "a covert ambition presses no directive that could leak it"
+    );
+
+    // The derived key mirror covers the new rows, so the orphan and
+    // missing-row audits keep covering them.
+    let keys = aeon_data::text_keys(&set);
+    for expected in [
+        "situation.unquiet-holdings.announcement",
+        "situation.unquiet-holdings.stage.unrest.warning",
+        "situation.unquiet-holdings.resolution.struck.text",
+        "situation.unquiet-holdings.guidance.objective",
+        "goal.undermine-a-neighbour.title",
+        "plan.deniable-pressure.summary",
+    ] {
+        assert!(keys.contains(expected), "missing derived key {expected}");
+    }
+}

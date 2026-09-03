@@ -872,10 +872,12 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                 // What an autonomous character has set their mind to. The
                 // game's stance is that AI reasons are visible: the plan
                 // is named openly, matching how the log already explains
-                // why houses act.
+                // why houses act. Authored covert campaigns are the one
+                // exception: before exposure only a spectator reads them.
                 if record.organisation != ctx.player_org
                     && let Some(plan) = ctx.plans.and_then(|plans| plans.active.get(&id))
                     && let Some(def) = ctx.content.plans.get(&plan.def)
+                    && plan_named_to_viewer(def.covert, ctx.player_org)
                 {
                     ui.label(
                         strings.format("ui.inspector.character.pursuing", &[("plan", &def.title)]),
@@ -1064,6 +1066,19 @@ fn draw_standing_orders(
     }
 }
 
+/// Whether the inspector may name a character's active plan to this
+/// viewer.
+///
+/// Ordinary plans are named openly — AI reasons are visible. An authored
+/// covert plan is named only to a spectator (no player organisation)
+/// before exposure; the pursuing line is otherwise omitted entirely, so
+/// no secondary interface leaks the culprit. Exposure is the
+/// investigation issue's future read: when it lands, this must ask the
+/// simulation's exposure state rather than the authored flag alone.
+fn plan_named_to_viewer(covert: bool, player_org: Option<aeon_sim::OrgId>) -> bool {
+    !covert || player_org.is_none()
+}
+
 /// The string-table key naming the pressure a directive presses.
 fn directive_intent_key(intent: AiIntent) -> &'static str {
     match intent {
@@ -1073,6 +1088,24 @@ fn directive_intent_key(intent: AiIntent) -> &'static str {
         AiIntent::Resources => "ui.directive.resources",
         AiIntent::Obligation => "ui.directive.obligation",
         AiIntent::Claim => "ui.directive.claim",
+        AiIntent::Subvert => "ui.directive.subvert",
         AiIntent::Routine => "ui.directive.routine",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::plan_named_to_viewer;
+
+    #[test]
+    fn covert_plans_are_named_only_to_spectators_before_exposure() {
+        let player = aeon_sim::OrgId::from_raw(4);
+        // Ordinary plans stay openly named to everyone.
+        assert!(plan_named_to_viewer(false, player));
+        assert!(plan_named_to_viewer(false, None));
+        // A covert plan's pursuing line is omitted for every ordinary
+        // player and kept for the spectator, who sees all provenance.
+        assert!(!plan_named_to_viewer(true, player));
+        assert!(plan_named_to_viewer(true, None));
     }
 }

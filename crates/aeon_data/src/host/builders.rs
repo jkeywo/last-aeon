@@ -20,14 +20,15 @@ use crate::key::ContentKey;
 use crate::model::{
     AiIntent, ArmyDef, AssignmentCategory, AssignmentDef, AssignmentRequires, AssignmentTargetKind,
     BodyDef, BodyKind, BuildingDef, CharacterDef, DirectiveDef, DirectiveTarget, EventChoiceDef,
-    EventDef, EventFamily, EventRequires, Gender, GoalDef, GoalRequires, GoodDef, GoverningSkill,
-    HolderRelation, HouseTier, MilitaryOp, NamePoolDef, ObligationDef, ObligationKind, OfficeDef,
-    OpinionModifierDef, OrgDef, OrgKind, OutcomeDef, OutcomeKind, PlanArmySelector, PlanDef,
-    PlanMethodDef, PlanRequires, PlanStepAction, PlanStepDef, PlanTargetSelector, PopupChoiceDef,
-    ProvinceDef, RiskTag, RouteDef, RouteKind, ScenarioDef, ScriptFnRef, ShipClass, ShipDef,
-    SituationActionDef, SituationDef, SituationOutcomeDef, SituationResponseDef, SituationStageDef,
-    SituationSubjectKind, SituationVisibilityDef, SkillsDef, StageDef, TitleDef, TitleHolderDef,
-    TitleKindDef, TitleNeed, TraitDef, Urgency,
+    EventDef, EventFamily, EventRequires, Gender, GoalDef, GoalRequires, GoalTargetSelector,
+    GoodDef, GoverningSkill, HolderRelation, HouseTier, MilitaryOp, NamePoolDef, ObligationDef,
+    ObligationKind, OfficeDef, OpinionModifierDef, OrderModifierDef, OrgDef, OrgKind, OutcomeDef,
+    OutcomeKind, PlanArmySelector, PlanDef, PlanMethodDef, PlanRequires, PlanStepAction,
+    PlanStepDef, PlanTargetSelector, PopupChoiceDef, ProvinceDef, RiskTag, RouteDef, RouteKind,
+    ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SituationActionDef, SituationDef,
+    SituationOutcomeDef, SituationResponseDef, SituationStageDef, SituationSubjectKind,
+    SituationVisibilityDef, SkillsDef, StageDef, TitleDef, TitleHolderDef, TitleKindDef, TitleNeed,
+    TraitDef, Urgency,
 };
 use crate::report::{ContentReport, Severity};
 
@@ -665,12 +666,16 @@ fn define_assignment(state: &mut BuilderState, map: Map) {
             ("resources", AiIntent::Resources),
             ("standing", AiIntent::Standing),
             ("claim", AiIntent::Claim),
+            ("subvert", AiIntent::Subvert),
         ],
         AiIntent::Routine,
     ) else {
         return;
     };
     let Some(ai_available) = f.opt_bool("ai_available", true) else {
+        return;
+    };
+    let Some(covert) = f.opt_bool("covert", false) else {
         return;
     };
     let (Some(wealth_cost), Some(manpower_cost), Some(supplies_cost), Some(influence_cost)) = (
@@ -685,6 +690,23 @@ fn define_assignment(state: &mut BuilderState, map: Map) {
     let Some(opinion_modifier) = assignment_opinion_modifier(&mut f) else {
         return;
     };
+    let Some(order_modifier) = assignment_order_modifier(&mut f) else {
+        return;
+    };
+    // An Order modifier reads the target province's live Order, so it can
+    // only be authored where a start always names a province. Failing
+    // loudly here beats quietly reading no province at play.
+    if order_modifier.is_some()
+        && !matches!(
+            target,
+            AssignmentTargetKind::Province
+                | AssignmentTargetKind::OwnArmyAndProvince
+                | AssignmentTargetKind::OwnShipAndProvince
+        )
+    {
+        f.error("order_modifier needs a province-bearing target kind");
+        return;
+    }
     let requires = assignment_requires(&mut f);
     let stages = assignment_stages(&mut f, duration_days as u32);
     let Some(urgency) = f.opt_enum(
@@ -737,6 +759,8 @@ fn define_assignment(state: &mut BuilderState, map: Map) {
             supplies_cost,
             influence_cost,
             opinion_modifier,
+            order_modifier,
+            covert,
             requires,
             urgency,
             stages,
@@ -830,6 +854,63 @@ fn assignment_opinion_modifier(f: &mut Fields) -> Option<Option<OpinionModifierD
         from,
         toward,
         per_point: per_point as i32,
+        min: min as i32,
+        max: max as i32,
+    }))
+}
+
+/// Reads an assignment's optional live-Order effectiveness modifier.
+///
+/// The same loud contract as [`assignment_opinion_modifier`]: `None`
+/// aborts the definition, `Some(None)` is the ordinary case of an
+/// assignment that authors no modifier.
+fn assignment_order_modifier(f: &mut Fields) -> Option<Option<OrderModifierDef>> {
+    let Some(raw) = f.take_raw("order_modifier") else {
+        return Some(None);
+    };
+    let Some(map) = raw.try_cast::<Map>() else {
+        f.error("order_modifier must be a map");
+        return None;
+    };
+    warn_unknown_fields(
+        f.state,
+        &map,
+        Some(f.key.as_str()),
+        &["reference", "per_hundred", "min", "max"],
+    );
+
+    let mut int = |map: &Map, field: &str| -> Option<i64> {
+        match map.get(field).and_then(|v| v.as_int().ok()) {
+            Some(value) => Some(value),
+            None => {
+                f.error(format!("order_modifier needs an integer '{field}'"));
+                None
+            }
+        }
+    };
+    let reference = int(&map, "reference")?;
+    let per_hundred = int(&map, "per_hundred")?;
+    let min = int(&map, "min")?;
+    let max = int(&map, "max")?;
+    if !(0..=1000).contains(&reference) {
+        f.error("order_modifier reference must be 0..=1000 (the Order scale)");
+        return None;
+    }
+    if !(1..=1000).contains(&per_hundred) {
+        f.error("order_modifier per_hundred must be 1..=1000 (hundredths per Order point)");
+        return None;
+    }
+    if !(-40..=0).contains(&min) {
+        f.error("order_modifier min must be -40..=0");
+        return None;
+    }
+    if !(0..=40).contains(&max) {
+        f.error("order_modifier max must be 0..=40");
+        return None;
+    }
+    Some(Some(OrderModifierDef {
+        reference: reference as i32,
+        per_hundred: per_hundred as i32,
         min: min as i32,
         max: max as i32,
     }))
@@ -2329,6 +2410,7 @@ fn define_plan(state: &mut BuilderState, map: Map) {
             ("resources", AiIntent::Resources),
             ("standing", AiIntent::Standing),
             ("claim", AiIntent::Claim),
+            ("subvert", AiIntent::Subvert),
         ],
     ) else {
         return;
@@ -2375,6 +2457,9 @@ fn define_plan(state: &mut BuilderState, map: Map) {
         ));
         return;
     }
+    let Some(covert) = f.opt_bool("covert", false) else {
+        return;
+    };
 
     let Some(raw_methods) = f.take_raw("methods") else {
         f.error("missing required field 'methods'");
@@ -2417,6 +2502,7 @@ fn define_plan(state: &mut BuilderState, map: Map) {
             cooldown_days: cooldown_days as u32,
             max_days: max_days as u32,
             max_step_retries: max_step_retries as u32,
+            covert,
             methods,
         },
     );
@@ -2539,11 +2625,12 @@ fn plan_step(f: &mut Fields, entry: rhai::Dynamic) -> Option<PlanStepDef> {
                 Some("lowest-enemy-province-in-war") => {
                     PlanTargetSelector::LowestEnemyProvinceInWar
                 }
+                Some("target-border-province") => PlanTargetSelector::TargetBorderProvince,
                 Some(other) => {
                     f.error(format!(
                         "unknown step target '{other}' \
                          (expected none, plan, worst-holding, target-head, \
-                         lowest-enemy-province-in-war)"
+                         lowest-enemy-province-in-war, target-border-province)"
                     ));
                     return None;
                 }
@@ -2616,6 +2703,10 @@ fn plan_requires(f: &mut Fields, raw: rhai::Dynamic) -> Option<PlanRequires> {
             "min_target_branch_manpower_permille",
             "max_target_branch_manpower_permille",
             "war_has_enemy_province",
+            "min_campaign_day",
+            "max_campaign_day",
+            "max_target_head_opinion",
+            "target_owes_grievance",
         ],
     );
     let int = |name: &str| map.get(name).and_then(|v| v.as_int().ok());
@@ -2624,6 +2715,11 @@ fn plan_requires(f: &mut Fields, raw: rhai::Dynamic) -> Option<PlanRequires> {
             .and_then(|v| v.as_bool().ok())
             .unwrap_or(false)
     };
+    if let Some(problem) = campaign_window_problem(int("min_campaign_day"), int("max_campaign_day"))
+    {
+        f.error(problem);
+        return None;
+    }
     Some(PlanRequires {
         min_wealth: int("min_wealth"),
         min_manpower: int("min_manpower"),
@@ -2640,7 +2736,32 @@ fn plan_requires(f: &mut Fields, raw: rhai::Dynamic) -> Option<PlanRequires> {
         war_has_enemy_province: map
             .get("war_has_enemy_province")
             .and_then(|v| v.as_bool().ok()),
+        min_campaign_day: int("min_campaign_day"),
+        max_campaign_day: int("max_campaign_day"),
+        max_target_head_opinion: int("max_target_head_opinion").map(|v| v as i32),
+        target_owes_grievance: flag("target_owes_grievance"),
     })
+}
+
+/// Why an authored campaign-day window is malformed, if it is.
+///
+/// Shared by plan conditions and goal triggers so the two window
+/// vocabularies cannot drift: days count from the campaign start and may
+/// not be negative, and an empty window is an authoring mistake.
+fn campaign_window_problem(min: Option<i64>, max: Option<i64>) -> Option<String> {
+    if min.is_some_and(|day| day < 0) || max.is_some_and(|day| day < 0) {
+        return Some(
+            "campaign-day windows count from the campaign start; days must be >= 0".into(),
+        );
+    }
+    if let (Some(min), Some(max)) = (min, max)
+        && min > max
+    {
+        return Some(format!(
+            "min_campaign_day {min} is after max_campaign_day {max}"
+        ));
+    }
+    None
 }
 
 /// The authored spellings of every [`AiIntent`], shared by the goal and
@@ -2653,6 +2774,7 @@ const INTENT_SPELLINGS: &[(&str, AiIntent)] = &[
     ("resources", AiIntent::Resources),
     ("standing", AiIntent::Standing),
     ("claim", AiIntent::Claim),
+    ("subvert", AiIntent::Subvert),
 ];
 
 fn parse_intent(raw: &str) -> Option<AiIntent> {
@@ -2708,6 +2830,12 @@ fn define_goal(state: &mut BuilderState, map: Map) {
         ],
         AssignmentTargetKind::None,
     ) else {
+        return;
+    };
+    let Some(target_selector) = goal_target_selector(&mut f, target) else {
+        return;
+    };
+    let Some(covert) = f.opt_bool("covert", false) else {
         return;
     };
     let Some(max_days) = f.req_int("max_days") else {
@@ -2767,11 +2895,75 @@ fn define_goal(state: &mut BuilderState, map: Map) {
             favours,
             favour_bonus,
             target,
+            target_selector,
+            covert,
             directives,
             max_days: max_days as u32,
             cooldown_days: cooldown_days as u32,
         },
     );
+}
+
+/// Reads a goal's optional target selector.
+///
+/// The default is the weakest-rival rule organisation-aimed goals have
+/// always used. A selector that names thresholds must author them all,
+/// loudly, and only an organisation-aimed goal may declare one — a
+/// selector with nothing to select would silently pick nobody.
+fn goal_target_selector(
+    f: &mut Fields,
+    target: AssignmentTargetKind,
+) -> Option<GoalTargetSelector> {
+    let Some(raw) = f.take_raw("target_selector") else {
+        return Some(GoalTargetSelector::default());
+    };
+    if target != AssignmentTargetKind::Organisation {
+        f.error("target_selector needs the goal to target an organisation");
+        return None;
+    }
+    let Some(map) = raw.try_cast::<Map>() else {
+        f.error("target_selector must be a map");
+        return None;
+    };
+    warn_unknown_fields(
+        f.state,
+        &map,
+        Some(f.key.as_str()),
+        &["kind", "max_head_opinion", "with_grievance"],
+    );
+    let Some(kind) = map.get("kind").and_then(|v| v.clone().into_string().ok()) else {
+        f.error("target_selector needs a 'kind'");
+        return None;
+    };
+    match kind.as_str() {
+        "weakest-rival" => Some(GoalTargetSelector::WeakestRival),
+        "hostile-border-neighbour" => {
+            let Some(max_head_opinion) = map.get("max_head_opinion").and_then(|v| v.as_int().ok())
+            else {
+                f.error("hostile-border-neighbour needs an integer 'max_head_opinion'");
+                return None;
+            };
+            if !(-200..=200).contains(&max_head_opinion) {
+                f.error("target_selector max_head_opinion must be -200..=200");
+                return None;
+            }
+            let with_grievance = map
+                .get("with_grievance")
+                .and_then(|v| v.as_bool().ok())
+                .unwrap_or(false);
+            Some(GoalTargetSelector::HostileBorderNeighbour {
+                max_head_opinion: max_head_opinion as i32,
+                with_grievance,
+            })
+        }
+        other => {
+            f.error(format!(
+                "unknown target_selector kind '{other}' \
+                 (expected weakest-rival, hostile-border-neighbour)"
+            ));
+            None
+        }
+    }
 }
 
 /// Reads one of a goal's advisory directives.
@@ -2839,10 +3031,17 @@ fn goal_requires(f: &mut Fields, raw: rhai::Dynamic) -> Option<GoalRequires> {
             "has_vassals",
             "is_vassal",
             "can_claim_paramountcy",
+            "min_campaign_day",
+            "max_campaign_day",
         ],
     );
     let int = |name: &str| map.get(name).and_then(|v| v.as_int().ok());
     let flag = |name: &str| map.get(name).and_then(|v| v.as_bool().ok());
+    if let Some(problem) = campaign_window_problem(int("min_campaign_day"), int("max_campaign_day"))
+    {
+        f.error(problem);
+        return None;
+    }
     Some(GoalRequires {
         min_wealth: int("min_wealth"),
         min_manpower: int("min_manpower"),
@@ -2852,6 +3051,8 @@ fn goal_requires(f: &mut Fields, raw: rhai::Dynamic) -> Option<GoalRequires> {
         has_vassals: flag("has_vassals"),
         is_vassal: flag("is_vassal"),
         can_claim_paramountcy: flag("can_claim_paramountcy").unwrap_or(false),
+        min_campaign_day: int("min_campaign_day"),
+        max_campaign_day: int("max_campaign_day"),
     })
 }
 

@@ -146,6 +146,23 @@ House Harrow begins as a direct Veyrin vassal with four provinces. Its
 organisation survives an ordinary change of head, retaining its holdings,
 resources, liege, forces, and organisation-level obligations.
 
+[ai] **House Vantar.** Harrow's neighbour across the Ulmgorn border is a
+fellow Veyrin vassal of two provinces (Cindral and Ulmgorn), led by
+Perrin Vantar with Valka Vantar at his side — wary, grasping, scheming
+temperaments that leave Perrin regarding Edrun Harrow with authored ill
+will from day one. Vantar's authored character is indirect: too small to
+contest a field and too proud to stay a footnote, it relies on
+informants, disruption, and deniable pressure — coin moved where words
+would be remembered, a rival's border province quietly loosened, and
+every hand in it deniable. Its modest levy exists to hold what the quiet
+work wins. Mechanically none of this is scripted destiny: Vantar is
+simply the house the authored covert ambition, hostility data, and
+geography most naturally select in the opening year (see
+[AI Agency and Information Rules](06-ai-agency-and-information-rules.md)
+and [Economy, Order, Obligations, Situations, Intrigue, and Warfare](05-economy-order-obligations-situations-intrigue-and-warfare.md)),
+and reconciliation, succession, conquest, or a changed border derails
+the expectation through ordinary rules.
+
 The simulation answers two different hierarchy questions:
 
 - **Who is this house's top-level Great House?** Follow vassal links upward.

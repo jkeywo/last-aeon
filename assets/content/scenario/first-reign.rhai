@@ -1196,3 +1196,215 @@ fn visit_lavish_disaster(ctx) {
     [#{ kind: "opinion", from: "liege-head", toward: "owner-head",
         amount: -20, days: 1800, reason: "visit-lavish-disaster" }]
 }
+
+// --- The shadows ------------------------------------------------------------
+//
+// The quiet arm of first-year politics: a hostile, capable house may set
+// its mind to undermining a neighbour by deniable means. The ambition and
+// the campaign below are generic — any vassal with the coin, a shared
+// border, and genuine ill will (or an open grievance owed to it) may
+// adopt them inside the authored window — but in the Ashkarr Succession
+// their natural bearer is House Vantar: informants, disruption, and
+// pressure no seal was ever set to, aimed across the Ulmgorn border at
+// whichever Harrow ground sits weakest. Everything is data: the window,
+// the hostility floor, the capability gate, and the covertness. The
+// engine contributes only the shared mechanisms — the border selector,
+// the opinion and grievance predicates, and the owner-only audience that
+// keeps provenance from every ordinary player surface while spectators
+// and replay retain it all. Reconciliation is the same data read the
+// other way: the plan's method gate is rechecked before each step, so a
+// relationship lifted above the floor abandons an uncommitted campaign,
+// while work already accepted runs to its ordinary end.
+
+define_goal(#{
+    id: "undermine-a-neighbour",
+    priority: 95,
+    favours: ["subvert"],
+    favour_bonus: 60,
+    target: "organisation",
+    target_selector: #{
+        kind: "hostile-border-neighbour", max_head_opinion: -10, with_grievance: true,
+    },
+    covert: true,
+    trigger: #{
+        is_vassal: true, min_wealth: 40,
+        min_campaign_day: 180, max_campaign_day: 260,
+    },
+    max_days: 120,
+    cooldown_days: 720,
+});
+
+define_plan(#{
+    id: "deniable-pressure",
+    goal: "subvert",
+    target: "organisation",
+    covert: true,
+    score_bonus: 40,
+    cooldown_days: 360,
+    max_days: 120,
+    max_step_retries: 1,
+    methods: [
+        #{ id: "from-ill-will",
+           requires: #{ min_wealth: 40, max_target_head_opinion: -10 },
+           steps: [
+               #{ id: "stir", start: "foment-unrest", target: "target-border-province" },
+           ] },
+        #{ id: "from-grievance",
+           requires: #{ min_wealth: 40, target_owes_grievance: true },
+           steps: [
+               #{ id: "stir", start: "foment-unrest", target: "target-border-province" },
+           ] },
+    ],
+});
+
+// --- Unquiet Holdings -------------------------------------------------------
+//
+// What the covert work looks like from the other side: the moment a
+// covert province-aimed operation runs against ground a house holds, its
+// holder sees a Situation naming the province, its live Order, the
+// resistance that Order is offering, and the time remaining — and
+// nothing else. The culprit organisation IS structurally bound (the
+// `actor` binding), which is what gives investigation, spectators, and
+// replay their authoritative provenance; it is simply never in the
+// audience and never emitted by the projection. The trigger may read the
+// culprit because triggers are simulation-side; the card the player sees
+// is the projection, and the projection stays silent.
+
+fn unquiet_struck_line() { 700 }
+
+// The live covert operation behind one bound instance, or an empty map
+// once it has ended. The projection and the trigger share this read.
+fn unquiet_live_work(world, province, culprit) {
+    for work in world.assignments {
+        if work.covert && work.target.kind == "province"
+                && work.target.a == province && work.owner == culprit {
+            return work;
+        }
+    }
+    #{}
+}
+
+fn unquiet_holdings_instances(ctx) {
+    let found = [];
+    for work in ctx.world.assignments {
+        if !work.covert { continue; }
+        if work.target.kind != "province" { continue; }
+        let province = work.target.a;
+        let holder = 0;
+        for p in ctx.world.provinces {
+            if p.id == province {
+                if type_of(p.holder) == "i64" { holder = p.holder; }
+            }
+        }
+        if holder == 0 { continue; }
+        // A house's own covert work on its own ground raises no alarm.
+        if holder == work.owner { continue; }
+        found.push(#{ house: holder, province: province, actor: work.owner });
+    }
+    found
+}
+
+fn unquiet_holdings_projection(ctx) {
+    let world = ctx.world;
+    let house = ctx.bindings.house;
+    let province = ctx.bindings.province;
+    let name = "";
+    let order = 0;
+    for p in world.provinces {
+        if p.id == province { name = p.name; order = p.order; }
+    }
+    let head = 0;
+    for organisation in world.organisations {
+        if organisation.id == house {
+            if type_of(organisation.head) == "i64" { head = organisation.head; }
+        }
+    }
+    // The live operation, while it runs: its completion day is the card's
+    // deadline and its exact live Order shift is the resistance the roll
+    // will use. Once the work has ended (this same projection freezes the
+    // resolution) both rows simply drop away.
+    let work = unquiet_live_work(world, province, ctx.bindings.actor);
+    let live = work.len() > 0;
+    let metrics = [];
+    if live {
+        metrics.push(#{
+            label_key: "situation.metric.days-left",
+            value: work.completes - world.date,
+        });
+    }
+    metrics.push(#{
+        label_key: "situation.metric.province-order",
+        value: `${name} — ${order}`,
+    });
+    if live {
+        metrics.push(#{
+            label_key: "situation.metric.order-resistance",
+            value: work.order_shift,
+        });
+    }
+    let actions = [];
+    if head > 0 {
+        actions.push(#{ id: "hold-court", leader: head });
+        actions.push(#{ id: "tour-holdings", leader: head });
+    }
+    let out = #{
+        stage: "unrest",
+        warning: live,
+        metrics: metrics,
+        // The province, and ONLY the province: no culprit, organisation,
+        // leader, or source plan may ever be emitted here before
+        // exposure.
+        participants: [#{ kind: "province", id: province }],
+        actions: actions,
+        resolution_values: #{ province: name },
+    };
+    if live { out.deadline = work.completes; }
+    out
+}
+
+// An ended lifecycle judges its outcomes with its OLD bindings against
+// the LIVE world: a province no longer held as bound passes on with no
+// further reading, however the operation went.
+fn unquiet_passed_on(ctx) {
+    let holder = 0;
+    for p in ctx.world.provinces {
+        if p.id == ctx.bindings.province {
+            if type_of(p.holder) == "i64" { holder = p.holder; }
+        }
+    }
+    holder != ctx.bindings.house
+}
+
+// Struck or weathered is a pure live-state reading, not a peek at the
+// hidden roll: the holdings were struck when their Order now stands
+// below the authored line, and weathered when it held above it — which
+// is exactly what "high Order resists sabotage" means at the outcome
+// level. A province kept strong absorbs even a landed blow.
+fn unquiet_struck(ctx) {
+    let order = 0;
+    for p in ctx.world.provinces {
+        if p.id == ctx.bindings.province { order = p.order; }
+    }
+    order < unquiet_struck_line()
+}
+
+define_situation(#{
+    id: "unquiet-holdings",
+    source: "scenario",
+    bindings: #{ house: "organisation", province: "province", actor: "organisation" },
+    trigger_fn: "unquiet_holdings_instances",
+    projection_fn: "unquiet_holdings_projection",
+    priority: 112,
+    log_activation: true,
+    audience: ["house"],
+    stages: ["unrest"],
+    actions: [
+        #{ id: "hold-court", assignment: "hold-court" },
+        #{ id: "tour-holdings", assignment: "tour-holdings" },
+    ],
+    outcomes: [
+        #{ id: "passed-on", when_fn: "unquiet_passed_on" },
+        #{ id: "struck", when_fn: "unquiet_struck" },
+        #{ id: "weathered", fallback: true },
+    ],
+});

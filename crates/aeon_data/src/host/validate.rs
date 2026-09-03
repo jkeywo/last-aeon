@@ -656,6 +656,31 @@ fn validate_plans(builder: &BuilderState, findings: &mut Vec<(String, Option<Str
                         ),
                     );
                 }
+                // The hostility predicates compare heads and ledgers of an
+                // organisation target; on any other plan they could only
+                // ever read nobody.
+                if requirements.max_target_head_opinion.is_some()
+                    && plan.target != AssignmentTargetKind::Organisation
+                {
+                    err(
+                        key,
+                        format!(
+                            "{where_}: 'max_target_head_opinion' compares an organisation target's head, but the plan targets {:?}",
+                            plan.target
+                        ),
+                    );
+                }
+                if requirements.target_owes_grievance
+                    && plan.target != AssignmentTargetKind::Organisation
+                {
+                    err(
+                        key,
+                        format!(
+                            "{where_}: 'target_owes_grievance' reads an organisation target's ledger, but the plan targets {:?}",
+                            plan.target
+                        ),
+                    );
+                }
             }
             for step in &method.steps {
                 match &step.action {
@@ -682,6 +707,9 @@ fn validate_plans(builder: &BuilderState, findings: &mut Vec<(String, Option<Str
                                 PlanTargetSelector::TargetHead => AssignmentTargetKind::Character,
                                 PlanTargetSelector::LowestEnemyProvinceInWar => {
                                     AssignmentTargetKind::OwnArmyAndProvince
+                                }
+                                PlanTargetSelector::TargetBorderProvince => {
+                                    AssignmentTargetKind::Province
                                 }
                             };
                             if *target == PlanTargetSelector::PlanTarget
@@ -712,6 +740,17 @@ fn validate_plans(builder: &BuilderState, findings: &mut Vec<(String, Option<Str
                                     key,
                                     format!(
                                         "step '{}' selects an enemy province in a war, so the plan must target a war",
+                                        step.id
+                                    ),
+                                );
+                            } else if *target == PlanTargetSelector::TargetBorderProvince
+                                && plan.target != AssignmentTargetKind::Organisation
+                            {
+                                err(
+                                    key,
+                                    format!(
+                                        "step '{}' selects the target's border province, so the \
+                                         plan must target an organisation",
                                         step.id
                                     ),
                                 );

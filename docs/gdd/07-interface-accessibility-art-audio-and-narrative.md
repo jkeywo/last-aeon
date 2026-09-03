@@ -230,6 +230,15 @@ apiece. The client owns no eligibility rule of its own: the picker,
 Confirm gating, and the started command all read the simulation's
 forecasts and validation, exactly as pinned-leader actions do.
 
+**Implemented.** [ai] The forecast body renders a second contest-context
+line beside the live-opinion one: when an assignment authors an Order
+modifier and its target names a province, the forecast states the
+province's live Order and the signed effectiveness shift it produced,
+with a persistent non-hover explanation like every other forecast row.
+The numbers arrive in the authoritative forecast — the client derives
+nothing — and the same live shift is what an Unquiet Holdings card quotes
+as its resistance metric, so the two surfaces cannot disagree.
+
 There is no evidenced full first-campaign tutorial sequence,
 codex/manual surface, control-remapping screen, or difficulty-selection flow.
 The wider onboarding questions and the campaign opening belong in [Player

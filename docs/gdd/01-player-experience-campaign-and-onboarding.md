@@ -190,6 +190,25 @@ successor's own visit binds him while the window allows. Costs are paid
 on acceptance and never refunded, and every lifecycle, forecast, and
 resolution is deterministic and durable across save, load, and replay.
 
+**Implemented/current.** [ai] The arc's second slice turns Kessarin's
+standard into a live shield: **Unquiet Holdings** (stories 35–36, 39,
+41–42, 50–51). Inside a later deterministic window — roughly days 180 to
+260 — a hostile, capable neighbour may set covert pressure against a
+border province; in the authored opening that neighbour is House Vantar
+and the ground is Vhorruk, but nothing is scripted — a genuine goal,
+plan, and ordinary sabotage assignment mount the operation only while
+the authored hostility, capability, and geography hold, and
+reconciliation, succession, or a changed border derails it through
+ordinary rules. What the player sees is an alarm without a culprit: the
+targeted province, its live Order, the exact resistance that Order is
+applying to the unseen work, and the time remaining. High Order
+materially worsens the hostile odds — the same 850 standard Kessarin
+demanded is the defence — and the player may answer with ordinary
+administration, accept the risk, or (in the coming slice) investigate.
+Who moved against them is authoritatively recorded for spectators,
+replay, and later investigation, but no ordinary surface names the hand
+before exposure.
+
 **Proposal.** Onboarding should use a short, dismissible sequence of goals over
 the live campaign rather than a separate rules sandbox. It should teach the
 normal interface and issue ordinary logged commands, without changing odds,

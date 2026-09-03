@@ -307,6 +307,13 @@ pub(crate) fn assignment_log_entry(
             .for_situation(origin.clone())
             .for_audience(crate::situations::log_audience(world, &origin.situation));
     }
+    // Covert work confides only in its owner, whatever else stamped the
+    // line: results, abandonment, interruption, and script faults all pass
+    // through here, so no assignment-derived line can leak provenance.
+    // Spectators and replay still read everything.
+    if crate::covert::assignment_is_covert(world, &assignment.def, assignment.owner) {
+        entry = entry.for_audience(crate::covert::owner_only(assignment.owner));
+    }
     entry
 }
 
@@ -2073,8 +2080,13 @@ pub fn resolve_due_assignments(world: &mut World) {
         }
 
         // Outcome, drawn by the same sampler the forecast describes.
-        let effectiveness =
-            crate::forecast::effectiveness(world, assignment.owner, assignment.leader, &def);
+        let effectiveness = crate::forecast::effectiveness(
+            world,
+            assignment.owner,
+            assignment.leader,
+            assignment.target,
+            &def,
+        );
         // The purpose label is a stream identity, not a name. It is
         // hashed into the seed, so changing it re-rolls every outcome in
         // every campaign ever played. It stays spelled the way it was

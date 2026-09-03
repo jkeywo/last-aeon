@@ -266,6 +266,17 @@ pub struct AssignmentDef {
     /// effectiveness) is simulation code; every number and both roles are
     /// authored here, per assignment.
     pub opinion_modifier: Option<OpinionModifierDef>,
+    /// An authored live-Order effectiveness modifier, when any.
+    ///
+    /// Reads the target province's live Order the same way the opinion
+    /// modifier reads a live relationship; only province-bearing target
+    /// kinds may author one.
+    pub order_modifier: Option<OrderModifierDef>,
+    /// Whether this work is covert: before exposure, ordinary player
+    /// surfaces narrow its provenance to the owning organisation, while
+    /// spectators and replay retain everything. Exposure is a future
+    /// read (the investigation issue's hook); today nothing is exposed.
+    pub covert: bool,
     /// Possible outcomes, keyed by kind. Success and failure are mandatory.
     /// Who this may be aimed at. Checked in exactly one place, so the
     /// button, the forecast, the autonomous houses and any standing order
@@ -961,6 +972,8 @@ pub enum AiIntent {
     Standing,
     /// Press a claim that is actually viable.
     Claim,
+    /// Undermine a rival by indirect, deniable means.
+    Subvert,
 }
 
 /// The kind of situation an event arises from.
@@ -1046,6 +1059,31 @@ pub struct OpinionModifierDef {
     pub min: i32,
     /// Upper clamp on the resulting shift, in effectiveness points.
     /// At least zero, so a neutral relationship never reads as a bonus.
+    pub max: i32,
+}
+
+/// How a target province's live Order shifts an assignment's effectiveness.
+///
+/// The second authored effectiveness modifier, shaped exactly like
+/// [`OpinionModifierDef`]: data, not behaviour. The simulation owns the
+/// arithmetic — the shortfall of the province's live Order below the
+/// authored reference, times `per_hundred` hundredths of an effectiveness
+/// point, truncated toward zero and clamped to the authored bounds, added
+/// inside the shared effectiveness calculation. Content that authors
+/// `max: 0` makes Order pure resistance: a well-ordered province blunts
+/// the work and a disordered one never helps beyond neutral.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OrderModifierDef {
+    /// The Order value at which the shift reads zero.
+    pub reference: i32,
+    /// Hundredths of an effectiveness point per point of Order below the
+    /// reference. Order above the reference produces a negative shift.
+    pub per_hundred: i32,
+    /// Lower clamp on the resulting shift, in effectiveness points.
+    /// At most zero.
+    pub min: i32,
+    /// Upper clamp on the resulting shift, in effectiveness points.
+    /// At least zero.
     pub max: i32,
 }
 
@@ -1287,6 +1325,11 @@ pub struct PlanDef {
     pub max_days: u32,
     /// How many times one step may fail before the plan is abandoned.
     pub max_step_retries: u32,
+    /// Whether this campaign is covert: before exposure, ordinary player
+    /// surfaces (adoption and end logs, rumours, the inspector's pursuing
+    /// line) narrow to the owning organisation, while spectators and
+    /// replay retain everything. Exposure is a future read.
+    pub covert: bool,
     /// Ways to pursue the goal, in authored preference order.
     pub methods: Vec<PlanMethodDef>,
 }
@@ -1381,6 +1424,12 @@ pub enum PlanTargetSelector {
     /// using the acting character's own army; no such army or province
     /// leaves the step waiting.
     LowestEnemyProvinceInWar,
+    /// The plan's target organisation's most disordered province sharing a
+    /// surface route with a province the authority holds — lowest order,
+    /// lowest stable ID on a tie. Produces a province target; needs the
+    /// plan to have an organisation target, and no shared border leaves
+    /// the step waiting.
+    TargetBorderProvince,
 }
 
 /// Declarative conditions gating a plan method or skipping a step.
@@ -1422,6 +1471,19 @@ pub struct PlanRequires {
     /// Whether an exact formal-war target must still have at least one
     /// province held by the opposing frozen side.
     pub war_has_enemy_province: Option<bool>,
+    /// The campaign day (days since the campaign start) must be at or
+    /// after this. With `max_campaign_day` it authors a deterministic
+    /// window in data rather than in engine code.
+    pub min_campaign_day: Option<i64>,
+    /// The campaign day must be at or before this.
+    pub max_campaign_day: Option<i64>,
+    /// The authority head's opinion of the target organisation's head must
+    /// be at or below this — the authored hostility floor. A missing head
+    /// on either side fails the condition.
+    pub max_target_head_opinion: Option<i32>,
+    /// The target organisation must owe the authority an open grievance —
+    /// hostility's other authored ground, mirroring `target_owes_favour`.
+    pub target_owes_grievance: bool,
 }
 
 /// An authored grand-strategy goal: a house's standing ambition.
@@ -1454,6 +1516,12 @@ pub struct GoalDef {
     /// What the ambition as a whole is aimed at. Restricted to `None`,
     /// `Organisation`, or `Province`, like a plan's target.
     pub target: AssignmentTargetKind,
+    /// How an organisation-aimed ambition resolves its concrete target.
+    pub target_selector: GoalTargetSelector,
+    /// Whether this ambition is covert: before exposure, its adoption and
+    /// end logs narrow to the owning organisation, while spectators and
+    /// replay retain everything. Exposure is a future read.
+    pub covert: bool,
     /// The advisory directives pressed on the house's vassals while the
     /// goal is active.
     pub directives: Vec<DirectiveDef>,
@@ -1461,6 +1529,34 @@ pub struct GoalDef {
     pub max_days: u32,
     /// Days after the goal ends before the house may adopt it again.
     pub cooldown_days: u32,
+}
+
+/// How an organisation-aimed goal picks its concrete target at adoption.
+///
+/// A selector is a deterministic integer choice over visible state, like a
+/// plan step's target selector, and every threshold it weighs is authored
+/// here rather than hardcoded. The vocabulary grows by demonstrated need.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GoalTargetSelector {
+    /// The weakest rival great house — fewest holdings, lowest stable ID
+    /// on a tie — outside the house's own chain of command.
+    #[default]
+    WeakestRival,
+    /// A hostile organisation holding ground on the house's own border: it
+    /// holds a province sharing a surface route with a held province, it
+    /// is outside the house's chain of command, and the house's head
+    /// regards its head at or below the authored opinion floor — or, when
+    /// `with_grievance` is set, it owes the house an open grievance.
+    /// Lowest stable organisation ID breaks ties; no such neighbour makes
+    /// the goal unadoptable.
+    HostileBorderNeighbour {
+        /// The hostility floor: qualify when the acting head's opinion of
+        /// the candidate's head is at or below this.
+        max_head_opinion: i32,
+        /// Whether an open grievance the candidate owes the house also
+        /// qualifies it, independent of opinion.
+        with_grievance: bool,
+    },
 }
 
 /// One advisory directive a goal presses on each of the house's vassals.
@@ -1513,6 +1609,12 @@ pub struct GoalRequires {
     /// The current head must pass the authoritative eligibility rules for
     /// declaring a personal claim to the vacant Paramountcy.
     pub can_claim_paramountcy: bool,
+    /// The campaign day (days since the campaign start) must be at or
+    /// after this. With `max_campaign_day` it authors a deterministic
+    /// adoption window in data rather than in engine code.
+    pub min_campaign_day: Option<i64>,
+    /// The campaign day must be at or before this.
+    pub max_campaign_day: Option<i64>,
 }
 
 /// An authored office: a revocable appointment held by a character.

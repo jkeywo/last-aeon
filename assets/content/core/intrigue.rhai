@@ -74,6 +74,18 @@ fn abduction_exposed(ctx) {
 
 // Sabotage: work aimed at a place rather than a person. To throw a
 // rival's province into disorder, or to wreck what it has built.
+//
+// Provincial Order is the resistance: both works read the target
+// province's live Order into their odds through an authored
+// order_modifier — a settled province blunts the agents, a disordered
+// one offers no extra purchase beyond neutral. Every number is authored
+// here; the arithmetic is the shared effectiveness calculation.
+//
+// Fomenting unrest is additionally covert, for whoever runs it: before
+// exposure its provenance — the plan behind it, its owner, its result
+// lines — confides only in the owning house, while the targeted holder
+// sees the unrest itself as a Situation without a culprit. Spectators
+// and replay retain everything.
 
 define_assignment(#{
     id: "foment-unrest",
@@ -84,6 +96,9 @@ define_assignment(#{
     target: "province",
     risks: ["scandal", "capture"],
     ai_available: false,
+    ai_intent: "subvert",
+    covert: true,
+    order_modifier: #{ reference: 800, per_hundred: 4, min: -8, max: 0 },
     requires: #{ target_holder: "other" },
     results: #{
         success: #{ weight: 500, log: true, effect_fn: "unrest_stirred" },
@@ -104,6 +119,7 @@ define_assignment(#{
     target: "province",
     risks: ["scandal", "capture"],
     ai_available: false,
+    order_modifier: #{ reference: 800, per_hundred: 4, min: -8, max: 0 },
     requires: #{ target_holder: "other" },
     results: #{
         success: #{ weight: 450, popup: true, log: true, effect_fn: "works_wrecked" },

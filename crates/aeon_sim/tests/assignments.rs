@@ -805,7 +805,7 @@ fn an_authored_opinion_modifier_is_read_into_the_one_effectiveness_number() {
         let content = world.resource::<aeon_sim::state::ContentDb>().0.clone();
         let def = &content.assignments[&hosting];
         assert_eq!(
-            aeon_sim::forecast::effectiveness(world, cedar, dara, def),
+            aeon_sim::forecast::effectiveness(world, cedar, dara, AssignmentTarget::None, def),
             warm.effectiveness,
             "forecast and resolution share the one calculation"
         );

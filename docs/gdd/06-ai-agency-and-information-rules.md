@@ -49,6 +49,13 @@ The intended experience follows four promises:
 The current information model is deliberately open. It contains authored
 private Situation audiences and limited hostile-plan rumours, but it is not a
 general fog-of-war, secrecy, espionage, or plot-detection simulation.
+[ai] One narrow, reusable exception now exists: authored **covert
+provenance**. A plan, goal, or assignment definition may declare
+`covert: true`, and before exposure every ordinary player surface narrows
+that work's provenance to its owning organisation. This is a visibility
+capability carried on ordinary log audiences, not a fog-of-war system:
+spectators and replay retain everything, and exposure is a single future
+read reserved for the investigation slice.
 
 ## Who acts, and with whose authority
 
@@ -79,7 +86,12 @@ have personal initiative within what they can legitimately undertake.
 
 **Implemented / accepted design.** Each autonomous character scores concrete
 `AiIntent` pressures over current authoritative state. The current vocabulary
-is muster, order, standing, resources, obligation, claim, and routine. The
+is muster, order, standing, resources, obligation, claim, and routine.
+[ai] The First Year intrigue slice adds **subvert**: undermining a rival by
+indirect, deniable means. Like the claim pressure, it is exposed head-only
+and only while the house's active goal favours it, aimed at the goal's own
+resolved target; the engine names no content key, and the authored plan
+requirements decide whether a campaign actually mounts. The
 engine does not name a preferred assignment for a pressure. Instead, authored
 assignments declare whether AI may use them, which intent they answer, and
 which target kind they require. A new assignment therefore joins the
@@ -95,6 +107,7 @@ Current scored signals include:
 | Standing | The heaviest grievance held against it, or low effective legitimacy |
 | Resources | Wealth below the current operating floor |
 | Claim | The next legal stage of the authored Paramountcy ambition: declaration, challenge, war prosecution, or press |
+| Subvert | [ai] The active covert ambition's resolved hostile border neighbour, head-only, carried out by an authored covert plan |
 | Routine | Authored untargeted upkeep when nothing more urgent wins |
 
 Scores use integer arithmetic. Candidates are sorted by score and then stable
@@ -250,6 +263,39 @@ The explanation deliberately states the pressure and chosen action, not the
 hidden random roll that broke a close choice. The result is an honest reason
 without pretending the selected response was the only possible one.
 
+[ai] **The covert exception.** Two of the rules above — the character
+inspector openly naming an autonomous character's active plan, and the
+guaranteed rumour when a plan is aimed at the player — are hereby
+qualified, not repealed, for authored covert work before exposure:
+
+- a plan, goal, or assignment authored `covert: true` writes its adoption,
+  progress, result, abandonment, and completion lines with an owner-only
+  audience through the same recorded-audience mechanism private Situations
+  use — the history is complete and spectator-visible, never rewritten;
+- a covert plan produces **no** rumour, however squarely it is aimed at the
+  player: deniability is the category's meaning, and discovery belongs to
+  the investigation slice rather than to a free whisper;
+- the inspector renders no pursuing line for a covert plan to any ordinary
+  player; spectators still read it openly;
+- what the targeted player receives instead is the ordinary **Unquiet
+  Holdings** Situation: the targeted province, its live Order, the exact
+  resistance that Order applies to the hostile work, and the time
+  remaining — with the culprit organisation structurally bound into the
+  lifecycle (for spectators, replay, and future investigation) but never
+  in the audience and never emitted by the projection;
+- exposure is one deliberate seam (`covert::is_exposed`), a stub that
+  returns false until investigation gives it authoritative state. Every
+  *simulation-side* covertness read passes through that seam — the plan
+  lines in `plans.rs`, the goal lines in `goals.rs`, every
+  assignment-derived line in `assignments.rs`, and the covert flag on the
+  semantic world view scripts read in `script_world.rs` — so exposure
+  flips all of those at once. The client's inspector pursuing-line gate is
+  the one surface that does not: its panel context holds no `World`, so it
+  gates on the authored `covert` flag directly. Its behaviour before
+  exposure is identical, and the investigation issue that gives exposure
+  authoritative state must also project that state client-side and rewire
+  the gate to read it.
+
 ## Spectator rules
 
 **Implemented / accepted design.** Spectator mode is stored as the absence of
@@ -274,6 +320,7 @@ rule, not evidence that all organisations know all private information.
 | Goal directive | Liege goal | Derived, not stored; ends with the goal |
 | Manual directive | Direct liege-to-vassal wish | Stored one per vassal and rechecked against current hierarchy |
 | Situation audience | Authored bindings resolved for one lifecycle | Captured as stable organisation IDs on permanent log entries |
+| Covert audience | [ai] Derived from the authored `covert` flag when a covert line is written | [ai] Captured as an owner-only organisation audience on the entry itself; no separate snapshot state, spectators and replay read all |
 | Explanation log | Campaign history | Stored chronologically with date, channel, organisation, subject, Situation occurrence, war, and audience |
 | Spectator identity | Campaign political state | Stored as no player organisation and restored as such |
 
@@ -310,6 +357,19 @@ identities and must not be renamed as a balance or copy-editing change.
 - A hostile plan rumour is a guaranteed, coarse notice when its target concerns
   the player. It is not a successful detection check and reveals no espionage
   statistic.
+- [ai] A covert plan whispers no rumour and its lines confide only in their
+  owner; the targeted holder learns of the work through the Unquiet
+  Holdings Situation, which names the ground and the resistance but never
+  the hand.
+- [ai] A covert operation whose agent dies, whose plan is abandoned by
+  reconciliation, or whose target province changes hands ends through the
+  ordinary assignment, plan, and Situation-lifecycle rules — and every
+  line those endings write keeps the owner-only audience, so even a failed
+  covert operation names nobody on the way out.
+- [ai] A covert campaign's method gate is rechecked before each step like any
+  plan's: a relationship lifted above the authored hostility floor abandons
+  an uncommitted covert campaign, while work already accepted runs to its
+  ordinary resolution.
 
 ## Feedback requirements
 
@@ -376,7 +436,13 @@ The current design contract is met when:
 11. snapshots and replays preserve plans, goals, manual directives, audiences,
     log history, spectator identity, and frozen RNG stream identities;
 12. no current feature is described as fog of war, secrecy, espionage, or plot
-    detection when the simulation does not implement that model.
+    detection when the simulation does not implement that model;
+13. [ai] authored covert work keeps its provenance — culprit, organisation,
+    leader, and source plan — out of every ordinary player surface (cards,
+    inspector, plan naming, logs, card history, notifications) before
+    exposure, while spectators, snapshots, and replay verification retain
+    it completely and the targeted holder still receives the authored
+    Situation with target, live Order, resistance, and remaining time.
 
 ## Explicit exclusions and open questions
 
@@ -384,9 +450,13 @@ The current design contract is met when:
 
 Milestones 5 and 6 explicitly exclude an espionage or plot-detection system.
 Plans speak openly in inspectors, and a plan concerning the player produces a
-coarse guaranteed rumour. There is no general fog of war, secret-action
+coarse guaranteed rumour. [ai] (Both statements now carry the covert
+exception recorded above: an authored covert plan is neither named nor
+rumoured before exposure.) There is no general fog of war, secret-action
 detection chance, actor-specific belief state, misinformation, or gradual
-intelligence collection in the current implementation. The mere mention of
+intelligence collection in the current implementation. [ai] Covert provenance
+is deliberately none of those: it hides who is behind authored covert work,
+never that the work's consequences are happening. The mere mention of
 `secrets` as a possible future specific relationship fact in PASM does not
 define such a system.
 
@@ -399,9 +469,20 @@ define such a system.
 - Should hostile-plan rumours remain guaranteed and coarse, become conditional
   on an explicit information system, or coexist with both public and covert
   plan categories?
+  [ai] **Resolved:** they coexist. Ordinary hostile plans keep the
+  guaranteed coarse rumour unchanged; authored covert plans produce no
+  rumour at all, and their discovery is the investigation slice's work.
+  See the covert-provenance decision in
+  `pasm/spec/architecture/implementation-decisions.yaml`.
 - Which actions, if any, should be intrinsically private outside a Situation's
   authored audience, and how should their later consequences enter public
   history?
+  [ai] **Resolved for the current slice:** privacy is authored per
+  definition (`covert: true`), not intrinsic to an action kind, and the
+  consequences were never private — the Order drop, the Unquiet Holdings
+  card, and any exposure grievance enter ordinary history normally; only
+  the provenance lines are owner-confided, and they enter public view
+  when exposure later flips the one covert seam.
 - How much of pressure scoring should the inspector expose: the selected
   reason only, ranked factors, or exact bonuses from goals and directives?
 - Should ordinary players ever receive access to an omniscient replay or
@@ -437,6 +518,9 @@ does not choose among those options.
 - `crates/aeon_sim/src/agency.rs`, `plans.rs`, and `goals.rs` — pressure
   construction, selection, household limits, plans, ambitions, directives,
   explanations, persistence, and deterministic streams.
+- [ai] `crates/aeon_sim/src/covert.rs` — the covert-provenance reads: the
+  authored flag, the owner-only audience, and the `is_exposed` seam the
+  investigation slice will fill.
 - `crates/aeon_sim/src/assignments.rs`, `forecast.rs`, `command.rs`, and
   `access.rs` — shared validation, resolution, log audiences, forecast rules,
   command authority, stable reads, and dated history.

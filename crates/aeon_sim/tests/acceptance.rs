@@ -372,10 +372,11 @@ fn snapshot_20_replays_connected_situations_and_formal_wars() {
             key("kessarin-order"),
             key("planetary-succession"),
             key("torvald-standing"),
+            key("unquiet-holdings"),
         ]
         .into_iter()
         .collect(),
-        "acceptance runs the complete nine-definition authored deck"
+        "acceptance runs the complete ten-definition authored deck"
     );
 
     let mut original = scenario_host(Arc::clone(&content), 18_1818);
@@ -692,7 +693,7 @@ fn an_autonomous_house_pursues_the_claim_as_a_campaign() {
     use aeon_sim::plans::Plans;
 
     let content = repository_content();
-    let mut h = scenario_host(content, 31337);
+    let mut h = scenario_host(content, 31339);
     let (veyrin, veyrin_head, title, body) = {
         let world = h.world_mut();
         let veyrin = world.resource::<PoliticsIndex>().org_keys[&key("veyrin")];

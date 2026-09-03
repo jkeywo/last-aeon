@@ -163,6 +163,20 @@ pub fn draw_forecast_body(
         ui.weak(strings.text("ui.forecast.contest.opinion.hover"));
     }
 
+    // The target province's live Order, when the assignment authors it
+    // into its odds — the same authoritative pair of numbers, from the
+    // same shared effectiveness calculation the roll will use.
+    if let Some(order) = view.order_value {
+        ui.label(strings.format(
+            "ui.forecast.contest.order",
+            &[
+                ("order", &order.to_string()),
+                ("shift", &format!("{:+}", view.order_shift)),
+            ],
+        ));
+        ui.weak(strings.text("ui.forecast.contest.order.hover"));
+    }
+
     ui.separator();
     ui.label(strings.text("ui.forecast.outcomes"));
     ui.weak(strings.text("ui.forecast.outcomes.hover"));

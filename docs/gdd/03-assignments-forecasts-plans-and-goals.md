@@ -119,6 +119,9 @@ first, and retains the whole forecast for each option.
 - governing skill, leader skill value, authored difficulty, and effectiveness;
 - [ai] the live opinion an authored relationship modifier read, and the
   clamped effectiveness shift it produced, when the assignment authors one;
+- [ai] the target province's live Order an authored `order_modifier` read,
+  and the clamped effectiveness shift it produced, when the assignment
+  authors one and the target names a province;
 - every authored outcome and its exact permille chance;
 - personal risks on failure and disaster;
 - any separate conditional military contest;
@@ -143,6 +146,20 @@ number moves the forecast and the roll. The mechanism is simulation code;
 every magnitude and both roles are authored data. The forecast reports the
 opinion it read and the shift it produced, and resolution reads the live
 relationship on its own day exactly as it reads the leader's live skill.
+
+[ai] An assignment whose target names a province may likewise author an
+`order_modifier` block — `reference`, `per_hundred`, `min`, `max` — read
+against the target province's live Order inside the same shared
+effectiveness calculation: the shortfall of Order below the authored
+reference, times `per_hundred` hundredths of an effectiveness point,
+truncated toward zero and clamped to the authored bounds. Authoring
+`max: 0` makes Order pure resistance, which is how the intrigue province
+operations use it. Only province-bearing target kinds may author the
+block, enforced loudly at load; a target without a province reads as
+neutral. The forecast reports the Order it read and the shift it
+produced, the semantic world view exposes the same live shift on running
+assignments so Situation cards can quote it, and resolution reads the
+live province on its own day.
 
 Forecast and resolution share duration, weighting, sampling, and risk
 calculations. A military operation is disclosed as a second conditional field
@@ -251,8 +268,11 @@ definitions. Assignment steps may deliberately use actions marked
 strategic validation.
 
 The current selectors are intentionally narrow: no target, the plan target,
-the authority's worst holding, the head of the target organisation, and the
-lowest-order enemy province in the exact target war. Dynamic selectors resolve
+the authority's worst holding, the head of the target organisation, the
+lowest-order enemy province in the exact target war, and [ai] the target
+organisation's most disordered province sharing a surface route with a held
+one (`target-border-province`, lowest stable ID on a tie — how a covert
+campaign finds the shared border). Dynamic selectors resolve
 when the step starts, so a months-old plan acts on current visible facts.
 
 ### Adoption and execution
@@ -283,7 +303,12 @@ claim, preparing and challenging a rival claimant, prosecuting a claimant war,
 readying levies, steadying holdings, answering a grievance, and shoring up
 standing. A plan aimed at the player's organisation or holding produces a
 limited rumour naming who is acting and broadly what concerns them; it does not
-pretend a full espionage system exists.
+pretend a full espionage system exists. [ai] The catalogue now also carries
+the covert `deniable-pressure` campaign: gated in data on hostility (a
+head-to-head opinion floor, or an open grievance owed) and capability, it
+whispers no rumour and confides its lines in its owner alone — the covert
+exception recorded in
+[AI Agency and Information Rules](06-ai-agency-and-information-rules.md).
 
 ## Organisational goals and directives
 
@@ -296,7 +321,14 @@ An eligible autonomous house without a goal gets a monthly 30% adoption check
 on the frozen `"grand-goal"` stream, derived from organisation and month. It
 then chooses the highest-priority eligible goal, with content key breaking
 ties. Current authored ambitions are becoming Consul, taking the planet, and
-conquering a neighbour.
+conquering a neighbour. [ai] The covert `undermine-a-neighbour` ambition
+joins them: windowed in data to campaign days 180–260 (`min_campaign_day` /
+`max_campaign_day`, new trigger fields any goal may use), gated to vassals
+with the authored capability floor, and resolved through the new authored
+`hostile-border-neighbour` target selector — a standing organisation
+outside the chain of command, holding a surface-adjacent province, hostile
+by authored data (opinion at or below the authored floor toward its head,
+or an open grievance owed), lowest stable ID first.
 
 A goal has no executor. It biases the head's ordinary scoring so that existing
 assignments and plans pursue the ambition. It ends when its house falls, an
@@ -319,13 +351,13 @@ intent are detailed in [AI Agency and Information Rules](06-ai-agency-and-inform
 
 | Layer | Principal data | Deterministic identity and ordering |
 | --- | --- | --- |
-| Assignment definition | Target kind, requirements, skill, difficulty, duration, phases, costs, urgency, AI intent, results, risks, military operation, [ai] optional live-opinion modifier (roles, per-point scale, clamp) | Stable content key; authored phase and outcome order |
+| Assignment definition | Target kind, requirements, skill, difficulty, duration, phases, costs, urgency, AI intent, results, risks, military operation, [ai] optional live-opinion modifier (roles, per-point scale, clamp), [ai] optional live-Order modifier (reference, per-hundred scale, clamp; province-bearing targets only), [ai] covert flag (owner-confided provenance before exposure) | Stable content key; authored phase and outcome order |
 | Active assignment | Stable ID, definition, owner, leader, target, war, Situation origin, start/completion dates, cancellation request | Stable assignment ID; daily resolution in ID order |
 | Command | Typed player decision, execution day, monotonic sequence | Applied in `(day, sequence)` order and appended to the command log |
 | Forecast | Derived timing, costs, contest, odds, risks, block reason, point of no return | Pure integer calculations shared with resolution |
-| Plan definition | Intent, target kind, methods, gates, flattened step vocabulary, cooldown and limits | Stable content key; validated acyclic composition |
+| Plan definition | Intent, target kind, methods, gates ([ai] including campaign-day windows and the hostility predicates), flattened step vocabulary, cooldown and limits, [ai] covert flag | Stable content key; validated acyclic composition |
 | Active plan | Actor-keyed definition, method, flattened steps, target, step, dates, current assignment, retries, reason | `BTreeMap` by stable character ID |
-| Goal definition | Trigger, priority, favoured intents, target, directives, lifetime and cooldown | Stable content key; priority then key tie-break |
+| Goal definition | Trigger ([ai] including campaign-day windows), priority, favoured intents, target, [ai] target selector, directives, lifetime and cooldown, [ai] covert flag | Stable content key; priority then key tie-break |
 | Active goal | Organisation-keyed definition, adopting head, resolved target, date | `BTreeMap` by stable organisation ID |
 
 Active assignments, pending popups, plans, goals, cooldowns, and manually

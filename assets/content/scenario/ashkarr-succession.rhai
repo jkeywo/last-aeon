@@ -14,7 +14,7 @@ define_scenario(#{
     player_house: "harrow",
     situations: [
         "formal-war", "court-awaits", "kessarin-order", "aleyn-levies",
-        "torvald-standing", "casimir-visit",
+        "torvald-standing", "casimir-visit", "unquiet-holdings",
     ],
 });
 
@@ -77,6 +77,14 @@ define_house(#{
     provinces: ["tolmaz", "ostragard", "vhorruk", "mournhollow"],
     wealth: 160, manpower: 1400, supplies: 240, legitimacy: 48,
 });
+// House Vantar keeps no herald and needs none. Too small to contest a
+// field and too proud to stay a footnote, it works the way its ground
+// taught it: informants in every market on the Ulmgorn road, coin moving
+// where words would be remembered, and pressure that no seal was ever
+// set to. What Vantar wants it loosens first — a restive border
+// province, a rival's harvest gone quietly wrong — and what it does it
+// can always, plausibly, deny. Its levy exists to hold what the quiet
+// work wins.
 define_house(#{
     id: "vantar",
     tier: "vassal", liege: "veyrin", head: "perrin-vantar", color: [120, 150, 170],

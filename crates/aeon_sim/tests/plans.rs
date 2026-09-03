@@ -199,6 +199,31 @@ define_plan(#{
         #{ id: "gently", steps: [ #{ start: "make-amends", target: "plan" } ] },
     ],
 });
+
+// The covert counterpart: the same shape as mend-the-rift, aimed the
+// same way, but authored covert — its adoption confides in its owner,
+// and no rumour reaches the player it is aimed at.
+define_assignment(#{
+    id: "whisper-against",
+    category: "consequential", duration_days: 20,
+    skill: "intrigue", difficulty: 5, target: "organisation",
+    ai_available: false, ai_intent: "subvert", covert: true,
+    results: #{
+        success: #{ weight: 999 },
+        failure: #{ weight: 1 },
+    },
+});
+define_plan(#{
+    id: "quiet-rift",
+    goal: "subvert",
+    target: "organisation",
+    covert: true,
+    max_days: 200,
+    max_step_retries: 1,
+    methods: [
+        #{ id: "quietly", steps: [ #{ start: "whisper-against", target: "plan" } ] },
+    ],
+});
 "#;
 
 fn content() -> Arc<aeon_data::ContentSet> {
@@ -513,6 +538,60 @@ fn a_plan_aimed_at_the_player_reaches_them_as_a_rumour() {
         }
     }
     panic!("the grievance plan was never adopted");
+}
+
+#[test]
+fn a_covert_plan_aimed_at_the_player_whispers_nothing_and_confides_in_its_owner() {
+    use aeon_data::model::AiIntent;
+    use aeon_sim::{LogSubject, MessageLog};
+
+    let mut h = host(33);
+    let head = bela(&mut h);
+    let birch = org(&mut h, "birch");
+    let ash = org(&mut h, "ash");
+
+    // The same adoption path the open rumour test drives, but the plan
+    // answering the pressure is authored covert.
+    let subvert = aeon_sim::agency::ScoredIntent {
+        intent: AiIntent::Subvert,
+        assignment: key("whisper-against"),
+        target: aeon_sim::AssignmentTarget::Org(ash),
+        score: 100,
+        reason: String::new(),
+        subject: None,
+        explains: false,
+    };
+    assert!(aeon_sim::plans::try_adopt(
+        h.world_mut(),
+        head,
+        birch,
+        &[subvert]
+    ));
+    let plan = h.world_mut().resource::<Plans>().active[&head].clone();
+    assert_eq!(plan.def.as_str(), "quiet-rift");
+
+    let log = h.world_mut().resource::<MessageLog>().clone();
+    // The adoption IS written — authoritative provenance is complete —
+    // but its audience is the owner alone, so the targeted player reads
+    // nothing while spectators and replay read everything.
+    let adoption = log
+        .entries
+        .iter()
+        .rev()
+        .find(|entry| entry.org == Some(birch))
+        .expect("the covert adoption is still logged");
+    assert!(adoption.audience.visible_to(Some(birch)));
+    assert!(!adoption.audience.visible_to(Some(ash)));
+    assert!(adoption.audience.visible_to(None));
+    // And no rumour reaches the player: the open plan's guaranteed
+    // whisper (an entry written for the player about the plotting head)
+    // deliberately does not exist for a covert campaign.
+    assert!(
+        !log.entries.iter().any(|entry| {
+            entry.org == Some(ash) && entry.subject == Some(LogSubject::Character(head))
+        }),
+        "a covert campaign must whisper nothing to its target"
+    );
 }
 
 /// A pressure built by hand, for driving adoption directly in tests

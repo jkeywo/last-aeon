@@ -19,7 +19,8 @@ use std::collections::BTreeMap;
 use aeon_core::calendar::GameDate;
 use aeon_data::ContentKey;
 use aeon_data::model::{
-    AiIntent, AssignmentTargetKind, DirectiveTarget, GoalRequires, HouseTier, OrgKind,
+    AiIntent, AssignmentTargetKind, DirectiveTarget, GoalDef, GoalRequires, GoalTargetSelector,
+    HouseTier, OrgKind,
 };
 use bevy::prelude::{Resource, World};
 use serde::{Deserialize, Serialize};
@@ -260,6 +261,18 @@ fn trigger_met(world: &World, authority: OrgId, req: &GoalRequires) -> bool {
             return false;
         }
     }
+    if req.min_campaign_day.is_some() || req.max_campaign_day.is_some() {
+        // The authored adoption window, counted in days from the campaign
+        // start: how content places an ambition inside a deterministic
+        // stretch of the reign without any engine-owned schedule.
+        let clock = world.resource::<crate::clock::CampaignClock>();
+        let day = clock.date.days_since_epoch() - clock.start_date.days_since_epoch();
+        if req.min_campaign_day.is_some_and(|earliest| day < earliest)
+            || req.max_campaign_day.is_some_and(|latest| day > latest)
+        {
+            return false;
+        }
+    }
     true
 }
 
@@ -270,26 +283,73 @@ pub fn has_vassals(world: &World, liege: OrgId) -> bool {
     })
 }
 
-/// Resolves a goal's concrete target from the kind it declares.
+/// Resolves a goal's concrete target from the kind and selector it
+/// declares.
 ///
-/// `None` needs nothing. An organisation-aimed goal takes the weakest
-/// rival great house — fewest holdings, lowest stable ID on a tie — that
-/// is not the house's own liege; no such rival makes the goal
-/// unadoptable, like a plan candidate that cannot resolve its target.
-fn resolve_target(
-    world: &World,
-    authority: OrgId,
-    kind: AssignmentTargetKind,
-) -> Option<AssignmentTarget> {
-    match kind {
+/// `None` needs nothing. An organisation-aimed goal resolves through its
+/// authored selector — the weakest rival great house by default, or a
+/// hostile border neighbour where content authors one — and no candidate
+/// makes the goal unadoptable, like a plan candidate that cannot resolve
+/// its target.
+fn resolve_target(world: &World, authority: OrgId, def: &GoalDef) -> Option<AssignmentTarget> {
+    match def.target {
         AssignmentTargetKind::None => Some(AssignmentTarget::None),
-        AssignmentTargetKind::Organisation => {
-            weakest_rival(world, authority).map(AssignmentTarget::Org)
-        }
+        AssignmentTargetKind::Organisation => match def.target_selector {
+            GoalTargetSelector::WeakestRival => {
+                weakest_rival(world, authority).map(AssignmentTarget::Org)
+            }
+            GoalTargetSelector::HostileBorderNeighbour {
+                max_head_opinion,
+                with_grievance,
+            } => hostile_border_neighbour(world, authority, max_head_opinion, with_grievance)
+                .map(AssignmentTarget::Org),
+        },
         // Province-aimed goals wait on a selector a real goal needs; none
         // does yet, so the vocabulary has not grown one.
         _ => None,
     }
+}
+
+/// A hostile organisation on the house's own border: standing, outside
+/// the house's chain of command, holding a province that shares a surface
+/// route with a held one, and hostile by the authored data — the acting
+/// head's opinion of its head at or below the authored floor, or (when
+/// content says grievances count) an open grievance it owes the house.
+/// Lowest stable organisation ID breaks ties, so the choice never depends
+/// on iteration luck.
+fn hostile_border_neighbour(
+    world: &World,
+    self_org: OrgId,
+    max_head_opinion: i32,
+    with_grievance: bool,
+) -> Option<OrgId> {
+    let own_head = crate::access::org_head(world, self_org);
+    crate::access::org_ids(world)
+        .into_iter()
+        .filter(|org| *org != self_org)
+        .filter(|org| crate::access::org(world, *org).is_some_and(|r| !r.defunct))
+        // Not the house's own liege chain: deniable pressure on your own
+        // liege is a different story than this selector tells.
+        .filter(|org| crate::politics::answers_to(world, self_org, *org).is_none())
+        .filter(|org| !crate::plans::border_provinces_of(world, self_org, *org).is_empty())
+        .find(|org| {
+            let ill_will = own_head
+                .zip(crate::access::org_head(world, *org))
+                .is_some_and(|(own, theirs)| {
+                    crate::politics::opinion_between(world, own, theirs) <= max_head_opinion
+                });
+            let grievance = with_grievance
+                && world
+                    .get_resource::<crate::obligations::Obligations>()
+                    .is_some_and(|ledger| {
+                        ledger.open().any(|entry| {
+                            entry.kind == crate::obligations::ObligationKind::Grievance
+                                && entry.debtor == *org
+                                && entry.creditor == self_org
+                        })
+                    });
+            ill_will || grievance
+        })
 }
 
 /// The weakest rival great house to `self_org`: a dynastic great house,
@@ -345,7 +405,7 @@ pub fn maybe_adopt_goal(world: &mut World, head: CharacterId, authority: OrgId) 
             if !off_cooldown || !trigger_met(world, authority, &def.trigger) {
                 return None;
             }
-            resolve_target(world, authority, def.target)
+            resolve_target(world, authority, def)
                 .map(|target| (def.priority, def.key.clone(), target))
         })
         .collect();
@@ -366,7 +426,7 @@ pub fn maybe_adopt_goal(world: &mut World, head: CharacterId, authority: OrgId) 
     world.resource_mut::<Goals>().active.insert(
         authority,
         ActiveGoal {
-            def: key,
+            def: key.clone(),
             adopted_by: head,
             target,
             started: date,
@@ -384,6 +444,11 @@ pub fn maybe_adopt_goal(world: &mut World, head: CharacterId, authority: OrgId) 
         entry = entry.about(LogSubject::Org(rival));
     } else {
         entry = entry.about(LogSubject::Org(authority));
+    }
+    // A covert ambition is adopted in confidence: owner-only, while
+    // spectators and replay retain the full account.
+    if crate::covert::goal_is_covert(world, &key, authority) {
+        entry = entry.for_audience(crate::covert::owner_only(authority));
     }
     crate::access::log(world, entry);
 }
@@ -454,10 +519,12 @@ pub fn advance_goals(world: &mut World) {
                 ("goal", &def.title),
             ],
         );
-        crate::access::log(
-            world,
-            LogEntry::line(text, LogChannel::Politics).by(Some(authority)),
-        );
+        let mut entry = LogEntry::line(text, LogChannel::Politics).by(Some(authority));
+        // A covert ambition ends as quietly as it was adopted.
+        if crate::covert::goal_is_covert(world, &active.def, authority) {
+            entry = entry.for_audience(crate::covert::owner_only(authority));
+        }
+        crate::access::log(world, entry);
     }
 }
 

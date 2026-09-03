@@ -273,6 +273,7 @@ The current reusable deck contains:
 | Aleyn's Levies | Scenario, bound to House Harrow and its requester | Household demand: at least 1,000 total fielded army manpower by the same shared deadline, with the same four-tier consequences |
 | Torvald's Standing | Scenario, bound to House Harrow, its requester, and the exact liege head | Household demand: the bound liege head's opinion of the house head at 0 or higher by the same shared deadline, with the same four-tier consequences |
 | The Liege's Visit | Scenario, bound to House Harrow and the live liege head | [ai] First-year windowed hosted visit (days 140–180): three hospitality tiers whose live forecasts read the liege head's current opinion, a slight for an unanswered window, and passed-on adaptation when the bound head dies, is deposed, is replaced, or cannot travel |
+| Unquiet Holdings | Scenario, bound to the targeted holder, the targeted province, and (structurally, outside the audience) the culprit organisation | [ai] The covert-interference alarm: while a covert province-aimed operation runs against another holder's ground, the holder sees the province, its live Order, the exact resistance shift that Order applies, and the remaining time — never the hand — and the card ends passed-on, struck, or weathered by a pure live-Order reading |
 
 [ai] The Court Awaits slice added three reusable seams the deck may now use.
 Situation call contexts carry the instance's activation date (triggers see
@@ -402,6 +403,32 @@ and weighted results in Rhai. Current definitions are not available to the simpl
 reactive AI scorer; authored plans or larger goals can call them. This is an
 accepted guard against arbitrary murder or sabotage, not a rule that all future AI
 must remain incapable of intrigue.
+
+[ai] The First Year intrigue slice makes the province operations genuinely
+contested and, for fomenting unrest, genuinely deniable:
+
+- Both province operations author an `order_modifier` (reference 800,
+  4 hundredths per Order point, clamped −8..0): the target province's live
+  Order is read into the one shared effectiveness calculation, so a
+  well-kept province materially worsens the hostile odds while disorder
+  never helps beyond neutral. This is the accepted "Order is resistance"
+  rule — no hidden detection statistic exists. The forecast, the Unquiet
+  Holdings card, and the resolution roll all quote the same live number.
+- `foment-unrest` is authored `covert: true` and answers the new subvert
+  pressure. An AI house reaches it only through the covert
+  `deniable-pressure` plan, adopted under the covert
+  `undermine-a-neighbour` ambition: a vassal head, inside the authored
+  day 180–260 window, with the authored capability floor, against a
+  hostile border neighbour (head-to-head opinion at or below −10, or an
+  open grievance owed). In the Ashkarr scenario that chain resolves to
+  House Vantar working Vhorruk, the one Harrow province across its
+  border. The player may order the same operation by hand and receives
+  the same deniability.
+- The targeted holder experiences the operation as the Unquiet Holdings
+  Situation; counter-play is ordinary administration (raise Order),
+  future investigation, retaliation, reconciliation, or accepting the
+  risk. Provenance rules are in
+  [AI Agency and Information Rules](06-ai-agency-and-information-rules.md).
 
 Covert intrigue is not formal war. Its hostile consequence is the operation and
 its effects; it does not put organisations onto war sides, authorise occupation,
@@ -695,6 +722,13 @@ These questions do not alter accepted behaviour until answered and recorded:
   should broken versus expired commitments differ in later political reasoning?
 - What information about covert intrigue is hidden before exposure, and what
   evidence can make suspicion legible without revealing authoritative truth?
+  [ai] **Resolved for the first covert slice:** before exposure the culprit
+  organisation, leader, and source plan are hidden from every ordinary
+  player surface, while the operation's target province, its live Order,
+  the exact resistance shift, and the remaining time are openly shown on
+  the Unquiet Holdings card — legible suspicion without fabricated
+  evidence. What investigation can additionally reveal, and at what cost,
+  remains the investigation slice's question.
 - What player-facing term best distinguishes deniable raid hostility from formal
   war without implying that raids are consequence-free?
 - How should peace terms grow beyond the current whole-war negotiated conclusion,

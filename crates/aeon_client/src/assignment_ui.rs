@@ -341,4 +341,34 @@ mod tests {
         assert!(!filter.admits(&private, Some(outsider)));
         assert!(filter.admits(&private, None));
     }
+
+    #[test]
+    fn covert_owner_only_lines_reach_their_owner_and_spectators_alone() {
+        // Covert provenance is carried as an owner-only recorded audience;
+        // the client owns no covert rule of its own — the same filter that
+        // gates private Situation lines gates a covert plan's adoption,
+        // its sabotage results, and its end.
+        let culprit = OrgId::from_raw(5).unwrap();
+        let target = OrgId::from_raw(4).unwrap();
+        let covert = entry(
+            LogChannel::Politics,
+            "A house has set its mind to something deniable",
+            Some(5),
+        )
+        .for_audience(aeon_sim::LogAudience::organisations([culprit]));
+        let filter = LogFilter::default();
+
+        assert!(
+            filter.admits(&covert, Some(culprit)),
+            "the owner always reads their own covert work"
+        );
+        assert!(
+            !filter.admits(&covert, Some(target)),
+            "the targeted player learns nothing from the log"
+        );
+        assert!(
+            filter.admits(&covert, None),
+            "spectators and replay retain complete provenance"
+        );
+    }
 }

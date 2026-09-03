@@ -355,6 +355,30 @@ pub fn score_intents(world: &World, actor: CharacterId, authority: OrgId) -> Vec
         }
     }
 
+    // ---- The authored subversion ambition ----
+    // A goal favouring the subvert pressure aims the head at the goal's
+    // own resolved rival. Like the claim block, no content key is named
+    // here: the goal supplies the intent and target, authored plan
+    // requirements decide whether a hostile, capable campaign actually
+    // mounts, and every step remains an ordinary validated assignment.
+    // Head-only, like the claim: deniable pressure spends the house's
+    // name even when it spends nothing else.
+    if crate::access::org_head(world, authority) == Some(actor)
+        && crate::goals::favours(world, authority, AiIntent::Subvert)
+        && let Some(AssignmentTarget::Org(rival)) = crate::goals::active_target(world, authority)
+        && let Some(assignment) = plan_signal_assignment(world, AiIntent::Subvert)
+    {
+        intents.push(ScoredIntent {
+            intent: AiIntent::Subvert,
+            assignment,
+            target: AssignmentTarget::Org(rival),
+            score: 140,
+            reason: strings.text("sim.intent.subvert").to_owned(),
+            subject: Some(LogSubject::Org(authority)),
+            explains: true,
+        });
+    }
+
     // With nothing pressing, a house still attends to ordinary business.
     for assignment in assignments_for(world, AiIntent::Routine, AssignmentTargetKind::None) {
         intents.push(ScoredIntent {

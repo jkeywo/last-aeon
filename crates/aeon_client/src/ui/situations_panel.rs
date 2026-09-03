@@ -249,7 +249,7 @@ pub fn refresh_situation_panel_view(world: &mut World) {
             stage_title: stage.map(|stage| stage.title.clone()),
             stage_summary: stage.map(|stage| stage.summary.clone()),
             warning: stage.and_then(|stage| stage.warning.clone()),
-            history: tagged_history(log_entries, &card.active.occurrence()),
+            history: tagged_history(log_entries, &card.active.occurrence(), player),
             card,
             actions,
             responses,
@@ -263,7 +263,7 @@ pub fn refresh_situation_panel_view(world: &mut World) {
             newest_resolutions(&state.resolutions)
                 .filter(|notice| visible_to_player(world, &notice.situation))
                 .map(|notice| SituationResolutionView {
-                    history: tagged_history(log_entries, &notice.occurrence()),
+                    history: tagged_history(log_entries, &notice.occurrence(), player),
                     resolution: notice.clone(),
                 })
                 .collect()
@@ -606,11 +606,21 @@ fn newest_resolutions(
     resolutions.iter().rev()
 }
 
-fn tagged_history(entries: &[LogEntry], occurrence: &SituationOccurrence) -> Vec<LogEntry> {
+fn tagged_history(
+    entries: &[LogEntry],
+    occurrence: &SituationOccurrence,
+    player: Option<aeon_sim::OrgId>,
+) -> Vec<LogEntry> {
     let war = situation_war(&occurrence.situation);
     entries
         .iter()
         .rev()
+        // Defence in depth: an entry's own recorded audience gates the
+        // card's history exactly as it gates the log panel, so a covert
+        // or private line tagged to a visible lifecycle can never reach
+        // an ordinary player through this second surface. Spectators
+        // (no player organisation) read everything.
+        .filter(|entry| entry.audience.visible_to(player))
         .filter(|entry| {
             entry.situations.iter().any(|tag| tag == occurrence)
                 || war.is_some_and(|war| entry.war == Some(war))
@@ -942,7 +952,7 @@ mod tests {
             );
         }
 
-        let history = tagged_history(&entries, &wanted);
+        let history = tagged_history(&entries, &wanted, None);
         assert_eq!(history.len(), HISTORY_LIMIT);
         assert_eq!(
             history
@@ -958,6 +968,46 @@ mod tests {
                 .iter()
                 .all(|entry| entry.situations.iter().any(|tag| tag == &wanted)),
             "another activation or structural key must never leak into the card"
+        );
+    }
+
+    #[test]
+    fn card_history_respects_each_entrys_recorded_audience() {
+        // A covert or private line tagged to a visible lifecycle stays out
+        // of an ordinary player's card history; a spectator reads all of
+        // it. The entry's own recorded audience is the only rule.
+        let structural_key = key("ashkarr-succession");
+        let wanted = occurrence(structural_key, 1);
+        let owner = aeon_sim::OrgId::from_raw(5).unwrap();
+        let viewer = aeon_sim::OrgId::from_raw(4).unwrap();
+        let entries = vec![
+            LogEntry::new(GameDate::from_days(2), "public line", LogChannel::Events)
+                .for_situation(wanted.clone()),
+            LogEntry::new(
+                GameDate::from_days(3),
+                "covert line",
+                LogChannel::Assignments,
+            )
+            .for_situation(wanted.clone())
+            .for_audience(aeon_sim::LogAudience::organisations([owner])),
+        ];
+
+        assert_eq!(
+            tagged_history(&entries, &wanted, Some(viewer))
+                .iter()
+                .map(|entry| entry.text.as_str())
+                .collect::<Vec<_>>(),
+            ["public line"]
+        );
+        assert_eq!(
+            tagged_history(&entries, &wanted, Some(owner)).len(),
+            2,
+            "the owner reads their own covert history"
+        );
+        assert_eq!(
+            tagged_history(&entries, &wanted, None).len(),
+            2,
+            "spectators retain complete provenance"
         );
     }
 
@@ -1003,7 +1053,7 @@ mod tests {
         ];
 
         assert_eq!(
-            tagged_history(&entries, &first)
+            tagged_history(&entries, &first, None)
                 .iter()
                 .map(|entry| entry.text.as_str())
                 .collect::<Vec<_>>(),

@@ -4383,3 +4383,651 @@ fn visit_lifecycles_snapshot_and_replay_across_their_resolutions() {
         }
     }
 }
+
+// ---------------------------------------------------------------------------
+// Unquiet Holdings: the covert first-year operation. A hostile, capable
+// house mounts deniable sabotage against a border province unaided; the
+// targeted holder sees the province, its live Order, the resistance that
+// Order applies, and the time remaining — and never the hand behind it —
+// while spectators and replay retain complete authoritative provenance.
+// ---------------------------------------------------------------------------
+
+/// A seed on which Vantar mounts the operation unaided on the first
+/// window pulse (goal and plan on day 180, sabotage accepted on day 181).
+const SHADOW_SEED: u64 = 404;
+/// A settled day with the seed's operation reliably in flight.
+const SHADOW_LIVE_DAY: u32 = 182;
+
+/// Text fragments that would betray the covert provenance if any surface
+/// an ordinary player reads carried them: the covert plan's title, the
+/// covert goal's title, the sabotage assignment's title, and the open
+/// hostile-plan rumour naming the culprit house.
+const SHADOW_TELLS: [&str; 4] = [
+    "Deniable Pressure",
+    "Undermine a Neighbour",
+    "Foment Unrest",
+    "whispers that House Vantar",
+];
+
+fn unquiet_card_for(host: &mut SimHost, house: OrgId) -> Option<SituationCard> {
+    active_cards(host.world_mut()).into_iter().find(|card| {
+        card.active.key.definition == key("unquiet-holdings")
+            && card.active.key.bindings.get("house") == Some(&SituationSubject::Organisation(house))
+    })
+}
+
+fn vantar_operation(host: &mut SimHost) -> Option<ActiveAssignment> {
+    let vantar = org(host, "vantar");
+    let world = host.world_mut();
+    world
+        .resource::<AssignmentsIndex>()
+        .assignments
+        .values()
+        .find_map(|entity| {
+            world
+                .get::<ActiveAssignment>(*entity)
+                .filter(|work| work.owner == vantar && work.def == key("foment-unrest"))
+                .cloned()
+        })
+}
+
+fn integer_metric(
+    projection: &aeon_sim::situations::SituationProjection,
+    label: &str,
+) -> Option<i64> {
+    projection.metrics.iter().find_map(|metric| {
+        (metric.label_key == label).then(|| match &metric.value {
+            aeon_sim::situations::SituationMetricValue::Integer(value) => *value,
+            aeon_sim::situations::SituationMetricValue::Text(text) => {
+                panic!("expected integer metric for {label}, got '{text}'")
+            }
+        })
+    })
+}
+
+#[test]
+fn the_covert_operation_mounts_unaided_inside_the_authored_window() {
+    let mut host = scenario_host(SHADOW_SEED, repository_content());
+    let harrow = org(&mut host, "harrow");
+    let vantar = org(&mut host, "vantar");
+    let perrin = character(&mut host, "perrin-vantar");
+    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+
+    // Before the authored window opens, nothing of the arc exists.
+    host.advance_days(179);
+    assert!(
+        !host
+            .world_mut()
+            .resource::<aeon_sim::goals::Goals>()
+            .active
+            .contains_key(&vantar),
+        "the covert ambition cannot be adopted before its authored window"
+    );
+    assert!(vantar_operation(&mut host).is_none());
+    assert!(unquiet_card_for(&mut host, harrow).is_none());
+
+    // Inside the window the whole chain mounts with no scripted nudge:
+    // goal, plan, sabotage, and the holder's card.
+    host.advance_days(SHADOW_LIVE_DAY - 179);
+    let goal = host
+        .world_mut()
+        .resource::<aeon_sim::goals::Goals>()
+        .active
+        .get(&vantar)
+        .cloned()
+        .expect("Vantar adopts the covert ambition unaided");
+    assert_eq!(goal.def, key("undermine-a-neighbour"));
+    assert_eq!(
+        goal.target,
+        AssignmentTarget::Org(harrow),
+        "the hostile border neighbour resolves to Harrow"
+    );
+    let plan = host
+        .world_mut()
+        .resource::<aeon_sim::plans::Plans>()
+        .active
+        .get(&perrin)
+        .cloned()
+        .expect("the head leads the covert campaign");
+    assert_eq!(plan.def, key("deniable-pressure"));
+    assert_eq!(
+        plan.method, "from-ill-will",
+        "hostility is the authored gate that opened"
+    );
+    assert_eq!(plan.target, AssignmentTarget::Org(harrow));
+    let work = vantar_operation(&mut host).expect("the sabotage is in flight");
+    assert_eq!(work.leader, perrin);
+    assert_eq!(
+        work.target,
+        AssignmentTarget::Province(vhorruk),
+        "the border selector resolves to the one shared border province"
+    );
+
+    // The holder's card binds the province, the house, and — structurally,
+    // never visibly — the culprit.
+    let card = unquiet_card_for(&mut host, harrow).expect("the holder's card is live");
+    assert_eq!(card.unavailable, None);
+    assert_eq!(
+        card.active.key.bindings.get("province"),
+        Some(&SituationSubject::Province(vhorruk))
+    );
+    assert_eq!(
+        card.active.key.bindings.get("actor"),
+        Some(&SituationSubject::Organisation(vantar)),
+        "authoritative provenance is structurally bound for investigation and replay"
+    );
+    let projection = card.projection.clone().expect("projection");
+    assert_eq!(
+        projection.deadline,
+        Some(work.completes),
+        "remaining time is the work's own clock"
+    );
+    assert_eq!(
+        integer_metric(&projection, "situation.metric.days-left"),
+        Some(host.date().days_until(work.completes)),
+    );
+
+    // The resistance row quotes the exact live number the resolution roll
+    // will use, from the one shared calculation.
+    let def = host
+        .world_mut()
+        .resource::<aeon_sim::state::ContentDb>()
+        .0
+        .assignments[&key("foment-unrest")]
+        .clone();
+    let reading = aeon_sim::forecast::order_modifier_reading(host.world_mut(), work.target, &def)
+        .expect("the sabotage authors an Order modifier");
+    assert_eq!(
+        reading.0, 800,
+        "Vhorruk stands at the settled opening Order"
+    );
+    assert_eq!(
+        integer_metric(&projection, "situation.metric.order-resistance"),
+        Some(i64::from(reading.1)),
+    );
+
+    // Strengthening the ground mid-flight changes the same live number on
+    // the same card: forecast, card, and resolution share one reading.
+    aeon_sim::order::adjust_order(host.world_mut(), vhorruk, 150);
+    let strengthened = unquiet_card_for(&mut host, harrow)
+        .and_then(|card| card.projection)
+        .expect("projection");
+    assert_eq!(
+        integer_metric(&strengthened, "situation.metric.order-resistance"),
+        Some(-6),
+        "Order 950 against reference 800 resists at the authored scale"
+    );
+    assert_eq!(
+        aeon_sim::forecast::effectiveness(host.world_mut(), vantar, perrin, work.target, &def),
+        7 - 10 - 6,
+        "the resolution-side effectiveness carries the same live resistance"
+    );
+}
+
+#[test]
+fn no_player_surface_leaks_the_covert_hand_before_exposure() {
+    let mut host = scenario_host(SHADOW_SEED, repository_content());
+    let harrow = org(&mut host, "harrow");
+    let edrun = character(&mut host, "edrun-harrow");
+    host.advance_days(SHADOW_LIVE_DAY);
+    let work = vantar_operation(&mut host).expect("the operation is live");
+    let card = unquiet_card_for(&mut host, harrow).expect("the holder's card is live");
+    let exact = card.active.occurrence();
+    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+
+    // The projection names the province and nothing else: no culprit
+    // organisation, leader, or source plan in participants, groups,
+    // links, or actions.
+    let projection = card.projection.clone().expect("projection");
+    assert_eq!(
+        projection.participants,
+        vec![aeon_sim::situations::SituationLink {
+            kind: aeon_data::model::SituationSubjectKind::Province,
+            id: vhorruk.raw(),
+            label_key: None,
+        }]
+    );
+    assert!(projection.participant_groups.is_empty());
+    assert!(projection.links.is_empty());
+    for action in &projection.actions {
+        assert_eq!(
+            action.leader,
+            Some(edrun),
+            "counter-play is the holder's own work"
+        );
+        assert_eq!(action.target, AssignmentTarget::None);
+        assert!(action.context.is_empty());
+    }
+
+    // Run the operation to its end so the result and campaign-end lines
+    // exist — and then on past the covert AMBITION's own expiry, because
+    // the goal's end line is written by the monthly pass long after the
+    // sabotage finished and would otherwise fall outside the sweep.
+    let vantar = org(&mut host, "vantar");
+    while host.date() < work.completes {
+        host.advance_days(1);
+    }
+    host.advance_days(1);
+    let ambition = key("undermine-a-neighbour");
+    let mut ambition_ended = false;
+    for _ in 0..180 {
+        if host
+            .world_mut()
+            .resource::<aeon_sim::goals::Goals>()
+            .active
+            .get(&vantar)
+            .is_none_or(|goal| goal.def != ambition)
+        {
+            ambition_ended = true;
+            break;
+        }
+        host.advance_days(1);
+    }
+    assert!(
+        ambition_ended,
+        "the covert ambition ends inside the swept horizon"
+    );
+
+    // Now sweep the ENTIRE log the player can read.
+    let log = host.world_mut().resource::<MessageLog>().clone();
+    for entry in log
+        .entries
+        .iter()
+        .filter(|entry| entry.audience.visible_to(Some(harrow)))
+    {
+        for tell in SHADOW_TELLS {
+            assert!(
+                !entry.text.contains(tell),
+                "a player-visible line leaks covert provenance: '{}'",
+                entry.text
+            );
+        }
+    }
+    // The withheld lines exist — history is complete, not rewritten —
+    // and every one of them remains open to spectators and replay.
+    let withheld: Vec<_> = log
+        .entries
+        .iter()
+        .filter(|entry| !entry.audience.visible_to(Some(harrow)))
+        .collect();
+    assert!(
+        withheld
+            .iter()
+            .any(|entry| entry.text.contains("Deniable Pressure")),
+        "the covert campaign's own history is written, owner-confided"
+    );
+    assert!(withheld.iter().all(|entry| entry.audience.visible_to(None)));
+
+    // The ambition's own end line — the last covert writer in the arc,
+    // and the one furthest from the operation that produced it — is
+    // confided to its owner like every other: withheld from the targeted
+    // house, open to spectators and replay.
+    let goal_end = log
+        .entries
+        .iter()
+        .find(|entry| {
+            entry.text.contains("House Vantar")
+                && entry.text.contains("Undermine a Neighbour")
+                && (entry.text.contains("set aside") || entry.text.contains("achieved"))
+        })
+        .expect("the covert ambition's end is written, not swallowed");
+    assert!(
+        !goal_end.audience.visible_to(Some(harrow)),
+        "the ambition's end line leaks the covert goal: '{}'",
+        goal_end.text
+    );
+    assert!(goal_end.audience.visible_to(None));
+
+    // Notifications: the activation announcement reached the player
+    // through the ordinary pausing channel, no popup belongs to the
+    // sabotage itself, and no pending popup names the hand.
+    let popups = host.world_mut().resource::<PendingPopups>().clone();
+    assert!(
+        popups
+            .popups
+            .iter()
+            .any(|popup| popup.assignment == key("unquiet-holdings")),
+        "the alarm announces itself to its audience"
+    );
+    for popup in &popups.popups {
+        assert_ne!(popup.assignment, key("foment-unrest"));
+        for tell in SHADOW_TELLS {
+            assert!(
+                !popup.text.contains(tell),
+                "a popup leaks: '{}'",
+                popup.text
+            );
+        }
+    }
+
+    // The frozen resolution notice reads the province, not the hand.
+    let state = host.world_mut().resource::<SituationState>().clone();
+    let notice = state
+        .resolutions
+        .iter()
+        .find(|notice| notice.occurrence() == exact)
+        .expect("the ended operation resolved its card");
+    assert!(
+        matches!(notice.outcome.as_str(), "struck" | "weathered"),
+        "the operation's end is judged from the province, got '{}'",
+        notice.outcome
+    );
+    for tell in SHADOW_TELLS {
+        assert!(!notice.text.contains(tell));
+    }
+    assert_eq!(notice.participants.len(), 1);
+    assert_eq!(
+        notice.participants[0].kind,
+        aeon_data::model::SituationSubjectKind::Province
+    );
+}
+
+#[test]
+fn spectators_and_replay_retain_complete_covert_provenance() {
+    let content = repository_content();
+    let mut original = scenario_host(SHADOW_SEED, Arc::clone(&content));
+    let mut twin = scenario_host(SHADOW_SEED, Arc::clone(&content));
+    original.advance_days(SHADOW_LIVE_DAY);
+    twin.advance_days(SHADOW_LIVE_DAY);
+    assert_eq!(
+        original.state_hash(),
+        twin.state_hash(),
+        "equal seeds replay to one hash with the covert operation live"
+    );
+
+    let harrow = org(&mut original, "harrow");
+    let draksha = org(&mut original, "draksha");
+    let card_key = unquiet_card_for(&mut original, harrow)
+        .expect("live card")
+        .active
+        .key;
+
+    // The card is the bound holder's and the spectator's; an outsider
+    // sees nothing.
+    assert!(aeon_sim::situations::visible_to_player(
+        original.world_mut(),
+        &card_key
+    ));
+    original.world_mut().resource_mut::<PlayerHouse>().0 = Some(draksha);
+    assert!(!aeon_sim::situations::visible_to_player(
+        original.world_mut(),
+        &card_key
+    ));
+    original.world_mut().resource_mut::<PlayerHouse>().0 = None;
+    assert!(aeon_sim::situations::visible_to_player(
+        original.world_mut(),
+        &card_key
+    ));
+    original.world_mut().resource_mut::<PlayerHouse>().0 = Some(harrow);
+
+    // Every line the player cannot read, the spectator can: secrecy is an
+    // audience, never a second history.
+    let lines = original
+        .world_mut()
+        .resource::<MessageLog>()
+        .clone()
+        .entries;
+    let withheld: Vec<_> = lines
+        .iter()
+        .filter(|entry| !entry.audience.visible_to(Some(harrow)))
+        .cloned()
+        .collect();
+    assert!(
+        !withheld.is_empty(),
+        "the covert operation left real history"
+    );
+    assert!(withheld.iter().all(|entry| entry.audience.visible_to(None)));
+
+    // Snapshot and restore keep every line and every recorded audience,
+    // and the campaign continues identically afterwards.
+    let mut restored = SimHost::restore_with_content(original.snapshot(), content).unwrap();
+    assert_eq!(
+        restored
+            .world_mut()
+            .resource::<MessageLog>()
+            .clone()
+            .entries,
+        lines,
+        "covert lines and their audiences round-trip through the snapshot"
+    );
+    assert_eq!(restored.state_hash(), original.state_hash());
+    original.advance_days(40);
+    restored.advance_days(40);
+    assert_eq!(restored.state_hash(), original.state_hash());
+}
+
+#[test]
+fn live_order_materially_shifts_the_hostile_odds_through_the_one_calculation() {
+    let mut host = scenario_host(440, repository_content());
+    let vantar = org(&mut host, "vantar");
+    let perrin = character(&mut host, "perrin-vantar");
+    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let sabotage = key("foment-unrest");
+    let target = AssignmentTarget::Province(vhorruk);
+    let view = |host: &mut SimHost| {
+        aeon_sim::forecast::forecast(host.world_mut(), vantar, &sabotage, perrin, target)
+            .expect("the sabotage is defined")
+    };
+
+    // At the settled opening Order the modifier reads zero: the authored
+    // reference is the neutral point.
+    let settled = view(&mut host);
+    assert_eq!(settled.order_value, Some(800));
+    assert_eq!(settled.order_shift, 0);
+
+    // A province held at the cap resists at the authored clamp, and the
+    // resistance moves the same odds the resolution roll obeys.
+    aeon_sim::order::adjust_order(host.world_mut(), vhorruk, 200);
+    let resisted = view(&mut host);
+    assert_eq!(resisted.order_value, Some(1000));
+    assert_eq!(resisted.order_shift, -8, "the authored clamp holds");
+    assert_eq!(resisted.effectiveness, settled.effectiveness - 8);
+    assert!(
+        resisted.success_chance() < settled.success_chance(),
+        "high Order materially worsens the hostile work's odds"
+    );
+
+    // Disorder never helps beyond neutral: max is authored at zero.
+    aeon_sim::order::adjust_order(host.world_mut(), vhorruk, -600);
+    let lax = view(&mut host);
+    assert_eq!(lax.order_value, Some(400));
+    assert_eq!(lax.order_shift, 0);
+    assert_eq!(lax.success_chance(), settled.success_chance());
+
+    // The forecast number IS the resolution number: both read the one
+    // shared effectiveness calculation.
+    let def = host
+        .world_mut()
+        .resource::<aeon_sim::state::ContentDb>()
+        .0
+        .assignments[&sabotage]
+        .clone();
+    assert_eq!(
+        aeon_sim::forecast::effectiveness(host.world_mut(), vantar, perrin, target, &def),
+        lax.effectiveness
+    );
+}
+
+#[test]
+fn a_transferred_target_passes_the_unquiet_card_on_through_ordinary_rules() {
+    let mut host = scenario_host(SHADOW_SEED, repository_content());
+    let harrow = org(&mut host, "harrow");
+    let veyrin = org(&mut host, "veyrin");
+    host.advance_days(SHADOW_LIVE_DAY);
+    let exact = unquiet_card_for(&mut host, harrow)
+        .expect("live card")
+        .active
+        .occurrence();
+
+    // Vhorruk changes hands while the operation is still in flight.
+    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    {
+        let world = host.world_mut();
+        let entity = {
+            let index = world.resource::<PoliticsIndex>();
+            index.titles[&index.province_titles[&vhorruk]]
+        };
+        world
+            .get_mut::<aeon_sim::politics::TitleRecord>(entity)
+            .expect("province title")
+            .holder = aeon_sim::TitleHolder::Org(veyrin);
+    }
+    evaluate(host.world_mut());
+
+    // The old lifecycle ends passed-on — old bindings judged against the
+    // live world — with no orphaned card and no unearned effects, and the
+    // new holder's own lifecycle recomputes from live state.
+    let state = host.world_mut().resource::<SituationState>().clone();
+    assert!(!state.active.contains_key(&exact.situation));
+    let notice = state
+        .resolutions
+        .iter()
+        .find(|notice| notice.occurrence() == exact)
+        .expect("the ended lifecycle resolved");
+    assert_eq!(notice.outcome, key("passed-on"));
+    for tell in SHADOW_TELLS {
+        assert!(!notice.text.contains(tell));
+    }
+    assert!(
+        unquiet_card_for(&mut host, veyrin).is_some(),
+        "the alarm recomputes for the province's new holder"
+    );
+}
+
+#[test]
+fn a_dead_agent_abandons_the_operation_through_the_ordinary_quiet_rules() {
+    let mut host = scenario_host(SHADOW_SEED, repository_content());
+    let harrow = org(&mut host, "harrow");
+    host.advance_days(SHADOW_LIVE_DAY);
+    let work = vantar_operation(&mut host).expect("the operation is live");
+
+    // The agent dies mid-operation; the ordinary dead-leader rule
+    // abandons the work when it comes due, and the plan with it. The
+    // house's AMBITION legitimately survives him — a successor may mount
+    // a fresh operation of their own — so what this proves is that HIS
+    // work and HIS campaign ended, through the same rules any assignment
+    // and plan obey.
+    let date = host.date();
+    process_death(host.world_mut(), work.leader, date);
+    while host.date() < work.completes {
+        host.advance_days(1);
+    }
+    host.advance_days(1);
+    assert!(
+        aeon_sim::access::assignment(host.world_mut(), work.id).is_none(),
+        "the dead agent's own sabotage did not survive him"
+    );
+    assert!(
+        !host
+            .world_mut()
+            .resource::<aeon_sim::plans::Plans>()
+            .active
+            .contains_key(&work.leader),
+        "the dead agent's covert campaign was abandoned"
+    );
+
+    // The abandonment is logged — and stays owner-confided, because even
+    // a failed covert operation must not name its hand on the way out.
+    let log = host.world_mut().resource::<MessageLog>().clone();
+    let abandoned = log
+        .entries
+        .iter()
+        .find(|entry| entry.text.contains("Foment Unrest") && entry.text.contains("abandoned"))
+        .expect("the ordinary dead-leader abandonment is logged");
+    assert!(!abandoned.audience.visible_to(Some(harrow)));
+    assert!(abandoned.audience.visible_to(None));
+}
+
+#[test]
+fn holdings_kept_in_high_order_weather_the_operation_whatever_it_rolled() {
+    let mut host = scenario_host(SHADOW_SEED, repository_content());
+    let harrow = org(&mut host, "harrow");
+    host.advance_days(SHADOW_LIVE_DAY);
+    vantar_operation(&mut host).expect("the operation is live");
+    let exact = unquiet_card_for(&mut host, harrow)
+        .expect("live card")
+        .active
+        .occurrence();
+
+    // The holder answers the alarm the intended way: the province is
+    // held at the cap for as long as the campaign persists (the authored
+    // plan may retry a failed attempt once, and the card rightly follows
+    // the whole campaign). Even a sabotage that LANDS cannot drag Order
+    // from the cap below the authored struck line, so however the rolls
+    // fall the outcome is weathered — high Order is the resistance, read
+    // at resolution from the live province.
+    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let mut resolved = None;
+    for _ in 0..150 {
+        host.advance_days(1);
+        let current = aeon_sim::order::province_order(host.world_mut(), vhorruk).order;
+        if current < 1000 {
+            aeon_sim::order::adjust_order(host.world_mut(), vhorruk, 1000 - current);
+        }
+        let state = host.world_mut().resource::<SituationState>().clone();
+        if let Some(notice) = state
+            .resolutions
+            .iter()
+            .find(|notice| notice.occurrence() == exact)
+        {
+            resolved = Some(notice.clone());
+            break;
+        }
+    }
+    let notice = resolved.expect("the ended operation resolved its card");
+    assert_eq!(notice.outcome, key("weathered"));
+}
+
+#[test]
+fn holdings_left_unsteady_are_struck_when_the_operation_runs_its_course() {
+    let mut host = scenario_host(SHADOW_SEED, repository_content());
+    let harrow = org(&mut host, "harrow");
+    host.advance_days(SHADOW_LIVE_DAY);
+    vantar_operation(&mut host).expect("the operation is live");
+    let exact = unquiet_card_for(&mut host, harrow)
+        .expect("live card")
+        .active
+        .occurrence();
+
+    // The mirror of weathering, and the other half of the same rule: the
+    // holder leaves the ground unsteady for as long as the campaign
+    // persists. Because the outcome is a pure live-state reading of the
+    // province rather than a peek at the hidden roll, ground held below
+    // the authored struck line is struck however the rolls fell.
+    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let unsteady = aeon_sim::order::adjust_order(host.world_mut(), vhorruk, -400);
+    assert!(
+        unsteady < 700,
+        "the ground starts below the authored struck line, got {unsteady}"
+    );
+    let mut resolved = None;
+    for _ in 0..150 {
+        host.advance_days(1);
+        let current = aeon_sim::order::province_order(host.world_mut(), vhorruk).order;
+        if current > unsteady {
+            aeon_sim::order::adjust_order(host.world_mut(), vhorruk, unsteady - current);
+        }
+        let state = host.world_mut().resource::<SituationState>().clone();
+        if let Some(notice) = state
+            .resolutions
+            .iter()
+            .find(|notice| notice.occurrence() == exact)
+        {
+            resolved = Some(notice.clone());
+            break;
+        }
+    }
+    let notice = resolved.expect("the ended operation resolved its card");
+    assert_eq!(notice.outcome, key("struck"));
+
+    // The struck resolution renders its own authored text, naming the
+    // province and — still, at the very end — never the hand.
+    assert!(
+        notice.text.contains("Vhorruk") && notice.text.contains("the ground gave"),
+        "the struck resolution text renders, got '{}'",
+        notice.text
+    );
+    for tell in SHADOW_TELLS {
+        assert!(!notice.text.contains(tell));
+    }
+}

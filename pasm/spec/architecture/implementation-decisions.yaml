@@ -2526,3 +2526,138 @@ entities:
         - the-court-awaits-is-an-ordinary-one-shot-demand
         - situation-activations-may-announce-through-popups
         - authored-routes-and-physical-personal-transport
+
+  - decision: covert-provenance-is-an-audience-on-authored-plans-and-assignments
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Covert Provenance Is an Audience on Authored Plans and Assignments
+      summary: >-
+        The information contract for authored covert work: a plan, goal,
+        or assignment definition may author covert: true, and before
+        exposure every ordinary player surface then narrows that work's
+        provenance to its owning organisation — plan adoption, completion,
+        and abandonment lines, goal adoption and end lines, and every
+        assignment-derived line (results, dead-leader abandonment,
+        interruption, script faults, war teardown) carry an owner-only
+        LogAudience through the existing assignment_log_entry choke point;
+        the guaranteed hostile-plan rumour is not whispered at all; and
+        the character inspector omits its pursuing line for every ordinary
+        player. Nothing is deleted or rewritten: the lines are written
+        with their narrowed audience, LogAudience::visible_to(None)
+        remains omniscient, so spectators and replay verification retain
+        complete authoritative provenance, and the Situations panel's
+        per-card history now also filters by each entry's own recorded
+        audience as defence in depth. Exposure is one deliberate seam —
+        covert::is_exposed, a stub returning false until the
+        investigation issue gives it authoritative state — through which
+        every simulation-side covertness read passes: the plan lines in
+        plans.rs, the goal lines in goals.rs, every assignment-derived
+        line in assignments.rs, and the covert flag on the semantic world
+        view in script_world.rs, so exposure flips all of those at once.
+        The client's inspector pursuing-line gate is the one deliberate
+        exception: its PanelCtx holds no World, so the gate reads the
+        authored covert flag directly. It behaves identically before
+        exposure, and the investigation issue must project exposure state
+        client-side and rewire that gate to read it.
+        This decision qualifies, without repealing, the
+        accepted open-information rules that the inspector openly names
+        AI plans and that a plan aimed at the player produces a
+        guaranteed rumour: those rules now read "except authored covert
+        work before exposure".
+      rationale:
+        - "[ai] Reusing LogAudience instead of a second visibility system keeps one filter behind the log panel, the Situations history, and the covert lines alike; the favour-debt privacy tests already prove the filter, so covertness inherits proven behaviour instead of new machinery."
+        - "[ai] Deriving covertness from content (covert: true on the definition) adds no snapshot state, so SNAPSHOT_FORMAT_VERSION stays at 20 and every recorded campaign restores unchanged; the persisted audience on each line is what already existed."
+        - "[ai] Funnelling every assignment-derived line through assignment_log_entry means the abandonment of a covert operation whose leader died cannot leak its title publicly — the one previously-public writer that would otherwise have named the work."
+        - "[ai] Suppressing the rumour outright, rather than blurring it, keeps the accepted rumour rule honest: a rumour is a guaranteed coarse notice about open hostile planning, and deniability is the covert category's whole point; discovery belongs to investigation, not to a free whisper."
+        - "[ai] The inspector's pursuing-line gate is recorded as a known exception rather than papered over: the client's panel context carries no World, so routing it through covert::is_exposed today would mean inventing a client-side projection of exposure state before there is any exposure state to project — work that belongs to the investigation issue, which must do it or the gate silently stays behind when the seam starts answering true."
+      references:
+        - household-demands-are-live-state-predicates-on-a-shared-anchor
+        - the-vantar-operation-is-goal-and-plan-driven-not-scripted
+
+  - decision: assignment-effectiveness-may-read-live-provincial-order
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Assignment Effectiveness May Read Live Provincial Order
+      summary: >-
+        An assignment definition may author an order_modifier block —
+        reference, per_hundred, min, max — read against the target
+        province's live Order inside the one shared effectiveness
+        calculation, exactly as the opinion modifier reads a live
+        relationship: the shortfall of Order below the authored
+        reference, times per_hundred hundredths of an effectiveness
+        point, truncated toward zero and clamped to the authored bounds.
+        Only province-bearing target kinds may author one, enforced
+        loudly at load, and a target that names no province reads as
+        neutral. Content authoring max: 0 makes Order pure resistance —
+        the accepted rule that provincial Order modifies hostile-intrigue
+        outcome weights as resistance, not as a separate hidden detection
+        statistic. The forecast reports order_value and order_shift as
+        first-class fields the client renders under the skill contest;
+        the semantic world view exposes the same live order_shift on each
+        running assignment, so a Situation projection quotes the exact
+        number the resolution roll will use; and effectiveness now takes
+        the assignment target, with both forecast and resolution calling
+        the one function.
+      rationale:
+        - "[ai] Mirroring the opinion modifier's shape (authored numbers, engine arithmetic, clamp semantics, loud load validation, forecast-visible readings) makes the second modifier cost no new concepts: authoring, validation, display, and testing all follow an accepted precedent."
+        - "[ai] Threading the target through effectiveness rather than reading the province beside it preserves the forecast-equals-resolution invariant structurally: the card's resistance row, the forecast line, and the roll cannot disagree because they are one calculation."
+        - "[ai] reference at the settled opening Order (800) with max: 0 means the modifier only ever punishes hostile work against well-kept ground — Kessarin's 850 standard becomes a real shield — while a neglected province merely offers no extra purchase, keeping the modifier out of the player's own administrative odds."
+      references:
+        - assignment-effectiveness-may-read-an-authored-opinion
+        - forecasts-derive-from-shared-resolution-code
+        - skill-shifted-result-weights
+
+  - decision: the-vantar-operation-is-goal-and-plan-driven-not-scripted
+    core:
+      status: accepted
+      confidence: confirmed
+      title: The Vantar Operation Is Goal- and Plan-Driven, Not Scripted
+      summary: >-
+        The first-year covert intrigue arc is simulation-native content,
+        not an event script. A generic covert ambition
+        (undermine-a-neighbour) is adoptable by any vassal head whose
+        house passes an authored data window (min_campaign_day 180 to
+        max_campaign_day 260, new GoalRequires fields) and capability
+        floor, and resolves its target through a new authored goal
+        selector, hostile-border-neighbour: an organisation outside the
+        chain of command holding a surface-adjacent province, hostile by
+        authored data (head-to-head opinion at or below -10, or an open
+        grievance owed), lowest stable ID first — which on the authored
+        map resolves Vantar's ambition to Harrow. A matching covert plan
+        (deniable-pressure) gates each method on the same authored
+        hostility floor via new PlanRequires predicates
+        (max_target_head_opinion, target_owes_grievance) plus a
+        min_wealth capability, and aims foment-unrest through a new
+        target-border-province step selector (the target's most
+        disordered surface-adjacent province, lowest stable ID on a tie
+        — Vhorruk). The head-only scorer exposes the pressure through a
+        new subvert AiIntent exactly as the claim block does, naming no
+        content key. The Unquiet Holdings Situation triggers off any
+        live covert province-aimed assignment against another holder's
+        ground, binds house, province, and — structurally, outside the
+        audience, never emitted by the projection — the culprit actor,
+        shows deadline, live Order, and the exact live resistance shift,
+        and resolves passed-on (holder changed), struck, or weathered by
+        a pure live-Order reading against an authored line rather than
+        by peeking at the hidden roll. Mid-flight target transfer is
+        handled by lifecycle recomputation alone: the running assignment
+        follows the same rules as any player assignment, with no new
+        revalidation, because the card's passing-on already narrates the
+        change and sabotage striking ground that changed hands is
+        legitimate simulation. Because the plan's method gate is
+        rechecked before each step, a relationship lifted above the
+        authored floor abandons an uncommitted covert campaign while
+        accepted work runs to its ordinary end — the reconciliation
+        issue's lever, already in data.
+      rationale:
+        - "[ai] Every number the arc turns on — window days, hostility floor, capability, resistance scale, retry budget, cooldowns — is authored in Rhai; the engine grew only reusable mechanisms (two requires predicates, a goal selector, a step selector, one intent), each available to future content such as the invasion window."
+        - "[ai] The goal is gated is_vassal with a modest wealth floor and adopted by the head alone: deniable pressure is the weapon of houses too small for open war, it bounds the behavioural blast radius on existing campaigns to the authored window, and it makes Perrin — not the more skilled household — the tested actor, matching the head-only claim precedent."
+        - "[ai] Binding the culprit into the Situation's structural key gives investigation, spectators, and replay authoritative provenance for free — the structural key, snapshot, and resolution history all carry it — while the audience and projection never do; the exposure issue needs only a read, not new state."
+        - "[ai] Struck-versus-weathered is deliberately a live-Order reading (below or above an authored 700 line) instead of roll detection: the projection/outcome boundary can only read authoritative facts, and high Order absorbing the blow is exactly what Order-as-resistance means at the outcome level — a fortified province weathers even a landed strike."
+        - "[ai] The full-AI mount is probabilistic per seed (monthly goal and agency pulses inside a three-pulse window), so acceptance pins a seed that mounts unaided and separate tests drive each boundary deterministically — the same testing posture the claim campaign acceptance takes."
+      references:
+        - covert-provenance-is-an-audience-on-authored-plans-and-assignments
+        - assignment-effectiveness-may-read-live-provincial-order
+        - casimirs-visit-is-a-windowed-hosted-situation
