@@ -599,8 +599,12 @@ pub fn context_value(world: &World) -> Map {
                 // the same authored definition and the same shared
                 // calculation the resolution roll will use, so a
                 // projection can quote the exact number without owning a
-                // second copy of the rule.
-                let covert = crate::covert::assignment_is_covert(world, &record.def, record.owner);
+                // second copy of the rule. `covert` is the authored kind of
+                // the work — deniable work stays deniable work after it is
+                // found out — so content that keys off it (the Unquiet
+                // Holdings trigger) keeps recognising the same operation.
+                // Who now knows the hand is the separate `exposures` view.
+                let covert = crate::covert::assignment_is_covert(world, &record.def);
                 let order_shift = world
                     .get_resource::<crate::state::ContentDb>()
                     .and_then(|content| content.0.assignments.get(&record.def).cloned())
@@ -630,6 +634,26 @@ pub fn context_value(world: &World) -> Map {
         .map(Array::from_iter)
         .unwrap_or_default();
     view.insert("assignments".into(), assignments.into());
+
+    // What investigation has proved, in durable record order. Content asks
+    // this — never the culprit binding alone — before a projection may name
+    // the hand behind covert work, so a card discloses to the house that
+    // found the culprit out and to nobody else.
+    let exposures = world
+        .get_resource::<crate::covert::Exposure>()
+        .map(|exposure| {
+            exposure.records.iter().map(|record| {
+                map([
+                    ("culprit", integer(record.culprit.raw()).into()),
+                    ("knower", integer(record.knower.raw()).into()),
+                    ("discovered", record.discovered.days_since_epoch().into()),
+                ])
+                .into()
+            })
+        })
+        .map(Array::from_iter)
+        .unwrap_or_default();
+    view.insert("exposures".into(), exposures.into());
 
     let contest = world
         .get_resource::<ConsulContest>()
@@ -808,6 +832,7 @@ mod tests {
             "provinces",
             "obligations",
             "assignments",
+            "exposures",
             "paramount_claims",
             "wars",
         ] {

@@ -273,7 +273,7 @@ The current reusable deck contains:
 | Aleyn's Levies | Scenario, bound to House Harrow and its requester | Household demand: at least 1,000 total fielded army manpower by the same shared deadline, with the same four-tier consequences |
 | Torvald's Standing | Scenario, bound to House Harrow, its requester, and the exact liege head | Household demand: the bound liege head's opinion of the house head at 0 or higher by the same shared deadline, with the same four-tier consequences |
 | The Liege's Visit | Scenario, bound to House Harrow and the live liege head | [ai] First-year windowed hosted visit (days 140–180): three hospitality tiers whose live forecasts read the liege head's current opinion, a slight for an unanswered window, and passed-on adaptation when the bound head dies, is deposed, is replaced, or cannot travel |
-| Unquiet Holdings | Scenario, bound to the targeted holder, the targeted province, and (structurally, outside the audience) the culprit organisation | [ai] The covert-interference alarm: while a covert province-aimed operation runs against another holder's ground, the holder sees the province, its live Order, the exact resistance shift that Order applies, and the remaining time — never the hand — and the card ends passed-on, struck, or weathered by a pure live-Order reading |
+| Unquiet Holdings | Scenario, bound to the targeted holder, the targeted province, and (structurally, outside the audience) the culprit organisation | [ai] The covert-interference alarm: while a covert province-aimed operation runs against another holder's ground, the holder sees the province, its live Order, the exact resistance shift that Order applies, and the remaining time — and the hand only once an ordinary investigation has proved it. The card ends passed-on, struck, or weathered by a pure live-Order reading, each of the last two in a traced and an untraced form |
 
 [ai] The Court Awaits slice added three reusable seams the deck may now use.
 Situation call contexts carry the instance's activation date (triggers see
@@ -426,9 +426,23 @@ contested and, for fomenting unrest, genuinely deniable:
   the same deniability.
 - The targeted holder experiences the operation as the Unquiet Holdings
   Situation; counter-play is ordinary administration (raise Order),
-  future investigation, retaliation, reconciliation, or accepting the
+  investigation, retaliation, reconciliation, or accepting the
   risk. Provenance rules are in
   [AI Agency and Information Rules](06-ai-agency-and-information-rules.md).
+- [ai] **Investigation** is the second answer, and an ordinary assignment:
+  `trace-the-hand` — intrigue, authored cost, difficulty, and duration,
+  closed to the AI — aimed at the holder's *own* troubled province rather
+  than at any suspect, because there is no suspect to aim at. The card
+  offers it pinning no leader, so the player compares every eligible
+  investigator on the same authoritative per-candidate forecast the order
+  will use. Its two good results prove the organisation the lifecycle
+  already bound; its two bad results author nothing whatever. A proved
+  card names the house, links its head and the covert work itself, and
+  freezes a resolution that says so; the live-Order reading that decides
+  struck from weathered is unchanged, because proof is knowledge and never
+  protection. Discovery is durable campaign state, recorded per
+  discovering house, and is what allows retaliation or a demanded
+  settlement to be aimed at anybody at all.
 
 Covert intrigue is not formal war. Its hostile consequence is the operation and
 its effects; it does not put organisations onto war sides, authorise occupation,
@@ -722,13 +736,17 @@ These questions do not alter accepted behaviour until answered and recorded:
   should broken versus expired commitments differ in later political reasoning?
 - What information about covert intrigue is hidden before exposure, and what
   evidence can make suspicion legible without revealing authoritative truth?
-  [ai] **Resolved for the first covert slice:** before exposure the culprit
+  [ai] **Resolved:** before exposure the culprit
   organisation, leader, and source plan are hidden from every ordinary
   player surface, while the operation's target province, its live Order,
   the exact resistance shift, and the remaining time are openly shown on
   the Unquiet Holdings card — legible suspicion without fabricated
-  evidence. What investigation can additionally reveal, and at what cost,
-  remains the investigation slice's question.
+  evidence. [ai] Investigation then reveals the whole of that hidden
+  provenance or none of it, at an authored cost in coin and days and on
+  ordinary odds: the organisation, its head, and the covert work itself
+  appear on the card and in its frozen resolution, and the discovery is
+  recorded per discovering house. Nothing partial, graded, or speculative
+  is ever shown, because the only alternative to proof is silence.
 - What player-facing term best distinguishes deniable raid hostility from formal
   war without implying that raids are consequence-free?
 - How should peace terms grow beyond the current whole-war negotiated conclusion,

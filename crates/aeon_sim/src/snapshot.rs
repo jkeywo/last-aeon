@@ -22,12 +22,13 @@ use crate::state::{CampaignIds, CampaignMeta, CampaignSeed, ContentDb};
 ///
 /// Bump on any change to [`CampaignState`]'s serialised shape, and provide a
 /// migration for every version a release has ever written. No release has
-/// shipped yet, so pre-release bumps carry no migrations. Version 20 adds
+/// shipped yet, so pre-release bumps carry no migrations. Version 21 adds
+/// the durable covert-exposure record; version 20 adds
 /// occurrence-keyed Situation answers; version 18 adds personal Paramount
 /// claims, occurrence-identified formal wars, and authored Situation
 /// lifecycle/resolution state; version 17 is refused rather than being
 /// assigned identities it never recorded.
-pub const SNAPSHOT_FORMAT_VERSION: u32 = 20;
+pub const SNAPSHOT_FORMAT_VERSION: u32 = 21;
 
 /// The complete authoritative campaign state.
 ///
@@ -80,6 +81,11 @@ pub struct CampaignState {
     /// Authored Situation lifecycles, notices, and diagnostics.
     #[serde(default)]
     pub situations: crate::situations::SituationState,
+    /// What investigation has proved about authored covert work. Outlives
+    /// the Situation lifecycle that discovered it, so it is its own
+    /// section rather than per-occurrence Situation bookkeeping.
+    #[serde(default)]
+    pub exposure: crate::covert::Exposure,
     /// Next command sequence number.
     pub next_command_seq: u64,
     /// Commands accepted but not yet applied, in `(day, seq)` order.
@@ -179,6 +185,7 @@ pub fn capture_state(world: &World) -> CampaignState {
         paramount_claims: crate::crisis::capture_paramount_claims(world),
         wars: crate::wars::capture_wars(world),
         situations: crate::situations::capture(world),
+        exposure: crate::covert::capture(world),
         next_command_seq: log.next_seq,
         pending_commands: world.resource::<PendingCommands>().entries().to_vec(),
         applied_commands: log.applied.clone(),
@@ -247,6 +254,7 @@ pub fn restore_state(world: &mut World, state: CampaignState) {
     crate::crisis::restore_paramount_claims(world, &state.paramount_claims);
     crate::wars::restore_wars(world, &state.wars);
     crate::situations::restore(world, &state.situations);
+    crate::covert::restore(world, &state.exposure);
 }
 
 /// Respawns the content-bound half of a restore against hash-verified

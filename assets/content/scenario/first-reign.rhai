@@ -1272,6 +1272,67 @@ define_plan(#{
 
 fn unquiet_struck_line() { 700 }
 
+// --- Tracing the hand -------------------------------------------------------
+//
+// The ordinary answer to an unnamed hand. Investigation is an assignment
+// like any other: authored cost, duration, difficulty, and skill; no AI
+// use; aimed at the holder's own troubled ground rather than at a suspect,
+// because there is no suspect to aim at. It pins no leader, so the player
+// compares every eligible investigator against one authoritative forecast
+// before ordering it.
+//
+// It is an answer to the alarm, not a free-standing order: the second
+// requirement holds only while somebody else's covert work is actually
+// running against that holding AND this house has not yet proved whose
+// hand it is — exactly when the card below offers its `investigate`
+// action, and no longer. On quiet ground there is nothing to trace, and
+// once the hand is proved there is nothing left to prove, so in both
+// cases the enquiry is neither offered on the province nor accepted from
+// the household — the same gate the button, the forecast, and the
+// command all pass through — and every enquiry that does start attaches
+// to the live card whose action it is.
+//
+// It has exactly two answers. A proved trail exposes the organisation the
+// Situation already bound as `actor` — the true hand, structurally, from
+// the operation itself — and nothing else can ever be proved, because the
+// effect reads a binding rather than choosing a candidate. A cold or
+// botched trail carries no effect at all. There is no false suspect to
+// author here, and no field in which one could be authored.
+define_assignment(#{
+    id: "trace-the-hand",
+    category: "consequential",
+    duration_days: 25,
+    skill: "intrigue",
+    difficulty: 13,
+    target: "province",
+    ai_available: false,
+    wealth_cost: 25,
+    requires: #{ target_holder: "own", target_under_covert_work: true },
+    results: #{
+        critical_success: #{
+            weight: 120, popup: true, log: true, effect_fn: "the_hand_traced",
+        },
+        success: #{ weight: 330, popup: true, log: true, effect_fn: "the_hand_traced" },
+        failure: #{ weight: 400, log: true },
+        disaster: #{ weight: 150, log: true },
+    },
+});
+
+// The revelation: the culprit is the organisation this exact lifecycle
+// bound, named by binding rather than by guess.
+fn the_hand_traced(ctx) {
+    [#{ kind: "expose", binding: "actor" }]
+}
+
+// Whether this holder has proved this culprit. Discovery is per knower:
+// another house's investigation teaches this card nothing.
+fn unquiet_hand_known(world, house, culprit) {
+    for record in world.exposures {
+        if record.culprit == culprit && record.knower == house { return true; }
+    }
+    false
+}
+
 // The live covert operation behind one bound instance, or an empty map
 // once it has ended. The projection and the trigger share this read.
 fn unquiet_live_work(world, province, culprit) {
@@ -1325,6 +1386,20 @@ fn unquiet_holdings_projection(ctx) {
     // resolution) both rows simply drop away.
     let work = unquiet_live_work(world, province, ctx.bindings.actor);
     let live = work.len() > 0;
+    // What this holder has proved. Before it is proved this reads false
+    // for everyone but the culprit itself, and the whole disclosure block
+    // below is simply absent from the card.
+    let known = unquiet_hand_known(world, house, ctx.bindings.actor);
+    let culprit_name = "";
+    let culprit_head = 0;
+    if known {
+        for organisation in world.organisations {
+            if organisation.id == ctx.bindings.actor {
+                culprit_name = organisation.name;
+                if type_of(organisation.head) == "i64" { culprit_head = organisation.head; }
+            }
+        }
+    }
     let metrics = [];
     if live {
         metrics.push(#{
@@ -1342,21 +1417,50 @@ fn unquiet_holdings_projection(ctx) {
             value: work.order_shift,
         });
     }
+    if known {
+        metrics.push(#{
+            label_key: "situation.metric.proved-hand",
+            value: culprit_name,
+        });
+    }
     let actions = [];
     if head > 0 {
         actions.push(#{ id: "hold-court", leader: head });
         actions.push(#{ id: "tour-holdings", leader: head });
     }
+    // Investigation pins NO leader: the player compares every eligible
+    // investigator on one authoritative forecast and picks. Once the hand
+    // is proved there is nothing left to trace, so the action goes away.
+    if !known {
+        actions.push(#{ id: "investigate", target_kind: "province", target_a: province });
+    }
+    // The province, and — until this holder has PROVED it — only the
+    // province: no culprit, organisation, leader, or source plan may ever
+    // be emitted here otherwise. Proof is the one thing that opens it, and
+    // what it opens is the operation's own true provenance: the
+    // organisation behind it, the head who ordered it, and the very work
+    // in flight.
+    let participants = [#{ kind: "province", id: province }];
+    let links = [];
+    if known {
+        participants.push(#{ kind: "organisation", id: ctx.bindings.actor });
+        if culprit_head > 0 {
+            links.push(#{ kind: "character", id: culprit_head });
+        }
+        if live {
+            links.push(#{ kind: "assignment", id: work.id });
+        }
+    }
+    let stage = "unrest";
+    if known { stage = "traced"; }
     let out = #{
-        stage: "unrest",
+        stage: stage,
         warning: live,
         metrics: metrics,
-        // The province, and ONLY the province: no culprit, organisation,
-        // leader, or source plan may ever be emitted here before
-        // exposure.
-        participants: [#{ kind: "province", id: province }],
+        participants: participants,
+        links: links,
         actions: actions,
-        resolution_values: #{ province: name },
+        resolution_values: #{ province: name, house: culprit_name },
     };
     if live { out.deadline = work.completes; }
     out
@@ -1388,6 +1492,17 @@ fn unquiet_struck(ctx) {
     order < unquiet_struck_line()
 }
 
+// Whether this holder proved the hand before the matter closed. It splits
+// each live-Order outcome in two so the frozen sentence tells the truth
+// about what is and is not known — the reading of the ground is unchanged
+// either way, because proof is knowledge, never protection.
+fn unquiet_traced(ctx) {
+    unquiet_hand_known(ctx.world, ctx.bindings.house, ctx.bindings.actor)
+}
+fn unquiet_struck_traced(ctx) {
+    unquiet_struck(ctx) && unquiet_traced(ctx)
+}
+
 define_situation(#{
     id: "unquiet-holdings",
     source: "scenario",
@@ -1397,14 +1512,17 @@ define_situation(#{
     priority: 112,
     log_activation: true,
     audience: ["house"],
-    stages: ["unrest"],
+    stages: ["unrest", "traced"],
     actions: [
         #{ id: "hold-court", assignment: "hold-court" },
         #{ id: "tour-holdings", assignment: "tour-holdings" },
+        #{ id: "investigate", assignment: "trace-the-hand" },
     ],
     outcomes: [
         #{ id: "passed-on", when_fn: "unquiet_passed_on" },
+        #{ id: "struck-traced", when_fn: "unquiet_struck_traced" },
         #{ id: "struck", when_fn: "unquiet_struck" },
+        #{ id: "weathered-traced", when_fn: "unquiet_traced" },
         #{ id: "weathered", fallback: true },
     ],
 });

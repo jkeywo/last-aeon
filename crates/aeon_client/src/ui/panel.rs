@@ -66,6 +66,10 @@ pub struct PanelCtx<'a, 'w, 's> {
     pub issued_directives: Option<&'a aeon_sim::goals::IssuedDirectives>,
     /// Active Situation cards and undismissed resolutions.
     pub situations: &'a SituationPanelView,
+    /// What investigation has proved about authored covert work, if a
+    /// campaign is running. Panels never read it directly: they pass it to
+    /// the simulation's own visibility predicate.
+    pub exposure: Option<&'a aeon_sim::covert::Exposure>,
     /// Whether the client-owned scenario guidance preference is enabled.
     /// Presentation-only: it gates authored guidance prose, never rules.
     pub guidance: bool,

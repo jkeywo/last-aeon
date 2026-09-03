@@ -321,7 +321,7 @@ fn the_enhanced_campaign_replays_from_a_mid_campaign_snapshot() {
     );
 }
 
-/// Snapshot 20 acceptance for the connected Situation and formal-war slice.
+/// Snapshot 21 acceptance for the connected Situation and formal-war slice.
 ///
 /// Focused tests own the individual rules. This test keeps one deliberately
 /// dense campaign state alive across the same serialise, restore, and continue
@@ -329,7 +329,7 @@ fn the_enhanced_campaign_replays_from_a_mid_campaign_snapshot() {
 /// simultaneous wars, internal-war adoption, a concluded occurrence and its
 /// resolution, exact provenance, and a still-running war-bound operation.
 #[test]
-fn snapshot_20_replays_connected_situations_and_formal_wars() {
+fn snapshot_21_replays_connected_situations_and_formal_wars() {
     use std::collections::BTreeSet;
 
     use aeon_sim::assignments::{ActiveAssignment, AssignmentsIndex, MessageLog};
@@ -550,7 +550,7 @@ fn snapshot_20_replays_connected_situations_and_formal_wars() {
     assert!(dismissal.day > original.date());
 
     let snapshot = original.snapshot();
-    assert_eq!(snapshot.format_version, 20);
+    assert_eq!(snapshot.format_version, 21);
     assert_eq!(
         snapshot
             .state
@@ -628,10 +628,10 @@ fn snapshot_20_replays_connected_situations_and_formal_wars() {
     );
 
     let midpoint_hash = original.state_hash();
-    let bytes = persistence::snapshot_to_ron(&snapshot).expect("Snapshot 20 serialises");
-    let decoded = persistence::snapshot_from_ron(&bytes).expect("Snapshot 20 deserialises");
+    let bytes = persistence::snapshot_to_ron(&snapshot).expect("Snapshot 21 serialises");
+    let decoded = persistence::snapshot_from_ron(&bytes).expect("Snapshot 21 deserialises");
     let mut replayed =
-        SimHost::restore_with_content(decoded, content).expect("Snapshot 20 restores");
+        SimHost::restore_with_content(decoded, content).expect("Snapshot 21 restores");
     assert_eq!(
         replayed.state_hash(),
         midpoint_hash,
@@ -643,7 +643,7 @@ fn snapshot_20_replays_connected_situations_and_formal_wars() {
     assert_eq!(
         replayed.state_hash(),
         original.state_hash(),
-        "the Snapshot-20 Situation and formal-war state continues identically"
+        "the Snapshot-21 Situation and formal-war state continues identically"
     );
     for host in [&mut original, &mut replayed] {
         assert!(

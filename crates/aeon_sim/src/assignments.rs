@@ -307,12 +307,15 @@ pub(crate) fn assignment_log_entry(
             .for_situation(origin.clone())
             .for_audience(crate::situations::log_audience(world, &origin.situation));
     }
-    // Covert work confides only in its owner, whatever else stamped the
-    // line: results, abandonment, interruption, and script faults all pass
-    // through here, so no assignment-derived line can leak provenance.
+    // Covert work confides in its owner and in whoever has already proved
+    // the owner behind it, whatever else stamped the line: results,
+    // abandonment, interruption, and script faults all pass through here,
+    // so no assignment-derived line can leak provenance to a house that has
+    // not found it out. The audience is decided now and stamped once — a
+    // later discovery widens the lines written after it, never these.
     // Spectators and replay still read everything.
-    if crate::covert::assignment_is_covert(world, &assignment.def, assignment.owner) {
-        entry = entry.for_audience(crate::covert::owner_only(assignment.owner));
+    if crate::covert::assignment_is_covert(world, &assignment.def) {
+        entry = entry.for_audience(crate::covert::audience(world, assignment.owner));
     }
     entry
 }
@@ -1118,6 +1121,18 @@ fn requirements_met(
         return false;
     }
 
+    // About what is being done to the target rather than who holds it:
+    // what stops an enquiry into covert work being offered on ground
+    // nobody is working against, where it could prove nothing.
+    if requires.target_under_covert_work {
+        let Some(province) = province else {
+            return false;
+        };
+        if !crate::covert::under_covert_work(world, owner, province) {
+            return false;
+        }
+    }
+
     if requires.max_order.is_some() || requires.min_order.is_some() {
         let Some(province) = province else {
             return false;
@@ -1629,11 +1644,26 @@ fn render_template(template: &str, leader: &str, target: &str, assignment_title:
 }
 
 /// Applies parsed script effects against resolved roles.
+///
+/// The Situation-originated form is [`apply_effects_with_origin`]; effects
+/// fired outside a Situation (events, popup answers) reach the same
+/// vocabulary through here with no origin, and the one entry that needs an
+/// origin — [`ScriptEffect::Expose`] — refuses loudly rather than guessing.
 pub fn apply_effects(
     world: &mut World,
     effects: &[ScriptEffect],
     roles: &AssignmentRoles,
     owner: Option<OrgId>,
+) {
+    apply_effects_from(world, effects, roles, owner, None);
+}
+
+fn apply_effects_from(
+    world: &mut World,
+    effects: &[ScriptEffect],
+    roles: &AssignmentRoles,
+    owner: Option<OrgId>,
+    origin: Option<&crate::situations::SituationOccurrence>,
 ) {
     let date = world.resource::<CampaignClock>().date;
     for effect in effects {
@@ -1898,6 +1928,71 @@ pub fn apply_effects(
                     buildings.0.push(key);
                 }
             }
+            ScriptEffect::Expose { binding } => {
+                // Discovery is never a guess. The culprit is the exact
+                // organisation the originating Situation bound under the
+                // authored name, and the house that learns it is the one
+                // the work was done for. Anything else — no Situation
+                // origin, no such binding, a binding naming something
+                // other than an organisation, no acting house — names
+                // nobody and says so loudly, because a covert-information
+                // system that fabricates a suspect is worse than one that
+                // reveals nothing.
+                //
+                // Loudly, but as a diagnostic: the same string-table row
+                // treatment a Situation that cannot be evaluated gets, and
+                // confided to the acting house alone rather than written
+                // into everyone's history. An authoring fault is for the
+                // author playing that house and for the spectator, who
+                // reads every line; it is never public prose.
+                let refuse = |world: &mut World, why: &str| {
+                    let text = world
+                        .resource::<TextDb>()
+                        .format("sim.covert.expose-refused", &[("reason", why)]);
+                    crate::access::log(
+                        world,
+                        LogEntry::line(text, LogChannel::Events)
+                            .by(owner)
+                            .for_audience(LogAudience::organisations(owner)),
+                    );
+                };
+                let Some(origin) = origin else {
+                    refuse(world, "it was fired outside a Situation lifecycle");
+                    continue;
+                };
+                let Some(knower) = owner else {
+                    refuse(world, "it was fired for no organisation");
+                    continue;
+                };
+                let culprit = match origin.situation.bindings.get(binding.as_str()) {
+                    Some(crate::situations::SituationSubject::Organisation(org)) => *org,
+                    Some(_) => {
+                        refuse(
+                            world,
+                            &format!("binding '{binding}' does not name an organisation"),
+                        );
+                        continue;
+                    }
+                    None => {
+                        refuse(world, &format!("no binding '{binding}' on this Situation"));
+                        continue;
+                    }
+                };
+                crate::covert::expose(world, culprit, knower, origin.clone(), date);
+                // The revelation itself is new history, written now. The
+                // lines already stamped owner-only stay that way; this is
+                // what the discovering house actually learns.
+                let text = world.resource::<TextDb>().format(
+                    "sim.covert.exposed",
+                    &[("house", &crate::access::org_name(world, culprit))],
+                );
+                crate::access::log(
+                    world,
+                    LogEntry::line(text, LogChannel::Politics)
+                        .by(Some(knower))
+                        .about(LogSubject::Org(culprit)),
+                );
+            }
         }
     }
 }
@@ -1918,7 +2013,7 @@ pub(crate) fn apply_effects_with_origin(
         .get_resource::<MessageLog>()
         .map(|log| log.entries.len())
         .unwrap_or_default();
-    apply_effects(world, effects, roles, owner);
+    apply_effects_from(world, effects, roles, owner, origin);
     let Some(mut log) = world.get_resource_mut::<MessageLog>() else {
         return;
     };

@@ -232,6 +232,12 @@ mod tests {
 
     impl ProductionFixture {
         fn new() -> Self {
+            Self::seeded(201)
+        }
+
+        /// The same production fixture on a chosen campaign seed, for the
+        /// arcs whose autonomous mount is seed-dependent.
+        fn seeded(seed: u64) -> Self {
             let content = crate::content::load_embedded();
             let scenario = content.scenario.clone().expect("embedded scenario");
             let start_date = CalendarDate {
@@ -244,7 +250,7 @@ mod tests {
             let mut host = SimHost::new_with_content(
                 CampaignConfig {
                     name: scenario.name,
-                    seed: 201,
+                    seed,
                     start_date,
                 },
                 Arc::clone(&content),
@@ -1478,6 +1484,220 @@ mod tests {
                 .iter()
                 .any(|notice| notice.situation == visit_key && notice.outcome.as_str() == "hosted"),
             "acceptance resolved the visit hosted"
+        );
+    }
+
+    /// The investigation is the second leaderless Situation action, and
+    /// the first whose whole point is comparing people: the card offers no
+    /// host of its own, the picker prices every eligible investigator
+    /// through the simulation's own forecast, and the chosen one is who
+    /// the queued command names.
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    fn the_investigation_action_lets_the_player_compare_and_choose_an_investigator() {
+        let viewport = egui::vec2(1920.0, 1080.0);
+        // The seed on which House Vantar mounts its covert operation
+        // unaided inside the authored window.
+        let mut fixture = ProductionFixture::seeded(404);
+        let harrow = {
+            let world = fixture.host.world_mut();
+            let harrow = world.resource::<PoliticsIndex>().org_keys
+                [&aeon_data::ContentKey::new("harrow").unwrap()];
+            world.resource_mut::<PlayerHouse>().0 = Some(harrow);
+            harrow
+        };
+        fixture.host.advance_days(182);
+        fixture
+            .host
+            .world_mut()
+            .resource_mut::<aeon_sim::PendingPopups>()
+            .popups
+            .clear();
+        refresh_situation_panel_view(fixture.host.world_mut());
+        let head = aeon_sim::access::org_head(fixture.host.world_mut(), harrow)
+            .expect("the house has a head");
+        let vhorruk = fixture
+            .host
+            .world_mut()
+            .resource::<aeon_sim::MapIndex>()
+            .province_keys[&aeon_data::ContentKey::new("vhorruk").unwrap()];
+
+        // The panel view: the enquiry is offered, enabled, pinning no
+        // leader, and previewed on the deterministic default host.
+        let (card_key, action_target) = {
+            let view = fixture.host.world_mut().resource::<SituationPanelView>();
+            let unquiet = view
+                .active
+                .iter()
+                .find(|card| card.card.active.key.definition.as_str() == "unquiet-holdings")
+                .expect("the covert operation raises the holder's card");
+            let enquiry = unquiet
+                .actions
+                .iter()
+                .find(|action| action.action.id.as_str() == "investigate")
+                .expect("the card offers the enquiry");
+            assert_eq!(
+                enquiry.action.leader, None,
+                "the investigator is a free choice"
+            );
+            assert_eq!(
+                enquiry.unavailable, None,
+                "a leaderless action is enabled, not blocked"
+            );
+            let forecast = enquiry
+                .forecast
+                .as_ref()
+                .expect("the card previews the default investigator's forecast");
+            assert_eq!(forecast.leader, head, "the preview host is the head");
+            (unquiet.card.active.key.clone(), enquiry.action.target)
+        };
+        assert_eq!(
+            action_target,
+            aeon_sim::AssignmentTarget::Province(vhorruk),
+            "the enquiry is aimed at the holder's own troubled ground"
+        );
+
+        // Rendered, the enquiry is a real enabled focusable, and keyboard
+        // activation opens the ordinary composition popup with the default
+        // prefilled and the free picker reachable.
+        fixture.render_full_shell(viewport, Vec::new());
+        let ctx = fixture.full_egui_context();
+        let control = crate::ui::keyboard::audited_responses(&ctx)
+            .into_iter()
+            .find(|entry| {
+                entry.logical.0.starts_with("situation-action:")
+                    && entry.logical.0.contains("unquiet-holdings")
+                    && entry.logical.0.ends_with(":investigate")
+            })
+            .expect("the enquiry control renders");
+        assert!(control.enabled, "a leaderless enquiry control is enabled");
+        crate::ui::keyboard::request_logical(&ctx, control.logical.clone());
+        fixture.render_full_shell(viewport, Vec::new());
+        fixture.render_full_shell(viewport, key_event(egui::Key::Enter, false));
+        fixture.render_full_shell(viewport, Vec::new());
+        assert!(
+            fixture.host.world_mut().resource::<AssignmentPopup>().open,
+            "the leaderless action opens the assignment popup"
+        );
+        {
+            let form = fixture.host.world_mut().resource::<AssignmentForm>();
+            assert_eq!(
+                form.assignment.as_ref().map(|key| key.as_str()),
+                Some("trace-the-hand")
+            );
+            assert_eq!(
+                form.leader,
+                Some(head),
+                "the default investigator is prefilled"
+            );
+        }
+
+        // The picker's candidate list is the simulation's own per-person
+        // comparison: every row carries that candidate's authoritative
+        // chance, and the list genuinely distinguishes who may go.
+        let (before, other, other_chance) = {
+            let cache = fixture.host.world_mut().resource::<ForecastCache>();
+            let before = cache
+                .forecast
+                .as_ref()
+                .expect("the prefilled investigator has a forecast")
+                .success_chance();
+            assert!(
+                cache.leaders.len() >= 2,
+                "the picker compares more than one investigator"
+            );
+            assert!(
+                cache
+                    .leaders
+                    .iter()
+                    .any(|option| option.blocked().is_some()),
+                "the picker states honestly who cannot go"
+            );
+            let (other, other_chance) = cache
+                .leaders
+                .iter()
+                .find(|option| option.id != head && option.blocked().is_none())
+                .map(|option| (option.id, option.success()))
+                .expect("another eligible investigator exists");
+            (before, other, other_chance)
+        };
+        fixture
+            .host
+            .world_mut()
+            .resource_mut::<AssignmentForm>()
+            .leader = Some(other);
+        fixture.render_full_shell(viewport, Vec::new());
+        let after = {
+            let cache = fixture.host.world_mut().resource::<ForecastCache>();
+            cache
+                .forecast
+                .as_ref()
+                .expect("the chosen investigator has a forecast")
+                .success_chance()
+        };
+        assert_eq!(
+            after, other_chance,
+            "the reported chance is the chosen investigator's own"
+        );
+        let _ = before;
+
+        // Confirm queues the ordinary Situation command for the chosen
+        // investigator, and it round-trips into a running assignment
+        // carrying the card's exact provenance.
+        crate::ui::keyboard::clear_focus(&fixture.full_egui_context());
+        fixture.render_full_shell(viewport, vec![egui::Event::PointerGone]);
+        let confirm =
+            recorded_confirm(&fixture.full_egui_context()).expect("the popup renders Confirm");
+        fixture.render_full_shell(viewport, press_at(confirm.center()));
+        let pressed = recorded_confirm(&fixture.full_egui_context())
+            .expect("Confirm remains under the pointer");
+        fixture.render_full_shell(viewport, release_at(pressed.center()));
+        let queued = fixture
+            .host
+            .world_mut()
+            .resource::<UiCommandQueue>()
+            .0
+            .last()
+            .cloned()
+            .expect("Confirm queued a command");
+        match &queued {
+            PlayerCommand::StartSituationAssignment {
+                situation,
+                action,
+                leader,
+                target,
+                war,
+            } => {
+                assert_eq!(situation, &card_key);
+                assert_eq!(action.as_str(), "investigate");
+                assert_eq!(*leader, other, "the chosen investigator leads");
+                assert_eq!(*target, aeon_sim::AssignmentTarget::Province(vhorruk));
+                assert_eq!(*war, None);
+            }
+            other => panic!("unexpected UI command: {other:?}"),
+        }
+        flush_ui_commands(fixture.host.world_mut());
+        fixture.host.advance_days(5);
+        let running = {
+            let world = fixture.host.world_mut();
+            world
+                .resource::<aeon_sim::AssignmentsIndex>()
+                .assignments
+                .values()
+                .filter_map(|entity| world.get::<aeon_sim::ActiveAssignment>(*entity))
+                .find(|work| work.def.as_str() == "trace-the-hand")
+                .cloned()
+                .expect("the enquiry runs")
+        };
+        assert_eq!(running.leader, other);
+        assert_eq!(running.owner, harrow);
+        assert_eq!(
+            running
+                .origin_situation
+                .as_ref()
+                .map(|origin| &origin.situation),
+            Some(&card_key),
+            "the enquiry carries the card's provenance"
         );
     }
 

@@ -272,10 +272,13 @@ pub struct AssignmentDef {
     /// modifier reads a live relationship; only province-bearing target
     /// kinds may author one.
     pub order_modifier: Option<OrderModifierDef>,
-    /// Whether this work is covert: before exposure, ordinary player
-    /// surfaces narrow its provenance to the owning organisation, while
-    /// spectators and replay retain everything. Exposure is a future
-    /// read (the investigation issue's hook); today nothing is exposed.
+    /// Whether this work is covert: the authored *kind* of the work, which
+    /// never changes. Its lines are confided to the owning organisation and
+    /// to every house that has already proved the owner behind it, while
+    /// spectators and replay retain everything. Who has proved whom is a
+    /// separate, durable, per-viewer-and-per-knower exposure record written
+    /// by investigation; being found out does not make the work any less
+    /// covert, so content keyed off this flag keeps recognising it.
     pub covert: bool,
     /// Possible outcomes, keyed by kind. Success and failure are mandatory.
     /// Who this may be aimed at. Checked in exactly one place, so the
@@ -1116,6 +1119,16 @@ pub struct AssignmentRequires {
     /// is what stops an assignment that answers an alarm being offered
     /// when no alarm is sounding.
     pub owner_threatened: bool,
+    /// Somebody else's covert work must be running against the target
+    /// province, and the owner must not yet have proved whose: a live
+    /// covert province-aimed assignment owned by an organisation other
+    /// than the owner, for which the owner holds no exposure record.
+    ///
+    /// About what is being done to the target rather than who holds it:
+    /// it is what stops an enquiry into covert work being offered on
+    /// ground nobody is working against, or against a hand already
+    /// proved — either way, where it could prove nothing.
+    pub target_under_covert_work: bool,
     /// The target province's order must be at or below this.
     pub max_order: Option<i32>,
     /// The target province's order must be at or above this.
@@ -1325,10 +1338,12 @@ pub struct PlanDef {
     pub max_days: u32,
     /// How many times one step may fail before the plan is abandoned.
     pub max_step_retries: u32,
-    /// Whether this campaign is covert: before exposure, ordinary player
-    /// surfaces (adoption and end logs, rumours, the inspector's pursuing
-    /// line) narrow to the owning organisation, while spectators and
-    /// replay retain everything. Exposure is a future read.
+    /// Whether this campaign is covert: the authored kind of the work.
+    /// Its ordinary player surfaces (adoption and end logs, rumours, the
+    /// inspector's pursuing line) are confided to the owning organisation
+    /// and to every house that has proved the owner behind it — a durable,
+    /// per-knower exposure record written by investigation — while
+    /// spectators and replay retain everything.
     pub covert: bool,
     /// Ways to pursue the goal, in authored preference order.
     pub methods: Vec<PlanMethodDef>,
@@ -1518,9 +1533,11 @@ pub struct GoalDef {
     pub target: AssignmentTargetKind,
     /// How an organisation-aimed ambition resolves its concrete target.
     pub target_selector: GoalTargetSelector,
-    /// Whether this ambition is covert: before exposure, its adoption and
-    /// end logs narrow to the owning organisation, while spectators and
-    /// replay retain everything. Exposure is a future read.
+    /// Whether this ambition is covert: the authored kind of the work. Its
+    /// adoption and end logs are confided to the owning organisation and to
+    /// every house that has proved the owner behind it — a durable,
+    /// per-knower exposure record written by investigation — while
+    /// spectators and replay retain everything.
     pub covert: bool,
     /// The advisory directives pressed on the house's vassals while the
     /// goal is active.

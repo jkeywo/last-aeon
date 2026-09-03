@@ -671,7 +671,22 @@ fn apply_command(world: &mut World, command: &PlayerCommand) {
             if let Some(org) = world.get_resource::<PlayerHouse>().and_then(|p| p.0)
                 && assignments::validate_start(world, org, assignment, *leader, *target).is_ok()
             {
-                assignments::start_assignment(world, org, assignment, *leader, *target);
+                // An order a live card would have launched inherits that
+                // card's provenance: the ordinary path and the Situation
+                // shortcut are one flow, and what the forecast promised
+                // must not depend on which button the player pressed.
+                // Validation is already settled above and is identical
+                // either way; only the origin tag differs.
+                match crate::situations::offering_lifecycle(world, assignment, *leader, *target) {
+                    Some(situation) => {
+                        assignments::start_assignment_from_situation(
+                            world, org, assignment, *leader, *target, situation,
+                        );
+                    }
+                    None => {
+                        assignments::start_assignment(world, org, assignment, *leader, *target);
+                    }
+                }
             }
         }
         PlayerCommand::StartSituationAssignment {

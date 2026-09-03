@@ -708,6 +708,20 @@ fn define_assignment(state: &mut BuilderState, map: Map) {
         return;
     }
     let requires = assignment_requires(&mut f);
+    // Covert work is done against a province, so asking whether the target
+    // is under it only means something where a start always names one.
+    // The same loud contract as the Order modifier above.
+    if requires.target_under_covert_work
+        && !matches!(
+            target,
+            AssignmentTargetKind::Province
+                | AssignmentTargetKind::OwnArmyAndProvince
+                | AssignmentTargetKind::OwnShipAndProvince
+        )
+    {
+        f.error("requires.target_under_covert_work needs a province-bearing target kind");
+        return;
+    }
     let stages = assignment_stages(&mut f, duration_days as u32);
     let Some(urgency) = f.opt_enum(
         "urgency",
@@ -1025,6 +1039,7 @@ fn assignment_requires(f: &mut Fields) -> AssignmentRequires {
             "target_holds_title",
             "target_owes_favour",
             "owner_threatened",
+            "target_under_covert_work",
             "max_order",
             "min_order",
         ],
@@ -1054,6 +1069,7 @@ fn assignment_requires(f: &mut Fields) -> AssignmentRequires {
     requires.army_present = flag(&conditions, "army_present");
     requires.target_owes_favour = flag(&conditions, "target_owes_favour");
     requires.owner_threatened = flag(&conditions, "owner_threatened");
+    requires.target_under_covert_work = flag(&conditions, "target_under_covert_work");
     requires.target_holds_title = conditions
         .get("target_holds_title")
         .and_then(|v| v.clone().into_string().ok())

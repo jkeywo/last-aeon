@@ -204,10 +204,21 @@ targeted province, its live Order, the exact resistance that Order is
 applying to the unseen work, and the time remaining. High Order
 materially worsens the hostile odds — the same 850 standard Kessarin
 demanded is the defence — and the player may answer with ordinary
-administration, accept the risk, or (in the coming slice) investigate.
-Who moved against them is authoritatively recorded for spectators,
-replay, and later investigation, but no ordinary surface names the hand
-before exposure.
+administration, accept the risk, or investigate.
+Who moved against them is authoritatively recorded for spectators and
+replay from the first day, but no ordinary surface names the hand until
+the player has proved it.
+
+[ai] **Investigating** (stories 37–38, 40) is an ordinary assignment the
+card offers with no leader attached: the player compares every eligible
+investigator on authoritative per-candidate forecasts, pays the authored
+coin and days, and gets one of two answers. A proved enquiry names the
+house, its head, and the covert work itself on the card, in its
+permanent history, and in the sentence the resolution freezes. A cold
+enquiry names nobody at all — there is no partial result, no shortlist,
+and no suspicion the game will offer on the player's behalf. What the
+player learns is theirs alone: another house's enquiry teaches them
+nothing, and their own teaches nobody else.
 
 **Proposal.** Onboarding should use a short, dismissible sequence of goals over
 the live campaign rather than a separate rules sandbox. It should teach the

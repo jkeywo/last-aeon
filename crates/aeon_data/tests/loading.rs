@@ -2051,6 +2051,63 @@ define_assignment(#{{
     }
 }
 
+/// The covert-work requirement parses into the model and — like the Order
+/// modifier — is refused loudly where a start would never name a province
+/// to ask about, rather than quietly gating nothing at play.
+#[test]
+fn target_under_covert_work_parses_and_needs_a_province_bearing_target() {
+    let with_target = |target: &str| {
+        format!(
+            r#"
+define_assignment(#{{
+    id: "enquiry",
+    category: "consequential", duration_days: 10,
+    skill: "intrigue", difficulty: 5,
+    target: {target},
+    requires: #{{ target_under_covert_work: true }},
+    results: #{{ success: #{{ weight: 800 }}, failure: #{{ weight: 200 }} }},
+}});
+"#
+        )
+    };
+
+    let (set, report) = load_content(
+        &[source("enquiry.rhai", &with_target(r#""province""#))],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(
+        !report.has_errors(),
+        "unexpected findings: {:?}",
+        report.findings
+    );
+    let set = set.expect("a province-aimed enquiry loads");
+    let enquiry = &set.assignments[&aeon_data::ContentKey::new("enquiry").unwrap()];
+    assert!(enquiry.requires.target_under_covert_work);
+    assert_eq!(
+        enquiry.requires.target_holder,
+        aeon_data::model::HolderRelation::Any,
+        "the rest of the block still defaults to do-not-care"
+    );
+
+    let (set, report) = load_content(
+        &[source("bad.rhai", &with_target(r#""character""#))],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(
+        set.is_none(),
+        "a character-aimed enquiry has no province to ask about"
+    );
+    assert!(
+        report.findings.iter().any(|f| {
+            f.severity == Severity::Error
+                && f.message
+                    .contains("target_under_covert_work needs a province-bearing target kind")
+        }),
+        "findings {:?}",
+        report.findings
+    );
+}
+
 /// Content authoring covertness, campaign-day windows, and the hostility
 /// predicates parses into the model, and every malformed combination
 /// fails loudly at load rather than quietly gating nothing at play.
@@ -2323,7 +2380,19 @@ fn the_shadow_arc_carries_covert_provenance_and_order_resistance() {
         .iter()
         .map(|outcome| outcome.key.as_str())
         .collect();
-    assert_eq!(outcomes, ["passed-on", "struck", "weathered"]);
+    // The live-Order reading is one rule with two ends, each split by
+    // whether the holder proved the hand before the matter closed: proof
+    // changes what the frozen sentence may say, never how the ground read.
+    assert_eq!(
+        outcomes,
+        [
+            "passed-on",
+            "struck-traced",
+            "struck",
+            "weathered-traced",
+            "weathered"
+        ]
+    );
 
     // The vehicle: covert, closed to the reactive scorer, answering the
     // subvert pressure, resisted by the target province's live Order.
@@ -2371,14 +2440,73 @@ fn the_shadow_arc_carries_covert_provenance_and_order_resistance() {
         "a covert ambition presses no directive that could leak it"
     );
 
+    // The answer: an ordinary investigation assignment, closed to the AI,
+    // aimed at the holder's OWN troubled ground rather than at any
+    // suspect — there is no suspect field to author — and offered by the
+    // Situation as a third action.
+    let enquiry = &set.assignments[&aeon_data::ContentKey::new("trace-the-hand").unwrap()];
+    assert!(!enquiry.ai_available, "investigation is the player's own");
+    assert!(!enquiry.covert, "the enquiry itself is nothing to hide");
+    assert_eq!(
+        enquiry.target,
+        aeon_data::model::AssignmentTargetKind::Province
+    );
+    assert_eq!(
+        enquiry.requires.target_holder,
+        aeon_data::model::HolderRelation::Own,
+        "an enquiry is aimed at your own troubled holding"
+    );
+    assert!(
+        enquiry.requires.target_under_covert_work,
+        "an enquiry answers somebody's covert work; it is never a free-standing order"
+    );
+    assert_eq!(enquiry.skill, aeon_data::model::GoverningSkill::Intrigue);
+    assert!(enquiry.wealth_cost > 0, "an enquiry costs coin");
+    // Only the two good ends carry an effect. Failure and disaster author
+    // nothing at all, so no result can fabricate a suspect.
+    for (kind, result) in &enquiry.results {
+        let names_someone = result.effect_fn.is_some();
+        match kind {
+            aeon_data::model::OutcomeKind::CriticalSuccess
+            | aeon_data::model::OutcomeKind::Success => {
+                assert!(names_someone, "a proved trail exposes the true hand")
+            }
+            _ => assert!(
+                !names_someone,
+                "a cold or botched trail must leave no consequence whatever"
+            ),
+        }
+    }
+    let investigate = unquiet
+        .actions
+        .iter()
+        .find(|action| action.key.as_str() == "investigate")
+        .expect("the card offers the enquiry");
+    assert_eq!(
+        investigate.assignment,
+        aeon_data::ContentKey::new("trace-the-hand").unwrap()
+    );
+    let stages: Vec<&str> = unquiet
+        .stages
+        .iter()
+        .map(|stage| stage.key.as_str())
+        .collect();
+    assert_eq!(stages, ["unrest", "traced"]);
+
     // The derived key mirror covers the new rows, so the orphan and
     // missing-row audits keep covering them.
     let keys = aeon_data::text_keys(&set);
     for expected in [
         "situation.unquiet-holdings.announcement",
         "situation.unquiet-holdings.stage.unrest.warning",
+        "situation.unquiet-holdings.stage.traced.warning",
         "situation.unquiet-holdings.resolution.struck.text",
+        "situation.unquiet-holdings.resolution.struck-traced.text",
+        "situation.unquiet-holdings.resolution.weathered-traced.text",
+        "situation.unquiet-holdings.action.investigate.label",
         "situation.unquiet-holdings.guidance.objective",
+        "assignment.trace-the-hand.title",
+        "assignment.trace-the-hand.success.popup-text",
         "goal.undermine-a-neighbour.title",
         "plan.deniable-pressure.summary",
     ] {

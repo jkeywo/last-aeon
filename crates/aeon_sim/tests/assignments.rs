@@ -184,6 +184,24 @@ define_assignment(#{
     ai_available: false,
     results: #{ success: #{ weight: 1 }, failure: #{ weight: 1 } },
 });
+// Somebody's deniable work against a province, and the enquiry that
+// answers it: the second is offered only while somebody else's first is
+// running against the target.
+define_assignment(#{
+    id: "quiet-work",
+    category: "consequential", duration_days: 30,
+    skill: "intrigue", difficulty: 0, target: "province",
+    ai_available: false, covert: true,
+    results: #{ success: #{ weight: 1 }, failure: #{ weight: 1 } },
+});
+define_assignment(#{
+    id: "gated-enquiry",
+    category: "consequential", duration_days: 5,
+    skill: "intrigue", difficulty: 0, target: "province",
+    requires: #{ target_under_covert_work: true },
+    ai_available: false,
+    results: #{ success: #{ weight: 1 }, failure: #{ weight: 1 } },
+});
 // Two phases: the road, which can be turned back from, and the work
 // itself, which cannot.
 define_assignment(#{
@@ -311,6 +329,10 @@ fn strings() -> aeon_data::StringTable {
         ("assignment.gated-favour.summary", "Collect what is owed."),
         ("assignment.gated-whisper.title", "Discredit"),
         ("assignment.gated-whisper.summary", "Spread a word."),
+        ("assignment.quiet-work.title", "Quiet Work"),
+        ("assignment.quiet-work.summary", "Deniable, and aimed."),
+        ("assignment.gated-enquiry.title", "Trace"),
+        ("assignment.gated-enquiry.summary", "Find whose hand it is."),
         ("assignment.ai-errand.title", "An AI errand"),
         ("assignment.ai-errand.summary", "Ordinary business."),
         (
@@ -1313,6 +1335,114 @@ mod requirements {
             ash,
             AssignmentTarget::Org(birch)
         ));
+    }
+
+    #[test]
+    fn an_enquiry_needs_somebody_elses_covert_work_to_trace() {
+        use aeon_sim::AssignmentRejection;
+
+        let mut h = host(7);
+        let ash = org_id(&mut h, "ash");
+        let birch = org_id(&mut h, "birch");
+        let ours = province(&mut h, "alpha");
+        let theirs = province(&mut h, "beta");
+        let aron = char_id(&mut h, "aron-ash");
+        let cera = char_id(&mut h, "cera-ash");
+        let bela = char_id(&mut h, "bela-birch");
+        let offered_on = |h: &mut SimHost, province: ProvinceId| {
+            target_allowed(
+                h.world_mut(),
+                &key("gated-enquiry"),
+                ash,
+                AssignmentTarget::Province(province),
+            )
+        };
+        let ordered_on = |h: &mut SimHost, province: ProvinceId| {
+            h.submit(PlayerCommand::StartAssignment {
+                assignment: key("gated-enquiry"),
+                leader: aron,
+                target: AssignmentTarget::Province(province),
+            })
+        };
+
+        // Quiet ground: nothing to trace, so nothing to offer — and the
+        // order is refused at the gate every start path shares, not
+        // merely left off a menu.
+        assert!(
+            !offered_on(&mut h, ours),
+            "with no covert work against Alpha there is nothing to trace"
+        );
+        assert!(
+            matches!(
+                ordered_on(&mut h, ours),
+                Err(CommandRejection::Assignment(AssignmentRejection::BadTarget))
+            ),
+            "ordering an enquiry into nothing is refused"
+        );
+
+        // A house's own deniable work on its own ground raises no alarm.
+        aeon_sim::start_assignment(
+            h.world_mut(),
+            ash,
+            &key("quiet-work"),
+            cera,
+            AssignmentTarget::Province(ours),
+        );
+        assert!(
+            !offered_on(&mut h, ours),
+            "our own quiet work is not somebody else's hand"
+        );
+
+        // Somebody else's covert work against Alpha: now, and there alone,
+        // there is a hand to trace.
+        aeon_sim::start_assignment(
+            h.world_mut(),
+            birch,
+            &key("quiet-work"),
+            bela,
+            AssignmentTarget::Province(ours),
+        );
+        assert!(
+            offered_on(&mut h, ours),
+            "Birch's quiet work against Alpha is exactly what an enquiry answers"
+        );
+        assert!(
+            !offered_on(&mut h, theirs),
+            "Beta, where nobody is working, still offers nothing"
+        );
+        assert!(
+            ordered_on(&mut h, ours).is_ok(),
+            "and the order is accepted where the work is running"
+        );
+
+        // Once Ash has proved Birch's hand there is nothing left to trace,
+        // so the offer withdraws while the work still runs — exactly as
+        // the card that offers the enquiry drops its own action. The
+        // record is a per-knower one: Birch's work is unchanged, and so is
+        // everybody else's view of it.
+        let date = h.date();
+        aeon_sim::covert::expose(
+            h.world_mut(),
+            birch,
+            ash,
+            aeon_sim::situations::SituationOccurrence {
+                situation: aeon_sim::situations::SituationInstanceKey {
+                    definition: key("unquiet-holdings"),
+                    source: aeon_sim::situations::SituationSource {
+                        kind: aeon_data::model::SituationSubjectKind::Scenario,
+                        key: key("fixture"),
+                        id: None,
+                    },
+                    bindings: Default::default(),
+                },
+                activated: date,
+            },
+            date,
+        );
+        assert!(
+            !offered_on(&mut h, ours),
+            "a hand already proved leaves nothing to trace, though the work still runs"
+        );
     }
 }
 

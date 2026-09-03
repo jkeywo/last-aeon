@@ -470,7 +470,7 @@ pub fn try_adopt(
     };
     world.resource_mut::<Plans>().active.insert(actor, plan);
 
-    let covert = crate::covert::plan_is_covert(world, &key, authority);
+    let covert = crate::covert::plan_is_covert(world, &key);
     let text = world.resource::<TextDb>().format(
         "sim.plan.adopted",
         &[
@@ -483,11 +483,12 @@ pub fn try_adopt(
     if let Some(subject) = top.subject {
         entry = entry.about(subject);
     }
-    // A covert campaign's adoption is written for its owner alone —
-    // spectators and replay still read it — so authoritative history is
-    // complete while no ordinary player surface learns whose hand moved.
+    // A covert campaign's adoption is written for its owner and for
+    // whoever has already proved that owner — spectators and replay still
+    // read it — so authoritative history is complete while no ordinary
+    // player surface learns whose hand moved before finding it out.
     if covert {
-        entry = entry.for_audience(crate::covert::owner_only(authority));
+        entry = entry.for_audience(crate::covert::audience(world, authority));
     }
     crate::access::log(world, entry);
 
@@ -495,7 +496,9 @@ pub fn try_adopt(
     // the modest hint, deliberately short of an espionage system — no
     // probability gate, no detail beyond who and about what. A covert
     // campaign whispers nothing: deniability is its whole point, and
-    // discovery belongs to investigation, not to a free rumour.
+    // discovery belongs to investigation, not to a free rumour. Once a
+    // house HAS proved this owner, deniability is over as far as that
+    // house is concerned, and the ordinary coarse rumour resumes for it.
     let player = world
         .get_resource::<crate::politics::PlayerHouse>()
         .and_then(|p| p.0);
@@ -506,7 +509,8 @@ pub fn try_adopt(
         }
         _ => false,
     };
-    if concerns_player && player.is_some() && !covert {
+    let whispers = !covert || crate::covert::is_exposed(world, authority, player);
+    if concerns_player && player.is_some() && whispers {
         let text = world.resource::<TextDb>().format(
             "sim.plan.rumour",
             &[
@@ -1019,10 +1023,11 @@ fn announce_end(world: &mut World, actor: CharacterId, plan: &ActivePlan, key: &
     let mut entry = LogEntry::line(text, LogChannel::Politics)
         .by(Some(authority))
         .about(LogSubject::Character(actor));
-    // A covert campaign ends as quietly as it began: owner-only, with
-    // spectators and replay still reading the full account.
-    if crate::covert::plan_is_covert(world, &plan.def, authority) {
-        entry = entry.for_audience(crate::covert::owner_only(authority));
+    // A covert campaign ends as quietly as it began — confided to its
+    // owner and to whoever has proved that owner — with spectators and
+    // replay still reading the full account.
+    if crate::covert::plan_is_covert(world, &plan.def) {
+        entry = entry.for_audience(crate::covert::audience(world, authority));
     }
     crate::access::log(world, entry);
 }

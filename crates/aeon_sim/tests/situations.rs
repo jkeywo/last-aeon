@@ -4,7 +4,7 @@ use aeon_core::calendar::CalendarDate;
 use aeon_data::{ContentKey, ContentSet, load_content};
 use aeon_sim::assignments::{
     ActiveAssignment, AssignmentRejection, AssignmentTarget, AssignmentsIndex, LogChannel,
-    MessageLog, validate_start,
+    LogEntry, MessageLog, validate_start,
 };
 use aeon_sim::forces::{ArmyRecord, ForcesIndex, ShipRecord};
 use aeon_sim::obligations::{ObligationKind, ObligationStatus, settle};
@@ -4590,12 +4590,29 @@ fn no_player_surface_leaks_the_covert_hand_before_exposure() {
     assert!(projection.participant_groups.is_empty());
     assert!(projection.links.is_empty());
     for action in &projection.actions {
-        assert_eq!(
-            action.leader,
-            Some(edrun),
-            "counter-play is the holder's own work"
-        );
-        assert_eq!(action.target, AssignmentTarget::None);
+        match action.id.as_str() {
+            // Steadying the ground is the head's own work, pinned to him
+            // and aimed at nothing in particular.
+            "hold-court" | "tour-holdings" => {
+                assert_eq!(
+                    action.leader,
+                    Some(edrun),
+                    "counter-play is the holder's own work"
+                );
+                assert_eq!(action.target, AssignmentTarget::None);
+            }
+            // Investigation deliberately pins NO leader — the player
+            // compares investigators — and is aimed at the holder's own
+            // troubled ground, never at a suspect.
+            "investigate" => {
+                assert_eq!(
+                    action.leader, None,
+                    "the investigation lets the player choose its leader"
+                );
+                assert_eq!(action.target, AssignmentTarget::Province(vhorruk));
+            }
+            other => panic!("unexpected projected action '{other}'"),
+        }
         assert!(action.context.is_empty());
     }
 
@@ -5030,4 +5047,1286 @@ fn holdings_left_unsteady_are_struck_when_the_operation_runs_its_course() {
     for tell in SHADOW_TELLS {
         assert!(!notice.text.contains(tell));
     }
+}
+
+// ---------------------------------------------------------------------------
+// Tracing the hand: the ordinary investigation answer to Unquiet Holdings.
+// An enquiry either proves the organisation the lifecycle already bound —
+// the true hand, read from a structural binding rather than chosen — or
+// proves nothing at all. There is no third result, and no result names
+// anybody else. Discovery is durable, per knower, and survives every
+// snapshot, restore, and replay of every epistemic stage.
+// ---------------------------------------------------------------------------
+
+/// Offsets from [`SHADOW_LIVE_DAY`] at which the same household
+/// investigator's enquiry proves the hand, and at which it comes back
+/// cold. Both are ordinary draws of the existing resolution stream on the
+/// pinned seed: the outcome is the simulation's, and the test only picks
+/// which day the order was given.
+const SHADOW_PROVED_OFFSET: u32 = 2;
+const SHADOW_COLD_OFFSET: u32 = 0;
+/// Authored duration of `trace-the-hand`.
+const ENQUIRY_DAYS: i64 = 25;
+
+fn exposure_of(host: &mut SimHost) -> aeon_sim::covert::Exposure {
+    host.world_mut()
+        .resource::<aeon_sim::covert::Exposure>()
+        .clone()
+}
+
+/// Orders the ordinary investigation off the live card, exactly as the
+/// client's action button does: the projected action, the projected
+/// target, and a leader the player chose.
+fn order_the_enquiry(
+    host: &mut SimHost,
+    leader: CharacterId,
+) -> aeon_sim::situations::SituationInstanceKey {
+    let harrow = org(host, "harrow");
+    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let situation = unquiet_card_for(host, harrow)
+        .expect("the holder's card is live")
+        .active
+        .key;
+    host.submit(PlayerCommand::StartSituationAssignment {
+        situation: situation.clone(),
+        action: key("investigate"),
+        leader,
+        target: AssignmentTarget::Province(vhorruk),
+        war: None,
+    })
+    .expect("the enquiry is an ordinary valid command");
+    situation
+}
+
+fn enquiry_in_flight(host: &mut SimHost) -> Option<ActiveAssignment> {
+    let world = host.world_mut();
+    world
+        .resource::<AssignmentsIndex>()
+        .assignments
+        .values()
+        .find_map(|entity| {
+            world
+                .get::<ActiveAssignment>(*entity)
+                .filter(|work| work.def == key("trace-the-hand"))
+                .cloned()
+        })
+}
+
+fn text_metric(
+    projection: &aeon_sim::situations::SituationProjection,
+    label: &str,
+) -> Option<String> {
+    projection.metrics.iter().find_map(|metric| {
+        (metric.label_key == label).then(|| match &metric.value {
+            aeon_sim::situations::SituationMetricValue::Text(text) => text.clone(),
+            aeon_sim::situations::SituationMetricValue::Integer(value) => {
+                panic!("expected text metric for {label}, got {value}")
+            }
+        })
+    })
+}
+
+/// Runs one campaign to the point where the enquiry ordered `offset` days
+/// into the live operation has resolved, and hands back the card's exact
+/// occurrence.
+fn campaign_after_an_enquiry(
+    seed: u64,
+    content: Arc<ContentSet>,
+    offset: u32,
+) -> (SimHost, aeon_sim::situations::SituationOccurrence) {
+    let mut host = scenario_host(seed, content);
+    host.advance_days(SHADOW_LIVE_DAY + offset);
+    let leader = free_household_host(&mut host, 0);
+    let situation = order_the_enquiry(&mut host, leader);
+    let occurrence = host
+        .world_mut()
+        .resource::<SituationState>()
+        .active
+        .get(&situation)
+        .expect("the lifecycle is live")
+        .occurrence();
+    // Run past the enquiry's own completion, whatever day the ordinary
+    // order delay actually started it on.
+    while enquiry_in_flight(&mut host).is_none() {
+        host.advance_days(1);
+    }
+    let completes = enquiry_in_flight(&mut host).expect("in flight").completes;
+    while host.date() < completes {
+        host.advance_days(1);
+    }
+    (host, occurrence)
+}
+
+#[test]
+fn the_player_compares_investigators_on_one_authoritative_forecast() {
+    let mut host = scenario_host(SHADOW_SEED, repository_content());
+    let harrow = org(&mut host, "harrow");
+    let edrun = character(&mut host, "edrun-harrow");
+    host.advance_days(SHADOW_LIVE_DAY);
+    let card = unquiet_card_for(&mut host, harrow).expect("the holder's card is live");
+    let situation = card.active.key.clone();
+    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let projection = card.projection.clone().expect("projection");
+
+    // The enquiry is offered as an ordinary projected action, aimed at the
+    // holder's own troubled ground, and deliberately pins no leader: a
+    // leaderless action is exactly how content says "the player chooses".
+    let enquiry = projection
+        .actions
+        .iter()
+        .find(|action| action.id == key("investigate"))
+        .expect("the card offers the enquiry");
+    assert_eq!(enquiry.leader, None);
+    assert_eq!(enquiry.target, AssignmentTarget::Province(vhorruk));
+
+    // Every eligible investigator is forecast through the one
+    // authoritative path the order itself will take.
+    let forecast_for = |host: &mut SimHost, candidate: CharacterId| {
+        aeon_sim::situations::forecast_for_action(
+            host.world_mut(),
+            &situation,
+            &key("investigate"),
+            candidate,
+            AssignmentTarget::Province(vhorruk),
+        )
+        .expect("every eligible investigator forecasts")
+    };
+    let date = host.date();
+    let eligible: Vec<CharacterId> = {
+        let world = host.world_mut();
+        world
+            .resource::<PoliticsIndex>()
+            .characters
+            .keys()
+            .copied()
+            .collect::<Vec<_>>()
+            .into_iter()
+            .filter(|id| {
+                aeon_sim::leader_availability(world, harrow, *id, date)
+                    .blocks_assignment(AssignmentTarget::Province(vhorruk))
+                    .is_none()
+            })
+            .collect()
+    };
+    assert!(
+        eligible.len() >= 2,
+        "the house has investigators to compare, got {eligible:?}"
+    );
+    for candidate in &eligible {
+        let view = forecast_for(&mut host, *candidate);
+        assert_eq!(view.leader, *candidate);
+        assert!(view.blocked.is_none(), "an eligible investigator is free");
+    }
+
+    // And the comparison is genuinely per-candidate: a better intriguer
+    // forecasts better odds, by exactly the skill the contest reads, and
+    // nobody else's number moves.
+    let (sharper, other) = (eligible[0], eligible[1]);
+    let before_sharper = forecast_for(&mut host, sharper);
+    let before_other = forecast_for(&mut host, other);
+    {
+        let world = host.world_mut();
+        let entity = aeon_sim::access::character_entity(world, sharper).expect("indexed");
+        world
+            .get_mut::<aeon_sim::politics::CharacterSkills>(entity)
+            .expect("characters carry skills")
+            .0
+            .intrigue += 6;
+    }
+    let after_sharper = forecast_for(&mut host, sharper);
+    let after_other = forecast_for(&mut host, other);
+    assert_eq!(
+        after_sharper.effectiveness,
+        before_sharper.effectiveness + 6,
+        "the enquiry is contested on the investigator's own intrigue"
+    );
+    assert!(
+        after_sharper.success_chance() > before_sharper.success_chance(),
+        "the sharper investigator quotes better odds"
+    );
+    assert_eq!(
+        after_other.success_chance(),
+        before_other.success_chance(),
+        "one candidate's forecast is nobody else's"
+    );
+
+    // The forecast is the ordinary assignment forecast for the authored
+    // enquiry, not a Situation-only invention.
+    let direct = aeon_sim::forecast::forecast(
+        host.world_mut(),
+        harrow,
+        &key("trace-the-hand"),
+        edrun,
+        AssignmentTarget::Province(vhorruk),
+    )
+    .expect("the enquiry is an ordinary defined assignment");
+    let through_card = aeon_sim::situations::forecast_for_action(
+        host.world_mut(),
+        &situation,
+        &key("investigate"),
+        edrun,
+        AssignmentTarget::Province(vhorruk),
+    )
+    .expect("the card forecasts the same order");
+    assert_eq!(direct.success_chance(), through_card.success_chance());
+    assert_eq!(direct.effectiveness, through_card.effectiveness);
+
+    // Ordering it is the ordinary command, and the work it starts carries
+    // the card's exact provenance.
+    let leader = free_household_host(&mut host, 0);
+    order_the_enquiry(&mut host, leader);
+    while enquiry_in_flight(&mut host).is_none() {
+        host.advance_days(1);
+    }
+    let work = enquiry_in_flight(&mut host).expect("the enquiry is under way");
+    assert_eq!(work.owner, harrow);
+    assert_eq!(work.leader, leader);
+    assert_eq!(work.target, AssignmentTarget::Province(vhorruk));
+    assert_eq!(
+        work.origin_situation.as_ref(),
+        Some(&card.active.occurrence()),
+        "the enquiry is tagged with the exact lifecycle that offered it"
+    );
+}
+
+#[test]
+fn a_proved_enquiry_names_the_true_hand_and_opens_the_card() {
+    let (mut host, exact) =
+        campaign_after_an_enquiry(SHADOW_SEED, repository_content(), SHADOW_PROVED_OFFSET);
+    let harrow = org(&mut host, "harrow");
+    let vantar = org(&mut host, "vantar");
+    let perrin = character(&mut host, "perrin-vantar");
+    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+
+    // The durable record: the culprit is the organisation the lifecycle
+    // bound, the knower is the house that paid for the enquiry, and the
+    // discovery is tied to the exact activation that produced it.
+    let records: Vec<_> = exposure_of(&mut host).records.into_iter().collect();
+    assert_eq!(records.len(), 1, "one enquiry, one discovery");
+    assert_eq!(records[0].culprit, vantar);
+    assert_eq!(records[0].knower, harrow);
+    assert_eq!(
+        records[0].occurrence, exact,
+        "the evidence stays tied to the lifecycle it was found through"
+    );
+
+    // The card now discloses the operation's true provenance: the
+    // organisation behind it, the head who ordered it, and the very work
+    // still in flight — plus its own stage and metric.
+    let projection = unquiet_card_for(&mut host, harrow)
+        .expect("the card is still live")
+        .projection
+        .expect("projection");
+    assert_eq!(projection.stage, key("traced"));
+    assert!(
+        projection
+            .participants
+            .contains(&aeon_sim::situations::SituationLink {
+                kind: aeon_data::model::SituationSubjectKind::Organisation,
+                id: vantar.raw(),
+                label_key: None,
+            })
+    );
+    assert!(
+        projection.participants.iter().any(|link| link.kind
+            == aeon_data::model::SituationSubjectKind::Province
+            && link.id == vhorruk.raw()),
+        "the ground it was aimed at stays on the card"
+    );
+    assert!(
+        projection.links.iter().any(|link| link.kind
+            == aeon_data::model::SituationSubjectKind::Character
+            && link.id == perrin.raw()),
+        "the head who ordered it is navigable"
+    );
+    let sabotage = vantar_operation(&mut host).expect("the operation is still running");
+    assert!(
+        projection.links.iter().any(|link| link.kind
+            == aeon_data::model::SituationSubjectKind::Assignment
+            && link.id == sabotage.id.raw()),
+        "the covert work itself is navigable once proved"
+    );
+    assert!(
+        text_metric(&projection, "situation.metric.proved-hand")
+            .expect("the card names the proved hand")
+            .contains("House Vantar")
+    );
+    assert!(
+        !projection
+            .actions
+            .iter()
+            .any(|action| action.id == key("investigate")),
+        "nothing is left to trace once the hand is proved"
+    );
+
+    // New history is written naming the hand, tagged with this exact
+    // lifecycle so it lands in the card's own history.
+    let log = host.world_mut().resource::<MessageLog>().clone();
+    let revelation = log
+        .entries
+        .iter()
+        .find(|entry| entry.text.contains("House Vantar") && entry.text.contains("The trail holds"))
+        .expect("the discovery is written into history");
+    assert!(revelation.audience.visible_to(Some(harrow)));
+    assert!(revelation.situations.contains(&exact));
+
+    // And the lines already written stay exactly as they were stamped: a
+    // discovery reveals by writing new history, never by reopening old.
+    let adoption = log
+        .entries
+        .iter()
+        .find(|entry| entry.text.contains("Deniable Pressure"))
+        .expect("the covert campaign's adoption was written owner-confided");
+    assert!(
+        !adoption.audience.visible_to(Some(harrow)),
+        "an audience stamped at write time is never re-widened: '{}'",
+        adoption.text
+    );
+    assert!(adoption.audience.visible_to(None));
+}
+
+#[test]
+fn a_cold_enquiry_names_nobody_and_leaves_the_card_exactly_as_it_was() {
+    let (mut host, _) =
+        campaign_after_an_enquiry(SHADOW_SEED, repository_content(), SHADOW_COLD_OFFSET);
+    let harrow = org(&mut host, "harrow");
+    let vantar = org(&mut host, "vantar");
+    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+
+    assert!(
+        exposure_of(&mut host).records.is_empty(),
+        "a cold trail proves nothing"
+    );
+
+    // The card reads exactly as it did before the enquiry: the province,
+    // and only the province.
+    let projection = unquiet_card_for(&mut host, harrow)
+        .expect("the card is still live")
+        .projection
+        .expect("projection");
+    assert_eq!(projection.stage, key("unrest"));
+    assert_eq!(
+        projection.participants,
+        vec![aeon_sim::situations::SituationLink {
+            kind: aeon_data::model::SituationSubjectKind::Province,
+            id: vhorruk.raw(),
+            label_key: None,
+        }]
+    );
+    assert!(projection.links.is_empty());
+    assert!(projection.participant_groups.is_empty());
+    assert!(text_metric(&projection, "situation.metric.proved-hand").is_none());
+    assert!(
+        projection
+            .actions
+            .iter()
+            .any(|action| action.id == key("investigate")),
+        "a cold trail may be picked up again"
+    );
+
+    // Nothing the player can read names the hand, and the enquiry's own
+    // failure line is written without naming anybody.
+    let log = host.world_mut().resource::<MessageLog>().clone();
+    for entry in log
+        .entries
+        .iter()
+        .filter(|entry| entry.audience.visible_to(Some(harrow)))
+    {
+        for tell in SHADOW_TELLS {
+            assert!(
+                !entry.text.contains(tell),
+                "a failed enquiry leaked covert provenance: '{}'",
+                entry.text
+            );
+        }
+        assert!(
+            !entry.text.contains("The trail holds"),
+            "a failed enquiry wrote a revelation: '{}'",
+            entry.text
+        );
+    }
+    assert!(
+        log.entries
+            .iter()
+            .any(|entry| entry.text.contains("every trail ends")
+                || entry.text.contains("nothing whatever was learned")),
+        "the enquiry still reports that it found nothing"
+    );
+    // The card's own tagged history — everything the Situations panel
+    // shows under this lifecycle — names no house whatever.
+    let exact = unquiet_card_for(&mut host, harrow)
+        .expect("the card is live")
+        .active
+        .occurrence();
+    for entry in log
+        .entries
+        .iter()
+        .filter(|entry| entry.situations.contains(&exact))
+    {
+        assert!(
+            !entry.text.contains("House Vantar"),
+            "the card's own history named the hand after a cold trail: '{}'",
+            entry.text
+        );
+    }
+
+    // And no accusation of any kind: a cold trail creates no grievance,
+    // no favour, no obligation between the two houses.
+    let ledger = host
+        .world_mut()
+        .resource::<aeon_sim::obligations::Obligations>()
+        .clone();
+    assert!(
+        !ledger.entries.iter().any(|entry| {
+            (entry.debtor == vantar && entry.creditor == harrow)
+                || (entry.debtor == harrow && entry.creditor == vantar)
+        }),
+        "an investigation is not an accusation"
+    );
+}
+
+#[test]
+fn no_enquiry_of_any_result_can_name_a_house_that_did_not_do_it() {
+    let content = repository_content();
+    // Every ordering day across the operation's life, proved and cold
+    // alike. Whatever the draw, the only organisation any surface may
+    // ever name is the one the lifecycle bound.
+    for offset in 0..6u32 {
+        let (mut host, exact) =
+            campaign_after_an_enquiry(SHADOW_SEED, Arc::clone(&content), offset);
+        let harrow = org(&mut host, "harrow");
+        let vantar = org(&mut host, "vantar");
+        let bound = match exact.situation.bindings.get("actor") {
+            Some(SituationSubject::Organisation(actor)) => *actor,
+            other => panic!("the culprit is always structurally bound, got {other:?}"),
+        };
+        assert_eq!(bound, vantar);
+
+        for record in &exposure_of(&mut host).records {
+            assert_eq!(
+                record.culprit, bound,
+                "a discovery can only ever name the bound actor (offset {offset})"
+            );
+            assert_eq!(record.knower, harrow);
+        }
+
+        if let Some(projection) =
+            unquiet_card_for(&mut host, harrow).and_then(|card| card.projection)
+        {
+            for link in projection
+                .participants
+                .iter()
+                .chain(projection.links.iter())
+                .chain(
+                    projection
+                        .participant_groups
+                        .iter()
+                        .flat_map(|group| group.participants.iter()),
+                )
+            {
+                if link.kind == aeon_data::model::SituationSubjectKind::Organisation {
+                    assert_eq!(
+                        link.id,
+                        bound.raw(),
+                        "no projection may name an organisation that did not do it \
+                         (offset {offset})"
+                    );
+                }
+            }
+        }
+    }
+}
+
+#[test]
+fn an_enquiry_and_the_sabotage_resolve_independently_when_they_fall_due_together() {
+    let mut host = scenario_host(SHADOW_SEED, repository_content());
+    let harrow = org(&mut host, "harrow");
+    let vantar = org(&mut host, "vantar");
+    host.advance_days(SHADOW_LIVE_DAY + SHADOW_PROVED_OFFSET);
+    let leader = free_household_host(&mut host, 0);
+    let situation = order_the_enquiry(&mut host, leader);
+    while enquiry_in_flight(&mut host).is_none() {
+        host.advance_days(1);
+    }
+    let enquiry = enquiry_in_flight(&mut host).expect("in flight");
+    let sabotage = vantar_operation(&mut host).expect("the operation is live");
+    assert_eq!(
+        enquiry.completes,
+        enquiry.started.add_days(ENQUIRY_DAYS),
+        "the enquiry runs its authored course"
+    );
+    assert!(
+        sabotage.id < enquiry.id,
+        "the operation was accepted first, so it resolves first in stable-ID order"
+    );
+
+    // Bring the covert operation due on the very day the enquiry
+    // finishes. Nothing else about either is touched: they share a day,
+    // a province, and nothing whatever else.
+    {
+        let world = host.world_mut();
+        let entity = aeon_sim::access::assignment_entity(world, sabotage.id).expect("indexed");
+        world
+            .get_mut::<ActiveAssignment>(entity)
+            .expect("the operation is running")
+            .completes = enquiry.completes;
+    }
+
+    let shared_day = enquiry.completes;
+    while host.date() < shared_day {
+        host.advance_days(1);
+    }
+
+    // Both resolved on the shared day, each through its own ordinary path.
+    assert!(
+        enquiry_in_flight(&mut host).is_none(),
+        "the enquiry resolved on its own day"
+    );
+    assert!(
+        vantar_operation(&mut host).is_none_or(|retry| retry.started >= shared_day),
+        "the operation resolved on the shared day, whatever its plan did next"
+    );
+    let records = exposure_of(&mut host).records;
+    assert_eq!(records.len(), 1, "the enquiry still proved its own case");
+    assert_eq!(
+        records.iter().next().expect("record").culprit,
+        vantar,
+        "sharing a resolution day changes nothing about what was proved"
+    );
+
+    // Both wrote their own history on that day: the operation's line,
+    // still confided to its owner, and the enquiry's revelation.
+    let log = host.world_mut().resource::<MessageLog>().clone();
+    let day_lines: Vec<_> = log
+        .entries
+        .iter()
+        .filter(|entry| entry.date == shared_day)
+        .collect();
+    assert!(
+        day_lines
+            .iter()
+            .any(|entry| entry.text.contains("The trail holds")),
+        "the enquiry wrote its own result on the shared day"
+    );
+    assert!(
+        day_lines
+            .iter()
+            .any(|entry| !entry.audience.visible_to(Some(harrow))),
+        "the operation wrote its own owner-confided result on the shared day"
+    );
+
+    // And the card's own outcome, when it ends, is still the pure
+    // live-Order reading — now able to say who paid for it.
+    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let mut resolved = None;
+    for _ in 0..200 {
+        host.advance_days(1);
+        let state = host.world_mut().resource::<SituationState>().clone();
+        if let Some(notice) = state
+            .resolutions
+            .iter()
+            .find(|notice| notice.situation == situation)
+        {
+            resolved = Some(notice.clone());
+            break;
+        }
+    }
+    let notice = resolved.expect("the operation's card resolves");
+    let order = aeon_sim::order::province_order(host.world_mut(), vhorruk).order;
+    let expected = if order < 700 {
+        "struck-traced"
+    } else {
+        "weathered-traced"
+    };
+    assert_eq!(
+        notice.outcome.as_str(),
+        expected,
+        "the card still reads the ground; proof changes only what it may say"
+    );
+    assert!(
+        notice.text.contains("House Vantar"),
+        "the frozen sentence names the proved hand, got '{}'",
+        notice.text
+    );
+}
+
+#[test]
+fn every_epistemic_stage_survives_save_load_and_replay() {
+    let content = repository_content();
+
+    // Five stages, each a genuinely different state of knowledge:
+    // before the operation exists; covert work in flight and unknown;
+    // an enquiry in flight and still unknown; the hand proved; and the
+    // whole matter closed with the discovery outliving the lifecycle.
+    let mut host = scenario_host(SHADOW_SEED, Arc::clone(&content));
+    let harrow = org(&mut host, "harrow");
+    let vantar = org(&mut host, "vantar");
+
+    /// One stage as the live campaign had it, taken the instant before it
+    /// was snapshotted: the history exactly as written, so the restored
+    /// history can be held against it line for line.
+    struct Checkpoint {
+        stage: &'static str,
+        /// Whether nothing Harrow may read can yet carry covert provenance.
+        /// Discovery legitimately widens the lines written after it, so
+        /// this stops holding once the hand is proved.
+        tells_withheld: bool,
+        snapshot: aeon_sim::CampaignSnapshot,
+        live_log: Vec<LogEntry>,
+    }
+    let checkpoint = |host: &mut SimHost, stage: &'static str, tells_withheld: bool| Checkpoint {
+        stage,
+        tells_withheld,
+        live_log: host.world_mut().resource::<MessageLog>().entries.clone(),
+        snapshot: host.snapshot(),
+    };
+    let mut checkpoints = Vec::new();
+
+    host.advance_days(170);
+    checkpoints.push(checkpoint(&mut host, "pre-operation", true));
+
+    host.advance_days(SHADOW_LIVE_DAY + SHADOW_PROVED_OFFSET - 170);
+    assert!(vantar_operation(&mut host).is_some());
+    assert!(exposure_of(&mut host).records.is_empty());
+    checkpoints.push(checkpoint(&mut host, "covert-in-flight", true));
+
+    let leader = free_household_host(&mut host, 0);
+    order_the_enquiry(&mut host, leader);
+    while enquiry_in_flight(&mut host).is_none() {
+        host.advance_days(1);
+    }
+    assert!(
+        exposure_of(&mut host).records.is_empty(),
+        "an enquiry in flight has proved nothing yet"
+    );
+    checkpoints.push(checkpoint(&mut host, "enquiry-in-flight", true));
+
+    let completes = enquiry_in_flight(&mut host).expect("in flight").completes;
+    while host.date() < completes {
+        host.advance_days(1);
+    }
+    assert!(
+        exposure_of(&mut host).knows(harrow, vantar),
+        "the enquiry proved the hand"
+    );
+    checkpoints.push(checkpoint(&mut host, "proved", false));
+
+    // Past the operation, past the card's own resolution, past the covert
+    // ambition's expiry: the discovery outlives every lifecycle involved.
+    host.advance_days(200);
+    assert!(
+        !host
+            .world_mut()
+            .resource::<SituationState>()
+            .active
+            .keys()
+            .any(|instance| instance.definition == key("unquiet-holdings")),
+        "the lifecycle that produced the evidence has long ended"
+    );
+    assert!(
+        exposure_of(&mut host).knows(harrow, vantar),
+        "durable evidence outlives the Situation that found it"
+    );
+    checkpoints.push(checkpoint(&mut host, "closed", false));
+
+    for Checkpoint {
+        stage,
+        tells_withheld,
+        snapshot,
+        live_log,
+    } in checkpoints
+    {
+        assert_eq!(
+            snapshot.format_version,
+            aeon_sim::SNAPSHOT_FORMAT_VERSION,
+            "{stage}"
+        );
+        let recorded = snapshot.state.exposure.clone();
+        let mut restored = SimHost::restore_with_content(snapshot, Arc::clone(&content))
+            .unwrap_or_else(|error| panic!("{stage} restores: {error}"));
+        assert_eq!(
+            exposure_of(&mut restored),
+            recorded,
+            "{stage}: the discovery record round-trips exactly"
+        );
+
+        // Ordinary player views gain nothing from the round trip. Proved
+        // before-against-after rather than by a blanket sweep, because at
+        // the proved and closed stages discovery has legitimately widened
+        // the lines written after it to Harrow: what must never happen is
+        // that restore changes who may read any line at all.
+        let restored_log = restored
+            .world_mut()
+            .resource::<MessageLog>()
+            .entries
+            .clone();
+        assert_eq!(
+            restored_log.len(),
+            live_log.len(),
+            "{stage}: restore neither drops nor invents history"
+        );
+        for (index, (before, after)) in live_log.iter().zip(&restored_log).enumerate() {
+            assert_eq!(
+                after.text, before.text,
+                "{stage}: line {index} reads differently after restore"
+            );
+            assert_eq!(
+                after.audience, before.audience,
+                "{stage}: restore changed who may read line {index}: '{}'",
+                after.text
+            );
+            assert_eq!(
+                after.audience.visible_to(Some(harrow)),
+                before.audience.visible_to(Some(harrow)),
+                "{stage}: restore changed whether Harrow may read line {index}: '{}'",
+                after.text
+            );
+            assert!(
+                after.audience.visible_to(None),
+                "{stage}: every line stays open to spectators and replay: '{}'",
+                after.text
+            );
+        }
+
+        if tells_withheld {
+            // Before the hand is proved, nothing Harrow may read — as
+            // written, or as restored — carries covert provenance.
+            for entry in live_log
+                .iter()
+                .chain(&restored_log)
+                .filter(|entry| entry.audience.visible_to(Some(harrow)))
+            {
+                for tell in SHADOW_TELLS {
+                    assert!(
+                        !entry.text.contains(tell),
+                        "{stage}: a line Harrow may read carries covert provenance: '{}'",
+                        entry.text
+                    );
+                }
+            }
+        } else {
+            // Once proved, the revelation is Harrow's to read, and the
+            // round trip keeps it so.
+            assert!(
+                restored_log.iter().any(|entry| {
+                    entry.text.contains("The trail holds")
+                        && entry.audience.visible_to(Some(harrow))
+                }),
+                "{stage}: the revelation survives restore for the house that made it"
+            );
+        }
+
+        // Continuing from the restore is the same campaign.
+        let mut twin =
+            SimHost::restore_with_content(restored.snapshot(), Arc::clone(&content)).unwrap();
+        assert_eq!(restored.state_hash(), twin.state_hash(), "{stage}");
+        restored.advance_days(40);
+        twin.advance_days(40);
+        assert_eq!(
+            restored.state_hash(),
+            twin.state_hash(),
+            "{stage}: replay after restore stays identical"
+        );
+    }
+}
+
+#[test]
+fn one_houses_discovery_teaches_no_other_house_and_no_stage_hides_from_a_spectator() {
+    let content = repository_content();
+    let mut host = scenario_host(SHADOW_SEED, Arc::clone(&content));
+    let harrow = org(&mut host, "harrow");
+    let vantar = org(&mut host, "vantar");
+    let draksha = org(&mut host, "draksha");
+
+    // Before the operation, with it live, and with an enquiry in flight:
+    // nothing about the arc ever reaches an uninvolved house, and
+    // everything always reaches a spectator.
+    let sweep = |host: &mut SimHost| {
+        for entry in &host.world_mut().resource::<MessageLog>().entries.clone() {
+            assert!(
+                entry.audience.visible_to(None),
+                "a spectator reads every line at every stage"
+            );
+            if !entry.audience.visible_to(Some(harrow)) {
+                assert!(
+                    !entry.audience.visible_to(Some(draksha)),
+                    "an owner-confided line reached an uninvolved house: '{}'",
+                    entry.text
+                );
+            }
+        }
+    };
+    host.advance_days(170);
+    sweep(&mut host);
+    host.advance_days(SHADOW_LIVE_DAY + SHADOW_PROVED_OFFSET - 170);
+    sweep(&mut host);
+
+    let leader = free_household_host(&mut host, 0);
+    order_the_enquiry(&mut host, leader);
+    while enquiry_in_flight(&mut host).is_none() {
+        host.advance_days(1);
+    }
+    sweep(&mut host);
+    let completes = enquiry_in_flight(&mut host).expect("in flight").completes;
+    while host.date() < completes {
+        host.advance_days(1);
+    }
+    let discovered = exposure_of(&mut host);
+    assert!(discovered.knows(harrow, vantar));
+    assert!(
+        !discovered.knows(draksha, vantar),
+        "one house's investigation is not published to the world"
+    );
+
+    // The proved card is still the bound holder's and the spectator's
+    // alone; an outsider sees no card at any stage.
+    let card_key = unquiet_card_for(&mut host, harrow)
+        .expect("the card is live")
+        .active
+        .key;
+    assert!(aeon_sim::situations::visible_to_player(
+        host.world_mut(),
+        &card_key
+    ));
+    host.world_mut().resource_mut::<PlayerHouse>().0 = Some(draksha);
+    assert!(!aeon_sim::situations::visible_to_player(
+        host.world_mut(),
+        &card_key
+    ));
+    host.world_mut().resource_mut::<PlayerHouse>().0 = None;
+    assert!(aeon_sim::situations::visible_to_player(
+        host.world_mut(),
+        &card_key
+    ));
+    host.world_mut().resource_mut::<PlayerHouse>().0 = Some(harrow);
+
+    // And every line the discovery went on to widen reached the house that
+    // found out — never the bystander.
+    for entry in &host.world_mut().resource::<MessageLog>().entries.clone() {
+        if entry.text.contains("House Vantar") {
+            assert!(
+                !entry.audience.visible_to(Some(draksha))
+                    || entry.audience == aeon_sim::assignments::LogAudience::Public,
+                "an uninvolved house read covert provenance: '{}'",
+                entry.text
+            );
+        }
+    }
+}
+
+#[test]
+fn an_expose_effect_outside_a_situation_lifecycle_names_nobody() {
+    // The effect proves a structural binding on an exact lifecycle. Fired
+    // where no such lifecycle exists — an event, a popup answer, a
+    // miswritten script — it has no culprit to read, and refuses loudly
+    // rather than inventing one. Loudly, but as a diagnostic: a
+    // string-table line confided to the acting house and open to the
+    // spectator, never raw engine text in everybody's history.
+    let mut host = scenario_host(SHADOW_SEED, repository_content());
+    let harrow = org(&mut host, "harrow");
+    let draksha = org(&mut host, "draksha");
+    host.advance_days(SHADOW_LIVE_DAY);
+    let before = host.world_mut().resource::<MessageLog>().entries.len();
+    let roles = aeon_sim::assignments::AssignmentRoles::default();
+    aeon_sim::assignments::apply_effects(
+        host.world_mut(),
+        &[aeon_data::ScriptEffect::Expose {
+            binding: "actor".to_owned(),
+        }],
+        &roles,
+        Some(harrow),
+    );
+    assert!(
+        exposure_of(&mut host).records.is_empty(),
+        "no lifecycle, no culprit, no discovery"
+    );
+    let complaint = host.world_mut().resource::<MessageLog>().entries[before..]
+        .iter()
+        .find(|entry| entry.text.contains("outside a Situation lifecycle"))
+        .cloned()
+        .expect("the refusal is loud, not silent");
+    let expected = host.world_mut().resource::<aeon_sim::TextDb>().format(
+        "sim.covert.expose-refused",
+        &[("reason", "it was fired outside a Situation lifecycle")],
+    );
+    assert_eq!(
+        complaint.text, expected,
+        "the refusal is the string table's diagnostic, not raw engine text"
+    );
+    assert_eq!(complaint.channel, LogChannel::Events);
+    assert_eq!(
+        complaint.audience,
+        aeon_sim::assignments::LogAudience::organisations([harrow]),
+        "an authoring fault is confided to the house whose work fired it"
+    );
+    assert!(
+        !complaint.audience.visible_to(Some(draksha)),
+        "and reaches no bystander's history"
+    );
+    assert!(
+        complaint.audience.visible_to(None),
+        "while the spectator, and replay, read it"
+    );
+}
+
+#[test]
+fn the_enquiry_is_an_answer_to_the_alarm_not_a_free_standing_order() {
+    // The investigation is gated on the same fact that raises the card:
+    // somebody else's covert work running against that holding. Where
+    // there is nothing to trace it is neither offered on the province nor
+    // accepted from the household — before the operation exists, on any
+    // quiet holding while it runs, and again once the work has ended.
+    let content = repository_content();
+    let mut host = scenario_host(SHADOW_SEED, Arc::clone(&content));
+    let harrow = org(&mut host, "harrow");
+    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let enquiry = key("trace-the-hand");
+
+    let holdings_of_harrow = |host: &mut SimHost| -> Vec<aeon_sim::ProvinceId> {
+        let world = &*host.world_mut();
+        world
+            .resource::<MapIndex>()
+            .provinces
+            .keys()
+            .copied()
+            .filter(|province| aeon_sim::warfare::province_holder(world, *province) == Some(harrow))
+            .collect()
+    };
+    let offered_on = |host: &mut SimHost, province: aeon_sim::ProvinceId| {
+        aeon_sim::target_allowed(
+            host.world_mut(),
+            &enquiry,
+            harrow,
+            AssignmentTarget::Province(province),
+        )
+    };
+    let ordered_on = |host: &mut SimHost, province: aeon_sim::ProvinceId| {
+        let leader = free_household_host(host, 0);
+        host.submit(PlayerCommand::StartAssignment {
+            assignment: enquiry.clone(),
+            leader,
+            target: AssignmentTarget::Province(province),
+        })
+    };
+    let worked_against = |host: &mut SimHost, province: aeon_sim::ProvinceId| {
+        // Judged from the record and the authored flag directly, so the
+        // stage is settled independently of the gate under test.
+        let world = host.world_mut();
+        let content = world.resource::<aeon_sim::state::ContentDb>().0.clone();
+        world
+            .resource::<AssignmentsIndex>()
+            .assignments
+            .values()
+            .any(|entity| {
+                world.get::<ActiveAssignment>(*entity).is_some_and(|work| {
+                    work.owner != harrow
+                        && work.target == AssignmentTarget::Province(province)
+                        && content
+                            .assignments
+                            .get(&work.def)
+                            .is_some_and(|def| def.covert)
+                })
+            })
+    };
+
+    // Before the operation exists: quiet ground everywhere.
+    host.advance_days(170);
+    assert!(!worked_against(&mut host, vhorruk));
+    let holdings = holdings_of_harrow(&mut host);
+    assert!(holdings.contains(&vhorruk), "Vhorruk is Harrow's to hold");
+    for province in &holdings {
+        assert!(
+            !offered_on(&mut host, *province),
+            "with nothing to trace, the enquiry is on offer nowhere"
+        );
+    }
+    assert!(
+        matches!(
+            ordered_on(&mut host, vhorruk),
+            Err(CommandRejection::Assignment(AssignmentRejection::BadTarget))
+        ),
+        "and ordering it anyway is refused at the gate every start path shares"
+    );
+    assert!(enquiry_in_flight(&mut host).is_none());
+
+    // With the operation live: offered on the worked holding, and there
+    // alone.
+    host.advance_days(SHADOW_LIVE_DAY - 170);
+    assert!(worked_against(&mut host, vhorruk));
+    for province in holdings_of_harrow(&mut host) {
+        assert_eq!(
+            offered_on(&mut host, province),
+            province == vhorruk,
+            "the enquiry is offered exactly where covert work is running"
+        );
+    }
+
+    // Once the work has ended and no hand is moving against the province,
+    // the offer withdraws with it.
+    let mut quiet = false;
+    for _ in 0..600 {
+        host.advance_days(1);
+        if !worked_against(&mut host, vhorruk) {
+            quiet = true;
+            break;
+        }
+    }
+    assert!(quiet, "the operation ends inside the swept horizon");
+    assert!(
+        !offered_on(&mut host, vhorruk),
+        "with the work over there is nothing left to trace"
+    );
+    assert!(matches!(
+        ordered_on(&mut host, vhorruk),
+        Err(CommandRejection::Assignment(AssignmentRejection::BadTarget))
+    ));
+}
+
+#[test]
+fn an_enquiry_ordered_from_the_province_inherits_the_card_and_proves_the_hand() {
+    // The province panel and the household list issue the ordinary
+    // StartAssignment command, naming no Situation. The forecast they show
+    // is the card's forecast, so the order they place must be the card's
+    // order — origin included — or the promise of a proved hand would be
+    // one the ordinary path could never keep. Same seed, same day, and the
+    // same investigator as the card-launched proved enquiry: the outcome is
+    // the simulation's own draw, and the only thing that changes is which
+    // button was pressed.
+    let content = repository_content();
+    let mut host = scenario_host(SHADOW_SEED, Arc::clone(&content));
+    let harrow = org(&mut host, "harrow");
+    let vantar = org(&mut host, "vantar");
+    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    host.advance_days(SHADOW_LIVE_DAY + SHADOW_PROVED_OFFSET);
+    let card = unquiet_card_for(&mut host, harrow).expect("the holder's card is live");
+    let exact = card.active.occurrence();
+    let leader = free_household_host(&mut host, 0);
+
+    // The ordinary forecast the province panel shows is the card's forecast:
+    // one number, one path, and nothing blocking it.
+    let direct = aeon_sim::forecast::forecast(
+        host.world_mut(),
+        harrow,
+        &key("trace-the-hand"),
+        leader,
+        AssignmentTarget::Province(vhorruk),
+    )
+    .expect("the enquiry is an ordinary defined assignment");
+    let through_card = aeon_sim::situations::forecast_for_action(
+        host.world_mut(),
+        &card.active.key,
+        &key("investigate"),
+        leader,
+        AssignmentTarget::Province(vhorruk),
+    )
+    .expect("the card forecasts the same order");
+    assert!(direct.blocked.is_none(), "the ordinary order is open");
+    assert_eq!(direct.success_chance(), through_card.success_chance());
+    assert_eq!(direct.effectiveness, through_card.effectiveness);
+
+    // Ordered through the ordinary path — no Situation named at all.
+    host.submit(PlayerCommand::StartAssignment {
+        assignment: key("trace-the-hand"),
+        leader,
+        target: AssignmentTarget::Province(vhorruk),
+    })
+    .expect("the enquiry is an ordinary valid command");
+    while enquiry_in_flight(&mut host).is_none() {
+        host.advance_days(1);
+    }
+    let work = enquiry_in_flight(&mut host).expect("the enquiry is under way");
+    assert_eq!(work.owner, harrow);
+    assert_eq!(work.leader, leader);
+    assert_eq!(work.target, AssignmentTarget::Province(vhorruk));
+    assert_eq!(
+        work.origin_situation.as_ref(),
+        Some(&exact),
+        "an ordinary order the live card would have launched inherits the card's provenance"
+    );
+    assert_eq!(
+        work.war, None,
+        "and carries exactly the formal-war context it was forecast in"
+    );
+
+    // ...and an unrelated order given the same day, which no live card
+    // offers, starts exactly as it always has: with no origin at all.
+    let steward = free_household_host(&mut host, 1);
+    assert_ne!(
+        steward, leader,
+        "a second free host stands in the household"
+    );
+    host.submit(PlayerCommand::StartAssignment {
+        assignment: key("collect-tithes"),
+        leader: steward,
+        target: AssignmentTarget::None,
+    })
+    .expect("routine work is an ordinary valid command");
+    let tithes_started = |host: &mut SimHost| {
+        let world = host.world_mut();
+        world
+            .resource::<AssignmentsIndex>()
+            .assignments
+            .values()
+            .find_map(|entity| {
+                world
+                    .get::<ActiveAssignment>(*entity)
+                    .filter(|routine| {
+                        routine.owner == harrow
+                            && routine.leader == steward
+                            && routine.def == key("collect-tithes")
+                    })
+                    .cloned()
+            })
+    };
+    while tithes_started(&mut host).is_none() {
+        host.advance_days(1);
+    }
+    let routine = tithes_started(&mut host).expect("the routine work is under way");
+    assert_eq!(
+        routine.origin_situation, None,
+        "an order no live card offers starts without a Situation origin, as before"
+    );
+
+    // Run the enquiry to its own completion: the hand is proved, exactly
+    // as the forecast promised, and the card opens on it.
+    let completes = work.completes;
+    while host.date() < completes {
+        host.advance_days(1);
+    }
+    assert!(
+        exposure_of(&mut host).knows(harrow, vantar),
+        "the ordinary order proves the hand the card bound"
+    );
+    let records: Vec<_> = exposure_of(&mut host).records.into_iter().collect();
+    assert_eq!(records.len(), 1, "one enquiry, one discovery");
+    assert_eq!(
+        records[0].occurrence, exact,
+        "the evidence stays tied to the lifecycle that offered the order"
+    );
+    let projection = unquiet_card_for(&mut host, harrow)
+        .expect("the card is still live")
+        .projection
+        .expect("projection");
+    assert_eq!(projection.stage, key("traced"));
+
+    // The refusal diagnostic never fires: nothing about the ordinary path
+    // left the effect without a lifecycle to read.
+    let refused = host.world_mut().resource::<aeon_sim::TextDb>().format(
+        "sim.covert.expose-refused",
+        &[("reason", "it was fired outside a Situation lifecycle")],
+    );
+    let log = host.world_mut().resource::<MessageLog>().clone();
+    assert!(
+        !log.entries.iter().any(|entry| entry.text == refused),
+        "the ordinary order never reaches the no-origin refusal"
+    );
+}
+
+#[test]
+fn a_proved_hand_withdraws_the_ordinary_enquiry_while_the_operation_still_runs() {
+    // Between the day the hand is proved and the day the operation ends,
+    // the card is still live but offers no investigate action: there is
+    // nothing left to prove. The ordinary province and household paths
+    // must agree with it exactly, because an enquiry accepted in that
+    // window would attach to no lifecycle, and a successful one would
+    // spend the player's wealth and days on a "proved hand" popup
+    // followed by the no-origin refusal. Same seed and same proved enquiry
+    // as the card tests; only what is attempted afterwards differs.
+    let (mut host, _) =
+        campaign_after_an_enquiry(SHADOW_SEED, repository_content(), SHADOW_PROVED_OFFSET);
+    let harrow = org(&mut host, "harrow");
+    let vantar = org(&mut host, "vantar");
+    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let enquiry = key("trace-the-hand");
+
+    // The window under test: the hand is proved, and the operation is
+    // still running against the same ground — every fact the pre-proof
+    // gate keys on is unchanged.
+    assert!(
+        exposure_of(&mut host).knows(harrow, vantar),
+        "the hand is proved"
+    );
+    let sabotage = vantar_operation(&mut host).expect("the operation is still running");
+    assert_eq!(sabotage.target, AssignmentTarget::Province(vhorruk));
+    assert!(
+        enquiry_in_flight(&mut host).is_none(),
+        "the enquiry that proved it has resolved"
+    );
+    let projection = unquiet_card_for(&mut host, harrow)
+        .expect("the card is still live")
+        .projection
+        .expect("projection");
+    assert_eq!(projection.stage, key("traced"));
+    assert!(
+        !projection
+            .actions
+            .iter()
+            .any(|action| action.id == key("investigate")),
+        "the card offers nothing to trace"
+    );
+
+    // Neither does the province: the ordinary offer withdraws with the
+    // card's action, and the forecast the panel would quote is blocked at
+    // the one gate every start path shares.
+    assert!(
+        !aeon_sim::target_allowed(
+            host.world_mut(),
+            &enquiry,
+            harrow,
+            AssignmentTarget::Province(vhorruk),
+        ),
+        "an enquiry into a hand already proved is offered nowhere"
+    );
+    let leader = free_household_host(&mut host, 0);
+    let forecast = aeon_sim::forecast::forecast(
+        host.world_mut(),
+        harrow,
+        &enquiry,
+        leader,
+        AssignmentTarget::Province(vhorruk),
+    )
+    .expect("the enquiry is still an ordinary defined assignment");
+    assert_eq!(
+        forecast.blocked,
+        Some(AssignmentRejection::BadTarget),
+        "and the ordinary forecast says so"
+    );
+
+    // Ordering it anyway through the ordinary path — naming no Situation
+    // — is refused outright, exactly as on quiet ground.
+    assert!(
+        matches!(
+            host.submit(PlayerCommand::StartAssignment {
+                assignment: enquiry.clone(),
+                leader,
+                target: AssignmentTarget::Province(vhorruk),
+            }),
+            Err(CommandRejection::Assignment(AssignmentRejection::BadTarget))
+        ),
+        "the ordinary order is refused at the gate, not accepted without a lifecycle"
+    );
+
+    // Run past where a second enquiry would have resolved had one slipped
+    // through: none ever starts, nothing further is proved, and the
+    // no-origin refusal never fires.
+    for _ in 0..(ENQUIRY_DAYS + 30) {
+        host.advance_days(1);
+        assert!(
+            enquiry_in_flight(&mut host).is_none(),
+            "no enquiry starts against a hand already proved"
+        );
+    }
+    let records: Vec<_> = exposure_of(&mut host).records.into_iter().collect();
+    assert_eq!(records.len(), 1, "one enquiry, one discovery, and no more");
+    assert_eq!(records[0].culprit, vantar);
+    assert_eq!(records[0].knower, harrow);
+    let refused = host.world_mut().resource::<aeon_sim::TextDb>().format(
+        "sim.covert.expose-refused",
+        &[("reason", "it was fired outside a Situation lifecycle")],
+    );
+    let log = host.world_mut().resource::<MessageLog>().clone();
+    assert!(
+        !log.entries.iter().any(|entry| entry.text == refused),
+        "no ordinary order reaches the no-origin refusal"
+    );
 }

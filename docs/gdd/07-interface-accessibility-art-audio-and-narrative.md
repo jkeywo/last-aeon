@@ -239,6 +239,17 @@ The numbers arrive in the authoritative forecast — the client derives
 nothing — and the same live shift is what an Unquiet Holdings card quotes
 as its resistance metric, so the two surfaces cannot disagree.
 
+**Implemented.** [ai] The client holds no visibility rule of its own for
+covert work. The panel context now carries the simulation's projected
+discovery record, and the character inspector's pursuing line asks the
+simulation's own predicate whether this viewer may name this plan. A
+Situation action that pins no leader is the client's cue that the choice
+of who goes is the player's: it previews the deterministic default, opens
+the ordinary composition popup, and lets the existing free picker compare
+every candidate on the authoritative per-candidate forecast. The
+investigation action uses exactly that path, and adds no widget of its
+own.
+
 There is no evidenced full first-campaign tutorial sequence,
 codex/manual surface, control-remapping screen, or difficulty-selection flow.
 The wider onboarding questions and the campaign opening belong in [Player

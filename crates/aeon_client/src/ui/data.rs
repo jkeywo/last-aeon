@@ -132,4 +132,7 @@ pub struct PanelData<'w, 's> {
     pub issued_directives: Option<Res<'w, aeon_sim::goals::IssuedDirectives>>,
     /// Derived active Situation cards and undismissed resolutions.
     pub situations: Res<'w, SituationPanelView>,
+    /// What investigation has proved about authored covert work. Absent
+    /// until a campaign starts.
+    pub exposure: Option<Res<'w, aeon_sim::covert::Exposure>>,
 }

@@ -1640,6 +1640,62 @@ pub fn assignment_for_action(
         .ok_or_else(|| SituationError::Undeclared("missing authored action".to_owned()))
 }
 
+/// The live lifecycle, if any, whose current projection offers the ordinary
+/// order `(def_key, leader, target)` as one of its actions — the match
+/// [`assignment_for_action`] makes, run the other way round.
+///
+/// An ordinary order that a live card would have launched inherits that
+/// card's provenance, so the province or household button and the card's
+/// own shortcut stay one flow: same command, same validation, same forecast,
+/// and now the same origin. The distinction matters for an answer whose
+/// effect reads the originating lifecycle (an investigation proving the
+/// culprit the card bound), and is harmless for every origin-independent
+/// answer, which only gains exact history membership.
+///
+/// Only a lifecycle carrying the same formal-war context as the ordinary
+/// order qualifies: the order was validated and forecast in that context,
+/// and attaching a war it was never quoted in would make the forecast lie
+/// the other way. Deterministic: lifecycles are visited in structural-key
+/// order and the first match wins.
+pub fn offering_lifecycle(
+    world: &World,
+    def_key: &ContentKey,
+    leader: CharacterId,
+    target: AssignmentTarget,
+) -> Option<SituationInstanceKey> {
+    let content = world.get_resource::<ContentDb>()?;
+    let state = world.get_resource::<SituationState>()?;
+    let ordinary_war = match target {
+        AssignmentTarget::War(war) | AssignmentTarget::WarSide(war, _) => Some(war),
+        _ => None,
+    };
+    state.active.iter().find_map(|(key, lifecycle)| {
+        if state.runtime_errors.contains_key(key) || !visible_to_player(world, key) {
+            return None;
+        }
+        let def = content.0.situations.get(&key.definition)?;
+        let authored: Vec<&ContentKey> = def
+            .actions
+            .iter()
+            .filter(|candidate| &candidate.assignment == def_key)
+            .map(|candidate| &candidate.key)
+            .collect();
+        if authored.is_empty() || action_war(key, target) != ordinary_war {
+            return None;
+        }
+        let projection = project(world, &content.0, key, lifecycle.activated).ok()?;
+        projection
+            .actions
+            .iter()
+            .any(|candidate| {
+                authored.contains(&&candidate.id)
+                    && candidate.target == target
+                    && candidate.leader.is_none_or(|fixed| fixed == leader)
+            })
+            .then(|| key.clone())
+    })
+}
+
 /// Builds the ordinary authoritative assignment forecast for a projected
 /// Situation action, retaining any exact formal-war binding.
 pub fn forecast_for_action(

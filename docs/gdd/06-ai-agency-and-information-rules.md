@@ -51,11 +51,17 @@ private Situation audiences and limited hostile-plan rumours, but it is not a
 general fog-of-war, secrecy, espionage, or plot-detection simulation.
 [ai] One narrow, reusable exception now exists: authored **covert
 provenance**. A plan, goal, or assignment definition may declare
-`covert: true`, and before exposure every ordinary player surface narrows
-that work's provenance to its owning organisation. This is a visibility
-capability carried on ordinary log audiences, not a fog-of-war system:
-spectators and replay retain everything, and exposure is a single future
-read reserved for the investigation slice.
+`covert: true`, and until a house has proved who is behind it, every
+ordinary player surface narrows that work's provenance to its owning
+organisation. This is a visibility capability carried on ordinary log
+audiences, not a fog-of-war system: spectators and replay retain
+everything. [ai] **Exposure** is now implemented and is the only way that
+narrowing lifts: an ordinary investigation assignment proves the culprit
+the Situation already bound, or proves nothing at all, and what it proves
+is recorded per discovering house as durable campaign state. There is no
+detection roll against a hidden statistic, no candidate list, no
+confidence score, and no way for any result to name a house that did not
+do it.
 
 ## Who acts, and with whose authority
 
@@ -266,35 +272,69 @@ without pretending the selected response was the only possible one.
 [ai] **The covert exception.** Two of the rules above — the character
 inspector openly naming an autonomous character's active plan, and the
 guaranteed rumour when a plan is aimed at the player — are hereby
-qualified, not repealed, for authored covert work before exposure:
+qualified, not repealed, for authored covert work that the viewer has not
+proved:
 
 - a plan, goal, or assignment authored `covert: true` writes its adoption,
-  progress, result, abandonment, and completion lines with an owner-only
+  progress, result, abandonment, and completion lines with a narrowed
   audience through the same recorded-audience mechanism private Situations
-  use — the history is complete and spectator-visible, never rewritten;
-- a covert plan produces **no** rumour, however squarely it is aimed at the
-  player: deniability is the category's meaning, and discovery belongs to
-  the investigation slice rather than to a free whisper;
-- the inspector renders no pursuing line for a covert plan to any ordinary
-  player; spectators still read it openly;
+  use — the history is complete and spectator-visible, never rewritten.
+  [ai] That audience is the owning organisation plus every house that has
+  already proved it, decided when the line is written and stamped once;
+- a covert plan produces **no** rumour to a house that has not proved its
+  owner, however squarely it is aimed at that house: deniability is the
+  category's meaning, and discovery belongs to investigation rather than to
+  a free whisper. [ai] Once a house has proved the owner, deniability is
+  over as far as that house is concerned, and the ordinary coarse rumour
+  resumes — for it alone;
+- the inspector renders no pursuing line for a covert plan to an ordinary
+  player who has not proved it; spectators, the pursuing house, and any
+  house that has proved it still read it openly;
 - what the targeted player receives instead is the ordinary **Unquiet
   Holdings** Situation: the targeted province, its live Order, the exact
   resistance that Order applies to the hostile work, and the time
   remaining — with the culprit organisation structurally bound into the
-  lifecycle (for spectators, replay, and future investigation) but never
-  in the audience and never emitted by the projection;
-- exposure is one deliberate seam (`covert::is_exposed`), a stub that
-  returns false until investigation gives it authoritative state. Every
-  *simulation-side* covertness read passes through that seam — the plan
-  lines in `plans.rs`, the goal lines in `goals.rs`, every
-  assignment-derived line in `assignments.rs`, and the covert flag on the
-  semantic world view scripts read in `script_world.rs` — so exposure
-  flips all of those at once. The client's inspector pursuing-line gate is
-  the one surface that does not: its panel context holds no `World`, so it
-  gates on the authored `covert` flag directly. Its behaviour before
-  exposure is identical, and the investigation issue that gives exposure
-  authoritative state must also project that state client-side and rewire
-  the gate to read it.
+  lifecycle (for spectators, replay, and investigation) but never
+  in the audience, and never emitted by the projection until the viewing
+  house has proved it;
+- [ai] exposure is one deliberate seam, `covert::is_exposed`, and it now
+  answers a real question: *may this viewer name this culprit?* A
+  spectator always may, the culprit always may of itself, and any other
+  house may exactly when it holds a discovery record. Every surface that
+  can name a viewer asks it, including the client inspector's
+  pursuing-line gate, which now calls `covert::plan_named_to_viewer` over
+  the projected exposure record — the client owns no visibility rule of
+  its own, and the seam has no client-side exception left;
+- [ai] the *write-time* surfaces — plan lines in `plans.rs`, goal lines in
+  `goals.rs`, and every assignment-derived line in `assignments.rs` — have
+  no viewer to ask, so they ask `covert::audience` instead: the owner plus
+  every house that has already proved them. A discovery therefore reveals
+  by writing **new** history, never by reopening old: lines stamped before
+  it keep exactly the audience they were stamped with, and the
+  already-accepted rule that private visibility is fixed at write time is
+  untouched.
+
+[ai] **The revelation corollary.** Discovery is knowledge, not
+protection, and not publication:
+
+- **it proves the bound culprit or nothing.** The investigation reads the
+  organisation the Situation lifecycle already bound as its actor. There
+  is no selection step in which a wrong house could be named, and a failed
+  or botched enquiry authors no consequence whatever — no suspect, no
+  grievance, no accusation;
+- **it is per knower.** One house's investigation is not published to the
+  world; an uninvolved house learns nothing from it, and its own view of
+  the covert work is unchanged;
+- **it reveals forward.** The revelation line, the lines the operation
+  goes on to write, and the live card are what disclose. The
+  owner-confided history already written stays exactly as it was;
+- **it changes what may be said, never what happens.** The Unquiet
+  Holdings card still resolves on the pure live-Order reading of the
+  bound province; proof only lets the frozen sentence, the participants,
+  and the links name the hand;
+- **it outlives its lifecycle.** The record is durable campaign state in
+  its own snapshot section, because the evidence has to survive the card
+  that produced it.
 
 ## Spectator rules
 
@@ -320,7 +360,8 @@ rule, not evidence that all organisations know all private information.
 | Goal directive | Liege goal | Derived, not stored; ends with the goal |
 | Manual directive | Direct liege-to-vassal wish | Stored one per vassal and rechecked against current hierarchy |
 | Situation audience | Authored bindings resolved for one lifecycle | Captured as stable organisation IDs on permanent log entries |
-| Covert audience | [ai] Derived from the authored `covert` flag when a covert line is written | [ai] Captured as an owner-only organisation audience on the entry itself; no separate snapshot state, spectators and replay read all |
+| Covert audience | [ai] Derived from the authored `covert` flag and the live discovery record when a covert line is written | [ai] Captured as a concrete organisation audience on the entry itself — the owner plus every house that has proved it — and never re-widened afterwards; spectators and replay read all |
+| Covert discovery | [ai] One house proving one culprit, through an ordinary investigation | [ai] Stored as its own snapshot section (`covert::Exposure`): culprit, knower, the exact Situation occurrence, and the day, in an ordered set with at most one record per culprit-and-knower pair; outlives the lifecycle that found it |
 | Explanation log | Campaign history | Stored chronologically with date, channel, organisation, subject, Situation occurrence, war, and audience |
 | Spectator identity | Campaign political state | Stored as no player organisation and restored as such |
 
@@ -357,19 +398,38 @@ identities and must not be renamed as a balance or copy-editing change.
 - A hostile plan rumour is a guaranteed, coarse notice when its target concerns
   the player. It is not a successful detection check and reveals no espionage
   statistic.
-- [ai] A covert plan whispers no rumour and its lines confide only in their
-  owner; the targeted holder learns of the work through the Unquiet
-  Holdings Situation, which names the ground and the resistance but never
-  the hand.
+- [ai] A covert plan whispers no rumour to a house that has not proved its
+  owner, and its lines confide only in that owner; the targeted holder
+  learns of the work through the Unquiet Holdings Situation, which names
+  the ground and the resistance but not the hand. Both narrowings lift for
+  a house that has proved the owner, and for that house only.
 - [ai] A covert operation whose agent dies, whose plan is abandoned by
   reconciliation, or whose target province changes hands ends through the
   ordinary assignment, plan, and Situation-lifecycle rules — and every
-  line those endings write keeps the owner-only audience, so even a failed
-  covert operation names nobody on the way out.
+  line those endings write carries the narrowed covert audience (the owner
+  plus any house that has already proved it), so even a failed covert
+  operation names nobody on the way out to a house that has not proved it.
 - [ai] A covert campaign's method gate is rechecked before each step like any
   plan's: a relationship lifted above the authored hostility floor abandons
   an uncommitted covert campaign, while work already accepted runs to its
   ordinary resolution.
+- [ai] An investigation is an ordinary assignment. It may be ordered, led,
+  delayed, blocked, cancelled, and abandoned like any other; it may be
+  ordered from the troubled province or the household list as readily as
+  from the card — the ordinary paths offer it exactly while the card does,
+  that is while unproved covert work runs against the holding, and withdraw
+  it with the card's action once the hand is proved — and inherits the
+  card's occurrence either way, so it proves the same hand whichever button
+  placed it; it may outlive the
+  Situation that offered it, because the originating occurrence is
+  provenance rather than a leash; and it resolves independently of the
+  covert work it is aimed at, in the ordinary stable assignment-ID order,
+  when both fall due on the same day.
+- [ai] A repeated investigation cannot rewrite an earlier discovery: the
+  first record of a culprit-and-knower pair stands.
+- [ai] An exposure effect emitted where no Situation lifecycle stands
+  behind it has no bound culprit to read. It names nobody and says so in a
+  deterministic diagnostic line, rather than inventing a suspect.
 
 ## Feedback requirements
 
@@ -439,10 +499,18 @@ The current design contract is met when:
     detection when the simulation does not implement that model;
 13. [ai] authored covert work keeps its provenance — culprit, organisation,
     leader, and source plan — out of every ordinary player surface (cards,
-    inspector, plan naming, logs, card history, notifications) before
-    exposure, while spectators, snapshots, and replay verification retain
-    it completely and the targeted holder still receives the authored
-    Situation with target, live Order, resistance, and remaining time.
+    inspector, plan naming, logs, card history, notifications) until the
+    viewer has proved it, while spectators, snapshots, and replay
+    verification retain it completely and the targeted holder still
+    receives the authored Situation with target, live Order, resistance,
+    and remaining time;
+14. [ai] an ordinary investigation either proves the culprit the lifecycle
+    bound — opening that operation's organisation, leader, and source work
+    on the card, in its links, and in its frozen resolution — or proves
+    nothing at all; no result of any kind names a house that did not do
+    it, discovery is recorded per discovering house, and every epistemic
+    stage survives snapshot, restore, and replay without widening a line
+    already written.
 
 ## Explicit exclusions and open questions
 
@@ -456,7 +524,13 @@ rumoured before exposure.) There is no general fog of war, secret-action
 detection chance, actor-specific belief state, misinformation, or gradual
 intelligence collection in the current implementation. [ai] Covert provenance
 is deliberately none of those: it hides who is behind authored covert work,
-never that the work's consequences are happening. The mere mention of
+never that the work's consequences are happening. [ai] Nor is investigation
+an espionage system: it is one ordinary assignment with authored odds, it
+reads a culprit the simulation already bound rather than detecting one, and
+it has no confidence score, no evidence tokens, no shortlist, no planted
+evidence, no false attribution, and no accusation mechanic. Those remain
+out of scope, and the shape of the effect is what keeps them out. The mere
+mention of
 `secrets` as a possible future specific relationship fact in PASM does not
 define such a system.
 
@@ -471,18 +545,31 @@ define such a system.
   plan categories?
   [ai] **Resolved:** they coexist. Ordinary hostile plans keep the
   guaranteed coarse rumour unchanged; authored covert plans produce no
-  rumour at all, and their discovery is the investigation slice's work.
+  rumour at all to a house that has not proved their owner, and produce
+  the ordinary rumour to a house that has. Discovery is investigation's
+  work, and nothing else grants it.
   See the covert-provenance decision in
   `pasm/spec/architecture/implementation-decisions.yaml`.
 - Which actions, if any, should be intrinsically private outside a Situation's
   authored audience, and how should their later consequences enter public
   history?
-  [ai] **Resolved for the current slice:** privacy is authored per
+  [ai] **Resolved:** privacy is authored per
   definition (`covert: true`), not intrinsic to an action kind, and the
   consequences were never private — the Order drop, the Unquiet Holdings
   card, and any exposure grievance enter ordinary history normally; only
-  the provenance lines are owner-confided, and they enter public view
-  when exposure later flips the one covert seam.
+  the provenance lines are narrowed. They widen to a house the moment that
+  house proves the owner, and only for the lines written from then on:
+  discovery reveals forward, never retroactively.
+- [ai] How is a hidden culprit discovered, and what may a discovery say?
+  [ai] **Resolved:** through an ordinary investigation assignment offered
+  by the affected Situation, pinning no leader so the player compares
+  investigators on authoritative per-candidate forecasts. It proves the
+  organisation the lifecycle already bound, or it proves nothing. False
+  suspects, planted evidence, confidence scores, and player accusations
+  remain out of scope, and are structurally unreachable: the culprit is
+  read from a binding, not chosen. What a discovery may then be used for
+  — retaliation, grievance, reconciliation — remains ordinary politics
+  and is not answered here.
 - How much of pressure scoring should the inspector expose: the selected
   reason only, ranked factors, or exact bonuses from goals and directives?
 - Should ordinary players ever receive access to an omniscient replay or
@@ -518,9 +605,10 @@ does not choose among those options.
 - `crates/aeon_sim/src/agency.rs`, `plans.rs`, and `goals.rs` — pressure
   construction, selection, household limits, plans, ambitions, directives,
   explanations, persistence, and deterministic streams.
-- [ai] `crates/aeon_sim/src/covert.rs` — the covert-provenance reads: the
-  authored flag, the owner-only audience, and the `is_exposed` seam the
-  investigation slice will fill.
+- [ai] `crates/aeon_sim/src/covert.rs` — the covert-provenance reads and
+  the discovery record: the authored flag, the write-time audience, the
+  per-viewer `is_exposed` seam, the snapshotted `Exposure` state, and the
+  one predicate the client inspector calls.
 - `crates/aeon_sim/src/assignments.rs`, `forecast.rs`, `command.rs`, and
   `access.rs` — shared validation, resolution, log audiences, forecast rules,
   command authority, stable reads, and dated history.

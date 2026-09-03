@@ -1834,6 +1834,7 @@ entities:
         - One command, validation, forecast, AI, and log path keeps a Situation shortcut honest about what the player can do.
         - Explicit provenance gives related history exact membership and survives later changes to the participants.
         - "[ai] Repeated projected actions carry semantic context links so every force-objective alternative stays individually identifiable without client-owned war rules."
+        - "[ai] The shortcut and the ordinary path converge on provenance as well as on command, validation, and forecast: an ordinary order that a live visible lifecycle's current projection offers at the same target, leader, and formal-war context inherits that lifecycle's occurrence when it starts (situations::offering_lifecycle, consulted by apply_command's StartAssignment branch), so an answer whose effect reads its origin cannot be made to lie by pressing the province button instead of the card's, and every other answer merely gains exact history membership."
       references:
         - situation-system
         - scripted-command-boundary
@@ -2560,6 +2561,19 @@ entities:
         authored covert flag directly. It behaves identically before
         exposure, and the investigation issue must project exposure state
         client-side and rewire that gate to read it.
+        [ai] SUPERSEDED IN PART by
+        investigation-proves-the-bound-culprit-through-durable-exposure-state,
+        which filled the seam. Three details of the paragraph above now
+        read differently, and only these three: is_exposed became a
+        per-viewer question backed by snapshotted covert::Exposure state
+        (so the no-separate-snapshot-state rationale below holds for
+        covertness itself but not for discovery, and
+        SNAPSHOT_FORMAT_VERSION moved to 21); the write-time surfaces ask
+        covert::audience — the owner plus every house that has already
+        proved it — rather than an owner-only audience, still stamped once
+        and never re-widened; and the inspector exception is closed, that
+        gate now calling covert::plan_named_to_viewer over the projected
+        Exposure resource. Everything else here stands unchanged.
         This decision qualifies, without repealing, the
         accepted open-information rules that the inspector openly names
         AI plans and that a plan aimed at the player produces a
@@ -2567,7 +2581,7 @@ entities:
         work before exposure".
       rationale:
         - "[ai] Reusing LogAudience instead of a second visibility system keeps one filter behind the log panel, the Situations history, and the covert lines alike; the favour-debt privacy tests already prove the filter, so covertness inherits proven behaviour instead of new machinery."
-        - "[ai] Deriving covertness from content (covert: true on the definition) adds no snapshot state, so SNAPSHOT_FORMAT_VERSION stays at 20 and every recorded campaign restores unchanged; the persisted audience on each line is what already existed."
+        - "[ai] Deriving covertness from content (covert: true on the definition) adds no snapshot state, so SNAPSHOT_FORMAT_VERSION stays at 20 and every recorded campaign restores unchanged; the persisted audience on each line is what already existed. [ai] Qualified by the investigation decision: covertness is still pure content, but what investigation DISCOVERS is durable state of its own, which took the snapshot format to 21."
         - "[ai] Funnelling every assignment-derived line through assignment_log_entry means the abandonment of a covert operation whose leader died cannot leak its title publicly — the one previously-public writer that would otherwise have named the work."
         - "[ai] Suppressing the rumour outright, rather than blurring it, keeps the accepted rumour rule honest: a rumour is a guaranteed coarse notice about open hostile planning, and deniability is the covert category's whole point; discovery belongs to investigation, not to a free whisper."
         - "[ai] The inspector's pursuing-line gate is recorded as a known exception rather than papered over: the client's panel context carries no World, so routing it through covert::is_exposed today would mean inventing a client-side projection of exposure state before there is any exposure state to project — work that belongs to the investigation issue, which must do it or the gate silently stays behind when the seam starts answering true."
@@ -2654,10 +2668,89 @@ entities:
       rationale:
         - "[ai] Every number the arc turns on — window days, hostility floor, capability, resistance scale, retry budget, cooldowns — is authored in Rhai; the engine grew only reusable mechanisms (two requires predicates, a goal selector, a step selector, one intent), each available to future content such as the invasion window."
         - "[ai] The goal is gated is_vassal with a modest wealth floor and adopted by the head alone: deniable pressure is the weapon of houses too small for open war, it bounds the behavioural blast radius on existing campaigns to the authored window, and it makes Perrin — not the more skilled household — the tested actor, matching the head-only claim precedent."
-        - "[ai] Binding the culprit into the Situation's structural key gives investigation, spectators, and replay authoritative provenance for free — the structural key, snapshot, and resolution history all carry it — while the audience and projection never do; the exposure issue needs only a read, not new state."
+        - "[ai] Binding the culprit into the Situation's structural key gives investigation, spectators, and replay authoritative provenance for free — the structural key, snapshot, and resolution history all carry it — while the audience and projection never do; the exposure issue needs only a read, not new state. [ai] Corrected by investigation-proves-the-bound-culprit-through-durable-exposure-state: the binding did give investigation its culprit for free, and that is what makes false attribution structurally impossible — but WHO has discovered it could not be derived from the binding and needed durable state of its own, because a discovery has to outlive the lifecycle that produced it."
         - "[ai] Struck-versus-weathered is deliberately a live-Order reading (below or above an authored 700 line) instead of roll detection: the projection/outcome boundary can only read authoritative facts, and high Order absorbing the blow is exactly what Order-as-resistance means at the outcome level — a fortified province weathers even a landed strike."
         - "[ai] The full-AI mount is probabilistic per seed (monthly goal and agency pulses inside a three-pulse window), so acceptance pins a seed that mounts unaided and separate tests drive each boundary deterministically — the same testing posture the claim campaign acceptance takes."
       references:
         - covert-provenance-is-an-audience-on-authored-plans-and-assignments
         - assignment-effectiveness-may-read-live-provincial-order
         - casimirs-visit-is-a-windowed-hosted-situation
+  - decision: investigation-proves-the-bound-culprit-through-durable-exposure-state
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Investigation Proves the Bound Culprit Through Durable Exposure State
+      summary: >-
+        Discovery of authored covert work is an ordinary assignment with a
+        typed effect and one new snapshotted resource. An investigation
+        (trace-the-hand) is authored like any other consequential work —
+        intrigue, authored cost, difficulty and duration, ai_available
+        false — aimed at the holder's OWN troubled province rather than at
+        a suspect, and offered by the Unquiet Holdings projection as an
+        action pinning no leader, so the player compares every eligible
+        investigator on the same authoritative per-candidate forecast the
+        order itself will use. Only its success results carry an effect:
+        the new ScriptEffect::Expose { binding }, resolved in
+        apply_effects_with_origin, the one layer holding both the effect
+        list and the originating SituationOccurrence. The culprit is read
+        from that lifecycle's named structural binding — never chosen,
+        never scored — so failure, disaster, and an Expose fired with no
+        Situation origin all name nobody and the last refuses loudly.
+        False suspects are therefore structurally impossible rather than
+        merely unauthored.
+        What discovery records is covert::Exposure, a new snapshotted
+        resource of {culprit, knower, occurrence, discovered} records in a
+        BTreeSet, at most one per culprit-and-knower pair, bumping
+        SNAPSHOT_FORMAT_VERSION to 21. It is its own snapshot section
+        because it must OUTLIVE the lifecycle that found it, which rules
+        out SituationState, whose per-occurrence bookkeeping is pruned when
+        a lifecycle ends.
+        covert::is_exposed is settled as a per-viewer question — "may this
+        viewer name this culprit" — answering true for a spectator, for the
+        culprit itself, and for a house holding a record. The write-time
+        surfaces (plan, goal, and assignment lines) have no viewer, so they
+        ask covert::audience(world, owner) instead: the owner plus every
+        house that has already proved them, computed now and stamped once.
+        A line's audience is therefore never re-widened; discovery reveals
+        by writing NEW history — the revelation line, the lines the
+        operation goes on to write, and the live projection — and the
+        already-stamped owner-only lines stay exactly as they were. The
+        three *_is_covert helpers now return the authored flag alone, and
+        the semantic world view's covert field means the authored kind of
+        work (so content keyed off it keeps recognising the same
+        operation), with a separate world.exposures array carrying the
+        records content reads.
+        The card's own disclosure is authored: once the bound holder holds
+        a record for the bound actor, the projection selects a second
+        authored stage, adds the culprit organisation as a participant,
+        links its head and the covert assignment itself, shows a proved-hand
+        metric, drops the investigate action, and the lifecycle gains two
+        further outcomes (struck-traced, weathered-traced) so the frozen
+        sentence can name what is now known. The live-Order reading that
+        decides struck versus weathered is untouched: proof is knowledge,
+        never protection. The investigation is an ordinary assignment, so it
+        may outlive the card that offered it — origin_situation is
+        provenance, not a leash — and it resolves independently of the
+        sabotage when both fall due together, in the existing stable
+        ascending assignment-ID order with no coupling between them.
+        Client-side, PanelData and PanelCtx carry the projected Exposure
+        resource and the inspector's pursuing-line gate now calls
+        covert::plan_named_to_viewer in aeon_sim: the client supplies the
+        viewer and the projection, and owns no visibility rule of its own.
+        This closes the exception the covert-provenance decision recorded.
+      rationale:
+        - "[ai] Reading the culprit from the lifecycle's own structural binding rather than from any selection is what makes the PRD's 'reveal the true culprit or nothing' a structural property: there is no candidate list, no confidence, and no field in which a false suspect could be authored, so the excluded false-attribution systems cannot arrive by accident."
+        - "[ai] Exposure is per knower, not global, because the alternative publishes one house's investigation to every other house's ordinary surfaces the moment it succeeds; a bounded widening of the write-time audience (owner plus knowers) keeps the accepted stamped-once rule intact while still letting the discovering house read what it paid to learn."
+        - "[ai] Keeping the world view's covert flag meaning the AUTHORED kind, and adding exposures beside it, avoids a trap: had covert flipped false on discovery, the Unquiet Holdings trigger would have stopped recognising its own operation and ended the card at the exact moment it should have started naming the hand."
+        - "[ai] Resolving Expose in apply_effects_with_origin rather than in apply_effects is the only placement where the effect list and the originating occurrence are both in scope; apply_effects keeps its signature for events and popup answers and refuses the effect loudly there, which is also what makes the no-origin case testable."
+        - "[ai] Splitting the two live-Order outcomes into traced and untraced pairs, instead of interpolating a culprit into one sentence, keeps the frozen resolution honest at both ends without teaching the resolution renderer anything about knowledge: it stays a pure authored-text choice made by an ordinary when_fn."
+        - "[ai] The hostile-plan rumour gate is the one place a simulation-side surface knows its viewer, so it asks covert::is_exposed directly: a covert campaign still whispers nothing to a house that has not proved its owner, and resumes the ordinary coarse rumour for a house that has. That keeps the accepted rumour rule and the discovery rule from contradicting each other, and it is why the seam is a per-viewer question rather than a global flag."
+        - "[ai] A leaderless investigate action reuses the visit slice's accepted machinery exactly — deterministic default preview, free picker, per-candidate authoritative forecasts — so comparing investigators costs no new client concept, and the client's only new input is the projected Exposure resource."
+        - "[ai] The enquiry is kept an answer to the alarm rather than a free-standing order by a new AssignmentRequires predicate, target_under_covert_work — a live covert province-aimed assignment owned by somebody other than the orderer against the target province, whose owner the orderer has NOT yet proved (no Exposure record for that knower-and-culprit pair) — rather than by any Situation-only ordering rule. The predicate (covert::under_covert_work) is the simulation-side twin of the Unquiet Holdings card's read in full: the trigger's facts (live, covert, aimed at this province, owned by somebody other than the holder) narrowed by the projection's unquiet_hand_known, judged against the same authored flag and the same Exposure records the world view's exposures array carries, so the ordinary offer holds exactly while the card offers its own investigate action and withdraws with it. Situation actions are accepted as shortcuts into the ordinary assignment flow, so the one shared gate (button, forecast, command, AI, plan) is what stops trace-the-hand being purchasable on quiet ground where its effect could name nobody, and equally against a hand already proved while the operation still runs, where the card has dropped its action and there is nothing left to prove. The predicate is a mechanism in Rust and authored data in the requires block, and is refused loudly at load on a target kind that never names a province, exactly as the Order modifier is."
+        - "[ai] An Expose fired where it can name nobody refuses through the string table (sim.covert.expose-refused), confided to the acting house and open to spectators and replay, never as public raw engine text — the same treatment log_diagnostic gives a Situation that cannot be evaluated. No ordinary order reaches it, by two rules that hold together. First, an ordinary trace-the-hand is offered, forecast open, and accepted only while unproved covert work runs against the province (the predicate above), which is exactly the window in which the Unquiet Holdings projection offers its investigate action; once the orderer has proved the hand, the ordinary offer withdraws with the card's action even though the operation and the card both remain live, the forecast reports BadTarget, and the command is refused at the shared gate. Second, an ordinary StartAssignment that a live, player-visible lifecycle's current projection offers at that exact target, with the leader unpinned or equal and in the same formal-war context, is started through start_assignment_from_situation and inherits that lifecycle's occurrence (situations::offering_lifecycle — the assignment_for_action match run the other way round, first match in structural-key order), so the province and household buttons place the very order the card's shortcut would have, origin included, and the forecast they quote stays authoritative for the command actually issued. The attach step changes no validation — the shared gate has already passed — and an order no live card offers starts without an origin exactly as before; for the enquiry the first rule guarantees that a live card offers it whenever the gate passes, so every ordinary enquiry attaches, which leaves events and popup answers as the only callers that can fire the effect outside a lifecycle."
+      references:
+        - covert-provenance-is-an-audience-on-authored-plans-and-assignments
+        - the-vantar-operation-is-goal-and-plan-driven-not-scripted
+        - assignment-effectiveness-may-read-live-provincial-order
+        - casimirs-visit-is-a-windowed-hosted-situation
+        - situation-actions-launch-authoritative-assignments

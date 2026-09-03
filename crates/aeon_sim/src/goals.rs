@@ -445,10 +445,11 @@ pub fn maybe_adopt_goal(world: &mut World, head: CharacterId, authority: OrgId) 
     } else {
         entry = entry.about(LogSubject::Org(authority));
     }
-    // A covert ambition is adopted in confidence: owner-only, while
-    // spectators and replay retain the full account.
-    if crate::covert::goal_is_covert(world, &key, authority) {
-        entry = entry.for_audience(crate::covert::owner_only(authority));
+    // A covert ambition is adopted in confidence: its owner and whoever
+    // has already proved that owner, while spectators and replay retain
+    // the full account.
+    if crate::covert::goal_is_covert(world, &key) {
+        entry = entry.for_audience(crate::covert::audience(world, authority));
     }
     crate::access::log(world, entry);
 }
@@ -520,9 +521,10 @@ pub fn advance_goals(world: &mut World) {
             ],
         );
         let mut entry = LogEntry::line(text, LogChannel::Politics).by(Some(authority));
-        // A covert ambition ends as quietly as it was adopted.
-        if crate::covert::goal_is_covert(world, &active.def, authority) {
-            entry = entry.for_audience(crate::covert::owner_only(authority));
+        // A covert ambition ends as quietly as it was adopted — unless it
+        // has since been found out, in which case its knowers read the end.
+        if crate::covert::goal_is_covert(world, &active.def) {
+            entry = entry.for_audience(crate::covert::audience(world, authority));
         }
         crate::access::log(world, entry);
     }

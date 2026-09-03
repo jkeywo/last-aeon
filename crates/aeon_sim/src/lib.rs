@@ -129,6 +129,7 @@ impl Plugin for AeonSimPlugin {
         goals::install(app);
         trade::install(app);
         situations::install(app);
+        covert::install(app);
     }
 }
 

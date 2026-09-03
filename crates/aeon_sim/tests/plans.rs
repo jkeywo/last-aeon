@@ -594,6 +594,93 @@ fn a_covert_plan_aimed_at_the_player_whispers_nothing_and_confides_in_its_owner(
     );
 }
 
+#[test]
+fn a_proved_covert_campaign_confides_its_later_lines_in_the_house_that_proved_it() {
+    use aeon_data::model::AiIntent;
+    use aeon_sim::MessageLog;
+
+    let mut h = host(34);
+    let head = bela(&mut h);
+    let birch = org(&mut h, "birch");
+    let ash = org(&mut h, "ash");
+
+    let subvert = aeon_sim::agency::ScoredIntent {
+        intent: AiIntent::Subvert,
+        assignment: key("whisper-against"),
+        target: aeon_sim::AssignmentTarget::Org(ash),
+        score: 100,
+        reason: String::new(),
+        subject: None,
+        explains: false,
+    };
+    assert!(aeon_sim::plans::try_adopt(
+        h.world_mut(),
+        head,
+        birch,
+        &[subvert]
+    ));
+    let adoption_index = h
+        .world_mut()
+        .resource::<MessageLog>()
+        .entries
+        .iter()
+        .rposition(|entry| entry.org == Some(birch))
+        .expect("the covert adoption is logged");
+
+    // The target investigates and proves the campaign's owner. The record
+    // touches no existing history: it decides what LATER lines may say.
+    let occurrence = aeon_sim::situations::SituationOccurrence {
+        situation: aeon_sim::situations::SituationInstanceKey {
+            definition: key("unquiet-holdings"),
+            source: aeon_sim::situations::SituationSource {
+                kind: aeon_data::model::SituationSubjectKind::Scenario,
+                key: key("fixture"),
+                id: None,
+            },
+            bindings: std::collections::BTreeMap::new(),
+        },
+        activated: h.date(),
+    };
+    let today = h.date();
+    aeon_sim::covert::expose(h.world_mut(), birch, ash, occurrence, today);
+
+    // The campaign runs out its authored life and ends.
+    let mut ended = false;
+    for _ in 0..260 {
+        h.advance_days(1);
+        if !h.world_mut().resource::<Plans>().active.contains_key(&head) {
+            ended = true;
+            break;
+        }
+    }
+    assert!(ended, "the covert campaign ends inside its authored life");
+
+    let log = h.world_mut().resource::<MessageLog>().clone();
+    // The adoption line, stamped before the discovery, is untouched.
+    let adoption = &log.entries[adoption_index];
+    assert!(
+        !adoption.audience.visible_to(Some(ash)),
+        "an audience stamped at write time is never re-widened"
+    );
+    assert!(adoption.audience.visible_to(None));
+
+    // The campaign's end — a line written after the discovery — is
+    // confided to the house that proved it as well as to its owner.
+    let ending = log.entries[adoption_index + 1..]
+        .iter()
+        .rev()
+        .find(|entry| {
+            entry.org == Some(birch) && entry.audience != aeon_sim::assignments::LogAudience::Public
+        })
+        .expect("the covert campaign wrote a narrowed line after the discovery");
+    assert!(
+        ending.audience.visible_to(Some(ash)),
+        "a proved campaign's later lines reach the house that proved it"
+    );
+    assert!(ending.audience.visible_to(Some(birch)));
+    assert!(ending.audience.visible_to(None));
+}
+
 /// A pressure built by hand, for driving adoption directly in tests
 /// whose subject is what happens after.
 fn pressure(intent: aeon_data::model::AiIntent) -> aeon_sim::agency::ScoredIntent {

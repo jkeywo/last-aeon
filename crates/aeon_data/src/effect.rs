@@ -125,6 +125,20 @@ pub enum ScriptEffect {
         /// Signed influence change.
         influence: i64,
     },
+    /// Prove the organisation named by one of the originating Situation's
+    /// bindings to be the hand behind its own covert work, for the
+    /// organisation the effect acts for.
+    ///
+    /// Only meaningful from a Situation-originated effect — an assignment
+    /// launched from a Situation action, or a Situation outcome — because
+    /// the culprit is a structural binding on that exact lifecycle, never
+    /// a guess. Emitted from anywhere else it names nobody and is refused
+    /// loudly rather than inventing a suspect.
+    Expose {
+        /// The Situation binding holding the culprit organisation. Content
+        /// names it, so the engine learns no scenario vocabulary.
+        binding: String,
+    },
 }
 
 /// A assignment-context role an authored effect may address.
@@ -506,6 +520,18 @@ pub fn parse_effects(value: Dynamic) -> Result<Vec<ScriptEffect>, EffectParseErr
                     influence: get_amount("influence")?,
                 });
             }
+            "expose" => {
+                let binding = map
+                    .get("binding")
+                    .and_then(|v| v.clone().into_string().ok())
+                    .ok_or_else(|| EffectParseError::BadField {
+                        index,
+                        kind: kind.clone(),
+                        field: "binding".to_owned(),
+                        expected: "string".to_owned(),
+                    })?;
+                effects.push(ScriptEffect::Expose { binding });
+            }
             other => {
                 return Err(EffectParseError::UnknownKind {
                     index,
@@ -594,6 +620,32 @@ mod tests {
         assert!(matches!(
             parse_effects(mistyped),
             Err(EffectParseError::BadField { field, .. }) if field == "wealth"
+        ));
+    }
+
+    #[test]
+    fn parses_expose_effects_and_refuses_one_that_names_no_binding() {
+        // The culprit is always a named structural binding on the
+        // originating Situation: content says which, so no effect can
+        // invent a suspect from nothing.
+        let value = dynamic_from(r#"[#{ kind: "expose", binding: "actor" }]"#);
+        assert_eq!(
+            parse_effects(value).unwrap(),
+            vec![ScriptEffect::Expose {
+                binding: "actor".to_owned()
+            }]
+        );
+
+        let nameless = dynamic_from(r#"[#{ kind: "expose" }]"#);
+        assert!(matches!(
+            parse_effects(nameless),
+            Err(EffectParseError::BadField { field, .. }) if field == "binding"
+        ));
+
+        let mistyped = dynamic_from(r#"[#{ kind: "expose", binding: 4 }]"#);
+        assert!(matches!(
+            parse_effects(mistyped),
+            Err(EffectParseError::BadField { field, .. }) if field == "binding"
         ));
     }
 

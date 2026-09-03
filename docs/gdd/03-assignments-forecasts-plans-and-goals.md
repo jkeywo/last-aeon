@@ -79,9 +79,33 @@ an owed favour, whether the owner is threatened, and minimum or maximum
 provincial order. One simulation gate evaluates these facts for the action
 button, forecast, AI, plan, and standing-order paths.
 
+[ai] One further requirement, `target_under_covert_work`, is about what is
+being done to the target rather than who holds it: it holds only while
+somebody else's covert province-aimed work is live against the target
+province *and* the orderer has not yet proved whose hand it is — the same
+facts that raise the Unquiet Holdings alarm and keep its investigate action
+on offer — and may only be authored on a province-bearing target kind. It
+is what keeps an enquiry such as `trace-the-hand` an answer to the alarm
+rather than a free-standing order: on quiet ground, and again once the hand
+is proved while the work still runs, the enquiry is offered on no province,
+in no household list, and is refused as an ordinary bad target by the one
+shared gate.
+
 Situation actions are shortcuts into this same flow. They project an authored
 assignment and retain the exact Situation occurrence and formal-war identity
 that authorised it; they do not create a separate action system.
+
+[ai] The convergence runs both ways. An ordinary order that a live
+Situation's current projection offers — the same assignment at the same
+target, a leader the action pins or leaves free, and the same formal-war
+context — inherits that Situation's occurrence when it starts, so the
+province and household buttons place exactly the order the card's shortcut
+would have, provenance included. An answer whose effect reads its origin,
+such as `trace-the-hand`, is offered by the ordinary paths only while a
+live card offers it — while unproved covert work runs against the province
+— so it always starts with that card's occurrence and keeps the forecast's
+promise whichever way it was ordered; an order no live card offers starts
+without an origin, as before.
 
 ### 2. Select a leader
 
@@ -306,9 +330,22 @@ limited rumour naming who is acting and broadly what concerns them; it does not
 pretend a full espionage system exists. [ai] The catalogue now also carries
 the covert `deniable-pressure` campaign: gated in data on hostility (a
 head-to-head opinion floor, or an open grievance owed) and capability, it
-whispers no rumour and confides its lines in its owner alone — the covert
+whispers no rumour and confides its lines in its owner and in whoever has
+proved that owner — the covert
 exception recorded in
 [AI Agency and Information Rules](06-ai-agency-and-information-rules.md).
+[ai] The corresponding answer is an ordinary assignment: `trace-the-hand`
+is authored like any other consequential intrigue work, is closed to the
+AI, is aimed at the investigator's own troubled province rather than at a
+suspect, and is offered by its Situation with no leader pinned so the
+player compares candidates on the ordinary per-candidate forecasts. Only
+its success results carry an effect, and that effect proves an
+organisation the originating lifecycle already bound; nothing in the
+authoring vocabulary can name anybody else. It is gated in data on
+`target_under_covert_work`, so it can be bought only while a hand is
+actually moving against that holding and has not yet been proved — never
+on quiet ground, and never against a hand already proved, where either way
+it could prove nothing.
 
 ## Organisational goals and directives
 
@@ -351,7 +388,7 @@ intent are detailed in [AI Agency and Information Rules](06-ai-agency-and-inform
 
 | Layer | Principal data | Deterministic identity and ordering |
 | --- | --- | --- |
-| Assignment definition | Target kind, requirements, skill, difficulty, duration, phases, costs, urgency, AI intent, results, risks, military operation, [ai] optional live-opinion modifier (roles, per-point scale, clamp), [ai] optional live-Order modifier (reference, per-hundred scale, clamp; province-bearing targets only), [ai] covert flag (owner-confided provenance before exposure) | Stable content key; authored phase and outcome order |
+| Assignment definition | Target kind, requirements, skill, difficulty, duration, phases, costs, urgency, AI intent, results, risks, military operation, [ai] optional live-opinion modifier (roles, per-point scale, clamp), [ai] optional live-Order modifier (reference, per-hundred scale, clamp; province-bearing targets only), [ai] covert flag (provenance confided to the owner, and to any house that has proved it) | Stable content key; authored phase and outcome order |
 | Active assignment | Stable ID, definition, owner, leader, target, war, Situation origin, start/completion dates, cancellation request | Stable assignment ID; daily resolution in ID order |
 | Command | Typed player decision, execution day, monotonic sequence | Applied in `(day, sequence)` order and appended to the command log |
 | Forecast | Derived timing, costs, contest, odds, risks, block reason, point of no return | Pure integer calculations shared with resolution |
