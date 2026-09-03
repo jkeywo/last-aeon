@@ -12,7 +12,9 @@
 //! the model does not actually possess.
 
 use aeon_data::ContentKey;
-use aeon_data::model::{AssignmentDef, GoverningSkill, MilitaryOp, OutcomeKind, RiskTag};
+use aeon_data::model::{
+    AssignmentDef, GoverningSkill, MilitaryOp, OpinionModifierDef, OutcomeKind, RiskTag,
+};
 use bevy::prelude::*;
 
 use crate::assignments::{AssignmentRejection, AssignmentTarget};
@@ -77,7 +79,14 @@ pub struct AssignmentForecast {
     pub skill_value: i32,
     /// The assignment's authored difficulty.
     pub difficulty: i32,
-    /// Skill minus difficulty; drives the weight shift.
+    /// The live opinion the assignment's authored modifier read, when it
+    /// authors one and both roles resolve. Reported so the number behind
+    /// the shifted odds is visible, not merely applied.
+    pub opinion_value: Option<i32>,
+    /// The effectiveness shift that opinion produced; zero without one.
+    pub opinion_shift: i32,
+    /// Skill minus difficulty, plus any authored live-opinion shift;
+    /// drives the weight shift.
     pub effectiveness: i32,
     /// Every possible outcome, most favourable first; chances sum to 1000.
     pub results: Vec<ForecastResult>,
@@ -212,9 +221,57 @@ pub fn result_odds(def: &AssignmentDef, effectiveness: i32) -> Vec<(OutcomeKind,
         .collect()
 }
 
-/// The leader's effectiveness on a assignment: governing skill minus difficulty.
-pub fn effectiveness(world: &World, leader: CharacterId, def: &AssignmentDef) -> i32 {
-    governing_skill(world, leader, def.skill) - def.difficulty
+/// The clamped effectiveness shift a live opinion produces under an
+/// authored modifier.
+///
+/// Pure integer arithmetic: `per_point` is hundredths of an effectiveness
+/// point per point of opinion, the product truncates toward zero, and the
+/// result is clamped to the authored bounds — so a relationship can never
+/// swamp skill beyond what the content declared.
+pub fn opinion_effectiveness_shift(opinion: i32, modifier: &OpinionModifierDef) -> i32 {
+    ((opinion * modifier.per_point) / 100).clamp(modifier.min, modifier.max)
+}
+
+/// The live opinion an assignment's authored modifier reads, and the
+/// effectiveness shift it produces.
+///
+/// `None` when the assignment authors no modifier or a role resolves to
+/// nobody (a house without a liege has no liege head): an unresolvable
+/// relationship is neutral, never a penalty invented on the spot. Roles
+/// resolve through the one shared role resolver, so "liege-head" here is
+/// exactly who an effect addressed by "liege-head" would reach.
+pub fn opinion_modifier_reading(
+    world: &World,
+    org: OrgId,
+    leader: CharacterId,
+    def: &AssignmentDef,
+) -> Option<(i32, i32)> {
+    let modifier = def.opinion_modifier.as_ref()?;
+    let roles = crate::assignments::AssignmentRoles::resolve(
+        world,
+        crate::assignments::RoleSeed {
+            owner: Some(org),
+            leader: Some(leader),
+            ..Default::default()
+        },
+    );
+    let from = roles.character_for(modifier.from)?;
+    let toward = roles.character_for(modifier.toward)?;
+    let opinion = crate::politics::opinion_between(world, from, toward);
+    Some((opinion, opinion_effectiveness_shift(opinion, modifier)))
+}
+
+/// The leader's effectiveness on a assignment: governing skill minus
+/// difficulty, plus any authored live-opinion shift.
+///
+/// The single choke point behind both the forecast and resolution — the
+/// modifier lives *inside* it, never beside it, so the two cannot read
+/// the relationship differently.
+pub fn effectiveness(world: &World, org: OrgId, leader: CharacterId, def: &AssignmentDef) -> i32 {
+    let shift = opinion_modifier_reading(world, org, leader, def)
+        .map(|(_, shift)| shift)
+        .unwrap_or(0);
+    governing_skill(world, leader, def.skill) - def.difficulty + shift
 }
 
 /// The leader's value in a governing skill; zero when unknown.
@@ -331,7 +388,8 @@ pub fn forecast_in_war(
     let content = world.get_resource::<crate::state::ContentDb>()?;
     let def = content.0.assignments.get(def_key)?.clone();
 
-    let effectiveness = effectiveness(world, leader, &def);
+    let opinion = opinion_modifier_reading(world, org, leader, &def);
+    let effectiveness = effectiveness(world, org, leader, &def);
     let odds = result_odds(&def, effectiveness);
     let results = odds
         .into_iter()
@@ -371,6 +429,8 @@ pub fn forecast_in_war(
         skill: def.skill,
         skill_value: governing_skill(world, leader, def.skill),
         difficulty: def.difficulty,
+        opinion_value: opinion.map(|(value, _)| value),
+        opinion_shift: opinion.map(|(_, shift)| shift).unwrap_or(0),
         effectiveness,
         results,
         risks,
@@ -423,6 +483,7 @@ mod tests {
             manpower_cost: 0,
             supplies_cost: 0,
             influence_cost: 0,
+            opinion_modifier: None,
             requires: Default::default(),
             urgency: Default::default(),
             stages: vec![aeon_data::model::StageDef {
@@ -520,5 +581,61 @@ mod tests {
             (OutcomeKind::Failure, 4),
         ]);
         assert_eq!(result_odds(&def, 3), result_odds(&def, 3));
+    }
+
+    fn modifier(per_point: i32, min: i32, max: i32) -> OpinionModifierDef {
+        OpinionModifierDef {
+            from: aeon_data::EffectRole::LiegeHead,
+            toward: aeon_data::EffectRole::OwnerHead,
+            per_point,
+            min,
+            max,
+        }
+    }
+
+    #[test]
+    fn opinion_shifts_scale_truncate_and_clamp_with_integer_arithmetic() {
+        // A point of effectiveness per two points of opinion.
+        let halved = modifier(50, -8, 8);
+        assert_eq!(opinion_effectiveness_shift(0, &halved), 0);
+        assert_eq!(opinion_effectiveness_shift(4, &halved), 2);
+        assert_eq!(opinion_effectiveness_shift(-4, &halved), -2);
+        // Truncation toward zero, symmetric about it.
+        assert_eq!(opinion_effectiveness_shift(3, &halved), 1);
+        assert_eq!(opinion_effectiveness_shift(-3, &halved), -1);
+        // The authored clamp is what keeps a relationship from swamping
+        // skill entirely.
+        assert_eq!(opinion_effectiveness_shift(100, &halved), 8);
+        assert_eq!(opinion_effectiveness_shift(-100, &halved), -8);
+        // Asymmetric bounds are the author's to choose: expense can
+        // cushion the downside without capping the upside the same way.
+        let cushioned = modifier(50, -3, 9);
+        assert_eq!(opinion_effectiveness_shift(-100, &cushioned), -3);
+        assert_eq!(opinion_effectiveness_shift(100, &cushioned), 9);
+    }
+
+    #[test]
+    fn opinion_shifts_move_the_same_odds_the_sampler_rolls() {
+        // The shift feeds the one shared effectiveness number, so its
+        // whole influence on the odds is result_odds at a shifted input:
+        // warmer regard raises the favourable share exactly as skill
+        // advantage does.
+        let def = def_with(&[(OutcomeKind::Success, 5), (OutcomeKind::Failure, 5)]);
+        let contested = modifier(100, -6, 6);
+        let success = |opinion: i32| -> Permille {
+            let effectiveness = opinion_effectiveness_shift(opinion, &contested);
+            result_odds(&def, effectiveness)
+                .into_iter()
+                .find(|(kind, _)| *kind == OutcomeKind::Success)
+                .map(|(_, chance)| chance)
+                .unwrap()
+        };
+        assert!(success(-15) < success(0), "ill will lowers the odds");
+        assert!(success(0) < success(5), "regard raises the odds");
+        assert_eq!(
+            success(-15),
+            success(-6),
+            "beyond the clamp, further ill will changes nothing"
+        );
     }
 }

@@ -3683,3 +3683,703 @@ fn courting_the_liege_is_the_authored_route_and_its_success_achieves_the_demand(
     assert_eq!(entry.target, edrun);
     assert_eq!(entry.amount, 10);
 }
+
+// ---------------------------------------------------------------------------
+// The Liege's Visit: the first-year windowed hosted Situation whose live
+// forecast reads the liege head's current opinion, and whose lifecycle is
+// wholly subject to the simulation.
+// ---------------------------------------------------------------------------
+
+use aeon_sim::presence::{CharacterLocation, Location};
+
+/// The authored deterministic window, in days from the campaign start.
+const VISIT_OPENS: i64 = 140;
+const VISIT_CLOSES: i64 = 180;
+
+/// The authored hospitality tiers: action id, assignment key, wealth cost.
+const VISIT_TIERS: [(&str, &str, i64); 3] = [
+    ("host-restrained", "host-visit-restrained", 10),
+    ("host-proper", "host-visit-proper", 30),
+    ("host-lavish", "host-visit-lavish", 60),
+];
+
+fn visit_card(host: &mut SimHost) -> Option<SituationCard> {
+    active_cards(host.world_mut())
+        .into_iter()
+        .find(|card| card.active.key.definition == key("casimir-visit"))
+}
+
+fn visit_resolutions(host: &mut SimHost) -> Vec<aeon_sim::situations::SituationResolution> {
+    host.world_mut()
+        .resource::<SituationState>()
+        .resolutions
+        .iter()
+        .filter(|notice| notice.situation.definition == key("casimir-visit"))
+        .cloned()
+        .collect()
+}
+
+/// Places a character at a concrete location, for making the liege's head
+/// reachable or not through the same presence facts real travel uses.
+fn place_character(host: &mut SimHost, character: CharacterId, location: Location) {
+    let world = host.world_mut();
+    let entity = world.resource::<PoliticsIndex>().characters[&character];
+    world.entity_mut(entity).insert(CharacterLocation(location));
+}
+
+fn any_ship(host: &mut SimHost) -> aeon_sim::ShipId {
+    *host
+        .world_mut()
+        .resource::<ForcesIndex>()
+        .ships
+        .keys()
+        .next()
+        .expect("the scenario fields ships")
+}
+
+fn harrow_wealth(host: &mut SimHost) -> i64 {
+    let harrow = org(host, "harrow");
+    let world = host.world_mut();
+    let entity = aeon_sim::access::org_entity(world, harrow).expect("indexed organisation");
+    world
+        .get::<aeon_sim::OrgResources>(entity)
+        .expect("organisations carry resources")
+        .wealth
+}
+
+fn visit_forecast(
+    host: &mut SimHost,
+    action: &str,
+    leader: CharacterId,
+) -> aeon_sim::forecast::AssignmentForecast {
+    let situation = visit_card(host).expect("live visit").active.key;
+    aeon_sim::situations::forecast_for_action(
+        host.world_mut(),
+        &situation,
+        &key(action),
+        leader,
+        AssignmentTarget::None,
+    )
+    .expect("the projected tier forecasts")
+}
+
+#[test]
+fn the_visit_opens_exactly_with_its_window_and_reads_the_liege_heads_live_regard() {
+    let mut host = scenario_host(371, repository_content());
+    let start = start_date(&mut host);
+    host.advance_days(VISIT_OPENS as u32 - 1);
+    assert!(
+        visit_card(&mut host).is_none(),
+        "the visit does not exist the day before its window"
+    );
+    assert!(visit_resolutions(&mut host).is_empty());
+
+    host.advance_days(1);
+    let card = visit_card(&mut host).expect("the visit opens on the exact opening day");
+    assert_eq!(card.unavailable, None);
+    let casimir = character(&mut host, "casimir-veyrin");
+    let harrow = org(&mut host, "harrow");
+    assert_eq!(
+        card.active.key.bindings.get("liege-head"),
+        Some(&SituationSubject::Character(casimir)),
+        "the live liege head is structurally bound"
+    );
+    assert_eq!(
+        card.active.key.bindings.get("house"),
+        Some(&SituationSubject::Organisation(harrow))
+    );
+    assert_eq!(card.active.activated, start.add_days(VISIT_OPENS));
+
+    let projection = card.projection.clone().expect("projection");
+    assert_eq!(projection.deadline, Some(start.add_days(VISIT_CLOSES)));
+    let days_left = projection.metrics.iter().find_map(|metric| {
+        (metric.label_key == "situation.metric.days-left").then(|| match &metric.value {
+            aeon_sim::situations::SituationMetricValue::Integer(value) => *value,
+            aeon_sim::situations::SituationMetricValue::Text(text) => {
+                panic!("expected integer metric, got '{text}'")
+            }
+        })
+    });
+    assert_eq!(days_left, Some(VISIT_CLOSES - VISIT_OPENS));
+    let live = liege_opinion(&mut host);
+    let regard = projection
+        .metrics
+        .iter()
+        .find(|metric| metric.label_key == "situation.metric.liege-opinion")
+        .expect("the card names the liege head and his live regard");
+    match &regard.value {
+        aeon_sim::situations::SituationMetricValue::Text(text) => {
+            assert!(
+                text.contains("Casimir") && text.ends_with(&live.to_string()),
+                "the row names the bound man and the live derived value, got '{text}'"
+            );
+        }
+        aeon_sim::situations::SituationMetricValue::Integer(value) => {
+            panic!("expected a named text metric, got {value}")
+        }
+    }
+
+    // Three hospitality tiers, each deliberately without a pinned leader:
+    // the host is the player's choice, and any eligible member may serve.
+    assert_eq!(
+        projection
+            .actions
+            .iter()
+            .map(|action| action.id.as_str().to_owned())
+            .collect::<Vec<_>>(),
+        ["host-restrained", "host-proper", "host-lavish"]
+    );
+    for action in &projection.actions {
+        assert_eq!(
+            action.leader, None,
+            "{}: the host is a free choice",
+            action.id
+        );
+        assert_eq!(action.target, AssignmentTarget::None);
+    }
+
+    // Activation raised a pausing announcement and permanent tagged history.
+    let occurrence = card.active.occurrence();
+    assert!(
+        host.world_mut()
+            .resource::<MessageLog>()
+            .entries
+            .iter()
+            .any(|entry| entry.situations.contains(&occurrence))
+    );
+    assert!(
+        host.world_mut()
+            .resource::<PendingPopups>()
+            .popups
+            .iter()
+            .any(|popup| popup.assignment == key("casimir-visit")),
+        "activation announces through the ordinary pausing popup channel"
+    );
+}
+
+/// The nth currently free adult of the house, in stable ID order: any of
+/// them is a legal host, which is the point of a leaderless action.
+fn free_household_host(host: &mut SimHost, index: usize) -> CharacterId {
+    let harrow = org(host, "harrow");
+    let date = host.date();
+    let world = host.world_mut();
+    let free: Vec<CharacterId> = world
+        .resource::<PoliticsIndex>()
+        .characters
+        .keys()
+        .copied()
+        .collect::<Vec<_>>()
+        .into_iter()
+        .filter(|id| {
+            aeon_sim::leader_availability(world, harrow, *id, date)
+                .blocks_assignment(AssignmentTarget::None)
+                .is_none()
+        })
+        .collect();
+    assert!(!free.is_empty(), "the household has a free host");
+    free[index % free.len()]
+}
+
+#[test]
+fn every_hospitality_tier_starts_an_ordinary_costed_assignment_and_resolves_the_visit_hosted() {
+    for (index, (action, assignment, wealth_cost)) in VISIT_TIERS.into_iter().enumerate() {
+        let content = repository_content();
+        let seed = 372 + index as u64;
+        // A twin campaign on the same seed that never hosts: derived RNG
+        // streams are isolated, so every difference between the two is
+        // exactly the hosting order's own consequence.
+        let mut hosted = scenario_host(seed, Arc::clone(&content));
+        let mut idle = scenario_host(seed, Arc::clone(&content));
+        hosted.advance_days(VISIT_OPENS as u32);
+        idle.advance_days(VISIT_OPENS as u32);
+
+        let situation = visit_card(&mut hosted).expect("live visit").active.key;
+        let occurrence = visit_card(&mut hosted)
+            .expect("live visit")
+            .active
+            .occurrence();
+        // A different eligible host per tier proves the choice is
+        // genuinely free: whoever the house has to spare may serve.
+        let leader = free_household_host(&mut hosted, index);
+        let envelope = hosted
+            .submit(PlayerCommand::StartSituationAssignment {
+                situation: situation.clone(),
+                action: key(action),
+                leader,
+                target: AssignmentTarget::None,
+                war: None,
+            })
+            .expect("a projected tier with an eligible host is a valid command");
+        while hosted.date() < envelope.day {
+            hosted.advance_days(1);
+            idle.advance_days(1);
+        }
+
+        // The ordinary assignment stands, owned by the house, led by the
+        // chosen host, tagged to the exact visit lifecycle, with the
+        // authored cost charged on acceptance.
+        let active = {
+            let world = hosted.world_mut();
+            world
+                .resource::<AssignmentsIndex>()
+                .assignments
+                .values()
+                .find_map(|entity| {
+                    world
+                        .get::<ActiveAssignment>(*entity)
+                        .filter(|work| work.def == key(assignment))
+                        .cloned()
+                })
+                .unwrap_or_else(|| panic!("{assignment} is running"))
+        };
+        assert_eq!(active.leader, leader);
+        assert_eq!(active.origin_situation, Some(occurrence));
+        assert_eq!(
+            harrow_wealth(&mut idle) - harrow_wealth(&mut hosted),
+            wealth_cost,
+            "{assignment} charged exactly its authored wealth on acceptance"
+        );
+
+        // Acceptance inside the window resolves the visit hosted, once,
+        // durably; the assignment's own results carry the consequences.
+        let notices = visit_resolutions(&mut hosted);
+        assert_eq!(notices.len(), 1, "{assignment}: one resolution");
+        assert_eq!(notices[0].outcome, key("hosted"));
+        assert!(visit_card(&mut hosted).is_none());
+
+        // The charge stands in the following days: no refund path exists,
+        // and a failed reception refunds nothing either — the same
+        // ordinary no-protection rule the muster test proves for costed
+        // assignments. (The twins soon diverge legitimately — a household
+        // member busy hosting is a member the simulation cannot send
+        // elsewhere — so the exact comparison deliberately stays short.)
+        hosted.advance_days(2);
+        idle.advance_days(2);
+        assert_eq!(
+            harrow_wealth(&mut idle) - harrow_wealth(&mut hosted),
+            wealth_cost,
+            "{assignment}: nothing hands the price back"
+        );
+
+        // The window can never re-ask: one lifecycle, one resolution.
+        let past_completion = hosted.date().days_until(active.completes) + 20;
+        hosted.advance_days(past_completion as u32);
+        assert_eq!(visit_resolutions(&mut hosted).len(), 1);
+        assert!(visit_card(&mut hosted).is_none());
+    }
+}
+
+#[test]
+fn current_opinion_strongly_shifts_the_odds_while_spending_and_a_capable_host_mitigate() {
+    let mut host = scenario_host(375, repository_content());
+    host.advance_days(VISIT_OPENS as u32);
+    let edrun = {
+        let harrow = org(&mut host, "harrow");
+        aeon_sim::access::org_head(host.world_mut(), harrow).expect("harrow head")
+    };
+    let reyn = character(&mut host, "reyn-harrow");
+
+    // The forecast is authoritative about what it read: the live opinion,
+    // the clamped shift it produced, and the effectiveness they feed.
+    set_liege_esteem(&mut host, -20);
+    let cold = visit_forecast(&mut host, "host-proper", edrun);
+    assert_eq!(cold.opinion_value, Some(liege_opinion(&mut host)));
+    assert_eq!(
+        cold.effectiveness,
+        cold.skill_value - cold.difficulty + cold.opinion_shift,
+        "the shift lives inside the one effectiveness number"
+    );
+    assert!(cold.opinion_shift < 0, "ill will reads as a penalty");
+
+    // The same tier and host at three relationships: the odds order with
+    // the regard, and the swing between the extremes is dramatic.
+    let cold_chance = cold.success_chance();
+    set_liege_esteem(&mut host, 0);
+    let base_chance = visit_forecast(&mut host, "host-proper", edrun).success_chance();
+    set_liege_esteem(&mut host, 40);
+    let warm = visit_forecast(&mut host, "host-proper", edrun);
+    let warm_chance = warm.success_chance();
+    assert!(
+        cold_chance < base_chance && base_chance < warm_chance,
+        "opinion orders the odds: {cold_chance} < {base_chance} < {warm_chance}"
+    );
+    assert!(
+        warm_chance - cold_chance >= 200,
+        "current opinion strongly shifts the outcome: {cold_chance} vs {warm_chance}"
+    );
+    assert!(warm.opinion_shift > 0);
+
+    // Mitigation without determination, judged at the same poor
+    // relationship: deeper spending is an easier contest, and a more
+    // capable host raises the same tier's odds — while neither erases the
+    // relationship's weight.
+    set_liege_esteem(&mut host, -20);
+    let restrained = visit_forecast(&mut host, "host-restrained", edrun);
+    let proper = visit_forecast(&mut host, "host-proper", edrun);
+    let lavish = visit_forecast(&mut host, "host-lavish", edrun);
+    assert!(
+        restrained.success_chance() < proper.success_chance()
+            && proper.success_chance() < lavish.success_chance(),
+        "spending mitigates a poor relationship"
+    );
+    assert!(
+        lavish.success_chance() < warm_chance,
+        "money mitigates the relationship's weight without erasing it: the \
+         warmly regarded proper host still outperforms cold lavishness"
+    );
+    let capable = visit_forecast(&mut host, "host-proper", reyn);
+    assert!(
+        capable.success_chance() > proper.success_chance(),
+        "a better diplomat mitigates the same tier"
+    );
+    assert_eq!(
+        capable.opinion_value, proper.opinion_value,
+        "the relationship read is the house's, not the host's"
+    );
+
+    // Distinct authored costs, durations, and difficulties are exposed on
+    // the authoritative forecast the tiers are compared by.
+    assert_eq!(
+        (
+            restrained.wealth_cost,
+            proper.wealth_cost,
+            lavish.wealth_cost
+        ),
+        (10, 30, 60)
+    );
+    assert_eq!(
+        (
+            restrained.duration_days,
+            proper.duration_days,
+            lavish.duration_days
+        ),
+        (40, 45, 50)
+    );
+    assert!(restrained.difficulty > proper.difficulty && proper.difficulty > lavish.difficulty);
+}
+
+#[test]
+fn a_dead_liege_head_passes_the_visit_on_and_the_successors_own_visit_takes_over() {
+    let mut host = scenario_host(376, repository_content());
+    host.advance_days(VISIT_OPENS as u32 + 1);
+    let casimir = character(&mut host, "casimir-veyrin");
+    let aldric = character(&mut host, "aldric-veyrin");
+    assert_eq!(
+        visit_card(&mut host)
+            .expect("live visit")
+            .active
+            .key
+            .bindings
+            .get("liege-head"),
+        Some(&SituationSubject::Character(casimir))
+    );
+    let wealth_before = harrow_wealth(&mut host);
+
+    let date = host.date();
+    process_death(host.world_mut(), casimir, date);
+    evaluate(host.world_mut());
+
+    // The bound man's death ends his visit with no tier and no penalty —
+    // the same evaluation must never pay hospitality's dues to the dead.
+    let notices = visit_resolutions(&mut host);
+    assert_eq!(notices.len(), 1);
+    assert_eq!(notices[0].outcome, key("passed-on"));
+    assert!(
+        opinion_modifier(&mut host, casimir, "casimir-visit-slighted").is_none(),
+        "a cancelled visit is not a slight"
+    );
+    assert_eq!(harrow_wealth(&mut host), wealth_before, "no tier was paid");
+
+    // The window still stands and the succession installed a living,
+    // reachable liege head, so his own visit binds him: content adapts to
+    // the simulation rather than protecting a named man.
+    let card = visit_card(&mut host).expect("the successor's visit takes over");
+    assert_eq!(
+        card.active.key.bindings.get("liege-head"),
+        Some(&SituationSubject::Character(aldric))
+    );
+}
+
+#[test]
+fn a_changed_liege_passes_the_visit_on_and_binds_the_new_lieges_head() {
+    let mut host = scenario_host(377, repository_content());
+    host.advance_days(VISIT_OPENS as u32 + 1);
+    let zorka = character(&mut host, "zorka-draksha");
+    let harrow = org(&mut host, "harrow");
+    let draksha = org(&mut host, "draksha");
+    assert!(visit_card(&mut host).is_some());
+
+    {
+        let world = host.world_mut();
+        let entity = aeon_sim::access::org_entity(world, harrow).expect("indexed organisation");
+        world
+            .get_mut::<OrgRecord>(entity)
+            .expect("organisations carry records")
+            .liege = Some(draksha);
+    }
+    evaluate(host.world_mut());
+
+    let notices = visit_resolutions(&mut host);
+    assert_eq!(notices.len(), 1);
+    assert_eq!(notices[0].outcome, key("passed-on"));
+    let card = visit_card(&mut host).expect("the new liege's own visit stands");
+    assert_eq!(
+        card.active.key.bindings.get("liege-head"),
+        Some(&SituationSubject::Character(zorka))
+    );
+}
+
+#[test]
+fn impossible_travel_delays_the_visit_and_cancels_it_without_penalty_mid_window() {
+    let mut host = scenario_host(378, repository_content());
+    let casimir = character(&mut host, "casimir-veyrin");
+    let ship = any_ship(&mut host);
+
+    // A liege head with no province to set out from cannot come: the
+    // window opens and no visit exists, because the trigger asks the same
+    // route facts real travel uses.
+    host.advance_days(VISIT_OPENS as u32 - 1);
+    for _ in 0..3 {
+        place_character(&mut host, casimir, Location::Aboard(ship));
+        host.advance_days(1);
+        assert!(
+            visit_card(&mut host).is_none(),
+            "an unreachable liege never announces a visit"
+        );
+    }
+    assert!(visit_resolutions(&mut host).is_empty());
+
+    // Back on solid ground inside the window, the visit arrives late
+    // rather than never: the arc is delayed by the simulation, not lost.
+    let redwater = host.world_mut().resource::<MapIndex>().province_keys[&key("redwater")];
+    place_character(&mut host, casimir, Location::Province(redwater));
+    host.advance_days(1);
+    let card = visit_card(&mut host).expect("the delayed visit activates once travel is possible");
+    assert_eq!(
+        card.active.activated,
+        host.date(),
+        "activation is the first reachable settled day"
+    );
+
+    // Travel becoming impossible mid-lifecycle cancels the bound visit
+    // without any penalty; renewed reachability binds a fresh lifecycle.
+    place_character(&mut host, casimir, Location::Aboard(ship));
+    host.advance_days(1);
+    let notices = visit_resolutions(&mut host);
+    assert_eq!(notices.len(), 1);
+    assert_eq!(notices[0].outcome, key("passed-on"));
+    assert!(
+        opinion_modifier(&mut host, casimir, "casimir-visit-slighted").is_none(),
+        "a visit that cannot happen slights nobody"
+    );
+    place_character(&mut host, casimir, Location::Province(redwater));
+    host.advance_days(1);
+    assert!(visit_card(&mut host).is_some());
+}
+
+#[test]
+fn a_landless_house_receives_no_visit() {
+    let mut host = scenario_host(384, repository_content());
+    host.advance_days(VISIT_OPENS as u32 - 1);
+
+    // Strip every Harrow holding: a liege has no seat to visit, so the
+    // window opens on nothing — same route facts, no protected arc.
+    let harrow = org(&mut host, "harrow");
+    let veyrin = org(&mut host, "veyrin");
+    let held = held_provinces(host.world_mut(), harrow);
+    assert!(!held.is_empty());
+    {
+        let world = host.world_mut();
+        for province in held {
+            let (entity, _) = {
+                let index = world.resource::<PoliticsIndex>();
+                let title = index.province_titles[&province];
+                (index.titles[&title], title)
+            };
+            world
+                .get_mut::<aeon_sim::politics::TitleRecord>(entity)
+                .expect("titles carry records")
+                .holder = aeon_sim::politics::TitleHolder::Org(veyrin);
+        }
+    }
+    host.advance_days(3);
+    assert!(visit_card(&mut host).is_none(), "no seat, no visit");
+    assert!(visit_resolutions(&mut host).is_empty());
+}
+
+#[test]
+fn an_unanswered_window_charges_the_stated_slight_exactly_once() {
+    let content = repository_content();
+
+    // An order given on the window's last open day applies on the boundary
+    // itself, and the boundary reads the court's deadline-day way: the
+    // acceptance still answers the visit.
+    let mut punctual = scenario_host(379, Arc::clone(&content));
+    let close = start_date(&mut punctual).add_days(VISIT_CLOSES);
+    punctual.advance_days(VISIT_CLOSES as u32 - 1);
+    let card = visit_card(&mut punctual).expect("the visit is live the day before the close");
+    assert!(
+        card.projection.expect("projection").warning,
+        "the closing window raises the shared attention warning"
+    );
+    let situation = visit_card(&mut punctual).expect("live visit").active.key;
+    let edrun = {
+        let harrow = org(&mut punctual, "harrow");
+        aeon_sim::access::org_head(punctual.world_mut(), harrow).expect("harrow head")
+    };
+    let envelope = punctual
+        .submit(PlayerCommand::StartSituationAssignment {
+            situation: situation.clone(),
+            action: key("host-proper"),
+            leader: edrun,
+            target: AssignmentTarget::None,
+            war: None,
+        })
+        .expect("the last-day submission is valid");
+    assert_eq!(
+        envelope.day, close,
+        "the head's order lands on the boundary"
+    );
+    punctual.advance_days(1);
+    let notices = visit_resolutions(&mut punctual);
+    assert_eq!(notices.len(), 1);
+    assert_eq!(
+        notices[0].outcome,
+        key("hosted"),
+        "deadline-day acceptance answers the visit"
+    );
+    let started = {
+        let world = punctual.world_mut();
+        world
+            .resource::<AssignmentsIndex>()
+            .assignments
+            .values()
+            .filter_map(|entity| world.get::<ActiveAssignment>(*entity))
+            .find(|work| work.def == key("host-visit-proper"))
+            .map(|work| work.started)
+    };
+    assert_eq!(started, Some(close));
+
+    // The same window left wholly unanswered: the slight, exactly once,
+    // on the exact boundary day, for the authored term — and a submission
+    // after the close is refused as any stale order is.
+    let mut slighted = scenario_host(383, Arc::clone(&content));
+    let close = start_date(&mut slighted).add_days(VISIT_CLOSES);
+    slighted.advance_days(VISIT_CLOSES as u32 - 1);
+    let situation = visit_card(&mut slighted).expect("live visit").active.key;
+    slighted.advance_days(1);
+    let notices = visit_resolutions(&mut slighted);
+    assert_eq!(notices.len(), 1);
+    assert_eq!(notices[0].outcome, key("slighted"));
+    assert_eq!(notices[0].resolved, close, "the boundary day is exact");
+    let edrun = {
+        let harrow = org(&mut slighted, "harrow");
+        aeon_sim::access::org_head(slighted.world_mut(), harrow).expect("harrow head")
+    };
+    assert!(matches!(
+        slighted.submit(PlayerCommand::StartSituationAssignment {
+            situation,
+            action: key("host-proper"),
+            leader: edrun,
+            target: AssignmentTarget::None,
+            war: None,
+        }),
+        Err(CommandRejection::Situation(_))
+    ));
+    let casimir = character(&mut slighted, "casimir-veyrin");
+    let entry = opinion_modifier(&mut slighted, casimir, "casimir-visit-slighted")
+        .expect("the slight is a durable opinion modifier");
+    assert_eq!(entry.target, edrun);
+    assert_eq!(entry.amount, -20);
+    assert_eq!(entry.expires, Some(close.add_days(1440)));
+
+    // Nothing reopens after the window: no card, no second resolution.
+    slighted.advance_days(15);
+    assert!(visit_card(&mut slighted).is_none());
+    assert_eq!(visit_resolutions(&mut slighted).len(), 1);
+}
+
+#[test]
+fn visit_lifecycles_snapshot_and_replay_across_their_resolutions() {
+    let content = repository_content();
+    let final_offset = 230i64;
+
+    // Path one: hosted. Checkpoints once the hosting order is in the
+    // snapshotted state — pending on the acceptance eve, mid-visit with
+    // the assignment in flight, and after its completion. (A checkpoint
+    // taken before a command was submitted describes a campaign where it
+    // never happens, which is a different campaign.)
+    let mut hosted = scenario_host(380, Arc::clone(&content));
+    hosted.advance_days(140);
+    let situation = visit_card(&mut hosted).expect("live visit").active.key;
+    let host_leader = free_household_host(&mut hosted, 0);
+    hosted
+        .submit(PlayerCommand::StartSituationAssignment {
+            situation,
+            action: key("host-lavish"),
+            leader: host_leader,
+            target: AssignmentTarget::None,
+            war: None,
+        })
+        .expect("hosting is an ordinary valid command");
+    let pending = hosted.snapshot();
+    assert!(
+        !pending.state.pending_commands.is_empty(),
+        "the hosting order is snapshotted authoritative state"
+    );
+    let mut hosted_checkpoints = vec![pending];
+    hosted.advance_days(10);
+    assert_eq!(
+        visit_resolutions(&mut hosted)
+            .first()
+            .map(|notice| notice.outcome.clone()),
+        Some(key("hosted"))
+    );
+    hosted_checkpoints.push(hosted.snapshot());
+    hosted.advance_days(55);
+    hosted_checkpoints.push(hosted.snapshot());
+
+    // Path two: slighted, checkpointed before the window, before the
+    // boundary, exactly on it, and after it.
+    let mut slighted = scenario_host(381, Arc::clone(&content));
+    slighted.advance_days(130);
+    let mut slighted_checkpoints = vec![slighted.snapshot()];
+    slighted.advance_days(VISIT_CLOSES as u32 - 131);
+    slighted_checkpoints.push(slighted.snapshot());
+    slighted.advance_days(1);
+    assert_eq!(
+        visit_resolutions(&mut slighted)
+            .first()
+            .map(|notice| notice.outcome.clone()),
+        Some(key("slighted"))
+    );
+    slighted_checkpoints.push(slighted.snapshot());
+    slighted.advance_days(3);
+    slighted_checkpoints.push(slighted.snapshot());
+
+    for (index, (mut host, checkpoints)) in [
+        (hosted, hosted_checkpoints),
+        (slighted, slighted_checkpoints),
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let final_day = start_date(&mut host).add_days(final_offset);
+        let remaining = host.date().days_until(final_day);
+        host.advance_days(remaining as u32);
+        let final_hash = host.state_hash();
+        for snapshot in checkpoints {
+            let expected_mid = snapshot.state_hash;
+            let mut replayed =
+                SimHost::restore_with_content(snapshot, Arc::clone(&content)).unwrap();
+            assert_eq!(replayed.state_hash(), expected_mid, "restore is exact");
+            let remaining = replayed.date().days_until(final_day);
+            replayed.advance_days(remaining as u32);
+            assert_eq!(
+                replayed.state_hash(),
+                final_hash,
+                "every checkpoint replays to the same final state (path {index})"
+            );
+        }
+    }
+}

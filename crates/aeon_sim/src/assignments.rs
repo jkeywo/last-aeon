@@ -450,6 +450,15 @@ impl AssignmentRoles {
     fn resolve_toward(&self, role: EffectRole) -> Option<CharacterId> {
         self.resolve_from(role).first().copied()
     }
+
+    /// The single character standing behind a role, when one does.
+    ///
+    /// The seam an authored opinion modifier reads its two roles through,
+    /// so "liege-head" in a modifier is exactly who an effect addressed
+    /// by "liege-head" would reach.
+    pub fn character_for(&self, role: EffectRole) -> Option<CharacterId> {
+        self.resolve_toward(role)
+    }
 }
 
 /// Why a assignment could not be started or answered.
@@ -2064,7 +2073,8 @@ pub fn resolve_due_assignments(world: &mut World) {
         }
 
         // Outcome, drawn by the same sampler the forecast describes.
-        let effectiveness = crate::forecast::effectiveness(world, assignment.leader, &def);
+        let effectiveness =
+            crate::forecast::effectiveness(world, assignment.owner, assignment.leader, &def);
         // The purpose label is a stream identity, not a name. It is
         // hashed into the seed, so changing it re-rolls every outcome in
         // every campaign ever played. It stays spelled the way it was

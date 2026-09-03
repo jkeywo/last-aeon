@@ -14,7 +14,7 @@ define_scenario(#{
     player_house: "harrow",
     situations: [
         "formal-war", "court-awaits", "kessarin-order", "aleyn-levies",
-        "torvald-standing",
+        "torvald-standing", "casimir-visit",
     ],
 });
 

@@ -22,10 +22,10 @@ use crate::model::{
     BodyDef, BodyKind, BuildingDef, CharacterDef, DirectiveDef, DirectiveTarget, EventChoiceDef,
     EventDef, EventFamily, EventRequires, Gender, GoalDef, GoalRequires, GoodDef, GoverningSkill,
     HolderRelation, HouseTier, MilitaryOp, NamePoolDef, ObligationDef, ObligationKind, OfficeDef,
-    OrgDef, OrgKind, OutcomeDef, OutcomeKind, PlanArmySelector, PlanDef, PlanMethodDef,
-    PlanRequires, PlanStepAction, PlanStepDef, PlanTargetSelector, PopupChoiceDef, ProvinceDef,
-    RiskTag, RouteDef, RouteKind, ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SituationActionDef,
-    SituationDef, SituationOutcomeDef, SituationResponseDef, SituationStageDef,
+    OpinionModifierDef, OrgDef, OrgKind, OutcomeDef, OutcomeKind, PlanArmySelector, PlanDef,
+    PlanMethodDef, PlanRequires, PlanStepAction, PlanStepDef, PlanTargetSelector, PopupChoiceDef,
+    ProvinceDef, RiskTag, RouteDef, RouteKind, ScenarioDef, ScriptFnRef, ShipClass, ShipDef,
+    SituationActionDef, SituationDef, SituationOutcomeDef, SituationResponseDef, SituationStageDef,
     SituationSubjectKind, SituationVisibilityDef, SkillsDef, StageDef, TitleDef, TitleHolderDef,
     TitleKindDef, TitleNeed, TraitDef, Urgency,
 };
@@ -682,6 +682,9 @@ fn define_assignment(state: &mut BuilderState, map: Map) {
         return;
     };
 
+    let Some(opinion_modifier) = assignment_opinion_modifier(&mut f) else {
+        return;
+    };
     let requires = assignment_requires(&mut f);
     let stages = assignment_stages(&mut f, duration_days as u32);
     let Some(urgency) = f.opt_enum(
@@ -733,12 +736,103 @@ fn define_assignment(state: &mut BuilderState, map: Map) {
             manpower_cost,
             supplies_cost,
             influence_cost,
+            opinion_modifier,
             requires,
             urgency,
             stages,
             results,
         },
     );
+}
+
+/// Reads an assignment's optional live-opinion effectiveness modifier.
+///
+/// `None` aborts the definition: a modifier that names an unresolvable
+/// role or a nonsensical range must fail loudly at load, never quietly
+/// read nobody's opinion of nobody at play. `Some(None)` is the ordinary
+/// case of an assignment that authors no modifier.
+fn assignment_opinion_modifier(f: &mut Fields) -> Option<Option<OpinionModifierDef>> {
+    let Some(raw) = f.take_raw("opinion_modifier") else {
+        return Some(None);
+    };
+    let Some(map) = raw.try_cast::<Map>() else {
+        f.error("opinion_modifier must be a map");
+        return None;
+    };
+    warn_unknown_fields(
+        f.state,
+        &map,
+        Some(f.key.as_str()),
+        &["from", "toward", "per_point", "min", "max"],
+    );
+
+    // Roles reuse the closed effect vocabulary, restricted to those the
+    // simulation can resolve from the owner and leader alone: the shift is
+    // read by the shared effectiveness calculation, which runs before any
+    // target exists.
+    let mut role = |map: &Map, field: &str| -> Option<crate::effect::EffectRole> {
+        use crate::effect::EffectRole;
+        let Some(text) = map.get(field).and_then(|v| v.clone().into_string().ok()) else {
+            f.error(format!("opinion_modifier needs a '{field}' role"));
+            return None;
+        };
+        match EffectRole::parse(&text) {
+            Some(
+                parsed @ (EffectRole::Leader
+                | EffectRole::OwnerHead
+                | EffectRole::LiegeHead
+                | EffectRole::Consul),
+            ) => Some(parsed),
+            Some(_) => {
+                f.error(format!(
+                    "opinion_modifier {field} '{text}' cannot be resolved before a target is \
+                     chosen (expected leader, owner-head, liege-head, consul)"
+                ));
+                None
+            }
+            None => {
+                f.error(format!(
+                    "unknown opinion_modifier {field} '{text}' (expected leader, owner-head, \
+                     liege-head, consul)"
+                ));
+                None
+            }
+        }
+    };
+    let from = role(&map, "from")?;
+    let toward = role(&map, "toward")?;
+
+    let mut int = |map: &Map, field: &str| -> Option<i64> {
+        match map.get(field).and_then(|v| v.as_int().ok()) {
+            Some(value) => Some(value),
+            None => {
+                f.error(format!("opinion_modifier needs an integer '{field}'"));
+                None
+            }
+        }
+    };
+    let per_point = int(&map, "per_point")?;
+    let min = int(&map, "min")?;
+    let max = int(&map, "max")?;
+    if !(1..=1000).contains(&per_point) {
+        f.error("opinion_modifier per_point must be 1..=1000 (hundredths per opinion point)");
+        return None;
+    }
+    if !(-40..=0).contains(&min) {
+        f.error("opinion_modifier min must be -40..=0");
+        return None;
+    }
+    if !(0..=40).contains(&max) {
+        f.error("opinion_modifier max must be 0..=40");
+        return None;
+    }
+    Some(Some(OpinionModifierDef {
+        from,
+        toward,
+        per_point: per_point as i32,
+        min: min as i32,
+        max: max as i32,
+    }))
 }
 
 /// Reads an assignment's phases.

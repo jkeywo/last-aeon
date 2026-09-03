@@ -166,6 +166,30 @@ accepted lifecycle and durable history, and a changed liege, dead or
 deposed liege head, or replaced requester passes Torvald's concern on
 without penalty, judged afresh from live state.
 
+**Implemented/current.** [ai] The First Year arc's first slice makes that
+preparation matter in person: **The Liege's Visit** (stories 31–34,
+50–51). In a deterministic window — roughly days 140 to 180 of the reign
+— the liege's head announces a visit, provided the house stands and
+holds ground, his living person exists, and the authored route graph
+actually connects his location to a held province. Hosting is an active
+political decision: three ordinary hospitality assignments — restrained,
+proper, and lavish — with authored rising cost, falling difficulty, and
+rising duration, each led by any eligible host the player chooses
+through the ordinary composition popup and candidate picker. Every
+tier's authoritative forecast reads Casimir's *current* opinion of
+Edrun into its odds through an authored per-tier modifier, so Torvald's
+concern and any later diplomacy move the live numbers; greater expense
+or a better diplomat mitigates a poor relationship without determining
+the result. Hospitality accepted while the window is open (the closing
+day included) resolves the visit hosted and the reception's own graded
+results carry lasting opinion consequences; a window left unanswered
+while the liege could still come is a stated, once-only slight; and a
+liege who dies, is deposed, is replaced, or cannot travel cancels or
+adapts the visit with no penalty and no protected plot logic — the
+successor's own visit binds him while the window allows. Costs are paid
+on acceptance and never refunded, and every lifecycle, forecast, and
+resolution is deterministic and durable across save, load, and replay.
+
 **Proposal.** Onboarding should use a short, dismissible sequence of goals over
 the live campaign rather than a separate rules sandbox. It should teach the
 normal interface and issue ordinary logged commands, without changing odds,

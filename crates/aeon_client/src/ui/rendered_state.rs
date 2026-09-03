@@ -1279,6 +1279,210 @@ mod tests {
 
     #[cfg_attr(not(target_arch = "wasm32"), test)]
     #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    fn a_leaderless_visit_action_is_enabled_and_the_host_choice_changes_the_odds() {
+        let viewport = egui::vec2(1920.0, 1080.0);
+        let mut fixture = ProductionFixture::new();
+        let harrow = {
+            let world = fixture.host.world_mut();
+            let harrow = world.resource::<PoliticsIndex>().org_keys
+                [&aeon_data::ContentKey::new("harrow").unwrap()];
+            world.resource_mut::<PlayerHouse>().0 = Some(harrow);
+            harrow
+        };
+        // The liege's visit opens in its authored deterministic window.
+        fixture.host.advance_days(140);
+        fixture
+            .host
+            .world_mut()
+            .resource_mut::<aeon_sim::PendingPopups>()
+            .popups
+            .clear();
+        refresh_situation_panel_view(fixture.host.world_mut());
+        let head = aeon_sim::access::org_head(fixture.host.world_mut(), harrow)
+            .expect("the house has a head");
+
+        // The panel view: three tier actions, none pinning a leader, all
+        // enabled, each previewing the authoritative forecast for the
+        // deterministic default host — the house head — with genuinely
+        // distinct odds per tier.
+        let (visit_key, tier_chances) = {
+            let view = fixture.host.world_mut().resource::<SituationPanelView>();
+            let visit = view
+                .active
+                .iter()
+                .find(|card| card.card.active.key.definition.as_str() == "casimir-visit")
+                .expect("the visit projects for the player");
+            let mut chances = std::collections::BTreeMap::new();
+            for action in &visit.actions {
+                assert_eq!(action.action.leader, None, "the host is a free choice");
+                assert_eq!(
+                    action.unavailable, None,
+                    "a leaderless action is enabled, not blocked"
+                );
+                let forecast = action
+                    .forecast
+                    .as_ref()
+                    .expect("the card previews the default host's forecast");
+                assert_eq!(forecast.leader, head, "the preview host is the head");
+                assert!(
+                    forecast.opinion_value.is_some(),
+                    "the preview reads the live relationship"
+                );
+                chances.insert(
+                    action.action.id.as_str().to_owned(),
+                    forecast.success_chance(),
+                );
+            }
+            (visit.card.active.key.clone(), chances)
+        };
+        assert_eq!(tier_chances.len(), 3);
+        assert!(
+            tier_chances["host-lavish"] > tier_chances["host-restrained"],
+            "the tiers quote genuinely different odds: {tier_chances:?}"
+        );
+
+        // Rendered, the three tier controls are real enabled focusables.
+        fixture.render_full_shell(viewport, Vec::new());
+        let ctx = fixture.full_egui_context();
+        let visit_actions: Vec<_> = crate::ui::keyboard::audited_responses(&ctx)
+            .into_iter()
+            .filter(|entry| {
+                entry.logical.0.starts_with("situation-action:")
+                    && entry.logical.0.contains("casimir-visit")
+            })
+            .collect();
+        assert_eq!(visit_actions.len(), 3, "three tier controls render");
+        assert!(
+            visit_actions.iter().all(|entry| entry.enabled),
+            "every leaderless tier control is enabled"
+        );
+
+        // Keyboard activation opens the ordinary composition popup with
+        // the default host prefilled and the free picker available.
+        let lavish = visit_actions
+            .iter()
+            .find(|entry| entry.logical.0.ends_with(":host-lavish"))
+            .expect("the lavish tier control");
+        crate::ui::keyboard::request_logical(&ctx, lavish.logical.clone());
+        fixture.render_full_shell(viewport, Vec::new());
+        fixture.render_full_shell(viewport, key_event(egui::Key::Enter, false));
+        fixture.render_full_shell(viewport, Vec::new());
+        assert!(
+            fixture.host.world_mut().resource::<AssignmentPopup>().open,
+            "the leaderless action opens the assignment popup"
+        );
+        {
+            let form = fixture.host.world_mut().resource::<AssignmentForm>();
+            assert_eq!(
+                form.assignment.as_ref().map(|key| key.as_str()),
+                Some("host-visit-lavish")
+            );
+            assert_eq!(form.leader, Some(head), "the default host is prefilled");
+        }
+
+        // The popup's candidate list is the sim's own per-host forecast
+        // comparison; choosing a different host changes the reported
+        // chance to exactly that candidate's authoritative number.
+        let before = {
+            let cache = fixture.host.world_mut().resource::<ForecastCache>();
+            cache
+                .forecast
+                .as_ref()
+                .expect("the prefilled host has a forecast")
+                .success_chance()
+        };
+        let (other, other_chance) = {
+            let cache = fixture.host.world_mut().resource::<ForecastCache>();
+            cache
+                .leaders
+                .iter()
+                .find(|option| {
+                    option.id != head && option.blocked().is_none() && option.success() != before
+                })
+                .map(|option| (option.id, option.success()))
+                .expect("another free host with different odds exists")
+        };
+        fixture
+            .host
+            .world_mut()
+            .resource_mut::<AssignmentForm>()
+            .leader = Some(other);
+        fixture.render_full_shell(viewport, Vec::new());
+        let after = {
+            let cache = fixture.host.world_mut().resource::<ForecastCache>();
+            cache
+                .forecast
+                .as_ref()
+                .expect("the chosen host has a forecast")
+                .success_chance()
+        };
+        assert_eq!(after, other_chance, "the reported chance is the host's own");
+        assert_ne!(after, before, "the host choice changed the odds");
+
+        // Confirm queues the ordinary Situation command for the chosen
+        // host, and the command round-trips into a running assignment and
+        // a durable hosted resolution. The completed keyboard route ends
+        // first, so its focus tooltip is not a top-layer hit target over
+        // the popup.
+        crate::ui::keyboard::clear_focus(&fixture.full_egui_context());
+        fixture.render_full_shell(viewport, vec![egui::Event::PointerGone]);
+        let confirm =
+            recorded_confirm(&fixture.full_egui_context()).expect("the popup renders Confirm");
+        fixture.render_full_shell(viewport, press_at(confirm.center()));
+        let pressed = recorded_confirm(&fixture.full_egui_context())
+            .expect("Confirm remains under the pointer");
+        fixture.render_full_shell(viewport, release_at(pressed.center()));
+        let queued = fixture
+            .host
+            .world_mut()
+            .resource::<UiCommandQueue>()
+            .0
+            .last()
+            .cloned()
+            .expect("Confirm queued a command");
+        match &queued {
+            PlayerCommand::StartSituationAssignment {
+                situation,
+                action,
+                leader,
+                war,
+                ..
+            } => {
+                assert_eq!(situation, &visit_key);
+                assert_eq!(action.as_str(), "host-lavish");
+                assert_eq!(*leader, other, "the chosen host leads");
+                assert_eq!(*war, None);
+            }
+            other => panic!("unexpected UI command: {other:?}"),
+        }
+        flush_ui_commands(fixture.host.world_mut());
+        fixture.host.advance_days(3);
+        let running = {
+            let world = fixture.host.world_mut();
+            world
+                .resource::<aeon_sim::AssignmentsIndex>()
+                .assignments
+                .values()
+                .filter_map(|entity| world.get::<aeon_sim::ActiveAssignment>(*entity))
+                .find(|work| work.def.as_str() == "host-visit-lavish")
+                .cloned()
+                .expect("the hosting assignment runs")
+        };
+        assert_eq!(running.leader, other);
+        assert!(
+            fixture
+                .host
+                .world_mut()
+                .resource::<aeon_sim::situations::SituationState>()
+                .resolutions
+                .iter()
+                .any(|notice| notice.situation == visit_key && notice.outcome.as_str() == "hosted"),
+            "acceptance resolved the visit hosted"
+        );
+    }
+
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
     fn duplicate_explanation_titles_keep_distinct_invokers() {
         let viewport = egui::vec2(960.0, 720.0);
         let mut fixture = ProductionFixture::new();

@@ -27,6 +27,8 @@ define_province(#{ id: "alpha", body: "world",
                    latitude_mdeg: 0, longitude_mdeg: 0 });
 define_province(#{ id: "beta", body: "world",
                    latitude_mdeg: 10000, longitude_mdeg: 10000 });
+define_province(#{ id: "gamma", body: "world",
+                   latitude_mdeg: -10000, longitude_mdeg: 0 });
 
 define_house(#{
     id: "ash", tier: "great",
@@ -35,6 +37,11 @@ define_house(#{
 define_house(#{
     id: "birch", tier: "great",
     head: "bela-birch", color: [60, 60, 200], provinces: ["beta"],
+});
+// A vassal sworn to Ash, so a liege-head role resolves to somebody.
+define_house(#{
+    id: "cedar", tier: "vassal", liege: "ash",
+    head: "dara-cedar", color: [90, 140, 90], provinces: ["gamma"],
 });
 
 define_character(#{
@@ -51,6 +58,11 @@ define_character(#{
     id: "bela-birch", gender: "female",
     birth_year: 372, organisation: "birch",
     skills: #{ command: 6, diplomacy: 9, intrigue: 8, stewardship: 5 },
+});
+define_character(#{
+    id: "dara-cedar", gender: "female",
+    birth_year: 375, organisation: "cedar",
+    skills: #{ command: 5, diplomacy: 10, intrigue: 5, stewardship: 6 },
 });
 
 // Always succeeds for a competent leader; carries a courting effect.
@@ -203,6 +215,26 @@ define_assignment(#{
     ai_available: false,
     results: #{ success: #{ weight: 1 }, failure: #{ weight: 1 } },
 });
+
+// Reads the liege head's live regard for the owner's head into its own
+// odds: one point of effectiveness per point of opinion, clamped at six.
+// Difficulty matches Dara's diplomacy, so at neutral regard the authored
+// weights apply unshifted: 100 / 300 / 400 / 200 permille.
+define_assignment(#{
+    id: "host-the-liege",
+    category: "consequential", duration_days: 5,
+    skill: "diplomacy", difficulty: 10, ai_available: false,
+    opinion_modifier: #{
+        from: "liege-head", toward: "owner-head",
+        per_point: 100, min: -6, max: 6,
+    },
+    results: #{
+        critical_success: #{ weight: 100, log: true, },
+        success: #{ weight: 300, log: true, },
+        failure: #{ weight: 400, log: true, },
+        disaster: #{ weight: 200, log: true, },
+    },
+});
 "#;
 
 /// The prose behind the fixture's IDs.
@@ -284,6 +316,27 @@ fn strings() -> aeon_data::StringTable {
         (
             "assignment.ai-errand.success.log-text",
             "the errand was run",
+        ),
+        ("character.dara-cedar.name", "Dara Cedar"),
+        ("organisation.cedar.name", "House Cedar"),
+        ("province.gamma.name", "Gamma"),
+        ("assignment.host-the-liege.title", "Host the Liege"),
+        ("assignment.host-the-liege.summary", "Receive the liege."),
+        (
+            "assignment.host-the-liege.critical-success.log-text",
+            "LIEGE-CRIT",
+        ),
+        (
+            "assignment.host-the-liege.success.log-text",
+            "LIEGE-SUCCESS",
+        ),
+        (
+            "assignment.host-the-liege.failure.log-text",
+            "LIEGE-FAILURE",
+        ),
+        (
+            "assignment.host-the-liege.disaster.log-text",
+            "LIEGE-DISASTER",
         ),
     ]);
     table
@@ -691,6 +744,186 @@ fn a_forecast_reports_the_odds_that_actually_resolve() {
             "{kind:?}: forecast {forecast_chance}permille but observed {seen}permille",
         );
     }
+}
+
+/// One absolute test modifier on the Ash head's ledger toward the Cedar
+/// head — exactly the pair the fixture's authored opinion modifier reads.
+/// One stable reason means repeated calls replace rather than stack.
+fn set_liege_regard(h: &mut SimHost, amount: i32) {
+    let aron = char_id(h, "aron-ash");
+    let dara = char_id(h, "dara-cedar");
+    let world = h.world_mut();
+    let entity = world.resource::<PoliticsIndex>().characters[&aron];
+    world
+        .get_mut::<aeon_sim::politics::OpinionLedger>(entity)
+        .expect("characters carry opinion ledgers")
+        .set(aeon_sim::politics::OpinionEntry {
+            target: dara,
+            amount,
+            reason: "test-regard".to_owned(),
+            expires: None,
+        });
+}
+
+#[test]
+fn an_authored_opinion_modifier_is_read_into_the_one_effectiveness_number() {
+    let mut h = host(7);
+    let cedar = org_id(&mut h, "cedar");
+    let dara = char_id(&mut h, "dara-cedar");
+    let hosting = key("host-the-liege");
+    let view = |h: &mut SimHost| {
+        aeon_sim::forecast::forecast(h.world_mut(), cedar, &hosting, dara, AssignmentTarget::None)
+            .expect("assignment is defined")
+    };
+
+    // Neutral regard: the modifier reads zero and the authored weights
+    // stand unshifted — a relationship the content declares neutral
+    // changes nothing.
+    let neutral = view(&mut h);
+    assert_eq!(neutral.opinion_value, Some(0));
+    assert_eq!(neutral.opinion_shift, 0);
+    assert_eq!(neutral.effectiveness, 0);
+    assert_eq!(neutral.success_chance(), 400);
+
+    // The forecast is authoritative about what it read: the live value,
+    // the clamped shift, and the one effectiveness number they feed —
+    // which is the same number resolution's own calculation returns.
+    set_liege_regard(&mut h, -20);
+    let cold = view(&mut h);
+    assert_eq!(cold.opinion_value, Some(-20));
+    assert_eq!(cold.opinion_shift, -6, "the authored clamp holds");
+    assert_eq!(cold.effectiveness, -6);
+    set_liege_regard(&mut h, 4);
+    let warm = view(&mut h);
+    assert_eq!(warm.opinion_value, Some(4));
+    assert_eq!(warm.opinion_shift, 4);
+    assert_eq!(warm.effectiveness, 4);
+    assert!(cold.success_chance() < neutral.success_chance());
+    assert!(neutral.success_chance() < warm.success_chance());
+    {
+        let world = h.world_mut();
+        let content = world.resource::<aeon_sim::state::ContentDb>().0.clone();
+        let def = &content.assignments[&hosting];
+        assert_eq!(
+            aeon_sim::forecast::effectiveness(world, cedar, dara, def),
+            warm.effectiveness,
+            "forecast and resolution share the one calculation"
+        );
+    }
+
+    // An assignment that authors no modifier reads no relationship at
+    // all, whatever the ledgers say.
+    let plain = aeon_sim::forecast::forecast(
+        h.world_mut(),
+        cedar,
+        &key("even-gamble"),
+        dara,
+        AssignmentTarget::None,
+    )
+    .expect("assignment is defined");
+    assert_eq!(plain.opinion_value, None);
+    assert_eq!(plain.opinion_shift, 0);
+}
+
+/// Runs `host-the-liege` once per seed at one authored regard and tallies
+/// which outcome actually occurred, read from the distinct log lines.
+fn sample_hosting_outcomes(trials: u64, regard: i32) -> [u32; 4] {
+    let shared = content();
+    let mut tally = [0u32; 4];
+    for seed in 0..trials {
+        let mut h = SimHost::new_with_content(
+            CampaignConfig {
+                name: "Hosting Trial".to_owned(),
+                seed,
+                start_date: CalendarDate {
+                    year: 411,
+                    month: 1,
+                    day: 1,
+                }
+                .to_date()
+                .unwrap(),
+            },
+            Arc::clone(&shared),
+        );
+        set_liege_regard(&mut h, regard);
+        let cedar = org_id(&mut h, "cedar");
+        let dara = char_id(&mut h, "dara-cedar");
+        aeon_sim::assignments::validate_start(
+            h.world_mut(),
+            cedar,
+            &key("host-the-liege"),
+            dara,
+            AssignmentTarget::None,
+        )
+        .expect("the vassal may host");
+        aeon_sim::assignments::start_assignment(
+            h.world_mut(),
+            cedar,
+            &key("host-the-liege"),
+            dara,
+            AssignmentTarget::None,
+        );
+        h.advance_days(7);
+        let log = h.world_mut().resource::<MessageLog>().clone();
+        let seen = |needle: &str| log.entries.iter().any(|e| e.text.contains(needle));
+        if seen("LIEGE-CRIT") {
+            tally[0] += 1;
+        } else if seen("LIEGE-SUCCESS") {
+            tally[1] += 1;
+        } else if seen("LIEGE-FAILURE") {
+            tally[2] += 1;
+        } else if seen("LIEGE-DISASTER") {
+            tally[3] += 1;
+        } else {
+            panic!("seed {seed} produced no recognisable outcome");
+        }
+    }
+    tally
+}
+
+#[test]
+fn opinion_shifted_forecasts_report_the_odds_that_actually_resolve() {
+    // Three relationships, three genuinely different distributions — and
+    // at each one, the sampler lands on the odds the player was shown.
+    // This is the visit's guarantee in miniature: current opinion moves
+    // the forecast, and the forecast is still the roll.
+    let mut h = host(8);
+    let cedar = org_id(&mut h, "cedar");
+    let dara = char_id(&mut h, "dara-cedar");
+    const TRIALS: u64 = 700;
+    let mut favourable = Vec::new();
+    for regard in [-20, 0, 4] {
+        set_liege_regard(&mut h, regard);
+        let forecast = aeon_sim::forecast::forecast(
+            h.world_mut(),
+            cedar,
+            &key("host-the-liege"),
+            dara,
+            AssignmentTarget::None,
+        )
+        .expect("assignment is defined");
+        favourable.push(forecast.success_chance());
+        let tally = sample_hosting_outcomes(TRIALS, regard);
+        for (index, kind) in OutcomeKind::ALL.iter().enumerate() {
+            let promised = forecast
+                .results
+                .iter()
+                .find(|result| result.kind == *kind)
+                .map(|result| result.chance)
+                .expect("kind present");
+            let observed = (u64::from(tally[index]) * 1000 / TRIALS) as u32;
+            let drift = promised.abs_diff(observed);
+            assert!(
+                drift <= 70,
+                "at regard {regard}, {kind:?} was forecast {promised}permille \
+                 but sampled {observed}permille"
+            );
+        }
+    }
+    assert!(
+        favourable[0] < favourable[1] && favourable[1] < favourable[2],
+        "three relationships yield three ordered distributions: {favourable:?}"
+    );
 }
 
 #[test]

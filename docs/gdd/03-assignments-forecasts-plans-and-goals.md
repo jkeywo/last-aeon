@@ -117,6 +117,8 @@ first, and retains the whole forecast for each option.
 - order delay and assignment duration;
 - immediate wealth, manpower, supplies, and influence costs;
 - governing skill, leader skill value, authored difficulty, and effectiveness;
+- [ai] the live opinion an authored relationship modifier read, and the
+  clamped effectiveness shift it produced, when the assignment authors one;
 - every authored outcome and its exact permille chance;
 - personal risks on failure and disaster;
 - any separate conditional military contest;
@@ -128,6 +130,19 @@ It shifts favourable and unfavourable authored outcome weights in opposite
 directions, with a floor that prevents a non-zero outcome from disappearing.
 Largest-remainder apportionment turns the weights into integer permille odds
 that total exactly 1,000.
+
+[ai] An assignment may additionally author an `opinion_modifier` block —
+`from`, `toward`, `per_point`, `min`, `max` — whose two roles reuse the
+closed effect vocabulary, restricted at load to the roles resolvable from
+the owner and leader alone (leader, owner-head, liege-head, consul). The
+live opinion between the resolved pair, times `per_point` hundredths of an
+effectiveness point, truncated toward zero and clamped to the authored
+bounds, is added inside the shared effectiveness calculation — so a
+relationship shades the contest without ever replacing skill, and the same
+number moves the forecast and the roll. The mechanism is simulation code;
+every magnitude and both roles are authored data. The forecast reports the
+opinion it read and the shift it produced, and resolution reads the live
+relationship on its own day exactly as it reads the leader's live skill.
 
 Forecast and resolution share duration, weighting, sampling, and risk
 calculations. A military operation is disclosed as a second conditional field
@@ -304,7 +319,7 @@ intent are detailed in [AI Agency and Information Rules](06-ai-agency-and-inform
 
 | Layer | Principal data | Deterministic identity and ordering |
 | --- | --- | --- |
-| Assignment definition | Target kind, requirements, skill, difficulty, duration, phases, costs, urgency, AI intent, results, risks, military operation | Stable content key; authored phase and outcome order |
+| Assignment definition | Target kind, requirements, skill, difficulty, duration, phases, costs, urgency, AI intent, results, risks, military operation, [ai] optional live-opinion modifier (roles, per-point scale, clamp) | Stable content key; authored phase and outcome order |
 | Active assignment | Stable ID, definition, owner, leader, target, war, Situation origin, start/completion dates, cancellation request | Stable assignment ID; daily resolution in ID order |
 | Command | Typed player decision, execution day, monotonic sequence | Applied in `(day, sequence)` order and appended to the command log |
 | Forecast | Derived timing, costs, contest, odds, risks, block reason, point of no return | Pure integer calculations shared with resolution |

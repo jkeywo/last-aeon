@@ -364,6 +364,7 @@ fn snapshot_20_replays_connected_situations_and_formal_wars() {
         content.situations.keys().cloned().collect::<BTreeSet<_>>(),
         [
             key("aleyn-levies"),
+            key("casimir-visit"),
             key("consular-vacancy"),
             key("court-awaits"),
             key("favour-debt"),
@@ -374,7 +375,7 @@ fn snapshot_20_replays_connected_situations_and_formal_wars() {
         ]
         .into_iter()
         .collect(),
-        "acceptance runs the complete eight-definition authored deck"
+        "acceptance runs the complete nine-definition authored deck"
     );
 
     let mut original = scenario_host(Arc::clone(&content), 18_1818);

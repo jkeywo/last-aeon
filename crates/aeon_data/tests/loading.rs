@@ -781,6 +781,203 @@ fn the_court_awaits_carries_announcement_guidance_and_outcome_effects() {
 }
 
 #[test]
+fn the_visit_carries_windowed_hosting_with_authored_opinion_modifiers() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/content");
+    let sources = aeon_data::fs::read_content_dir(&root).expect("assets/content readable");
+    let (strings, report) = aeon_data::fs::read_string_table(&root).expect("strings readable");
+    assert!(
+        !report.has_errors(),
+        "string findings: {:?}",
+        report.findings
+    );
+    let (set, report) = load_content(&sources, &strings.expect("valid string table"));
+    assert!(
+        !report.has_errors(),
+        "content findings: {:?}",
+        report.findings
+    );
+    let set = set.expect("repository content loads");
+
+    // The Situation: bound to the house and the exact liege head, whose
+    // person the subject binding lets the slighted outcome address.
+    let visit = &set.situations[&aeon_data::ContentKey::new("casimir-visit").unwrap()];
+    assert_eq!(visit.owner_binding.as_deref(), Some("house"));
+    assert_eq!(visit.subject_binding.as_deref(), Some("liege-head"));
+    let bindings: Vec<(&str, aeon_data::model::SituationSubjectKind)> = visit
+        .bindings
+        .iter()
+        .map(|(name, kind)| (name.as_str(), *kind))
+        .collect();
+    assert_eq!(
+        bindings,
+        [
+            (
+                "house",
+                aeon_data::model::SituationSubjectKind::Organisation
+            ),
+            (
+                "liege-head",
+                aeon_data::model::SituationSubjectKind::Character
+            ),
+        ]
+    );
+    let actions: Vec<&str> = visit
+        .actions
+        .iter()
+        .map(|action| action.key.as_str())
+        .collect();
+    assert_eq!(actions, ["host-restrained", "host-proper", "host-lavish"]);
+    assert!(visit.responses.is_empty(), "hosting has no promise/refuse");
+    assert!(visit.announcement.is_some());
+    assert!(visit.guidance_objective.is_some());
+    assert!(visit.guidance_how.is_some());
+    assert!(visit.guidance_why.is_some());
+
+    // Only the slight carries effects; being hosted, passed on, or closed
+    // resolves through the assignment results or through nothing.
+    let effects: Vec<&str> = visit
+        .outcomes
+        .iter()
+        .filter(|outcome| outcome.effects_fn.is_some())
+        .map(|outcome| outcome.key.as_str())
+        .collect();
+    assert_eq!(effects, ["slighted"]);
+
+    // The three tiers: ordinary hosted assignments with distinct authored
+    // trade-offs, closed to autonomous houses, each reading the liege
+    // head's live regard for the owner's head into its own odds.
+    use aeon_data::EffectRole;
+    let tier = |name: &str| &set.assignments[&aeon_data::ContentKey::new(name).unwrap()];
+    let restrained = tier("host-visit-restrained");
+    let proper = tier("host-visit-proper");
+    let lavish = tier("host-visit-lavish");
+    for (name, def) in [
+        ("restrained", restrained),
+        ("proper", proper),
+        ("lavish", lavish),
+    ] {
+        assert!(!def.ai_available, "{name}: the visit is the player's");
+        let modifier = def
+            .opinion_modifier
+            .as_ref()
+            .unwrap_or_else(|| panic!("{name} authors an opinion modifier"));
+        assert_eq!(modifier.from, EffectRole::LiegeHead);
+        assert_eq!(modifier.toward, EffectRole::OwnerHead);
+        assert!(modifier.per_point > 0);
+        assert!(modifier.min <= 0 && modifier.max >= 0);
+    }
+    assert!(
+        restrained.wealth_cost < proper.wealth_cost && proper.wealth_cost < lavish.wealth_cost,
+        "spending rises with the tier"
+    );
+    assert!(
+        restrained.difficulty > proper.difficulty && proper.difficulty > lavish.difficulty,
+        "spending buys an easier contest"
+    );
+    assert!(
+        restrained.duration_days < proper.duration_days
+            && proper.duration_days < lavish.duration_days,
+        "grander hospitality takes longer"
+    );
+    // The derived key mirror covers the new rows, so the orphan and
+    // missing-row audits keep covering them.
+    let keys = aeon_data::text_keys(&set);
+    for expected in [
+        "situation.casimir-visit.announcement",
+        "situation.casimir-visit.action.host-lavish.label",
+        "situation.casimir-visit.stage.awaiting.warning",
+        "situation.casimir-visit.resolution.slighted.text",
+        "situation.casimir-visit.guidance.objective",
+        "assignment.host-visit-proper.title",
+        "assignment.host-visit-lavish.disaster.popup-text",
+    ] {
+        assert!(keys.contains(expected), "missing derived key {expected}");
+    }
+}
+
+#[test]
+fn opinion_modifier_roles_and_ranges_fail_loudly_at_load() {
+    let with_modifier = |modifier: &str| {
+        format!(
+            r#"
+define_assignment(#{{
+    id: "regarded-work",
+    category: "routine", duration_days: 10,
+    skill: "diplomacy", difficulty: 5,
+    opinion_modifier: {modifier},
+    results: #{{ success: #{{ weight: 800 }}, failure: #{{ weight: 200 }} }},
+}});
+"#
+        )
+    };
+    let failing = [
+        (
+            // A mistyped role spells out the resolvable vocabulary.
+            r#"#{ from: "rival-head", toward: "owner-head", per_point: 50, min: -6, max: 6 }"#,
+            "expected leader, owner-head, liege-head, consul",
+        ),
+        (
+            // A real effect role that needs a target is refused here.
+            r#"#{ from: "target-head", toward: "owner-head", per_point: 50, min: -6, max: 6 }"#,
+            "cannot be resolved before a target is chosen",
+        ),
+        (
+            r#"#{ from: "liege-head", toward: "owner-head", per_point: 0, min: -6, max: 6 }"#,
+            "per_point must be 1..=1000",
+        ),
+        (
+            // A positive floor would turn a neutral relationship into a
+            // standing bonus.
+            r#"#{ from: "liege-head", toward: "owner-head", per_point: 50, min: 2, max: 6 }"#,
+            "min must be -40..=0",
+        ),
+        (
+            r#"#{ from: "liege-head", toward: "owner-head", per_point: 50, min: -6, max: -1 }"#,
+            "max must be 0..=40",
+        ),
+        (
+            r#"#{ from: "liege-head", toward: "owner-head", min: -6, max: 6 }"#,
+            "needs an integer 'per_point'",
+        ),
+    ];
+    for (modifier, expected) in failing {
+        let (set, report) = load_content(
+            &[source("bad.rhai", &with_modifier(modifier))],
+            &aeon_data::StringTable::blank(),
+        );
+        assert!(set.is_none(), "{modifier} must fail to load");
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|f| f.severity == Severity::Error && f.message.contains(expected)),
+            "{modifier}: findings {:?}",
+            report.findings
+        );
+    }
+
+    // An unknown field inside the block warns like every authored map.
+    let (set, report) = load_content(
+        &[source(
+            "warned.rhai",
+            &with_modifier(
+                r#"#{ from: "liege-head", toward: "owner-head", per_point: 50, min: -6, max: 6, mood: 3 }"#,
+            ),
+        )],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_some(), "an unknown field warns without failing");
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|f| f.severity == Severity::Warning && f.message.contains("'mood'")),
+        "findings: {:?}",
+        report.findings
+    );
+}
+
+#[test]
 fn missing_mandatory_results_are_errors() {
     let bad = r#"
 define_assignment(#{

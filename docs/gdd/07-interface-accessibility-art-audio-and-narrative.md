@@ -218,6 +218,18 @@ a persistent "Answer given" line, so the recorded choice is readable
 without hover on every supported client; spectators and unavailable cards
 offer no response controls.
 
+**Implemented.** [ai] A projected Situation action that pins no leader
+means the player chooses who leads it. Such an action renders enabled
+(only an authoritative unavailability disables it), its card summary
+previews the forecast for a deterministic default host — the player's
+own head — including the live-opinion line when the assignment authors a
+relationship modifier, and activating it opens the ordinary assignment
+composition popup with that default prefilled and the free candidate
+picker offering every eligible member with a full authoritative forecast
+apiece. The client owns no eligibility rule of its own: the picker,
+Confirm gating, and the started command all read the simulation's
+forecasts and validation, exactly as pinned-leader actions do.
+
 There is no evidenced full first-campaign tutorial sequence,
 codex/manual surface, control-remapping screen, or difficulty-selection flow.
 The wider onboarding questions and the campaign opening belong in [Player

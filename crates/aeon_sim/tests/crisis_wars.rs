@@ -210,7 +210,7 @@ fn a_claimant_war_started_during_press_downgrades_the_successful_draw() {
         let world = host.world_mut();
         let content = world.resource::<aeon_sim::state::ContentDb>().0.clone();
         let def = &content.assignments[&press];
-        let effectiveness = aeon_sim::forecast::effectiveness(world, veyrin_head, def);
+        let effectiveness = aeon_sim::forecast::effectiveness(world, veyrin, veyrin_head, def);
         let mut rng = aeon_sim::access::derived_rng(
             world,
             "job-resolution",

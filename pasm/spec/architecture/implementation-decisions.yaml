@@ -2445,3 +2445,84 @@ entities:
         - situation-effects-may-address-a-bound-subject
         - the-court-awaits-is-an-ordinary-one-shot-demand
         - situation-context-carries-activation-and-start-facts
+
+  - decision: assignment-effectiveness-may-read-an-authored-opinion
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Assignment Effectiveness May Read an Authored Live Opinion
+      summary: >-
+        An assignment definition may author an opinion_modifier block —
+        from, toward, per_point, min, max — whose roles reuse the closed
+        effect vocabulary restricted at load to the ones resolvable from
+        the owner and leader alone (leader, owner-head, liege-head,
+        consul), resolved through the one shared role resolver. The
+        mechanism is Rust and every number is authored data: the live
+        opinion between the two resolved characters, times per_point
+        hundredths of an effectiveness point, truncated toward zero and
+        clamped to the authored bounds (min at most zero, max at least
+        zero, so neutral regard is always neutral), is added inside the
+        shared effectiveness calculation — which now takes the owning
+        organisation — never beside it. The forecast reports the opinion
+        it read and the shift it produced as first-class fields, and the
+        client renders them under the skill contest line. Resolution reads
+        the live relationship on its own day, exactly as it reads the
+        leader's live skill.
+      rationale:
+        - "[ai] Placing the shift inside forecast::effectiveness is what keeps the forecast-equals-resolution invariant structural: both call the one function, so an authored relationship cannot be priced into the odds shown and forgotten by the roll, or vice versa."
+        - "[ai] Restricting the roles to owner-and-leader-resolvable ones at load makes an unresolvable modifier a loud content error instead of a silent read of nobody's opinion; a house that merely lacks a liege at runtime reads as neutral, never as a penalty invented on the spot."
+        - "[ai] Reporting opinion_value and opinion_shift on the forecast keeps the number authoritative AND visible — the interface explains the odds it quotes rather than quoting shifted odds with no stated cause."
+        - "[ai] per_point in hundredths keeps the arithmetic pure integers on the same effectiveness scale as skills, while the authored clamp guarantees a relationship can shade a contest but never zero out skill entirely."
+      references:
+        - forecasts-derive-from-shared-resolution-code
+        - skill-shifted-result-weights
+        - situation-effects-may-address-a-bound-subject
+        - scripted-content-with-ci-validation
+
+  - decision: casimirs-visit-is-a-windowed-hosted-situation
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Casimir's Visit Is a Windowed, Hosted, Live-State Situation
+      summary: >-
+        The First Reign arc's first-year test is a scenario Situation,
+        casimir-visit, active on any settled day in the authored window
+        (start plus 140 to start plus 180) on which the house stands and
+        holds ground, the liege's living head exists, and a breadth-first
+        search over the authored route graph — surface and space legs
+        alike, from the head's concrete province — reaches a held
+        province. The trigger binds the LIVE liege head beside the house,
+        so death, deposition, or a changed liege ends the bound lifecycle
+        with a no-effect passed-on outcome and, while the window and
+        travel allow, the successor's own visit binds him; impossible
+        travel likewise defers, cancels, or re-raises the visit through
+        the same predicates, with no protected plot logic anywhere.
+        Hosting is three ordinary ai_available:false assignments —
+        restrained, proper, lavish — authored with rising wealth cost,
+        falling difficulty, rising duration, per-tier opinion modifiers
+        reading the liege head's current opinion of the owner's head, and
+        graded opinion results; acceptance inside the window (the closing
+        day inclusive, the court's deadline rule) resolves the Situation
+        hosted, and every tier's duration is at least the window's length,
+        which is what makes the visit one-shot without new snapshot state.
+        A window that closes unanswered while the bound head still stands
+        and can come resolves slighted, whose effects_fn applies the
+        authored penalty once through the subject binding. The projected
+        tier actions deliberately pin no leader: a projected action
+        without a leader means the player chooses the host, and the client
+        previews the deterministic default (the player's head), opens the
+        ordinary composition popup with that default prefilled, and lets
+        the free picker compare every eligible host by the same
+        authoritative per-candidate forecasts.
+      rationale:
+        - "[ai] Acceptance-resolves-hosted with tier durations of at least the window length closes the one-shot gap statelessly: an accepted reception is still running whenever the trigger could re-ask, so the visit can never be hosted twice, while a cancelled reception legitimately re-opens the expectation inside the window."
+        - "[ai] Every consequential outcome predicate re-asserts that the bound liege head still stands and can still come, because an ended lifecycle judges its outcomes with old bindings against the live world — without that clause the evaluation that should pass a dead liege's visit on could pay hospitality's dues to him instead."
+        - "[ai] Reachability is asked of the same authored route facts real travel uses, computed in content by BFS rather than hardcoded connectivity, so a liege aboard a ship, a landless house, or a severed graph all mean no visit — and mean it identically in the trigger and the outcome predicates."
+        - "[ai] Binding the live liege head rather than the named character is what makes the arc authored expectation instead of protected destiny: the content follows the simulation through succession and deposition, and the named-man framing lives only in prose."
+        - "[ai] Leaderless projected actions are the smallest client rule that makes host choice real: enabled when the simulation has no objection, previewed with the deterministic default head, and composed through the existing free picker — no new widget, no client-owned eligibility rule."
+      references:
+        - assignment-effectiveness-may-read-an-authored-opinion
+        - household-demands-are-live-state-predicates-on-a-shared-anchor
+        - the-court-awaits-is-an-ordinary-one-shot-demand
+        - situation-activations-may-announce-through-popups
+        - authored-routes-and-physical-personal-transport

@@ -149,6 +149,20 @@ pub fn draw_forecast_body(
     ));
     ui.weak(strings.text("ui.forecast.contest.hover"));
 
+    // A live relationship the assignment authors into its odds. The
+    // numbers arrive in the forecast like everything else; nothing is
+    // derived here.
+    if let Some(opinion) = view.opinion_value {
+        ui.label(strings.format(
+            "ui.forecast.contest.opinion",
+            &[
+                ("opinion", &format!("{opinion:+}")),
+                ("shift", &format!("{:+}", view.opinion_shift)),
+            ],
+        ));
+        ui.weak(strings.text("ui.forecast.contest.opinion.hover"));
+    }
+
     ui.separator();
     ui.label(strings.text("ui.forecast.outcomes"));
     ui.weak(strings.text("ui.forecast.outcomes.hover"));

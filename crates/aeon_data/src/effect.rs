@@ -134,7 +134,12 @@ pub enum ScriptEffect {
 /// role when the effect is applied. Parsing them here means a mistyped
 /// role is a loud parse error instead of an effect that silently
 /// addresses nobody.
-#[derive(Copy, Clone, Debug, PartialEq, Eq)]
+///
+/// Serialises in the authored kebab-case spelling, so a definition field
+/// holding a role (an assignment's opinion modifier) round-trips exactly
+/// as it was written.
+#[derive(Copy, Clone, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
 pub enum EffectRole {
     /// The character leading the assignment.
     Leader,

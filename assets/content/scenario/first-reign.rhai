@@ -845,3 +845,354 @@ fn torvald_broken_effects(ctx) {
         amount: household_broken_opinion(), days: household_broken_days(),
         reason: "torvald-standing-broken" }]
 }
+
+// --- The Liege's Visit -------------------------------------------------------
+//
+// In a deterministic first-year window the liege's head comes to see the
+// house he granted its ground — the visit Torvald warned would test the
+// liege's regard in person. The Situation activates on any settled day in
+// the window on which the house stands, the liege's living head exists,
+// and a route from his location to a held province exists; it adapts to a
+// changed liege or a succession by binding the live head, and it never
+// activates for a liege who cannot come. Hosting is an ordinary hosted
+// assignment at one of three authored hospitality tiers with distinct
+// costs, difficulties, and durations, led by any eligible host the player
+// chooses. Each tier reads the liege head's CURRENT opinion of the house's
+// head into its authoritative forecast through its authored
+// opinion_modifier — earlier diplomacy moves these odds — while spending
+// (an easier tier) or a capable host (a better diplomat) mitigates a poor
+// relationship. Every gameplay number below is authored data.
+
+fn visit_opens() { 140 }
+fn visit_closes() { 180 }
+fn visit_warning_days() { 10 }
+fn visit_slighted_opinion() { -20 }
+fn visit_slighted_days() { 1440 }
+
+fn visit_window_open(world) { world.start_date + visit_opens() }
+fn visit_window_close(world) { world.start_date + visit_closes() }
+
+// Whether a hosting assignment was accepted inside the window. Acceptance
+// is what counts, exactly as the court's test counted it, and the closing
+// day itself still counts — an order given on the last open day lands on
+// the boundary, and the court's deadline rule reads that boundary one way.
+// Every tier's authored duration is at least the window's length, so
+// accepted work is still running whenever this is asked inside the window
+// — the visit can never be hosted twice.
+fn visit_hosted(world, house) {
+    for work in world.assignments {
+        if work.owner == house
+                && (work.key == "host-visit-restrained"
+                    || work.key == "host-visit-proper"
+                    || work.key == "host-visit-lavish")
+                && work.started >= visit_window_open(world)
+                && work.started <= visit_window_close(world) {
+            return true;
+        }
+    }
+    false
+}
+
+// Whether the liege's head can physically reach any province the house
+// holds: breadth-first search over the authored route graph, surface and
+// space legs alike, from his current province. A head aboard a ship, a
+// landless house, or a severed graph all mean the visit cannot happen —
+// the same simulation facts that govern real travel, not a hardcoded
+// assumption of connectivity.
+fn visit_reachable(world, liege_head, house) {
+    let from = 0;
+    for character in world.characters {
+        if character.id == liege_head {
+            if type_of(character.location_kind) == "string"
+                    && character.location_kind == "province" {
+                from = character.location;
+            }
+        }
+    }
+    if from == 0 { return false; }
+    let held = [];
+    for province in world.provinces {
+        if type_of(province.holder) == "i64" && province.holder == house {
+            held.push(province.id);
+        }
+    }
+    if held.len() == 0 { return false; }
+    let seen = [from];
+    let frontier = [from];
+    while frontier.len() > 0 {
+        let next = [];
+        for at in frontier {
+            for leg in world.routes {
+                let to = 0;
+                if leg.a == at { to = leg.b; }
+                if leg.b == at { to = leg.a; }
+                if to != 0 && !seen.contains(to) {
+                    seen.push(to);
+                    next.push(to);
+                }
+            }
+        }
+        frontier = next;
+    }
+    for target in held {
+        if seen.contains(target) { return true; }
+    }
+    false
+}
+
+define_situation(#{
+    id: "casimir-visit",
+    source: "scenario",
+    bindings: #{ house: "organisation", "liege-head": "character" },
+    owner_binding: "house",
+    subject_binding: "liege-head",
+    trigger_fn: "casimir_visit_instances",
+    projection_fn: "casimir_visit_projection",
+    priority: 115,
+    log_activation: true,
+    audience: ["house"],
+    stages: ["awaiting"],
+    actions: [
+        #{ id: "host-restrained", assignment: "host-visit-restrained" },
+        #{ id: "host-proper", assignment: "host-visit-proper" },
+        #{ id: "host-lavish", assignment: "host-visit-lavish" },
+    ],
+    outcomes: [
+        #{ id: "hosted", when_fn: "casimir_visit_was_hosted" },
+        #{ id: "slighted", when_fn: "casimir_visit_was_slighted",
+           effects_fn: "casimir_visit_slighted_effects" },
+        #{ id: "passed-on", when_fn: "casimir_visit_passed_on" },
+        #{ id: "closed", fallback: true },
+    ],
+});
+
+// One body serves fresh activation and the live lifecycle alike: the
+// window must be open, the house must stand, the liege's living head must
+// exist and be able to travel, and no hospitality may already stand
+// accepted. A live lifecycle whose facts change simply stops being
+// returned — the outcomes below say what its ending means — and a changed
+// liege head is a different binding, so the successor's visit is a new
+// lifecycle of its own.
+fn casimir_visit_instances(ctx) {
+    let world = ctx.world;
+    let house = first_reign_house(world);
+    if house == 0 { return []; }
+    if world.date < visit_window_open(world) { return []; }
+    if world.date >= visit_window_close(world) { return []; }
+    if visit_hosted(world, house) { return []; }
+    let liege_head = torvald_liege_head(world, house);
+    if liege_head == 0 { return []; }
+    if !visit_reachable(world, liege_head, house) { return []; }
+    [#{ house: house, "liege-head": liege_head }]
+}
+
+fn casimir_visit_projection(ctx) {
+    let world = ctx.world;
+    let house = ctx.bindings.house;
+    let liege_head = ctx.bindings["liege-head"];
+    let close = visit_window_close(world);
+    let head = torvald_house_head(world, house);
+    let current = 0;
+    if head != 0 { current = torvald_opinion(world, liege_head, head); }
+    #{
+        stage: "awaiting",
+        deadline: close,
+        warning: close - world.date <= visit_warning_days(),
+        metrics: [
+            #{ label_key: "situation.metric.days-left", value: close - world.date },
+            #{
+                label_key: "situation.metric.liege-opinion",
+                value: `${first_reign_character_name(world, liege_head)} — ${current}`,
+            },
+        ],
+        participants: [
+            #{ kind: "character", id: liege_head },
+            #{ kind: "organisation", id: house },
+        ],
+        // The three hospitality tiers deliberately pin no leader: hosting
+        // is a choice of host, and the ordinary composition popup offers
+        // the whole eligible household with a forecast apiece.
+        actions: [
+            #{ id: "host-restrained" },
+            #{ id: "host-proper" },
+            #{ id: "host-lavish" },
+        ],
+        resolution_values: #{
+            house: court_house_name(world, house),
+            liege: first_reign_character_name(world, liege_head),
+        },
+    }
+}
+
+// An ended lifecycle judges its outcomes with its OLD bindings against
+// the LIVE world, so every consequential outcome re-asserts that the
+// bound liege head still stands and can still come: the same evaluation
+// that ends a lifecycle for a dead, deposed, or replaced liege must pass
+// it on, never pay hospitality's dues to a man who no longer exists.
+fn casimir_visit_was_hosted(ctx) {
+    let house = ctx.bindings.house;
+    if !torvald_liege_head_stands(ctx.world, house, ctx.bindings["liege-head"]) {
+        return false;
+    }
+    visit_hosted(ctx.world, house)
+}
+
+fn casimir_visit_was_slighted(ctx) {
+    let house = ctx.bindings.house;
+    let liege_head = ctx.bindings["liege-head"];
+    if !torvald_liege_head_stands(ctx.world, house, liege_head) { return false; }
+    if !visit_reachable(ctx.world, liege_head, house) { return false; }
+    ctx.world.date >= visit_window_close(ctx.world)
+}
+
+fn casimir_visit_passed_on(ctx) {
+    let house = first_reign_house(ctx.world);
+    if house == 0 { return true; }
+    if !torvald_liege_head_stands(ctx.world, house, ctx.bindings["liege-head"]) {
+        return true;
+    }
+    !visit_reachable(ctx.world, ctx.bindings["liege-head"], house)
+}
+
+// The stated cost of an unanswered window: the bound liege head — the
+// subject binding stands behind the `target` role — thinks less of the
+// house's head, once, for the authored term.
+fn casimir_visit_slighted_effects(ctx) {
+    [#{ kind: "opinion", from: "target", toward: "owner-head",
+        amount: visit_slighted_opinion(), days: visit_slighted_days(),
+        reason: "casimir-visit-slighted" }]
+}
+
+// --- The three hospitality tiers --------------------------------------------
+//
+// Ordinary hosted assignments, started from the visit card (or, like any
+// assignment, on their own — outside the window they are merely an
+// expensive way to fete the liege's court). Authored trade-offs:
+// restrained is cheap but hard and its outcomes are mild; lavish is
+// expensive, slow, easiest — spending mitigates a poor relationship —
+// and swings the liege's regard hardest in both directions. All three
+// read the liege head's live opinion of the owner's head into their
+// effectiveness at fifty hundredths per point; the clamp is the tier's
+// own, and lavish cushions the downside deepest. Durations are at least
+// the window's forty days, which is what makes the visit one-shot: an
+// accepted tier is still running whenever the window could re-ask.
+
+define_assignment(#{
+    id: "host-visit-restrained",
+    category: "consequential",
+    duration_days: 40,
+    wealth_cost: 10,
+    skill: "diplomacy",
+    difficulty: 12,
+    risks: ["scandal"],
+    ai_available: false,
+    opinion_modifier: #{
+        from: "liege-head", toward: "owner-head",
+        per_point: 50, min: -9, max: 9,
+    },
+    results: #{
+        critical_success: #{ weight: 100, popup: true, log: true,
+                             effect_fn: "visit_restrained_crit" },
+        success: #{ weight: 450, log: true, effect_fn: "visit_restrained_success" },
+        failure: #{ weight: 350, log: true, effect_fn: "visit_restrained_failure" },
+        disaster: #{ weight: 100, popup: true, log: true,
+                     effect_fn: "visit_restrained_disaster" },
+    },
+});
+
+fn visit_restrained_crit(ctx) {
+    [#{ kind: "opinion", from: "liege-head", toward: "owner-head",
+        amount: 10, days: 1080, reason: "visit-restrained-crit" }]
+}
+fn visit_restrained_success(ctx) {
+    [#{ kind: "opinion", from: "liege-head", toward: "owner-head",
+        amount: 5, days: 1080, reason: "visit-restrained-success" }]
+}
+fn visit_restrained_failure(ctx) {
+    [#{ kind: "opinion", from: "liege-head", toward: "owner-head",
+        amount: -5, days: 1080, reason: "visit-restrained-failure" }]
+}
+fn visit_restrained_disaster(ctx) {
+    [#{ kind: "opinion", from: "liege-head", toward: "owner-head",
+        amount: -10, days: 1440, reason: "visit-restrained-disaster" }]
+}
+
+define_assignment(#{
+    id: "host-visit-proper",
+    category: "consequential",
+    duration_days: 45,
+    wealth_cost: 30,
+    skill: "diplomacy",
+    difficulty: 10,
+    risks: ["scandal"],
+    ai_available: false,
+    opinion_modifier: #{
+        from: "liege-head", toward: "owner-head",
+        per_point: 50, min: -8, max: 8,
+    },
+    results: #{
+        critical_success: #{ weight: 100, popup: true, log: true,
+                             effect_fn: "visit_proper_crit" },
+        success: #{ weight: 450, log: true, effect_fn: "visit_proper_success" },
+        failure: #{ weight: 350, log: true, effect_fn: "visit_proper_failure" },
+        disaster: #{ weight: 100, popup: true, log: true,
+                     effect_fn: "visit_proper_disaster" },
+    },
+});
+
+fn visit_proper_crit(ctx) {
+    [#{ kind: "opinion", from: "liege-head", toward: "owner-head",
+        amount: 15, days: 1440, reason: "visit-proper-crit" }]
+}
+fn visit_proper_success(ctx) {
+    [#{ kind: "opinion", from: "liege-head", toward: "owner-head",
+        amount: 8, days: 1440, reason: "visit-proper-success" }]
+}
+fn visit_proper_failure(ctx) {
+    [#{ kind: "opinion", from: "liege-head", toward: "owner-head",
+        amount: -8, days: 1440, reason: "visit-proper-failure" }]
+}
+fn visit_proper_disaster(ctx) {
+    [#{ kind: "opinion", from: "liege-head", toward: "owner-head",
+        amount: -15, days: 1440, reason: "visit-proper-disaster" }]
+}
+
+define_assignment(#{
+    id: "host-visit-lavish",
+    category: "consequential",
+    duration_days: 50,
+    wealth_cost: 60,
+    skill: "diplomacy",
+    difficulty: 8,
+    risks: ["scandal"],
+    ai_available: false,
+    opinion_modifier: #{
+        from: "liege-head", toward: "owner-head",
+        per_point: 50, min: -6, max: 9,
+    },
+    results: #{
+        critical_success: #{ weight: 100, popup: true, log: true,
+                             effect_fn: "visit_lavish_crit" },
+        success: #{ weight: 450, log: true, effect_fn: "visit_lavish_success" },
+        failure: #{ weight: 350, log: true, effect_fn: "visit_lavish_failure" },
+        disaster: #{ weight: 100, popup: true, log: true,
+                     effect_fn: "visit_lavish_disaster" },
+    },
+});
+
+fn visit_lavish_crit(ctx) {
+    [#{ kind: "opinion", from: "liege-head", toward: "owner-head",
+        amount: 20, days: 1800, reason: "visit-lavish-crit" }]
+}
+fn visit_lavish_success(ctx) {
+    [#{ kind: "opinion", from: "liege-head", toward: "owner-head",
+        amount: 12, days: 1440, reason: "visit-lavish-success" }]
+}
+fn visit_lavish_failure(ctx) {
+    [#{ kind: "opinion", from: "liege-head", toward: "owner-head",
+        amount: -10, days: 1440, reason: "visit-lavish-failure" }]
+}
+fn visit_lavish_disaster(ctx) {
+    [#{ kind: "opinion", from: "liege-head", toward: "owner-head",
+        amount: -20, days: 1800, reason: "visit-lavish-disaster" }]
+}

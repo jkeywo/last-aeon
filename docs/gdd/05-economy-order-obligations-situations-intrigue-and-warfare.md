@@ -272,6 +272,7 @@ The current reusable deck contains:
 | Kessarin's Order | Scenario, bound to House Harrow and its requester | Household demand: every held province at 850+ Order by the shared 120-day deadline, with four-tier relationship consequences |
 | Aleyn's Levies | Scenario, bound to House Harrow and its requester | Household demand: at least 1,000 total fielded army manpower by the same shared deadline, with the same four-tier consequences |
 | Torvald's Standing | Scenario, bound to House Harrow, its requester, and the exact liege head | Household demand: the bound liege head's opinion of the house head at 0 or higher by the same shared deadline, with the same four-tier consequences |
+| The Liege's Visit | Scenario, bound to House Harrow and the live liege head | [ai] First-year windowed hosted visit (days 140–180): three hospitality tiers whose live forecasts read the liege head's current opinion, a slight for an unanswered window, and passed-on adaptation when the bound head dies, is deposed, is replaced, or cannot travel |
 
 [ai] The Court Awaits slice added three reusable seams the deck may now use.
 Situation call contexts carry the instance's activation date (triggers see
@@ -339,6 +340,30 @@ unmet shared deadline resolves all of them in the one evaluate pass, in
 stable definition order with distinct tiers on distinct requesters'
 ledgers, and each demand otherwise resolves independently with durable
 history.
+
+[ai] The Liege's Visit, the First Year arc's first slice, adds the
+windowed hosted-Situation shape and consumes the new forecast seam. Its
+trigger is live on any settled day in the authored window on which the
+house stands and holds ground, the liege's living head exists, and a
+breadth-first search over the authored route graph reaches a held
+province from his concrete location — reachability is asked of the same
+route facts real travel uses, computed in content, never assumed. The
+trigger binds the live liege head, so death, deposition, or a changed
+liege ends the bound lifecycle passed-on with no effects and, while the
+window and travel allow, binds the successor's own visit; the closing
+day itself accepts hospitality under the court's deadline rule, and a
+window left wholly unanswered while the bound head still stands and can
+come resolves slighted with one authored opinion penalty through the
+subject binding. Hosting is three ordinary `ai_available: false`
+assignments with authored rising cost, falling difficulty, rising
+duration, per-tier live-opinion forecast modifiers, and graded opinion
+results; acceptance in-window resolves the Situation hosted and the
+reception's own results then carry the consequences. Every tier's
+duration is at least the window's length, which is what makes the visit
+one-shot without any new snapshot state: accepted work is still running
+whenever the window could re-ask. The projected tier actions pin no
+leader — the host is the player's choice through the ordinary
+composition popup and free picker.
 
 Visibility follows authoritative audience rules. In particular, favour debt is
 private to its parties in player-led play while spectator mode can inspect it.

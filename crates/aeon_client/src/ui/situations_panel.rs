@@ -149,6 +149,12 @@ pub fn refresh_situation_panel_view(world: &mut World) {
         .map(|log| log.entries.as_slice())
         .unwrap_or(&[]);
 
+    // The deterministic default host for an authored action that pins no
+    // leader: the player's own head. The popup's free picker then compares
+    // and changes the host; the card preview must not invent a different
+    // rule of its own.
+    let default_leader = player.and_then(|org| aeon_sim::access::org_head(world, org));
+
     let mut active = Vec::new();
     for card in active_cards(world) {
         if !visible_to_player(world, &card.active.key) {
@@ -172,7 +178,7 @@ pub fn refresh_situation_panel_view(world: &mut World) {
                 else {
                     continue;
                 };
-                let (view, unavailable) = match (player, action.leader) {
+                let (view, unavailable) = match (player, action.leader.or(default_leader)) {
                     (Some(_), Some(leader)) => {
                         match forecast_for_action(
                             world,
@@ -182,7 +188,16 @@ pub fn refresh_situation_panel_view(world: &mut World) {
                             action.target,
                         ) {
                             Ok(view) => {
-                                let unavailable = view.blocked.as_ref().map(ToString::to_string);
+                                // A pinned leader's block disables the
+                                // action. A defaulted preview's does not:
+                                // the action accepts any eligible host, so
+                                // the popup's picker stays reachable and
+                                // the compact summary states the default's
+                                // own blocker honestly.
+                                let unavailable = action
+                                    .leader
+                                    .and(view.blocked.as_ref())
+                                    .map(ToString::to_string);
                                 (Some(view), unavailable)
                             }
                             Err(error) => (None, Some(error.to_string())),
@@ -627,7 +642,10 @@ fn draw_action(
     ctx: &PanelCtx,
     out: &mut PanelOut,
 ) -> egui::Response {
-    let enabled = view.unavailable.is_none() && view.action.leader.is_some();
+    // An action with no pinned leader is a choice, not a blocker: the
+    // popup's free picker chooses the host. Only an authoritative
+    // unavailability disables the button.
+    let enabled = view.unavailable.is_none();
     let label = action_label(ctx, view);
     let mut response = draw_wrapped_action(ui, enabled, label.clone());
     let occurrence = format!("{situation:?}@{activated}");
@@ -690,12 +708,16 @@ fn draw_action(
             );
         });
     }
-    if response.clicked()
-        && let Some(leader) = view.action.leader
-    {
+    if response.clicked() {
         out.form.reset();
         out.form.assignment = Some(view.assignment.clone());
-        out.form.leader = Some(leader);
+        // A pinned leader is the content's choice; a leaderless action
+        // opens on the previewed default (the house head) and the popup's
+        // free picker changes the host from there.
+        out.form.leader = view
+            .action
+            .leader
+            .or(view.forecast.as_ref().map(|forecast| forecast.leader));
         out.form.target = Some(view.action.target);
         out.form.situation = Some(crate::assignment_ui::SituationAssignmentContext {
             situation: situation.clone(),

@@ -260,6 +260,12 @@ pub struct AssignmentDef {
     pub supplies_cost: i64,
     /// Influence spent when the assignment starts.
     pub influence_cost: i64,
+    /// An authored live-opinion effectiveness modifier, when any.
+    ///
+    /// The mechanism (read the opinion, scale, clamp, add to
+    /// effectiveness) is simulation code; every number and both roles are
+    /// authored here, per assignment.
+    pub opinion_modifier: Option<OpinionModifierDef>,
     /// Possible outcomes, keyed by kind. Success and failure are mandatory.
     /// Who this may be aimed at. Checked in exactly one place, so the
     /// button, the forecast, the autonomous houses and any standing order
@@ -1014,6 +1020,33 @@ pub struct StageDef {
     /// Being turned back on the road is not the same as abandoning a
     /// siege, so what it costs is authored per phase rather than once.
     pub on_interrupt: Option<ScriptFnRef>,
+}
+
+/// How a live opinion between two assignment-context roles shifts an
+/// assignment's effectiveness.
+///
+/// Data, not behaviour: the simulation owns the arithmetic (multiply,
+/// truncate, clamp, add inside the shared effectiveness calculation), and
+/// this block owns every number. Roles reuse the closed [`EffectRole`]
+/// vocabulary, restricted at load to the roles resolvable from the owner
+/// and leader alone — a role that needs a target would silently read
+/// nobody before one is chosen.
+///
+/// [`EffectRole`]: crate::effect::EffectRole
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OpinionModifierDef {
+    /// Whose live regard is read.
+    pub from: crate::effect::EffectRole,
+    /// Who that regard is toward.
+    pub toward: crate::effect::EffectRole,
+    /// Hundredths of an effectiveness point per point of opinion.
+    pub per_point: i32,
+    /// Lower clamp on the resulting shift, in effectiveness points.
+    /// At most zero, so a neutral relationship never reads as a penalty.
+    pub min: i32,
+    /// Upper clamp on the resulting shift, in effectiveness points.
+    /// At least zero, so a neutral relationship never reads as a bonus.
+    pub max: i32,
 }
 
 /// Who a target has to be, for an assignment to be offered against it.
