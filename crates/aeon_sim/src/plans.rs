@@ -267,6 +267,53 @@ pub fn requires_met(
             return false;
         }
     }
+    if let Some(line) = req.min_target_head_opinion {
+        // The authored reconciliation line: the authority head's live
+        // regard for the target's head, at or above the authored value.
+        // A missing head on either side is not reconciliation.
+        let AssignmentTarget::Org(rival) = target else {
+            return false;
+        };
+        let reconciled = crate::access::org_head(world, authority)
+            .zip(crate::access::org_head(world, rival))
+            .is_some_and(|(own, theirs)| {
+                crate::politics::opinion_between(world, own, theirs) >= line
+            });
+        if !reconciled {
+            return false;
+        }
+    }
+    if req.target_owes_no_grievance {
+        // The ledger read the other way: no open grievance the target owes
+        // the authority — nothing they wronged us by still stands.
+        let AssignmentTarget::Org(rival) = target else {
+            return false;
+        };
+        let owed = world
+            .get_resource::<crate::obligations::Obligations>()
+            .is_some_and(|ledger| {
+                ledger.open().any(|entry| {
+                    entry.kind == crate::obligations::ObligationKind::Grievance
+                        && entry.debtor == rival
+                        && entry.creditor == authority
+                })
+            });
+        if owed {
+            return false;
+        }
+    }
+    if let Some(wanted) = req.at_war_with_target {
+        // The bilateral reading: an active formal war placing the
+        // authority and the target on opposing sides, whichever of them
+        // declared it. A war already underway is a deed, not a mood.
+        let AssignmentTarget::Org(rival) = target else {
+            return false;
+        };
+        let at_war = crate::wars::active_war_between(world, authority, rival).is_some();
+        if at_war != wanted {
+            return false;
+        }
+    }
     true
 }
 
@@ -419,6 +466,15 @@ pub fn try_adopt(
             (AssignmentTargetKind::War, AssignmentTarget::War(war)) => AssignmentTarget::War(war),
             _ => continue,
         };
+        // A campaign whose authored grounds are already gone is never
+        // taken up: what would be abandoned tomorrow is not adopted today.
+        if def
+            .abandon_when
+            .as_ref()
+            .is_some_and(|req| requires_met(world, authority, target, req))
+        {
+            continue;
+        }
         let off_cooldown = world
             .resource::<Plans>()
             .cooldowns
@@ -580,7 +636,24 @@ pub fn advance_plans(world: &mut World) {
         }
         let authority = authority.expect("standing authority");
 
+        // Work already accepted is never touched from here: the guard
+        // above is what keeps an operation in flight running to its
+        // ordinary resolution whatever the facts below now say. Only the
+        // uncommitted residue of a campaign can end on this day.
         if plan.current_assignment.is_some() {
+            continue;
+        }
+
+        // The campaign's own authored grounds, judged before any new step:
+        // a reconciliation line reached, a grievance settled, a war ended —
+        // whatever content says makes the campaign pointless ends it here,
+        // with the reason on record.
+        if def
+            .abandon_when
+            .as_ref()
+            .is_some_and(|req| requires_met(world, authority, plan.target, req))
+        {
+            abandon_for_lost_grounds(world, actor, date);
             continue;
         }
 
@@ -595,7 +668,7 @@ pub fn advance_plans(world: &mut World) {
             .find(|method| method.id == plan.method)
             .is_some_and(|method| requires_met(world, authority, plan.target, &method.requires));
         if !method_still_holds {
-            abandon(world, actor, date);
+            abandon_for_lost_grounds(world, actor, date);
             continue;
         }
 
@@ -979,11 +1052,25 @@ fn complete(world: &mut World, actor: CharacterId, date: GameDate) {
 
 /// Removes a failed plan, starts its cooldown, and says so.
 fn abandon(world: &mut World, actor: CharacterId, date: GameDate) {
+    end_plan(world, actor, date, "sim.plan.abandoned");
+}
+
+/// Removes a plan whose authored grounds no longer hold — its own
+/// `abandon_when`, or a method gate that has ceased to hold before a new
+/// step — starts its cooldown, and says why. A distinct line from plain
+/// failure, so history can tell a campaign given up for want of grounds
+/// (a reconciliation, a settled grievance, a strength floor lost) from one
+/// that ran out of retries or time.
+fn abandon_for_lost_grounds(world: &mut World, actor: CharacterId, date: GameDate) {
+    end_plan(world, actor, date, "sim.plan.abandoned-no-grounds");
+}
+
+fn end_plan(world: &mut World, actor: CharacterId, date: GameDate, key: &str) {
     let Some(plan) = world.resource_mut::<Plans>().active.remove(&actor) else {
         return;
     };
     set_cooldown(world, actor, &plan, date);
-    announce_end(world, actor, &plan, "sim.plan.abandoned");
+    announce_end(world, actor, &plan, key);
 }
 
 fn set_cooldown(world: &mut World, actor: CharacterId, plan: &ActivePlan, date: GameDate) {

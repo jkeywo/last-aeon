@@ -224,6 +224,66 @@ define_plan(#{
         #{ id: "quietly", steps: [ #{ start: "whisper-against", target: "plan" } ] },
     ],
 });
+
+// Two more covert campaigns, for the reconciliation boundary. Both aim
+// the same whisper at the plan's target; what differs is the gate.
+// cold-rift opens only on authored ill will — the head's regard for the
+// target's head at or below the floor — so it is the adoption and
+// recheck boundary. held-rift has no opening gate but authored grounds
+// it loses: regard at or above the line, no grievance owed, and no war
+// between the houses; its two steps let work in flight be told apart
+// from the residue behind it. They answer the claim label only so that
+// nothing else in the fixture competes for the same pressure.
+define_plan(#{
+    id: "cold-rift",
+    goal: "claim",
+    target: "organisation",
+    covert: true,
+    max_days: 200,
+    max_step_retries: 1,
+    methods: [
+        #{ id: "from-ill-will",
+           requires: #{ max_target_head_opinion: -10 },
+           steps: [ #{ start: "whisper-against", target: "plan" } ] },
+    ],
+});
+define_plan(#{
+    id: "held-rift",
+    goal: "claim",
+    target: "organisation",
+    covert: true,
+    max_days: 200,
+    max_step_retries: 1,
+    abandon_when: #{
+        min_target_head_opinion: 20, target_owes_no_grievance: true, at_war_with_target: false,
+    },
+    methods: [
+        #{ id: "quietly",
+           steps: [
+               #{ id: "first", start: "whisper-against", target: "plan" },
+               #{ id: "second", start: "whisper-against", target: "plan" },
+           ] },
+    ],
+});
+
+// Hostility's other authored ground: a campaign whose only gate is a
+// grievance the target owes the house, so it opens however warm the
+// heads' regard. It answers the obligation label, which no other
+// organisation-aimed plan in the fixture does, so the ungated held-rift
+// cannot take the pressure first.
+define_plan(#{
+    id: "wronged-rift",
+    goal: "obligation",
+    target: "organisation",
+    covert: true,
+    max_days: 200,
+    max_step_retries: 1,
+    methods: [
+        #{ id: "from-grievance",
+           requires: #{ target_owes_grievance: true },
+           steps: [ #{ start: "whisper-against", target: "plan" } ] },
+    ],
+});
 "#;
 
 fn content() -> Arc<aeon_data::ContentSet> {
@@ -837,6 +897,439 @@ fn an_ambition_the_house_already_has_in_hand_is_not_duplicated() {
         ),
         "one member already pursues it; a second ambition adds nothing but noise"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Reconciliation: the relationship predicates open hostility at the
+// authored floor, shut it above, and let an uncommitted campaign go at the
+// authored line — while work already accepted runs to its ordinary end.
+// ---------------------------------------------------------------------------
+
+/// Sets (or replaces) one direct test modifier on Bela's ledger toward
+/// Aron: the authority head's regard for the target's head, which every
+/// relationship predicate reads live. One stable reason means repeated
+/// calls replace rather than stack.
+fn set_regard(h: &mut SimHost, amount: i32) {
+    use aeon_sim::politics::{OpinionEntry, OpinionLedger};
+    let head = bela(h);
+    let aron = h.world_mut().resource::<PoliticsIndex>().character_keys[&key("aron-ash")];
+    let world = h.world_mut();
+    let entity = world.resource::<PoliticsIndex>().characters[&head];
+    world
+        .get_mut::<OpinionLedger>(entity)
+        .expect("characters carry opinion ledgers")
+        .set(OpinionEntry {
+            target: aron,
+            amount,
+            reason: "test-regard".to_owned(),
+            expires: None,
+        });
+}
+
+/// The claim-labelled rift pressure aimed at a house: the label keeps the
+/// two boundary campaigns apart from the fixture's subvert ones.
+fn rift_pressure(target: OrgId) -> aeon_sim::agency::ScoredIntent {
+    aeon_sim::agency::ScoredIntent {
+        intent: aeon_data::model::AiIntent::Claim,
+        assignment: key("whisper-against"),
+        target: aeon_sim::AssignmentTarget::Org(target),
+        score: 100,
+        reason: String::new(),
+        subject: None,
+        explains: false,
+    }
+}
+
+fn plan_of(h: &mut SimHost, who: aeon_sim::CharacterId) -> Option<aeon_sim::plans::ActivePlan> {
+    h.world_mut().resource::<Plans>().active.get(&who).cloned()
+}
+
+/// Whether any whisper is running for Birch.
+fn whisper_running(h: &mut SimHost) -> bool {
+    let birch = org(h, "birch");
+    let world = h.world_mut();
+    world
+        .resource::<aeon_sim::AssignmentsIndex>()
+        .assignments
+        .values()
+        .any(|entity| {
+            world
+                .get::<aeon_sim::assignments::ActiveAssignment>(*entity)
+                .is_some_and(|work| work.owner == birch && work.def == key("whisper-against"))
+        })
+}
+
+/// The lost-grounds line Birch's campaign wrote: on record, confided to
+/// its owner alone, and open to spectators and replay.
+fn assert_lost_grounds_confided(h: &mut SimHost) {
+    let birch = org(h, "birch");
+    let ash = org(h, "ash");
+    let log = h.world_mut().resource::<aeon_sim::MessageLog>().clone();
+    let ending = log
+        .entries
+        .iter()
+        .rev()
+        .find(|entry| {
+            entry.org == Some(birch) && entry.text.contains("the grounds for it no longer hold")
+        })
+        .expect("the lost grounds are on record, distinct from plain failure");
+    assert!(
+        !ending.audience.visible_to(Some(ash)),
+        "a covert campaign's ending names nobody to the house it was aimed at"
+    );
+    assert!(ending.audience.visible_to(Some(birch)));
+    assert!(ending.audience.visible_to(None));
+}
+
+#[test]
+fn hostile_planning_opens_at_the_authored_floor_and_shuts_one_point_above_it() {
+    // Exactly at the floor, hostility's own campaign opens.
+    let mut h = host(35);
+    let head = bela(&mut h);
+    let birch = org(&mut h, "birch");
+    let ash = org(&mut h, "ash");
+    set_regard(&mut h, -10);
+    assert!(aeon_sim::plans::try_adopt(
+        h.world_mut(),
+        head,
+        birch,
+        &[rift_pressure(ash)]
+    ));
+    assert_eq!(
+        plan_of(&mut h, head).expect("adopted").def.as_str(),
+        "cold-rift",
+        "at the floor the ill-will campaign is the one taken up"
+    );
+
+    // One point above it the gate is shut: the same pressure falls
+    // through to the ungated campaign behind it, never to this one.
+    let mut h = host(36);
+    let head = bela(&mut h);
+    let birch = org(&mut h, "birch");
+    let ash = org(&mut h, "ash");
+    set_regard(&mut h, -9);
+    assert!(aeon_sim::plans::try_adopt(
+        h.world_mut(),
+        head,
+        birch,
+        &[rift_pressure(ash)]
+    ));
+    assert_eq!(
+        plan_of(&mut h, head).expect("adopted").def.as_str(),
+        "held-rift",
+        "above the floor the hostility gate suppresses the campaign it guards"
+    );
+}
+
+#[test]
+fn regard_lifted_above_the_floor_lets_an_uncommitted_campaign_go_before_any_step() {
+    let mut h = host(37);
+    let head = bela(&mut h);
+    let birch = org(&mut h, "birch");
+    let ash = org(&mut h, "ash");
+    set_regard(&mut h, -10);
+    assert!(aeon_sim::plans::try_adopt(
+        h.world_mut(),
+        head,
+        birch,
+        &[rift_pressure(ash)]
+    ));
+    let plan = plan_of(&mut h, head).expect("adopted");
+    assert_eq!(plan.def.as_str(), "cold-rift");
+    assert!(
+        plan.current_assignment.is_none(),
+        "nothing is committed yet"
+    );
+
+    // The regard thaws by a single point before the first step; the
+    // method gate is rechecked and the campaign let go, and no step of it
+    // ever begins.
+    set_regard(&mut h, -9);
+    h.advance_days(1);
+    assert!(
+        plan_of(&mut h, head).is_none(),
+        "a campaign whose gate has shut is let go before its next step"
+    );
+    assert!(!whisper_running(&mut h), "no step began");
+    assert_lost_grounds_confided(&mut h);
+}
+
+#[test]
+fn the_reconciliation_line_lets_an_uncommitted_campaign_go_and_one_point_short_keeps_it() {
+    // One point short of the line: adopted, and the first step begins.
+    let mut h = host(38);
+    let head = bela(&mut h);
+    let birch = org(&mut h, "birch");
+    let ash = org(&mut h, "ash");
+    set_regard(&mut h, 19);
+    assert!(aeon_sim::plans::try_adopt(
+        h.world_mut(),
+        head,
+        birch,
+        &[rift_pressure(ash)]
+    ));
+    assert_eq!(
+        plan_of(&mut h, head).expect("adopted").def.as_str(),
+        "held-rift"
+    );
+    h.advance_days(1);
+    let plan = plan_of(&mut h, head).expect("one point short of the line the campaign stands");
+    assert!(
+        plan.current_assignment.is_some(),
+        "and its first step began"
+    );
+
+    // At the line, with no grievance owed and no war: a campaign whose
+    // grounds are already gone is never taken up...
+    let mut h = host(39);
+    let head = bela(&mut h);
+    let birch = org(&mut h, "birch");
+    let ash = org(&mut h, "ash");
+    set_regard(&mut h, 20);
+    assert!(
+        !aeon_sim::plans::try_adopt(h.world_mut(), head, birch, &[rift_pressure(ash)]),
+        "what would be let go tomorrow is not adopted today"
+    );
+    // ...and one adopted before the line was reached is let go before
+    // any step, with the reason on record.
+    set_regard(&mut h, 0);
+    assert!(aeon_sim::plans::try_adopt(
+        h.world_mut(),
+        head,
+        birch,
+        &[rift_pressure(ash)]
+    ));
+    assert_eq!(
+        plan_of(&mut h, head).expect("adopted").def.as_str(),
+        "held-rift"
+    );
+    set_regard(&mut h, 20);
+    h.advance_days(1);
+    assert!(
+        plan_of(&mut h, head).is_none(),
+        "at the line an uncommitted campaign is let go"
+    );
+    assert!(!whisper_running(&mut h), "no step began");
+    assert_lost_grounds_confided(&mut h);
+}
+
+#[test]
+fn a_grievance_owed_or_a_war_declared_keeps_a_campaign_its_grounds_at_the_line() {
+    // A grievance the target owes the house: warmth does not clear a
+    // ledger, so the campaign keeps its grounds and its first step begins.
+    let mut h = host(40);
+    let head = bela(&mut h);
+    let birch = org(&mut h, "birch");
+    let ash = org(&mut h, "ash");
+    set_regard(&mut h, 20);
+    aeon_sim::obligations::create(
+        h.world_mut(),
+        aeon_sim::obligations::ObligationKind::Grievance,
+        ash,
+        birch,
+        "a slight at court",
+        20,
+        None,
+    );
+    assert!(aeon_sim::plans::try_adopt(
+        h.world_mut(),
+        head,
+        birch,
+        &[rift_pressure(ash)]
+    ));
+    h.advance_days(1);
+    assert!(
+        plan_of(&mut h, head).is_some_and(|plan| plan.current_assignment.is_some()),
+        "a wronged house keeps its grounds whatever the regard"
+    );
+
+    // A formal war between the houses: a deed already underway that no
+    // change of heart erases.
+    let mut h = host(41);
+    let head = bela(&mut h);
+    let birch = org(&mut h, "birch");
+    let ash = org(&mut h, "ash");
+    set_regard(&mut h, 20);
+    aeon_sim::wars::declare_war(h.world_mut(), birch, ash, key("a-border-war"))
+        .expect("an ordinary formal war");
+    assert!(aeon_sim::plans::try_adopt(
+        h.world_mut(),
+        head,
+        birch,
+        &[rift_pressure(ash)]
+    ));
+    h.advance_days(1);
+    assert!(
+        plan_of(&mut h, head).is_some_and(|plan| plan.current_assignment.is_some()),
+        "at war, the campaign keeps its grounds at the line"
+    );
+}
+
+#[test]
+fn work_already_accepted_runs_to_its_end_and_only_the_uncommitted_residue_is_let_go() {
+    let mut h = host(42);
+    let head = bela(&mut h);
+    let birch = org(&mut h, "birch");
+    let ash = org(&mut h, "ash");
+    set_regard(&mut h, 0);
+    assert!(aeon_sim::plans::try_adopt(
+        h.world_mut(),
+        head,
+        birch,
+        &[rift_pressure(ash)]
+    ));
+    h.advance_days(1);
+    let plan = plan_of(&mut h, head).expect("adopted");
+    assert_eq!(plan.def.as_str(), "held-rift");
+    assert_eq!(plan.step, 0);
+    let id = plan.current_assignment.expect("the first step began");
+    let completes = {
+        let world = h.world_mut();
+        let entity = world.resource::<aeon_sim::AssignmentsIndex>().assignments[&id];
+        world
+            .get::<aeon_sim::assignments::ActiveAssignment>(entity)
+            .expect("live")
+            .completes
+    };
+
+    // The line is reached mid-work. The accepted step is untouched: it
+    // runs to the day it was always going to resolve on, and the plan
+    // stands behind it the whole way.
+    set_regard(&mut h, 20);
+    while h.date().add_days(1) < completes {
+        h.advance_days(1);
+        assert!(
+            running_def(&mut h, id).is_some(),
+            "work already accepted is untouched by the change of heart"
+        );
+        assert_eq!(
+            plan_of(&mut h, head)
+                .expect("the plan stands behind its work")
+                .current_assignment,
+            Some(id)
+        );
+    }
+    // On its ordinary day the work resolves — the whisper succeeds, so
+    // the step advances — and the second, still uncommitted step is then
+    // let go rather than begun.
+    h.advance_days(1);
+    assert_eq!(h.date(), completes);
+    assert!(
+        running_def(&mut h, id).is_none(),
+        "the work resolved on its day"
+    );
+    assert!(
+        plan_of(&mut h, head).is_none(),
+        "the uncommitted residue behind the finished work is let go"
+    );
+    assert!(!whisper_running(&mut h), "the second step never began");
+    assert_lost_grounds_confided(&mut h);
+}
+
+/// The obligation-labelled pressure aimed at a house: only the
+/// grievance-gated campaign answers it.
+fn wronged_pressure(target: OrgId) -> aeon_sim::agency::ScoredIntent {
+    aeon_sim::agency::ScoredIntent {
+        intent: aeon_data::model::AiIntent::Obligation,
+        assignment: key("whisper-against"),
+        target: aeon_sim::AssignmentTarget::Org(target),
+        score: 100,
+        reason: String::new(),
+        subject: None,
+        explains: false,
+    }
+}
+
+#[test]
+fn a_grievance_owed_opens_hostile_planning_above_the_floor_through_its_own_gate() {
+    let mut h = host(44);
+    let head = bela(&mut h);
+    let birch = org(&mut h, "birch");
+    let ash = org(&mut h, "ash");
+
+    // Well above the floor, and the only grievance on the ledger runs the
+    // other way — Birch owes Ash, the fixture's own old slight. The ledger
+    // read the wrong way is not grounds, so nothing answers the pressure.
+    set_regard(&mut h, 0);
+    assert!(
+        !aeon_sim::plans::try_adopt(h.world_mut(), head, birch, &[wronged_pressure(ash)]),
+        "a grievance the house itself owes opens nothing"
+    );
+
+    // Ash comes to owe Birch a grievance. The regard is untouched, still
+    // well above the floor, and hostility's own campaign opens on the
+    // ledger alone, through the grievance gate.
+    aeon_sim::obligations::create(
+        h.world_mut(),
+        aeon_sim::obligations::ObligationKind::Grievance,
+        ash,
+        birch,
+        "a slight at court",
+        20,
+        None,
+    );
+    assert!(aeon_sim::plans::try_adopt(
+        h.world_mut(),
+        head,
+        birch,
+        &[wronged_pressure(ash)]
+    ));
+    let plan = plan_of(&mut h, head).expect("adopted");
+    assert_eq!(plan.def.as_str(), "wronged-rift");
+    assert_eq!(
+        plan.method, "from-grievance",
+        "the grievance gate is the method that opened"
+    );
+    assert_eq!(plan.target, aeon_sim::AssignmentTarget::Org(ash));
+    h.advance_days(1);
+    assert!(
+        plan_of(&mut h, head).is_some_and(|plan| plan.current_assignment.is_some()),
+        "and its first step begins: the gate holds on the recheck too"
+    );
+    assert!(whisper_running(&mut h));
+}
+
+#[test]
+fn a_reconciled_campaign_replays_identically_and_survives_a_snapshot() {
+    let run = || {
+        let mut h = host(43);
+        let head = bela(&mut h);
+        let birch = org(&mut h, "birch");
+        let ash = org(&mut h, "ash");
+        set_regard(&mut h, 0);
+        assert!(aeon_sim::plans::try_adopt(
+            h.world_mut(),
+            head,
+            birch,
+            &[rift_pressure(ash)]
+        ));
+        h.advance_days(1);
+        set_regard(&mut h, 20);
+        h
+    };
+    let mut a = run();
+    let b = run();
+    assert_eq!(
+        a.state_hash(),
+        b.state_hash(),
+        "the same seed reconciles the same way"
+    );
+
+    let snapshot = a.snapshot();
+    let mut restored = SimHost::restore_with_content(snapshot, content()).unwrap();
+    assert_eq!(restored.state_hash(), a.state_hash());
+    a.advance_days(40);
+    restored.advance_days(40);
+    assert_eq!(
+        restored.state_hash(),
+        a.state_hash(),
+        "the reconciliation boundary replays identically after a restore"
+    );
+    // The reconciled campaign is gone on both sides; whatever else the
+    // head has since taken up on her ordinary pulses is hers to pursue.
+    let head = bela(&mut a);
+    assert!(plan_of(&mut a, head).is_none_or(|plan| plan.def != key("held-rift")));
+    assert!(plan_of(&mut restored, head).is_none_or(|plan| plan.def != key("held-rift")));
 }
 
 #[test]

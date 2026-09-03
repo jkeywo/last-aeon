@@ -321,7 +321,7 @@ fn the_enhanced_campaign_replays_from_a_mid_campaign_snapshot() {
     );
 }
 
-/// Snapshot 21 acceptance for the connected Situation and formal-war slice.
+/// Snapshot 22 acceptance for the connected Situation and formal-war slice.
 ///
 /// Focused tests own the individual rules. This test keeps one deliberately
 /// dense campaign state alive across the same serialise, restore, and continue
@@ -329,7 +329,7 @@ fn the_enhanced_campaign_replays_from_a_mid_campaign_snapshot() {
 /// simultaneous wars, internal-war adoption, a concluded occurrence and its
 /// resolution, exact provenance, and a still-running war-bound operation.
 #[test]
-fn snapshot_21_replays_connected_situations_and_formal_wars() {
+fn snapshot_22_replays_connected_situations_and_formal_wars() {
     use std::collections::BTreeSet;
 
     use aeon_sim::assignments::{ActiveAssignment, AssignmentsIndex, MessageLog};
@@ -365,6 +365,7 @@ fn snapshot_21_replays_connected_situations_and_formal_wars() {
         [
             key("aleyn-levies"),
             key("casimir-visit"),
+            key("cold-border"),
             key("consular-vacancy"),
             key("court-awaits"),
             key("favour-debt"),
@@ -376,7 +377,7 @@ fn snapshot_21_replays_connected_situations_and_formal_wars() {
         ]
         .into_iter()
         .collect(),
-        "acceptance runs the complete ten-definition authored deck"
+        "acceptance runs the complete eleven-definition authored deck"
     );
 
     let mut original = scenario_host(Arc::clone(&content), 18_1818);
@@ -393,6 +394,9 @@ fn snapshot_21_replays_connected_situations_and_formal_wars() {
             key("planetary-succession"),
             key("favour-debt"),
             key("court-awaits"),
+            // Harrow opens the reign with cold neighbours across two
+            // borders, so the open relationship card is live from day one.
+            key("cold-border"),
         ]
         .into_iter()
         .collect(),
@@ -550,7 +554,7 @@ fn snapshot_21_replays_connected_situations_and_formal_wars() {
     assert!(dismissal.day > original.date());
 
     let snapshot = original.snapshot();
-    assert_eq!(snapshot.format_version, 21);
+    assert_eq!(snapshot.format_version, 22);
     assert_eq!(
         snapshot
             .state
@@ -563,6 +567,10 @@ fn snapshot_21_replays_connected_situations_and_formal_wars() {
             // The campaign never fields 1,000 manpower, so Aleyn's demand
             // is live at the midpoint alongside Kessarin's.
             key("aleyn-levies"),
+            // Nothing in the AI-only run warms the neighbours whose heads
+            // regard Harrow's coldly, so the open relationship cards stay
+            // live at the midpoint.
+            key("cold-border"),
             key("consular-vacancy"),
             key("favour-debt"),
             key("formal-war"),
@@ -628,10 +636,10 @@ fn snapshot_21_replays_connected_situations_and_formal_wars() {
     );
 
     let midpoint_hash = original.state_hash();
-    let bytes = persistence::snapshot_to_ron(&snapshot).expect("Snapshot 21 serialises");
-    let decoded = persistence::snapshot_from_ron(&bytes).expect("Snapshot 21 deserialises");
+    let bytes = persistence::snapshot_to_ron(&snapshot).expect("Snapshot 22 serialises");
+    let decoded = persistence::snapshot_from_ron(&bytes).expect("Snapshot 22 deserialises");
     let mut replayed =
-        SimHost::restore_with_content(decoded, content).expect("Snapshot 21 restores");
+        SimHost::restore_with_content(decoded, content).expect("Snapshot 22 restores");
     assert_eq!(
         replayed.state_hash(),
         midpoint_hash,

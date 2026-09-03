@@ -2665,6 +2665,12 @@ entities:
         authored floor abandons an uncommitted covert campaign while
         accepted work runs to its ordinary end — the reconciliation
         issue's lever, already in data.
+        [ai] EXTENDED BY
+        reconciliation-abandons-uncommitted-hostility-through-authored-predicates:
+        the method recheck remains the above-the-floor suppressor
+        described here; the +20 reconciliation line, the goal-level
+        set-aside, the succession reading, and the open Cold Border
+        card are recorded there.
       rationale:
         - "[ai] Every number the arc turns on — window days, hostility floor, capability, resistance scale, retry budget, cooldowns — is authored in Rhai; the engine grew only reusable mechanisms (two requires predicates, a goal selector, a step selector, one intent), each available to future content such as the invasion window."
         - "[ai] The goal is gated is_vassal with a modest wealth floor and adopted by the head alone: deniable pressure is the weapon of houses too small for open war, it bounds the behavioural blast radius on existing campaigns to the authored window, and it makes Perrin — not the more skilled household — the tested actor, matching the head-only claim precedent."
@@ -2754,3 +2760,131 @@ entities:
         - assignment-effectiveness-may-read-live-provincial-order
         - casimirs-visit-is-a-windowed-hosted-situation
         - situation-actions-launch-authoritative-assignments
+
+  - decision: reconciliation-abandons-uncommitted-hostility-through-authored-predicates
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Reconciliation Abandons Uncommitted Hostility Through Authored Predicates
+      summary: >-
+        Changing a rival's live relationship derails only what is not yet
+        committed, through data, and never erases a deed already
+        underway. Three predicates join the shared PlanRequires
+        vocabulary: min_target_head_opinion (the mirror of the hostility
+        floor — the authority head's live regard for the target's head at
+        or above the authored line; a missing head fails),
+        target_owes_no_grievance (the sibling of target_owes_grievance:
+        no open grievance the target owes the authority), and
+        at_war_with_target (wars::active_war_between — the bilateral
+        reading, whichever house declared). Two optional gates read that
+        vocabulary. PlanDef.abandon_when is judged daily in advance_plans
+        BEHIND the committed guard, so only a campaign with no step in
+        flight can end on it, and a candidate on which it already holds is
+        refused at adoption. GoalDef.set_aside_when is judged on the
+        monthly pulse in advance_goals over the goal's frozen resolved
+        target, with plans::requires_met rather than a second evaluator —
+        trigger_met cannot see a target, so an ambition borrows the
+        target-aware plan vocabulary instead of growing one — and is
+        likewise refused at adoption. A goal set aside for lost grounds
+        starts NO cooldown: the cooldown exists for exhaustion, the
+        grounds may return, and an ambition whose grounds have returned
+        is the house's again on an ordinary pulse. Both endings write
+        distinct history (sim.plan.abandoned-no-grounds,
+        sim.goal.set-aside-no-grounds); the existing method-gate recheck
+        now writes the plan key too, because a gate that has ceased to
+        hold before a new step is exactly lost grounds; every such line
+        keeps the covert audience. No new snapshot section, but the
+        persisted plan-requirement shape widened: an active plan copies
+        each step's skip_if PlanRequires from the definition at adoption
+        (the shipped ready-the-levies plan does exactly that), so the three
+        predicates ride in CampaignState.plans and a version-21 snapshot
+        holding one would no longer read. SNAPSHOT_FORMAT_VERSION is
+        bumped to 22 (pre-release, no migration), and PlanRequires now
+        carries serde(default) at struct level as a parse convenience only:
+        a missing predicate reads as "do not care" so an older save reaches
+        the version check and is refused cleanly rather than failing the
+        parse. A predicate added later still changes the hashed serialised
+        shape and must ride its own SNAPSHOT_FORMAT_VERSION bump, as this
+        one did.
+        The shipped content authors the accepted contract on
+        undermine-a-neighbour and deniable-pressure. Hostile planning may
+        begin at head-to-head regard -10 or lower or while a grievance is
+        owed (unchanged). Regard above -10 suppresses new escalation: the
+        method recheck starts no further step and lets an uncommitted
+        campaign go. Regard at or above +20 with no grievance owed and no
+        bilateral war lets the uncommitted campaign (abandon_when) and the
+        ambition (set_aside_when) go. Both numbers are named Rhai
+        functions (shadow_hostility_floor, shadow_reconciliation_line)
+        shared by the goal selector, the plan gates, and the open card, so
+        what the player reads is exactly what the AI weighs. Nothing new
+        touches an assignment in flight or a war: the committed guard, the
+        assignment rules (ending only on a dead leader, a concluded
+        war-bound war, or cancellation), and the war rules (ending only by
+        peace or collapse) already preserve them, and the scenario tests
+        now lock that — an operation in flight at +20 resolves on its
+        ordinary day through Unquiet Holdings, and a declared war keeps
+        the ambition until peace is negotiated.
+        Succession needs no new state and no protection either way: the
+        dead head's plan ends by the dead-leader rule, the org-keyed goal
+        and the org-level obligation ledger pass through untouched, the
+        goal's frozen target is re-judged monthly against the successor's
+        own regard, and — because lost grounds start no cooldown and plan
+        cooldowns are keyed by actor — a hostile successor (Valka, at -20
+        to Edrun after Perrin was reconciled) re-arms through ordinary
+        adoption inside the window.
+        The non-secret reasoning surface is A Cold Border (cold-border),
+        an authored scenario Situation bound to the protagonist house and
+        one cold neighbour: any standing organisation outside the chain of
+        command holding a province that shares a surface route with a
+        held one (world.routes, world.provinces), whose head regards the
+        protagonist's head at or below the floor, or that is owed an open
+        grievance by the protagonist. It reads the shared world view only
+        — opinions, obligations, wars, organisations, provinces, routes —
+        and never a plan, goal, assignment, or exposure record, so it
+        cannot leak provenance by construction: it shows the live regard,
+        the floor, the line, the open grievances owed, any bilateral war
+        (days and a war link), and the neighbour's head as a link, and
+        offers the two ordinary levers as actions — court pinned to the
+        head (led by the head it lifts both the personal and the house
+        regard) and the new send-gifts with a free envoy. It resolves
+        passed-on, reconciled, or eased, with no effects: it explains why
+        a neighbour might scheme, never that it is. Bound to the
+        protagonist like its sibling First Reign cards but generic over
+        neighbours, so two cards open the reign — Draksha's head regards
+        Edrun at -20 as well as Vantar's at -15.
+        The balance lever is authored: send-gifts (first-reign.rhai) is an
+        ordinary consequential diplomacy assignment — 30 days, 20 wealth,
+        difficulty 8, organisation target, ai_available false, a scandal
+        risk — whose opinion effects carry their own reason (gifted +15 for
+        1080 days on success, +25 for 1800 on a triumph; gift-spurned -10
+        for 1440 on a disaster) toward the owner head. From the opening
+        -15, a head-led court success (+20) plus a gifts success (+15)
+        reaches the line exactly, and a court triumph (+40) reaches it
+        alone: the line is a strategy of two ordinary successes, not one
+        lucky roll. Grievance settlement is deferred: no authored effect
+        settles a grievance (the obligation effect's fulfil action would
+        work mechanically on a grievance record, but no settle assignment
+        is authored), and grievances from exposed intrigue are permanent.
+        The gating predicate reads target=debtor, authority=creditor —
+        for Vantar's set_aside_when and abandon_when against Harrow, it
+        asks whether HARROW owes VANTAR a grievance — and no shipped
+        obligation has Harrow as debtor and Vantar as creditor, so the
+        predicate holds and the +20 clause is reachable without a
+        settlement. The ledger's only Vantar grievance runs the other way
+        (okonn-resents-vantar: Vantar owes Okonn) and is irrelevant to
+        this arc.
+      rationale:
+        - "[ai] Setting the goal aside over its frozen target is what actually ends the loop: the org-keyed ambition, resolved once at adoption and never re-judged, was the residue that kept pressing Subvert monthly after a reconciliation — the closest thing the simulation had to protected antagonist state. The plan-level abandon_when is belt and braces: in the shipped content the method recheck lets the campaign go first, but the predicate makes the +20 rule true of plans directly, for content whose gates carry no opinion floor."
+        - "[ai] Reusing PlanRequires for set_aside_when keeps one relationship vocabulary, one evaluator, and one set of load rules (the organisation-target checks and the min-over-max band check apply to both), so an ambition and its campaigns cannot drift apart on what reconciliation means; GoalRequires stays target-blind, which is what its trigger needs."
+        - "[ai] No cooldown on a lost-grounds set-aside is deliberate and asymmetric with exhaustion: a 720-day cooldown after reconciliation would have been protected peace, the mirror image of the protected antagonist the PRD forbids, and it would have made a hostile successor wait out the window. Oscillation needs a thirty-point swing (from at or above +20 back to at or below -10), so the pulse cannot thrash."
+        - "[ai] Distinct history keys, rather than a reason threaded through abandon, keep the covert audience path untouched and make reconciliation-driven endings distinguishable in history without changing the existing plain-failure line; the method recheck joins the lost-grounds key because a gate that has ceased to hold before a new step means exactly that."
+        - "[ai] The card reads the shared world view alone, so the covert boundary is structural rather than reviewed: nothing in its inputs can name a plan, a goal, an assignment, or a culprit. Binding it to the protagonist like the other First Reign cards keeps the deck focused, while walking every surface neighbour keeps it honest — Draksha's cold regard is a public fact too, and the tests select the Vantar card by both bindings."
+        - "[ai] A second lever with its own opinion reason is the only way to stack: modifiers replace per (target, reason), so repeating court cannot climb, and without send-gifts the line was reachable only by a head-led critical courtship. Court stays the general answer; gifts are cheaper, shorter, and leader-free, so the picker compares envoys."
+        - "[ai] The in-flight contract is a timing fact the tests pin: an accepted step resolves on its completes day, and only then — the same day — is the uncommitted residue let go; the ambition above it may be set aside on an earlier pulse without touching the work, because the goal owns no executor."
+        - "[ai] The successor test is honest about what re-arms: the grand-goal roll is keyed by house and month, so the pinned seed's window pulse fires for Valka as it did for Perrin, and the ambition resolves to Harrow from her own regard; whether her campaign then mounts is her own agency roll, so the test holds the ambition, the target, and the absence of any inherited cooldown rather than scripting the operation."
+      references:
+        - the-vantar-operation-is-goal-and-plan-driven-not-scripted
+        - covert-provenance-is-an-audience-on-authored-plans-and-assignments
+        - investigation-proves-the-bound-culprit-through-durable-exposure-state
+        - situation-actions-launch-authoritative-assignments
+        - casimirs-visit-is-a-windowed-hosted-situation

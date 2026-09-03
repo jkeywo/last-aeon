@@ -55,6 +55,26 @@ define_goal(#{
     cooldown_days: 720,
     trigger: #{ min_legitimacy: 40, is_vassal: false },
 });
+
+// A covert ambition aimed at a rival, with authored grounds it may lose:
+// the rival's head reconciled to the line, no grievance owed, and no war
+// between the houses. Its capability floor keeps it out of the other
+// tests' way; a funded Birch brings it into play, and its priority then
+// wins over becoming Consul.
+define_goal(#{
+    id: "lean-on-a-rival",
+    priority: 5,
+    favours: ["subvert"],
+    favour_bonus: 40,
+    target: "organisation",
+    covert: true,
+    trigger: #{ min_wealth: 10000 },
+    set_aside_when: #{
+        min_target_head_opinion: 20, target_owes_no_grievance: true, at_war_with_target: false,
+    },
+    max_days: 3600,
+    cooldown_days: 720,
+});
 "#;
 
 fn content() -> Arc<aeon_data::ContentSet> {
@@ -215,6 +235,186 @@ fn goals_replay_identically_and_survive_snapshots() {
         a.state_hash(),
         "and continue identically afterwards"
     );
+}
+
+// ---------------------------------------------------------------------------
+// Lost grounds: an ambition set aside by its own authored predicates,
+// without a cooldown, and adopted afresh when the grounds return.
+// ---------------------------------------------------------------------------
+
+/// Funds Birch past the rival ambition's capability floor and drops its
+/// legitimacy below the Consul ambition's, so the only ambition in play
+/// is the one under test.
+fn fund_birch_for_the_rival_ambition(h: &mut SimHost) {
+    let birch = org(h, "birch");
+    let world = h.world_mut();
+    let entity = aeon_sim::access::org_entity(world, birch).expect("birch exists");
+    let mut resources = world
+        .get_mut::<aeon_sim::OrgResources>(entity)
+        .expect("resources");
+    resources.wealth = 10_000;
+    resources.legitimacy = 10;
+}
+
+/// Sets (or replaces) one direct test modifier on Bela's ledger toward
+/// Aron: the house head's regard for the rival's head, which the
+/// ambition's grounds read live.
+fn set_regard(h: &mut SimHost, amount: i32) {
+    use aeon_sim::politics::{OpinionEntry, OpinionLedger};
+    let head = bela(h);
+    let aron = h.world_mut().resource::<PoliticsIndex>().character_keys[&key("aron-ash")];
+    let world = h.world_mut();
+    let entity = world.resource::<PoliticsIndex>().characters[&head];
+    world
+        .get_mut::<OpinionLedger>(entity)
+        .expect("characters carry opinion ledgers")
+        .set(OpinionEntry {
+            target: aron,
+            amount,
+            reason: "test-regard".to_owned(),
+            expires: None,
+        });
+}
+
+fn birch_ambition(h: &mut SimHost) -> Option<aeon_sim::goals::ActiveGoal> {
+    let birch = org(h, "birch");
+    h.world_mut()
+        .resource::<Goals>()
+        .active
+        .get(&birch)
+        .cloned()
+}
+
+#[test]
+fn an_ambition_whose_grounds_are_lost_is_set_aside_without_a_cooldown_and_returns_with_them() {
+    let mut h = host(45);
+    let birch = org(&mut h, "birch");
+    let ash = org(&mut h, "ash");
+    fund_birch_for_the_rival_ambition(&mut h);
+    advance_to_ambition(&mut h, birch);
+    let goal = birch_ambition(&mut h).expect("adopted");
+    assert_eq!(goal.def.as_str(), "lean-on-a-rival");
+    assert_eq!(
+        goal.target,
+        aeon_sim::AssignmentTarget::Org(ash),
+        "the weakest rival is the ambition's target"
+    );
+
+    // One point short of the line the ambition stands through a pulse.
+    set_regard(&mut h, 19);
+    h.advance_days(31);
+    assert!(
+        birch_ambition(&mut h).is_some(),
+        "one point short of the line the ambition keeps its grounds"
+    );
+
+    // At the line, with no grievance owed and no war, it is set aside on
+    // the pulse — with the reason on record, confided to its owner — and
+    // no cooldown holds the house off it.
+    set_regard(&mut h, 20);
+    h.advance_days(31);
+    assert!(
+        birch_ambition(&mut h).is_none(),
+        "at the line the ambition is set aside"
+    );
+    assert!(
+        !h.world_mut()
+            .resource::<Goals>()
+            .cooldowns
+            .contains_key(&(birch, key("lean-on-a-rival"))),
+        "lost grounds start no cooldown: nothing was exhausted"
+    );
+    let log = h.world_mut().resource::<aeon_sim::MessageLog>().clone();
+    let ending = log
+        .entries
+        .iter()
+        .rev()
+        .find(|entry| {
+            entry.org == Some(birch) && entry.text.contains("The grounds for it no longer hold")
+        })
+        .expect("the lost grounds are on record");
+    assert!(
+        !ending.audience.visible_to(Some(ash)),
+        "a covert ambition's ending confides in its owner alone"
+    );
+    assert!(ending.audience.visible_to(Some(birch)));
+    assert!(ending.audience.visible_to(None));
+
+    // The grounds return, and the ambition is the house's again through
+    // the ordinary monthly pulse — never protected, never locked out.
+    set_regard(&mut h, 0);
+    advance_to_ambition(&mut h, birch);
+    assert_eq!(
+        birch_ambition(&mut h).expect("adopted afresh").def.as_str(),
+        "lean-on-a-rival"
+    );
+}
+
+#[test]
+fn a_grievance_owed_or_a_war_declared_keeps_an_ambition_its_grounds_at_the_line() {
+    // A grievance the rival owes the house.
+    let mut h = host(46);
+    let birch = org(&mut h, "birch");
+    let ash = org(&mut h, "ash");
+    fund_birch_for_the_rival_ambition(&mut h);
+    advance_to_ambition(&mut h, birch);
+    aeon_sim::obligations::create(
+        h.world_mut(),
+        aeon_sim::obligations::ObligationKind::Grievance,
+        ash,
+        birch,
+        "a slight at court",
+        20,
+        None,
+    );
+    set_regard(&mut h, 20);
+    h.advance_days(31);
+    assert!(
+        birch_ambition(&mut h).is_some(),
+        "a wronged house keeps its ambition whatever the regard"
+    );
+
+    // A formal war between the houses, until it is ended through
+    // ordinary peace — and only then is the ambition set aside.
+    let mut h = host(47);
+    let birch = org(&mut h, "birch");
+    let ash = org(&mut h, "ash");
+    fund_birch_for_the_rival_ambition(&mut h);
+    advance_to_ambition(&mut h, birch);
+    let war = aeon_sim::wars::declare_war(h.world_mut(), birch, ash, key("a-border-war"))
+        .expect("an ordinary formal war");
+    set_regard(&mut h, 20);
+    h.advance_days(31);
+    assert!(
+        birch_ambition(&mut h).is_some(),
+        "at war, the ambition keeps its grounds at the line"
+    );
+    assert!(aeon_sim::wars::is_active_war(h.world_mut(), war));
+    aeon_sim::wars::conclude_war(
+        h.world_mut(),
+        war,
+        aeon_sim::wars::WarConclusionKind::NegotiatedPeace,
+    )
+    .expect("peace is negotiated");
+    h.advance_days(31);
+    assert!(
+        birch_ambition(&mut h).is_none(),
+        "with peace made and the regard at the line, the ambition is set aside"
+    );
+}
+
+#[test]
+fn an_ambition_whose_grounds_are_already_gone_is_never_taken_up() {
+    let mut h = host(48);
+    fund_birch_for_the_rival_ambition(&mut h);
+    set_regard(&mut h, 20);
+    for _ in 0..400 {
+        h.advance_days(1);
+        assert!(
+            birch_ambition(&mut h).is_none(),
+            "an ambition set aside on its next pulse is not adopted on this one"
+        );
+    }
 }
 
 // ---------------------------------------------------------------------------

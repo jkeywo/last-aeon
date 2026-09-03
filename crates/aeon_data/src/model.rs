@@ -1345,6 +1345,13 @@ pub struct PlanDef {
     /// per-knower exposure record written by investigation — while
     /// spectators and replay retain everything.
     pub covert: bool,
+    /// Conditions under which the campaign loses its grounds: while no
+    /// step is committed, a day on which these hold abandons the plan, and
+    /// a candidate on which they already hold is never adopted. Judged
+    /// over the authority and the plan's target like a method gate. Work
+    /// already accepted is never touched — it runs to its ordinary end —
+    /// so only the uncommitted residue of a campaign can end this way.
+    pub abandon_when: Option<PlanRequires>,
     /// Ways to pursue the goal, in authored preference order.
     pub methods: Vec<PlanMethodDef>,
 }
@@ -1447,15 +1454,26 @@ pub enum PlanTargetSelector {
     TargetBorderProvince,
 }
 
-/// Declarative conditions gating a plan method or skipping a step.
+/// Declarative conditions gating a plan method, skipping a step,
+/// abandoning an uncommitted plan, or setting a goal aside.
 ///
 /// The same shape and reason as [`AssignmentRequires`]: conditions are
 /// data rather than script, so they validate at load and evaluate
 /// identically on every replay. Every field defaults to "do not care".
-/// Integer facts about the actor's authority and the plan's target only —
-/// a condition the player could not check by looking at the same screens
-/// does not belong here.
+/// Integer facts about the actor's authority and the plan's (or goal's)
+/// resolved target only — a condition the player could not check by
+/// looking at the same screens does not belong here.
+///
+/// This shape is persisted: an active plan copies each step's `skip_if`
+/// from the definition at adoption, so it rides in every campaign
+/// snapshot. `serde(default)` keeps the derive tolerant: a missing field
+/// reads as "do not care" (its default) instead of failing the whole parse,
+/// so an older save reaches the version check and is refused cleanly. It
+/// is a parse convenience only — a predicate added later still changes the
+/// hashed serialised shape and still bumps `SNAPSHOT_FORMAT_VERSION` under
+/// the snapshot rule, exactly as this shape did.
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct PlanRequires {
     /// The authority's wealth must be at or above this.
     pub min_wealth: Option<i64>,
@@ -1499,6 +1517,20 @@ pub struct PlanRequires {
     /// The target organisation must owe the authority an open grievance —
     /// hostility's other authored ground, mirroring `target_owes_favour`.
     pub target_owes_grievance: bool,
+    /// The authority head's opinion of the target organisation's head must
+    /// be at or above this — the authored reconciliation line, the mirror
+    /// of `max_target_head_opinion`. A missing head on either side fails
+    /// the condition.
+    pub min_target_head_opinion: Option<i32>,
+    /// The target organisation must owe the authority no open grievance —
+    /// the sibling of `target_owes_grievance`, for conditions that need
+    /// the ledger clear rather than charged.
+    pub target_owes_no_grievance: bool,
+    /// Whether an active formal war must (or must not) place the authority
+    /// and the target organisation on opposing sides — the bilateral
+    /// reading, so a war already declared is a fact reconciliation cannot
+    /// wish away.
+    pub at_war_with_target: Option<bool>,
 }
 
 /// An authored grand-strategy goal: a house's standing ambition.
@@ -1542,6 +1574,14 @@ pub struct GoalDef {
     /// The advisory directives pressed on the house's vassals while the
     /// goal is active.
     pub directives: Vec<DirectiveDef>,
+    /// Conditions under which the ambition loses its grounds: on a monthly
+    /// pulse on which these hold over the house and the goal's resolved
+    /// target, the goal is set aside without starting its cooldown — the
+    /// grounds may return, and a house that finds them returned may adopt
+    /// the ambition afresh — and a candidate on which they already hold is
+    /// never adopted. Judged with the plan vocabulary, so the relationship
+    /// predicates a campaign gates on can end the ambition above it.
+    pub set_aside_when: Option<PlanRequires>,
     /// Abandon the goal if it is still unmet after this many days.
     pub max_days: u32,
     /// Days after the goal ends before the house may adopt it again.

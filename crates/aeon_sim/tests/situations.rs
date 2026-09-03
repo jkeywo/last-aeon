@@ -6330,3 +6330,1074 @@ fn a_proved_hand_withdraws_the_ordinary_enquiry_while_the_operation_still_runs()
         "no ordinary order reaches the no-origin refusal"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Reconciliation and derailment: changing Vantar's live relationship
+// suppresses or abandons only uncommitted hostile planning, while an
+// operation or a war already underway runs to its ordinary end, a
+// succession re-reads the relationship from the successor's own regard,
+// and the open Cold Border card explains the reasoning without ever
+// naming a hand.
+// ---------------------------------------------------------------------------
+
+/// The authored hostility floor and reconciliation line, as the shadow
+/// content states them and the Cold Border card shows them.
+const SHADOW_FLOOR: i64 = -10;
+const SHADOW_LINE: i64 = 20;
+/// Vantar's authored opening regard for Harrow's head: grasping against
+/// magnanimous.
+const SHADOW_OPENING_REGARD: i32 = -15;
+
+/// Sets (or replaces) one direct test modifier on the live Vantar head's
+/// ledger toward the live Harrow head — the relationship every shadow
+/// predicate and the Cold Border card read. One stable reason means
+/// repeated calls replace rather than stack.
+fn set_vantar_esteem(host: &mut SimHost, amount: i32) {
+    let vantar = org(host, "vantar");
+    let harrow = org(host, "harrow");
+    let theirs = aeon_sim::access::org_head(host.world_mut(), vantar).expect("vantar head");
+    let own = aeon_sim::access::org_head(host.world_mut(), harrow).expect("harrow head");
+    let world = host.world_mut();
+    let entity = world.resource::<PoliticsIndex>().characters[&theirs];
+    world
+        .get_mut::<OpinionLedger>(entity)
+        .expect("characters carry opinion ledgers")
+        .set(OpinionEntry {
+            target: own,
+            amount,
+            reason: "test-thaw".to_owned(),
+            expires: None,
+        });
+}
+
+/// The live Vantar head's derived opinion of the live Harrow head.
+fn vantar_regard(host: &mut SimHost) -> i32 {
+    let vantar = org(host, "vantar");
+    let harrow = org(host, "harrow");
+    let theirs = aeon_sim::access::org_head(host.world_mut(), vantar).expect("vantar head");
+    let own = aeon_sim::access::org_head(host.world_mut(), harrow).expect("harrow head");
+    opinion_between(host.world_mut(), theirs, own)
+}
+
+fn vantar_ambition(host: &mut SimHost) -> Option<aeon_sim::goals::ActiveGoal> {
+    let vantar = org(host, "vantar");
+    host.world_mut()
+        .resource::<aeon_sim::goals::Goals>()
+        .active
+        .get(&vantar)
+        .cloned()
+}
+
+/// The covert campaign the live Vantar head is pursuing, if any.
+fn vantar_campaign(host: &mut SimHost) -> Option<aeon_sim::plans::ActivePlan> {
+    let vantar = org(host, "vantar");
+    let head = aeon_sim::access::org_head(host.world_mut(), vantar)?;
+    host.world_mut()
+        .resource::<aeon_sim::plans::Plans>()
+        .active
+        .get(&head)
+        .cloned()
+}
+
+/// The Cold Border card `house` holds about `neighbour`. Harrow opens the
+/// reign with two cold neighbours — Draksha's head regards Edrun as
+/// coldly as Vantar's — so the card under test is always named by both
+/// bindings.
+fn cold_border_card_for(
+    host: &mut SimHost,
+    house: OrgId,
+    neighbour: OrgId,
+) -> Option<SituationCard> {
+    active_cards(host.world_mut()).into_iter().find(|card| {
+        card.active.key.definition == key("cold-border")
+            && card.active.key.bindings.get("house") == Some(&SituationSubject::Organisation(house))
+            && card.active.key.bindings.get("neighbour")
+                == Some(&SituationSubject::Organisation(neighbour))
+    })
+}
+
+/// Vantar's ambition, when it is aimed at Harrow. A reconciled Vantar may
+/// legitimately turn the same ambition on another cold neighbour later in
+/// the window; what these tests hold is that Harrow is not its target.
+fn vantar_ambition_against_harrow(host: &mut SimHost) -> Option<aeon_sim::goals::ActiveGoal> {
+    let harrow = org(host, "harrow");
+    vantar_ambition(host).filter(|goal| goal.target == AssignmentTarget::Org(harrow))
+}
+
+/// Vantar's sabotage against ground Harrow holds, if any is running.
+fn vantar_operation_against_harrow(host: &mut SimHost) -> Option<ActiveAssignment> {
+    let harrow = org(host, "harrow");
+    let work = vantar_operation(host)?;
+    let AssignmentTarget::Province(province) = work.target else {
+        return None;
+    };
+    (aeon_sim::warfare::province_holder(host.world_mut(), province) == Some(harrow)).then_some(work)
+}
+
+fn last_cold_border_resolution(
+    host: &mut SimHost,
+) -> Option<aeon_sim::situations::SituationResolution> {
+    host.world_mut()
+        .resource::<SituationState>()
+        .resolutions
+        .iter()
+        .rev()
+        .find(|notice| notice.situation.definition == key("cold-border"))
+        .cloned()
+}
+
+/// A line Vantar's covert work wrote — on record, confided to Vantar and
+/// never to Harrow, open to spectators and replay.
+fn assert_confided_to_vantar(host: &mut SimHost, fragment: &str) {
+    let harrow = org(host, "harrow");
+    let vantar = org(host, "vantar");
+    let log = host.world_mut().resource::<MessageLog>().clone();
+    let line = log
+        .entries
+        .iter()
+        .rev()
+        .find(|entry| entry.org == Some(vantar) && entry.text.contains(fragment))
+        .unwrap_or_else(|| panic!("a Vantar line carrying '{fragment}' is on record"));
+    assert!(
+        !line.audience.visible_to(Some(harrow)),
+        "'{}' must not reach the house it concerns",
+        line.text
+    );
+    assert!(line.audience.visible_to(Some(vantar)));
+    assert!(line.audience.visible_to(None));
+}
+
+#[test]
+fn regard_lifted_above_the_floor_before_the_window_keeps_the_year_quiet() {
+    let mut host = scenario_host(SHADOW_SEED, repository_content());
+    let harrow = org(&mut host, "harrow");
+    let vantar = org(&mut host, "vantar");
+    assert_eq!(
+        vantar_regard(&mut host),
+        SHADOW_OPENING_REGARD,
+        "the authored opening regard sits below the floor"
+    );
+    assert!(
+        cold_border_card_for(&mut host, harrow, vantar).is_some(),
+        "day one shows the cold border for what it is"
+    );
+
+    // A thaw to one point above the floor, months before the window:
+    // enough to suppress new escalation, well short of the line.
+    set_vantar_esteem(
+        &mut host,
+        SHADOW_OPENING_REGARD.abs() + SHADOW_FLOOR as i32 + 1,
+    );
+    assert_eq!(vantar_regard(&mut host), SHADOW_FLOOR as i32 + 1);
+    host.advance_days(1);
+    assert!(cold_border_card_for(&mut host, harrow, vantar).is_none());
+    assert_eq!(
+        last_cold_border_resolution(&mut host)
+            .expect("the card resolved")
+            .outcome,
+        key("eased"),
+        "above the floor but short of the line is eased, not reconciled"
+    );
+
+    // The whole window elapses with nothing of the arc aimed at Harrow:
+    // no ambition against it, no operation on its ground, no alarm.
+    for _ in 1..=260 {
+        host.advance_days(1);
+        assert!(
+            vantar_ambition_against_harrow(&mut host).is_none(),
+            "no hostile ambition forms against a house regarded above the floor"
+        );
+        assert!(vantar_operation_against_harrow(&mut host).is_none());
+    }
+    assert!(unquiet_card_for(&mut host, harrow).is_none());
+    let log = host.world_mut().resource::<MessageLog>().clone();
+    assert!(
+        !log.entries.iter().any(|entry| {
+            entry.org == Some(vantar)
+                && entry.subject == Some(aeon_sim::LogSubject::Org(harrow))
+                && entry.text.contains("Undermine a Neighbour")
+        }),
+        "not even the spectator's history carries an ambition against Harrow that never formed"
+    );
+}
+
+#[test]
+fn reconciliation_at_the_line_lets_an_uncommitted_campaign_and_its_ambition_go() {
+    let mut host = scenario_host(SHADOW_SEED, repository_content());
+    let harrow = org(&mut host, "harrow");
+    let vantar = org(&mut host, "vantar");
+    host.advance_days(180);
+    let ambition =
+        vantar_ambition(&mut host).expect("the ambition forms on the window's first pulse");
+    assert_eq!(ambition.target, AssignmentTarget::Org(harrow));
+    let campaign =
+        vantar_campaign(&mut host).expect("the head takes up the campaign the same pulse");
+    assert_eq!(campaign.def, key("deniable-pressure"));
+    assert!(
+        campaign.current_assignment.is_none(),
+        "nothing is committed on the day of adoption"
+    );
+
+    // The regard reaches the line — no grievance owed, no war — before
+    // any step commits. The campaign is let go the next day, before its
+    // step could begin, and the reason is confided to Vantar alone.
+    set_vantar_esteem(&mut host, SHADOW_LINE as i32 - SHADOW_OPENING_REGARD);
+    assert_eq!(vantar_regard(&mut host), SHADOW_LINE as i32);
+    host.advance_days(1);
+    assert!(
+        vantar_campaign(&mut host).is_none(),
+        "the uncommitted campaign is let go before any step"
+    );
+    assert!(
+        vantar_operation(&mut host).is_none(),
+        "no sabotage was ever accepted"
+    );
+    assert_confided_to_vantar(&mut host, "the grounds for it no longer hold");
+    assert!(
+        vantar_ambition(&mut host).is_some(),
+        "the ambition stands until its own monthly pulse"
+    );
+
+    // On the pulse the ambition is set aside — with no cooldown to lock
+    // the house out should its grounds return — and again the line is
+    // Vantar's alone to read.
+    host.advance_days(29);
+    assert!(
+        vantar_ambition(&mut host).is_none(),
+        "at the line, with no grievance and no war, the ambition is set aside"
+    );
+    assert!(
+        !host
+            .world_mut()
+            .resource::<aeon_sim::goals::Goals>()
+            .cooldowns
+            .contains_key(&(vantar, key("undermine-a-neighbour"))),
+        "lost grounds start no cooldown"
+    );
+    assert_confided_to_vantar(&mut host, "Undermine a Neighbour");
+
+    // Nothing of the arc mounts against Harrow for the rest of the
+    // window, whatever else the house may set its mind to.
+    for _ in 0..51 {
+        host.advance_days(1);
+        assert!(vantar_ambition_against_harrow(&mut host).is_none());
+        assert!(vantar_operation_against_harrow(&mut host).is_none());
+    }
+    assert!(unquiet_card_for(&mut host, harrow).is_none());
+
+    // The Cold Border card reflected the thaw: resolved reconciled,
+    // naming the neighbour as a neighbour and nothing as a hand.
+    let notice = last_cold_border_resolution(&mut host).expect("the card resolved");
+    assert_eq!(notice.outcome, key("reconciled"));
+    assert!(
+        notice.text.contains("House Vantar"),
+        "got '{}'",
+        notice.text
+    );
+    for tell in SHADOW_TELLS {
+        assert!(!notice.text.contains(tell));
+    }
+}
+
+#[test]
+fn reconciliation_at_the_line_leaves_the_operation_in_flight_to_its_ordinary_end() {
+    let mut host = scenario_host(SHADOW_SEED, repository_content());
+    let harrow = org(&mut host, "harrow");
+    host.advance_days(SHADOW_LIVE_DAY);
+    let work = vantar_operation(&mut host).expect("the operation is live");
+    let exact = unquiet_card_for(&mut host, harrow)
+        .expect("the holder's card is live")
+        .active
+        .occurrence();
+    assert_eq!(
+        vantar_campaign(&mut host)
+            .expect("the campaign stands")
+            .current_assignment,
+        Some(work.id)
+    );
+
+    // The regard reaches the line with the sabotage in flight. The
+    // accepted work is untouched: it runs to the day it was always going
+    // to resolve on, and the campaign stands behind it the whole way —
+    // across the pulse that sets the ambition above it aside.
+    set_vantar_esteem(&mut host, SHADOW_LINE as i32 - SHADOW_OPENING_REGARD);
+    while host.date().add_days(1) < work.completes {
+        host.advance_days(1);
+        assert!(
+            aeon_sim::access::assignment(host.world_mut(), work.id).is_some(),
+            "work already accepted is untouched by the change of heart"
+        );
+        assert_eq!(
+            vantar_campaign(&mut host)
+                .expect("the campaign stands behind its work")
+                .current_assignment,
+            Some(work.id)
+        );
+    }
+    assert!(
+        vantar_ambition_against_harrow(&mut host).is_none(),
+        "the ambition was set aside on the pulse before the work resolved"
+    );
+    host.advance_days(1);
+    assert_eq!(host.date(), work.completes);
+    assert!(
+        aeon_sim::access::assignment(host.world_mut(), work.id).is_none(),
+        "the sabotage resolved on its ordinary day"
+    );
+
+    // Resolved through the ordinary Situation, not erased: the holder's
+    // card read the ground and closed struck or weathered, never
+    // passed-on, and without naming the hand.
+    let state = host.world_mut().resource::<SituationState>().clone();
+    let notice = state
+        .resolutions
+        .iter()
+        .find(|notice| notice.occurrence() == exact)
+        .expect("the alarm resolved");
+    assert!(
+        matches!(notice.outcome.as_str(), "struck" | "weathered"),
+        "the operation ran its course: {}",
+        notice.outcome
+    );
+    for tell in SHADOW_TELLS {
+        assert!(!notice.text.contains(tell));
+    }
+    // With the work done there is nothing left to commit, and the
+    // campaign ends by its ordinary rules within days.
+    host.advance_days(2);
+    assert!(vantar_campaign(&mut host).is_none());
+    assert!(vantar_operation_against_harrow(&mut host).is_none());
+}
+
+#[test]
+fn a_war_already_declared_keeps_the_ambition_until_peace_is_made_through_ordinary_means() {
+    let mut host = scenario_host(SHADOW_SEED, repository_content());
+    let harrow = org(&mut host, "harrow");
+    let vantar = org(&mut host, "vantar");
+    host.advance_days(SHADOW_LIVE_DAY);
+    let work = vantar_operation(&mut host).expect("the operation is live");
+    let war = declare_war(host.world_mut(), harrow, vantar, key("test-border-war"))
+        .expect("an ordinary formal war");
+    evaluate(host.world_mut());
+
+    // The open card reads the war as a public fact.
+    let projection = cold_border_card_for(&mut host, harrow, vantar)
+        .expect("the border is still cold")
+        .projection
+        .expect("projection");
+    assert_eq!(
+        integer_metric(&projection, "situation.metric.war-days"),
+        Some(0)
+    );
+    assert!(projection.links.iter().any(|link| {
+        link.kind == aeon_data::model::SituationSubjectKind::War && link.id == war.raw()
+    }));
+
+    // The regard reaches the line. The operation runs to its end and the
+    // ambition keeps its grounds: a war already declared is a deed, and
+    // it ends only through ordinary negotiation.
+    set_vantar_esteem(&mut host, SHADOW_LINE as i32 - SHADOW_OPENING_REGARD);
+    while host.date() < work.completes {
+        host.advance_days(1);
+    }
+    host.advance_days(1);
+    assert!(aeon_sim::access::assignment(host.world_mut(), work.id).is_none());
+    assert!(
+        vantar_ambition(&mut host).is_some(),
+        "at war, the ambition keeps its grounds whatever the regard"
+    );
+    assert!(
+        aeon_sim::wars::is_active_war(host.world_mut(), war),
+        "no opinion threshold ends a war"
+    );
+
+    // Peace is made the ordinary way; on the next pulse the ambition is
+    // set aside for lost grounds.
+    conclude_war(host.world_mut(), war, WarConclusionKind::NegotiatedPeace)
+        .expect("peace is negotiated");
+    host.advance_days(30);
+    assert!(
+        vantar_ambition_against_harrow(&mut host).is_none(),
+        "with peace made and the regard at the line, the ambition is set aside"
+    );
+    assert_confided_to_vantar(&mut host, "Undermine a Neighbour");
+}
+
+#[test]
+fn a_successor_reads_the_relationship_afresh_with_no_protected_or_inherited_hostility() {
+    let mut host = scenario_host(SHADOW_SEED, repository_content());
+    let harrow = org(&mut host, "harrow");
+    let vantar = org(&mut host, "vantar");
+    let perrin = character(&mut host, "perrin-vantar");
+    let valka = character(&mut host, "valka-vantar");
+    let edrun = character(&mut host, "edrun-harrow");
+
+    // Perrin sets the house on the ambition inside the window and takes up
+    // the campaign himself on the same pulse.
+    host.advance_days(180);
+    let goal = vantar_ambition_against_harrow(&mut host).expect("the ambition forms");
+    assert_eq!(goal.adopted_by, perrin);
+    assert_eq!(
+        vantar_campaign(&mut host)
+            .expect("the head takes up the campaign")
+            .def,
+        key("deniable-pressure")
+    );
+
+    // Perrin is reconciled to the line. The uncommitted campaign is let go
+    // the next day — and, as every ended plan does, it leaves ITS ACTOR's
+    // cooldown on record — and on the pulse the ambition is set aside for
+    // lost grounds, which by design starts no cooldown at all.
+    set_vantar_esteem(&mut host, SHADOW_LINE as i32 - SHADOW_OPENING_REGARD);
+    host.advance_days(1);
+    assert!(vantar_campaign(&mut host).is_none());
+    assert!(
+        host.world_mut()
+            .resource::<aeon_sim::plans::Plans>()
+            .cooldowns
+            .contains_key(&(perrin, key("deniable-pressure"))),
+        "a campaign let go leaves its actor's plan cooldown behind"
+    );
+    host.advance_days(29);
+    assert!(
+        vantar_ambition(&mut host).is_none(),
+        "at the line the ambition is set aside on the pulse"
+    );
+    assert!(
+        !host
+            .world_mut()
+            .resource::<aeon_sim::goals::Goals>()
+            .cooldowns
+            .contains_key(&(vantar, key("undermine-a-neighbour"))),
+        "a lost-grounds set-aside starts no ambition cooldown"
+    );
+    assert!(cold_border_card_for(&mut host, harrow, vantar).is_none());
+    let ledger_before = host
+        .world_mut()
+        .resource::<aeon_sim::obligations::Obligations>()
+        .clone();
+
+    // Perrin dies the same day; Valka succeeds, and her own regard for
+    // Edrun — never touched by her husband's reconciliation — sits below
+    // the floor.
+    let date = host.date();
+    process_death(host.world_mut(), perrin, date);
+    assert_eq!(
+        aeon_sim::access::org_head(host.world_mut(), vantar),
+        Some(valka)
+    );
+    assert!(
+        opinion_between(host.world_mut(), valka, edrun) <= SHADOW_FLOOR as i32,
+        "the successor's own regard, read afresh"
+    );
+    assert_eq!(
+        host.world_mut()
+            .resource::<aeon_sim::obligations::Obligations>()
+            .clone(),
+        ledger_before,
+        "organisation-level obligations pass through the succession untouched"
+    );
+    host.advance_days(1);
+    let projection = cold_border_card_for(&mut host, harrow, vantar)
+        .expect("the border runs cold again under the successor")
+        .projection
+        .expect("projection");
+    assert_eq!(
+        integer_metric(&projection, "situation.metric.neighbour-regard"),
+        Some(i64::from(opinion_between(host.world_mut(), valka, edrun)))
+    );
+
+    // Inside the window the house re-arms on the next ordinary pulse,
+    // under the successor, from her own regard — nothing protected,
+    // nothing inherited but the relationship as it now stands. Had the
+    // set-aside started the ambition's 720-day cooldown, or had Perrin's
+    // plan cooldown passed to his widow, neither could happen here.
+    let mut rearmed = None;
+    while host.date() < start_date(&mut host).add_days(261) {
+        host.advance_days(1);
+        if let Some(goal) = vantar_ambition_against_harrow(&mut host) {
+            rearmed = Some(goal);
+            break;
+        }
+    }
+    let goal = rearmed.expect("the successor's own regard re-arms the ambition inside the window");
+    assert_eq!(goal.def, key("undermine-a-neighbour"));
+    assert_eq!(goal.adopted_by, valka, "the successor set the house on it");
+    assert_eq!(goal.target, AssignmentTarget::Org(harrow));
+    let plan_cooldowns = host
+        .world_mut()
+        .resource::<aeon_sim::plans::Plans>()
+        .cooldowns
+        .clone();
+    assert!(
+        plan_cooldowns.contains_key(&(perrin, key("deniable-pressure"))),
+        "the dead head's plan cooldown stands, and stays his"
+    );
+    assert!(
+        !plan_cooldowns.keys().any(|(who, _)| *who == valka),
+        "a plan cooldown is the dead head's, never the successor's"
+    );
+    assert!(
+        !host
+            .world_mut()
+            .resource::<aeon_sim::goals::Goals>()
+            .cooldowns
+            .contains_key(&(vantar, key("undermine-a-neighbour"))),
+        "the set-aside left no ambition cooldown for the successor to wait out"
+    );
+}
+
+#[test]
+fn a_grievance_owed_opens_the_arc_above_the_floor_through_the_grievance_gate() {
+    let mut host = scenario_host(SHADOW_SEED, repository_content());
+    let harrow = org(&mut host, "harrow");
+    let vantar = org(&mut host, "vantar");
+
+    // The regard is lifted to zero — above the floor, short of the line —
+    // and Harrow comes to owe Vantar an open grievance. The open card
+    // reads exactly that: an aggrieved border, one grievance owed, and a
+    // regard that on its own would open nothing.
+    set_vantar_esteem(&mut host, -SHADOW_OPENING_REGARD);
+    assert_eq!(vantar_regard(&mut host), 0);
+    aeon_sim::obligations::create(
+        host.world_mut(),
+        ObligationKind::Grievance,
+        harrow,
+        vantar,
+        "a border slight",
+        20,
+        None,
+    );
+    evaluate(host.world_mut());
+    let projection = cold_border_card_for(&mut host, harrow, vantar)
+        .expect("a grievance owed keeps the border cold whatever the regard")
+        .projection
+        .expect("projection");
+    assert_eq!(projection.stage, key("aggrieved"));
+    assert_eq!(
+        integer_metric(&projection, "situation.metric.neighbour-regard"),
+        Some(0)
+    );
+    assert_eq!(
+        integer_metric(&projection, "situation.metric.open-grievances"),
+        Some(1)
+    );
+
+    // On the window's first pulse the ledger alone resolves the ambition's
+    // target, and the head takes up the campaign through its grievance
+    // gate — the ill-will gate, one point and more above the floor, is
+    // shut. The operation then mounts as it would from ill will.
+    host.advance_days(180);
+    let goal = vantar_ambition_against_harrow(&mut host)
+        .expect("a grievance owed is grounds for the ambition on its own");
+    assert_eq!(goal.def, key("undermine-a-neighbour"));
+    let campaign = vantar_campaign(&mut host).expect("the head takes up the campaign");
+    assert_eq!(campaign.def, key("deniable-pressure"));
+    assert_eq!(
+        campaign.method, "from-grievance",
+        "above the floor, only the grievance gate is open"
+    );
+    assert_eq!(campaign.target, AssignmentTarget::Org(harrow));
+    host.advance_days(2);
+    assert!(
+        vantar_operation_against_harrow(&mut host).is_some(),
+        "the operation mounts on Harrow's ground"
+    );
+
+    // Warmth alone settles nothing: at the line, with the grievance still
+    // open, the ambition keeps its grounds through the pulse.
+    set_vantar_esteem(&mut host, SHADOW_LINE as i32 - SHADOW_OPENING_REGARD);
+    assert_eq!(vantar_regard(&mut host), SHADOW_LINE as i32);
+    host.advance_days(28);
+    assert!(
+        vantar_ambition_against_harrow(&mut host).is_some(),
+        "a wronged house keeps its grounds whatever the regard"
+    );
+}
+
+#[test]
+fn the_cold_border_card_reads_only_public_relationship_facts() {
+    let mut host = scenario_host(SHADOW_SEED, repository_content());
+    let harrow = org(&mut host, "harrow");
+    let vantar = org(&mut host, "vantar");
+    let perrin = character(&mut host, "perrin-vantar");
+    let edrun = character(&mut host, "edrun-harrow");
+
+    // Day one: the live regard, the two authored numbers, the clear
+    // ledger, no war, the neighbour's head as a link, and the two
+    // ordinary levers aimed at the neighbour.
+    let card =
+        cold_border_card_for(&mut host, harrow, vantar).expect("the card is live from day one");
+    assert_eq!(card.unavailable, None);
+    assert_eq!(
+        card.active.key.bindings.get("neighbour"),
+        Some(&SituationSubject::Organisation(vantar))
+    );
+    let projection = card.projection.clone().expect("projection");
+    assert_eq!(projection.stage, key("cold"));
+    assert!(!projection.warning, "a standing fact raises no alarm");
+    assert_eq!(
+        integer_metric(&projection, "situation.metric.neighbour-regard"),
+        Some(i64::from(SHADOW_OPENING_REGARD))
+    );
+    assert_eq!(
+        integer_metric(&projection, "situation.metric.hostility-floor"),
+        Some(SHADOW_FLOOR)
+    );
+    assert_eq!(
+        integer_metric(&projection, "situation.metric.reconciliation-line"),
+        Some(SHADOW_LINE)
+    );
+    assert_eq!(
+        integer_metric(&projection, "situation.metric.open-grievances"),
+        Some(0)
+    );
+    assert_eq!(
+        integer_metric(&projection, "situation.metric.war-days"),
+        None,
+        "no war row without a war"
+    );
+    assert!(projection.links.iter().any(|link| {
+        link.kind == aeon_data::model::SituationSubjectKind::Character && link.id == perrin.raw()
+    }));
+    let court = projection
+        .actions
+        .iter()
+        .find(|action| action.id == key("court"))
+        .expect("courtship is offered");
+    assert_eq!(
+        court.leader,
+        Some(edrun),
+        "courtship pins the head as envoy"
+    );
+    assert_eq!(court.target, AssignmentTarget::Org(vantar));
+    let gifts = projection
+        .actions
+        .iter()
+        .find(|action| action.id == key("send-gifts"))
+        .expect("gifts are offered");
+    assert_eq!(gifts.leader, None, "the envoy is a free choice");
+    assert_eq!(gifts.target, AssignmentTarget::Org(vantar));
+
+    // Both levers are ordinary open orders, forecast unblocked.
+    let envoy = free_household_host(&mut host, 1);
+    for (lever, leader) in [(key("court"), edrun), (key("send-gifts"), envoy)] {
+        let forecast = aeon_sim::forecast::forecast(
+            host.world_mut(),
+            harrow,
+            &lever,
+            leader,
+            AssignmentTarget::Org(vantar),
+        )
+        .expect("an ordinary defined assignment");
+        assert_eq!(
+            forecast.blocked, None,
+            "{lever} is open against the neighbour"
+        );
+    }
+
+    // With the covert operation live, the card is unchanged in kind: no
+    // assignment, no plan, no culprit — the same public facts, and the
+    // holder's alarm beside it is the only sign anything is afoot.
+    host.advance_days(SHADOW_LIVE_DAY);
+    assert!(vantar_operation(&mut host).is_some());
+    let card = cold_border_card_for(&mut host, harrow, vantar).expect("still cold");
+    let projection = card.projection.clone().expect("projection");
+    assert!(
+        projection
+            .links
+            .iter()
+            .chain(&projection.participants)
+            .all(|link| {
+                link.kind != aeon_data::model::SituationSubjectKind::Assignment
+                    && link.kind != aeon_data::model::SituationSubjectKind::Province
+            }),
+        "the card links no work and no ground"
+    );
+    for text in [&card.title, &card.summary] {
+        for tell in SHADOW_TELLS {
+            assert!(!text.contains(tell), "the card carries a tell: '{text}'");
+        }
+    }
+
+    // A grievance Harrow comes to owe Vantar moves the card to its
+    // aggrieved stage and counts on it; the regard is unchanged.
+    aeon_sim::obligations::create(
+        host.world_mut(),
+        ObligationKind::Grievance,
+        harrow,
+        vantar,
+        "a border slight",
+        20,
+        None,
+    );
+    evaluate(host.world_mut());
+    let projection = cold_border_card_for(&mut host, harrow, vantar)
+        .expect("still cold")
+        .projection
+        .expect("projection");
+    assert_eq!(projection.stage, key("aggrieved"));
+    assert_eq!(
+        integer_metric(&projection, "situation.metric.open-grievances"),
+        Some(1)
+    );
+    // Warmth alone does not close an aggrieved border: the card stands
+    // at the line while the grievance does.
+    set_vantar_esteem(&mut host, SHADOW_LINE as i32 - SHADOW_OPENING_REGARD);
+    evaluate(host.world_mut());
+    assert!(
+        cold_border_card_for(&mut host, harrow, vantar).is_some(),
+        "an open grievance keeps the border cold whatever the regard"
+    );
+}
+
+#[test]
+fn save_load_and_replay_hold_across_the_reconciliation_boundary() {
+    let content = repository_content();
+    let mut host = scenario_host(SHADOW_SEED, Arc::clone(&content));
+    let harrow = org(&mut host, "harrow");
+
+    // Four stages either side of the boundary: the ambition and campaign
+    // adopted and uncommitted; the campaign let go the day after the
+    // thaw; the ambition set aside on its pulse; and the window closed
+    // with nothing mounted.
+    struct Checkpoint {
+        stage: &'static str,
+        snapshot: aeon_sim::CampaignSnapshot,
+        live_log: Vec<LogEntry>,
+    }
+    let checkpoint = |host: &mut SimHost, stage: &'static str| Checkpoint {
+        stage,
+        live_log: host.world_mut().resource::<MessageLog>().entries.clone(),
+        snapshot: host.snapshot(),
+    };
+    let mut checkpoints = Vec::new();
+
+    host.advance_days(180);
+    assert!(vantar_ambition(&mut host).is_some());
+    assert!(vantar_campaign(&mut host).is_some_and(|plan| plan.current_assignment.is_none()));
+    checkpoints.push(checkpoint(&mut host, "adopted-uncommitted"));
+
+    set_vantar_esteem(&mut host, SHADOW_LINE as i32 - SHADOW_OPENING_REGARD);
+    host.advance_days(1);
+    assert!(vantar_campaign(&mut host).is_none());
+    checkpoints.push(checkpoint(&mut host, "campaign-let-go"));
+
+    host.advance_days(29);
+    assert!(vantar_ambition(&mut host).is_none());
+    checkpoints.push(checkpoint(&mut host, "ambition-set-aside"));
+
+    host.advance_days(51);
+    assert!(vantar_operation_against_harrow(&mut host).is_none());
+    checkpoints.push(checkpoint(&mut host, "window-closed"));
+
+    for Checkpoint {
+        stage,
+        snapshot,
+        live_log,
+    } in checkpoints
+    {
+        assert_eq!(
+            snapshot.format_version,
+            aeon_sim::SNAPSHOT_FORMAT_VERSION,
+            "{stage}: every checkpoint is written in the current format"
+        );
+        let mut restored = SimHost::restore_with_content(snapshot, Arc::clone(&content))
+            .unwrap_or_else(|error| panic!("{stage} restores: {error}"));
+
+        // History restores line for line, audience for audience, and
+        // nothing Harrow may read carries covert provenance at any stage.
+        let restored_log = restored
+            .world_mut()
+            .resource::<MessageLog>()
+            .entries
+            .clone();
+        assert_eq!(restored_log.len(), live_log.len(), "{stage}");
+        for (index, (before, after)) in live_log.iter().zip(&restored_log).enumerate() {
+            assert_eq!(after.text, before.text, "{stage}: line {index}");
+            assert_eq!(
+                after.audience, before.audience,
+                "{stage}: restore changed who may read line {index}: '{}'",
+                after.text
+            );
+            assert!(after.audience.visible_to(None));
+            if after.audience.visible_to(Some(harrow)) {
+                for tell in SHADOW_TELLS {
+                    assert!(
+                        !after.text.contains(tell),
+                        "{stage}: a line Harrow may read carries covert provenance: '{}'",
+                        after.text
+                    );
+                }
+            }
+        }
+
+        // Continuing from the restore is the same campaign.
+        let mut twin =
+            SimHost::restore_with_content(restored.snapshot(), Arc::clone(&content)).unwrap();
+        assert_eq!(restored.state_hash(), twin.state_hash(), "{stage}");
+        restored.advance_days(40);
+        twin.advance_days(40);
+        assert_eq!(
+            restored.state_hash(),
+            twin.state_hash(),
+            "{stage}: replay after restore stays identical"
+        );
+    }
+}
+
+#[test]
+fn a_war_between_the_houses_keeps_a_border_closing_at_the_line_from_reading_reconciled() {
+    let mut host = scenario_host(SHADOW_SEED, repository_content());
+    let harrow = org(&mut host, "harrow");
+    let vantar = org(&mut host, "vantar");
+    let war = declare_war(host.world_mut(), harrow, vantar, key("test-border-war"))
+        .expect("an ordinary formal war");
+    evaluate(host.world_mut());
+    assert!(
+        cold_border_card_for(&mut host, harrow, vantar).is_some(),
+        "a war changes nothing about how cold the border is"
+    );
+
+    // The regard reaches the line with the war still standing. The border
+    // is no longer cold, so the card closes — but it closes eased, never
+    // reconciled: the card judges the same three facts the ambition's own
+    // contract does, and a war already declared keeps every design its
+    // grounds until peace is made.
+    set_vantar_esteem(&mut host, SHADOW_LINE as i32 - SHADOW_OPENING_REGARD);
+    assert_eq!(vantar_regard(&mut host), SHADOW_LINE as i32);
+    host.advance_days(1);
+    assert!(cold_border_card_for(&mut host, harrow, vantar).is_none());
+    let notice = last_cold_border_resolution(&mut host).expect("the card resolved");
+    assert_eq!(
+        notice.outcome,
+        key("eased"),
+        "at the line but at war, the card reads eased, not reconciled"
+    );
+    assert!(
+        aeon_sim::wars::is_active_war(host.world_mut(), war),
+        "no opinion threshold ends a war"
+    );
+
+    // The border runs cold again and the card returns; peace is then made
+    // the ordinary way, and the same line — with no grievance owed and no
+    // war between the houses — reads reconciled.
+    set_vantar_esteem(&mut host, 0);
+    assert_eq!(vantar_regard(&mut host), SHADOW_OPENING_REGARD);
+    evaluate(host.world_mut());
+    assert!(
+        cold_border_card_for(&mut host, harrow, vantar).is_some(),
+        "cold again, the border is a live card again"
+    );
+    conclude_war(host.world_mut(), war, WarConclusionKind::NegotiatedPeace)
+        .expect("peace is negotiated");
+    set_vantar_esteem(&mut host, SHADOW_LINE as i32 - SHADOW_OPENING_REGARD);
+    host.advance_days(1);
+    assert!(cold_border_card_for(&mut host, harrow, vantar).is_none());
+    let notice = last_cold_border_resolution(&mut host).expect("the card resolved again");
+    assert_eq!(
+        notice.outcome,
+        key("reconciled"),
+        "with peace made, the line with a clear ledger is reconciliation"
+    );
+    assert!(
+        notice.text.contains("no war between them"),
+        "the resolution states the war clause: '{}'",
+        notice.text
+    );
+    for tell in SHADOW_TELLS {
+        assert!(!notice.text.contains(tell));
+    }
+}
+
+// ---------------------------------------------------------------------------
+// The two ordinary levers from the Cold Border card, resolved: gifts carry
+// their own authored amounts under their own reason, in the one direction
+// that matters, and stack with a head-led courtship to reach the line.
+// ---------------------------------------------------------------------------
+
+/// Seeds on which the day-one levers from the card — gifts by a free envoy
+/// and courtship led by the head, both aimed at Vantar and submitted in
+/// that order — resolve as named. Found by running the scenario and pinned
+/// like every other authored seed.
+const GIFTS_SUCCESS_SEED: u64 = 4;
+const GIFTS_TRIUMPH_SEED: u64 = 2;
+const GIFTS_SPURNED_SEED: u64 = 7;
+
+/// Harrow's running assignment of the given definition, if any.
+fn harrow_assignment(host: &mut SimHost, def: &str) -> Option<ActiveAssignment> {
+    let harrow = org(host, "harrow");
+    let world = host.world_mut();
+    world
+        .resource::<AssignmentsIndex>()
+        .assignments
+        .values()
+        .find_map(|entity| {
+            world
+                .get::<ActiveAssignment>(*entity)
+                .filter(|work| work.owner == harrow && work.def == key(def))
+                .cloned()
+        })
+}
+
+/// Pulls both levers from the live Vantar card on day one — gifts by a
+/// free envoy, courtship by the head — and runs until both are accepted,
+/// returning the two ordinary assignments (gifts, court).
+fn pull_both_levers(host: &mut SimHost) -> (ActiveAssignment, ActiveAssignment) {
+    let harrow = org(host, "harrow");
+    let vantar = org(host, "vantar");
+    let edrun = character(host, "edrun-harrow");
+    let card = cold_border_card_for(host, harrow, vantar).expect("the card is live from day one");
+    let situation = card.active.key.clone();
+    let occurrence = card.active.occurrence();
+    let envoy = free_household_host(host, 1);
+    assert_ne!(envoy, edrun, "the gifts go by a free envoy, not the head");
+    let gifts = host
+        .submit(PlayerCommand::StartSituationAssignment {
+            situation: situation.clone(),
+            action: key("send-gifts"),
+            leader: envoy,
+            target: AssignmentTarget::Org(vantar),
+            war: None,
+        })
+        .expect("gifts are a valid order from the card");
+    let court = host
+        .submit(PlayerCommand::StartSituationAssignment {
+            situation,
+            action: key("court"),
+            leader: edrun,
+            target: AssignmentTarget::Org(vantar),
+            war: None,
+        })
+        .expect("courtship is a valid order from the card");
+    while host.date() < gifts.day.max(court.day) {
+        host.advance_days(1);
+    }
+    let gifts = harrow_assignment(host, "send-gifts").expect("the gifts are on their way");
+    let court = harrow_assignment(host, "court").expect("the courtship is under way");
+    assert_eq!(gifts.leader, envoy);
+    assert_eq!(gifts.target, AssignmentTarget::Org(vantar));
+    assert_eq!(gifts.origin_situation, Some(occurrence));
+    assert_eq!(court.leader, edrun);
+    (gifts, court)
+}
+
+/// Runs to the day the work resolves and checks it did so then.
+fn run_until_resolved(host: &mut SimHost, work: &ActiveAssignment) {
+    while host.date() < work.completes {
+        host.advance_days(1);
+    }
+    assert!(
+        aeon_sim::access::assignment(host.world_mut(), work.id).is_none(),
+        "the work resolved on its ordinary day"
+    );
+}
+
+#[test]
+fn gifts_and_a_head_led_courtship_stack_to_reach_the_line_from_the_opening_standing() {
+    let mut host = scenario_host(GIFTS_SUCCESS_SEED, repository_content());
+    let harrow = org(&mut host, "harrow");
+    let vantar = org(&mut host, "vantar");
+    let edrun = character(&mut host, "edrun-harrow");
+    let perrin = character(&mut host, "perrin-vantar");
+    assert_eq!(vantar_regard(&mut host), SHADOW_OPENING_REGARD);
+    let (gifts, court) = pull_both_levers(&mut host);
+
+    // The gifts resolve first. A success lifts the neighbour head's regard
+    // for OUR head by exactly the authored amount, under the lever's own
+    // reason, for its own term — on Perrin's ledger, toward Edrun, and
+    // nowhere else: the envoy who carried them earns nothing personally.
+    run_until_resolved(&mut host, &gifts);
+    let gifted = opinion_modifier(&mut host, perrin, "gifted").expect("the success modifier");
+    assert_eq!(
+        gifted.target, edrun,
+        "the target's head regards the owner's head"
+    );
+    assert_eq!(gifted.amount, 15);
+    assert_eq!(gifted.expires, Some(gifts.completes.add_days(1080)));
+    assert!(
+        opinion_modifier(&mut host, edrun, "gifted").is_none(),
+        "nothing moves the other way"
+    );
+    assert!(
+        opinion_modifier(&mut host, perrin, "courted-house").is_none(),
+        "the courtship has not resolved yet"
+    );
+    assert_eq!(vantar_regard(&mut host), SHADOW_OPENING_REGARD + 15);
+
+    // Then the courtship. Led by the head, its success lifts both the
+    // personal and the house regard toward the same man, each under a
+    // reason of its own. Modifiers replace per reason, so the three
+    // distinct reasons stack — and from the opening standing, one ordinary
+    // success of each lever lands exactly on the line.
+    run_until_resolved(&mut host, &court);
+    let courted = opinion_modifier(&mut host, perrin, "courted").expect("the personal modifier");
+    assert_eq!(courted.target, edrun);
+    assert_eq!(courted.amount, 10);
+    let courted_house =
+        opinion_modifier(&mut host, perrin, "courted-house").expect("the house modifier");
+    assert_eq!(courted_house.target, edrun);
+    assert_eq!(courted_house.amount, 10);
+    assert_eq!(
+        opinion_modifier(&mut host, perrin, "gifted")
+            .expect("the gifts still count")
+            .amount,
+        15,
+        "gifts and courtship carry distinct reasons, so neither replaces the other"
+    );
+    assert_eq!(
+        vantar_regard(&mut host),
+        SHADOW_LINE as i32,
+        "a head-led court success plus a gifts success reaches the line exactly from {SHADOW_OPENING_REGARD}"
+    );
+
+    // The card closed the moment the regard first rose above the floor —
+    // after the gifts, short of the line — and closed eased, in the
+    // ordinary way, without waiting for anything to be reconciled.
+    assert!(cold_border_card_for(&mut host, harrow, vantar).is_none());
+    assert_eq!(
+        last_cold_border_resolution(&mut host)
+            .expect("the card resolved")
+            .outcome,
+        key("eased")
+    );
+}
+
+#[test]
+fn a_triumph_of_gifts_and_a_spurned_gift_carry_their_own_authored_amounts() {
+    // A triumph: the larger amount for the longer term, the same direction
+    // and the same reason as a plain success.
+    let mut host = scenario_host(GIFTS_TRIUMPH_SEED, repository_content());
+    let edrun = character(&mut host, "edrun-harrow");
+    let perrin = character(&mut host, "perrin-vantar");
+    let (gifts, _court) = pull_both_levers(&mut host);
+    run_until_resolved(&mut host, &gifts);
+    let gifted = opinion_modifier(&mut host, perrin, "gifted").expect("the triumph modifier");
+    assert_eq!(gifted.target, edrun);
+    assert_eq!(gifted.amount, 25);
+    assert_eq!(gifted.expires, Some(gifts.completes.add_days(1800)));
+    assert!(opinion_modifier(&mut host, perrin, "gift-spurned").is_none());
+    assert_eq!(vantar_regard(&mut host), SHADOW_OPENING_REGARD + 25);
+
+    // A disaster: the gifts come back, nothing is gifted, and the regard
+    // falls by the authored amount for its own term under its own reason
+    // — the border colder than it began.
+    let mut host = scenario_host(GIFTS_SPURNED_SEED, repository_content());
+    let harrow = org(&mut host, "harrow");
+    let vantar = org(&mut host, "vantar");
+    let edrun = character(&mut host, "edrun-harrow");
+    let perrin = character(&mut host, "perrin-vantar");
+    let (gifts, _court) = pull_both_levers(&mut host);
+    run_until_resolved(&mut host, &gifts);
+    assert!(opinion_modifier(&mut host, perrin, "gifted").is_none());
+    let spurned =
+        opinion_modifier(&mut host, perrin, "gift-spurned").expect("the disaster modifier");
+    assert_eq!(spurned.target, edrun);
+    assert_eq!(spurned.amount, -10);
+    assert_eq!(spurned.expires, Some(gifts.completes.add_days(1440)));
+    assert_eq!(vantar_regard(&mut host), SHADOW_OPENING_REGARD - 10);
+    assert!(
+        cold_border_card_for(&mut host, harrow, vantar).is_some(),
+        "the border stays cold"
+    );
+}

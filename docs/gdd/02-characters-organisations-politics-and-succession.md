@@ -161,7 +161,12 @@ geography most naturally select in the opening year (see
 [AI Agency and Information Rules](06-ai-agency-and-information-rules.md)
 and [Economy, Order, Obligations, Situations, Intrigue, and Warfare](05-economy-order-obligations-situations-intrigue-and-warfare.md)),
 and reconciliation, succession, conquest, or a changed border derails
-the expectation through ordinary rules.
+the expectation through ordinary rules. [ai] Succession in particular
+carries nothing over but the house: Perrin's reconciliation dies with
+him, Valka's own scheming regard for Edrun is what the ambition's grounds
+are re-judged against on the next pulse, the house's ambition cooldowns
+and organisation-level obligations pass through untouched, and her late
+husband's plan cooldown was his alone.
 
 The simulation answers two different hierarchy questions:
 

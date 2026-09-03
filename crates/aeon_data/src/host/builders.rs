@@ -2476,6 +2476,17 @@ fn define_plan(state: &mut BuilderState, map: Map) {
     let Some(covert) = f.opt_bool("covert", false) else {
         return;
     };
+    // The grounds a campaign may lose: read with the same vocabulary as a
+    // method gate, judged over the same authority and target.
+    let abandon_when = match f.take_raw("abandon_when") {
+        None => None,
+        Some(raw) => {
+            let Some(req) = plan_requires(&mut f, raw) else {
+                return;
+            };
+            Some(req)
+        }
+    };
 
     let Some(raw_methods) = f.take_raw("methods") else {
         f.error("missing required field 'methods'");
@@ -2519,6 +2530,7 @@ fn define_plan(state: &mut BuilderState, map: Map) {
             max_days: max_days as u32,
             max_step_retries: max_step_retries as u32,
             covert,
+            abandon_when,
             methods,
         },
     );
@@ -2723,6 +2735,9 @@ fn plan_requires(f: &mut Fields, raw: rhai::Dynamic) -> Option<PlanRequires> {
             "max_campaign_day",
             "max_target_head_opinion",
             "target_owes_grievance",
+            "min_target_head_opinion",
+            "target_owes_no_grievance",
+            "at_war_with_target",
         ],
     );
     let int = |name: &str| map.get(name).and_then(|v| v.as_int().ok());
@@ -2733,6 +2748,13 @@ fn plan_requires(f: &mut Fields, raw: rhai::Dynamic) -> Option<PlanRequires> {
     };
     if let Some(problem) = campaign_window_problem(int("min_campaign_day"), int("max_campaign_day"))
     {
+        f.error(problem);
+        return None;
+    }
+    if let Some(problem) = opinion_band_problem(
+        int("min_target_head_opinion"),
+        int("max_target_head_opinion"),
+    ) {
         f.error(problem);
         return None;
     }
@@ -2756,7 +2778,24 @@ fn plan_requires(f: &mut Fields, raw: rhai::Dynamic) -> Option<PlanRequires> {
         max_campaign_day: int("max_campaign_day"),
         max_target_head_opinion: int("max_target_head_opinion").map(|v| v as i32),
         target_owes_grievance: flag("target_owes_grievance"),
+        min_target_head_opinion: int("min_target_head_opinion").map(|v| v as i32),
+        target_owes_no_grievance: flag("target_owes_no_grievance"),
+        at_war_with_target: map.get("at_war_with_target").and_then(|v| v.as_bool().ok()),
     })
+}
+
+/// Why an authored head-opinion band is malformed, if it is: a floor
+/// above its ceiling is a condition nothing could ever satisfy, so it is
+/// an authoring mistake rather than a gate that never opens.
+fn opinion_band_problem(min: Option<i64>, max: Option<i64>) -> Option<String> {
+    if let (Some(min), Some(max)) = (min, max)
+        && min > max
+    {
+        return Some(format!(
+            "min_target_head_opinion {min} exceeds max_target_head_opinion {max}"
+        ));
+    }
+    None
 }
 
 /// Why an authored campaign-day window is malformed, if it is.
@@ -2880,6 +2919,19 @@ fn define_goal(state: &mut BuilderState, map: Map) {
             req
         }
     };
+    // The grounds an ambition may lose are judged over its resolved
+    // target, which the trigger vocabulary cannot see; the plan vocabulary
+    // can, so an ambition is set aside by the same predicates its
+    // campaigns gate on.
+    let set_aside_when = match f.take_raw("set_aside_when") {
+        None => None,
+        Some(raw) => {
+            let Some(req) = plan_requires(&mut f, raw) else {
+                return;
+            };
+            Some(req)
+        }
+    };
 
     let mut directives: Vec<DirectiveDef> = Vec::new();
     if let Some(raw) = f.take_raw("directives") {
@@ -2914,6 +2966,7 @@ fn define_goal(state: &mut BuilderState, map: Map) {
             target_selector,
             covert,
             directives,
+            set_aside_when,
             max_days: max_days as u32,
             cooldown_days: cooldown_days as u32,
         },

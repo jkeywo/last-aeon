@@ -274,6 +274,7 @@ The current reusable deck contains:
 | Torvald's Standing | Scenario, bound to House Harrow, its requester, and the exact liege head | Household demand: the bound liege head's opinion of the house head at 0 or higher by the same shared deadline, with the same four-tier consequences |
 | The Liege's Visit | Scenario, bound to House Harrow and the live liege head | [ai] First-year windowed hosted visit (days 140–180): three hospitality tiers whose live forecasts read the liege head's current opinion, a slight for an unanswered window, and passed-on adaptation when the bound head dies, is deposed, is replaced, or cannot travel |
 | Unquiet Holdings | Scenario, bound to the targeted holder, the targeted province, and (structurally, outside the audience) the culprit organisation | [ai] The covert-interference alarm: while a covert province-aimed operation runs against another holder's ground, the holder sees the province, its live Order, the exact resistance shift that Order applies, and the remaining time — and the hand only once an ordinary investigation has proved it. The card ends passed-on, struck, or weathered by a pure live-Order reading, each of the last two in a traced and an untraced form |
+| A Cold Border | Scenario, bound to House Harrow and one cold surface neighbour | [ai] The open half of the intrigue arc: while a neighbour's head regards the house head at or below the authored -10 floor, or the house owes it an open grievance, the card shows the live regard, the floor, the +20 reconciliation line, the grievances owed, and any formal war between the houses, and offers courting and sending gifts as ordinary actions. It reads public relationship facts only — never a plan, goal, operation, or exposure record — and ends passed-on, reconciled, or eased with no effects. Two open the reign: Draksha's head is as cold toward Edrun as Vantar's |
 
 [ai] The Court Awaits slice added three reusable seams the deck may now use.
 Situation call contexts carry the instance's activation date (triggers see
@@ -443,6 +444,21 @@ contested and, for fomenting unrest, genuinely deniable:
   protection. Discovery is durable campaign state, recorded per
   discovering house, and is what allows retaliation or a demanded
   settlement to be aimed at anybody at all.
+- [ai] **Reconciliation** has explicit authored rules, and they touch only
+  what is uncommitted. The ambition's selector and the campaign's method
+  gates open at -10 or with a grievance owed; above -10 the method recheck
+  starts no new step and lets an uncommitted campaign go; at +20 with no
+  grievance owed and no formal war between the houses, the campaign's
+  `abandon_when` and the ambition's `set_aside_when` — three predicates in
+  the shared plan vocabulary: `min_target_head_opinion`,
+  `target_owes_no_grievance`, `at_war_with_target` — let both go, the
+  ambition without a cooldown. A sabotage already accepted resolves through
+  Unquiet Holdings on its ordinary day, and a war ends only by negotiated
+  peace. The A Cold Border card is where the player reads these terms, and
+  `send-gifts` is the second ordinary lever beside courting, with its own
+  opinion reason, so two ordinary successes reach the line from the
+  opening standing. No authored effect settles a grievance: a wronged
+  house keeps its grounds until the ledger says otherwise.
 
 Covert intrigue is not formal war. Its hostile consequence is the operation and
 its effects; it does not put organisations onto war sides, authorise occupation,

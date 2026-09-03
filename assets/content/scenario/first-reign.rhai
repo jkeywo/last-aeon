@@ -1209,12 +1209,37 @@ fn visit_lavish_disaster(ctx) {
 // whichever Harrow ground sits weakest. Everything is data: the window,
 // the hostility floor, the capability gate, and the covertness. The
 // engine contributes only the shared mechanisms — the border selector,
-// the opinion and grievance predicates, and the owner-only audience that
-// keeps provenance from every ordinary player surface while spectators
-// and replay retain it all. Reconciliation is the same data read the
-// other way: the plan's method gate is rechecked before each step, so a
-// relationship lifted above the floor abandons an uncommitted campaign,
-// while work already accepted runs to its ordinary end.
+// the opinion, grievance, and war predicates, and the owner-only audience
+// that keeps provenance from every ordinary player surface while
+// spectators and replay retain it all.
+//
+// Reconciliation is the same data read the other way, and its whole
+// contract is authored here:
+//
+//   * Hostile planning may BEGIN while the neighbour's head regards the
+//     house's head at or below the hostility floor, or while the
+//     neighbour owes the house an open grievance (the goal's selector and
+//     the plan's two method gates).
+//   * Regard lifted ABOVE the floor suppresses new escalation: the method
+//     gate is rechecked before every new step, so no further step begins
+//     and an uncommitted campaign is let go.
+//   * Regard at or above the reconciliation line, with no grievance owed
+//     and no war between the houses, abandons what is not yet committed:
+//     the plan's `abandon_when` and the ambition's `set_aside_when` read
+//     the same three predicates, and the ambition is set aside with no
+//     cooldown — the grounds may return, and a successor of a different
+//     temper reads the relationship afresh and may adopt it anew.
+//   * Nothing already underway is erased by a change of heart. A step
+//     already accepted runs to its ordinary resolution (the plan's
+//     committed guard), and a formal war ends only by peace or collapse.
+//
+// A grievance is cleared by nothing here: no authored effect settles one,
+// so a house that has been wronged keeps its grounds until the ledger
+// says otherwise. The two numbers are shared with the open Cold Border
+// card below, so what the player reads is exactly what the AI weighs.
+
+fn shadow_hostility_floor() { -10 }
+fn shadow_reconciliation_line() { 20 }
 
 define_goal(#{
     id: "undermine-a-neighbour",
@@ -1223,12 +1248,19 @@ define_goal(#{
     favour_bonus: 60,
     target: "organisation",
     target_selector: #{
-        kind: "hostile-border-neighbour", max_head_opinion: -10, with_grievance: true,
+        kind: "hostile-border-neighbour",
+        max_head_opinion: shadow_hostility_floor(),
+        with_grievance: true,
     },
     covert: true,
     trigger: #{
         is_vassal: true, min_wealth: 40,
         min_campaign_day: 180, max_campaign_day: 260,
+    },
+    set_aside_when: #{
+        min_target_head_opinion: shadow_reconciliation_line(),
+        target_owes_no_grievance: true,
+        at_war_with_target: false,
     },
     max_days: 120,
     cooldown_days: 720,
@@ -1243,9 +1275,14 @@ define_plan(#{
     cooldown_days: 360,
     max_days: 120,
     max_step_retries: 1,
+    abandon_when: #{
+        min_target_head_opinion: shadow_reconciliation_line(),
+        target_owes_no_grievance: true,
+        at_war_with_target: false,
+    },
     methods: [
         #{ id: "from-ill-will",
-           requires: #{ min_wealth: 40, max_target_head_opinion: -10 },
+           requires: #{ min_wealth: 40, max_target_head_opinion: shadow_hostility_floor() },
            steps: [
                #{ id: "stir", start: "foment-unrest", target: "target-border-province" },
            ] },
@@ -1524,5 +1561,280 @@ define_situation(#{
         #{ id: "struck", when_fn: "unquiet_struck" },
         #{ id: "weathered-traced", when_fn: "unquiet_traced" },
         #{ id: "weathered", fallback: true },
+    ],
+});
+
+// --- A Cold Border ----------------------------------------------------------
+//
+// The open half of the shadow arc: the reasoning a player may inspect
+// without being told anything the simulation keeps covert. A house that
+// shares a surface border with the protagonist and whose head regards the
+// protagonist's head at or below the hostility floor — or that is owed an
+// open grievance by the protagonist — is a cold neighbour, and this card
+// says so, in exactly the terms the AI weighs: the live head-to-head
+// regard, the floor at which hostile planning may begin, the line at
+// which uncommitted designs are let go, the grievances that keep grounds
+// open whatever the regard, and any formal war already between the
+// houses. It reads the shared world view alone — opinions, obligations,
+// wars, provinces, routes — never a plan, a goal, an assignment, or an
+// exposure record, so it names a neighbour as cold and never as a
+// culprit: it explains why a house MIGHT scheme, never that it IS.
+//
+// Its actions are the ordinary levers. Courting the house is the general
+// answer; sending gifts across the border is a second, distinct lever, so
+// that reaching the reconciliation line from the reign's opening standing
+// is a strategy of two ordinary successes rather than one lucky triumph.
+// Both are ordinary assignments with ordinary forecasts, and both are
+// offered against any cold neighbour, not any particular house.
+
+define_assignment(#{
+    id: "send-gifts",
+    category: "consequential",
+    duration_days: 30,
+    wealth_cost: 20,
+    skill: "diplomacy",
+    difficulty: 8,
+    target: "organisation",
+    ai_available: false,
+    risks: ["scandal"],
+    results: #{
+        critical_success: #{
+            weight: 100, popup: true, log: true, effect_fn: "gifts_welcomed",
+        },
+        success: #{ weight: 500, log: true, effect_fn: "gifts_received" },
+        failure: #{ weight: 300, log: true },
+        disaster: #{ weight: 100, popup: true, log: true, effect_fn: "gifts_spurned" },
+    },
+});
+
+fn gifts_welcomed(ctx) {
+    [#{ kind: "opinion", from: "target-head", toward: "owner-head",
+        amount: 25, days: 1800, reason: "gifted" }]
+}
+fn gifts_received(ctx) {
+    [#{ kind: "opinion", from: "target-head", toward: "owner-head",
+        amount: 15, days: 1080, reason: "gifted" }]
+}
+fn gifts_spurned(ctx) {
+    [#{ kind: "opinion", from: "target-head", toward: "owner-head",
+        amount: -10, days: 1440, reason: "gift-spurned" }]
+}
+
+fn cold_border_head(world, org) {
+    for organisation in world.organisations {
+        if organisation.id == org {
+            if type_of(organisation.head) == "i64" { return organisation.head; }
+        }
+    }
+    0
+}
+
+fn cold_border_holder(world, province) {
+    for p in world.provinces {
+        if p.id == province {
+            if type_of(p.holder) == "i64" { return p.holder; }
+        }
+    }
+    0
+}
+
+// Whether `house` answers, directly or through its lieges, to `liege`.
+fn cold_border_answers_to(world, house, liege) {
+    let current = house;
+    let steps = 0;
+    while steps < 16 {
+        let next = 0;
+        for organisation in world.organisations {
+            if organisation.id == current {
+                if type_of(organisation.liege) == "i64" { next = organisation.liege; }
+            }
+        }
+        if next == 0 { return false; }
+        if next == liege { return true; }
+        current = next;
+        steps += 1;
+    }
+    false
+}
+
+// Every standing organisation outside the house's chain of command that
+// holds a province sharing a surface route with a province the house
+// holds — the same neighbourhood the hostile-border selector walks —
+// lowest stable ID first.
+fn cold_border_neighbours(world, house) {
+    let found = [];
+    for route in world.routes {
+        if route.kind != "surface" { continue; }
+        let a = cold_border_holder(world, route.a);
+        let b = cold_border_holder(world, route.b);
+        if a == 0 || b == 0 || a == b { continue; }
+        let other = 0;
+        if a == house { other = b; }
+        if b == house { other = a; }
+        if other == 0 { continue; }
+        if found.contains(other) { continue; }
+        if cold_border_answers_to(world, house, other) { continue; }
+        if cold_border_answers_to(world, other, house) { continue; }
+        found.push(other);
+    }
+    found.sort();
+    found
+}
+
+// The live derived opinion of one character about another, from the
+// shared world view.
+fn cold_border_regard(world, from, to) {
+    for opinion in world.opinions {
+        if opinion.from == from && opinion.to == to { return opinion.value; }
+    }
+    0
+}
+
+// Open grievances `debtor` owes `creditor`: the grounds a wronged house
+// keeps whatever the regard between the heads.
+fn cold_border_grievances(world, debtor, creditor) {
+    let count = 0;
+    for entry in world.obligations {
+        if entry.kind == "grievance" && entry.status == "open"
+                && entry.debtor == debtor && entry.creditor == creditor {
+            count += 1;
+        }
+    }
+    count
+}
+
+// The active formal war placing the two houses on opposing sides, or an
+// empty map when there is none.
+fn cold_border_war(world, house, neighbour) {
+    for war in world.wars {
+        if !war.active { continue; }
+        let first = war.sides[0].members;
+        let second = war.sides[1].members;
+        if (first.contains(house) && second.contains(neighbour))
+                || (first.contains(neighbour) && second.contains(house)) {
+            return war;
+        }
+    }
+    #{}
+}
+
+// A neighbour is cold when its head regards the house's head at or below
+// the floor, or when the house owes it an open grievance — the two
+// authored grounds on which hostile planning may begin.
+fn cold_border_is_cold(world, house, neighbour) {
+    let own = cold_border_head(world, house);
+    let theirs = cold_border_head(world, neighbour);
+    if own == 0 || theirs == 0 { return false; }
+    if cold_border_regard(world, theirs, own) <= shadow_hostility_floor() { return true; }
+    cold_border_grievances(world, house, neighbour) > 0
+}
+
+fn cold_border_instances(ctx) {
+    let house = first_reign_house(ctx.world);
+    if house == 0 { return []; }
+    let found = [];
+    for neighbour in cold_border_neighbours(ctx.world, house) {
+        if cold_border_is_cold(ctx.world, house, neighbour) {
+            found.push(#{ house: house, neighbour: neighbour });
+        }
+    }
+    found
+}
+
+fn cold_border_projection(ctx) {
+    let world = ctx.world;
+    let house = ctx.bindings.house;
+    let neighbour = ctx.bindings.neighbour;
+    let own = cold_border_head(world, house);
+    let theirs = cold_border_head(world, neighbour);
+    let regard = 0;
+    if own != 0 && theirs != 0 { regard = cold_border_regard(world, theirs, own); }
+    let grievances = cold_border_grievances(world, house, neighbour);
+    let war = cold_border_war(world, house, neighbour);
+    let stage = "cold";
+    if grievances > 0 { stage = "aggrieved"; }
+    let metrics = [
+        #{ label_key: "situation.metric.neighbour-regard", value: regard },
+        #{ label_key: "situation.metric.hostility-floor", value: shadow_hostility_floor() },
+        #{ label_key: "situation.metric.reconciliation-line", value: shadow_reconciliation_line() },
+        #{ label_key: "situation.metric.open-grievances", value: grievances },
+    ];
+    let links = [];
+    if theirs != 0 { links.push(#{ kind: "character", id: theirs }); }
+    if war.len() > 0 {
+        metrics.push(#{ label_key: "situation.metric.war-days", value: world.date - war.declared });
+        links.push(#{ kind: "war", id: war.id });
+    }
+    // The ordinary levers, aimed at the neighbour. Courting pins the head,
+    // because led by the head it lifts both the personal and the house
+    // regard; gifts pin nobody, so the player compares envoys.
+    let actions = [];
+    if own != 0 {
+        actions.push(#{
+            id: "court", leader: own,
+            target_kind: "organisation", target_a: neighbour,
+        });
+        actions.push(#{ id: "send-gifts", target_kind: "organisation", target_a: neighbour });
+    }
+    #{
+        stage: stage,
+        warning: false,
+        metrics: metrics,
+        participants: [
+            #{ kind: "organisation", id: house },
+            #{ kind: "organisation", id: neighbour },
+        ],
+        links: links,
+        actions: actions,
+        resolution_values: #{
+            house: court_house_name(world, house),
+            neighbour: court_house_name(world, neighbour),
+        },
+    }
+}
+
+// The border is no longer the matter it was: a head gone on either side,
+// or the houses no longer neighbours outside each other's chain of
+// command. Judged with the old bindings against the live world.
+fn cold_border_passed_on(ctx) {
+    let house = first_reign_house(ctx.world);
+    if house != ctx.bindings.house { return true; }
+    if cold_border_head(ctx.world, house) == 0 { return true; }
+    if cold_border_head(ctx.world, ctx.bindings.neighbour) == 0 { return true; }
+    !cold_border_neighbours(ctx.world, house).contains(ctx.bindings.neighbour)
+}
+
+// Reconciled is the full line — the same three facts the ambition's
+// `set_aside_when` and the campaign's `abandon_when` judge: regard at or
+// above the line, no grievance owed, and no formal war between the
+// houses. A war already declared keeps every design its grounds until
+// peace is made, so a card closing under one is merely eased.
+fn cold_border_reconciled(ctx) {
+    let own = cold_border_head(ctx.world, ctx.bindings.house);
+    let theirs = cold_border_head(ctx.world, ctx.bindings.neighbour);
+    if own == 0 || theirs == 0 { return false; }
+    cold_border_regard(ctx.world, theirs, own) >= shadow_reconciliation_line()
+        && cold_border_grievances(ctx.world, ctx.bindings.house, ctx.bindings.neighbour) == 0
+        && cold_border_war(ctx.world, ctx.bindings.house, ctx.bindings.neighbour).len() == 0
+}
+
+define_situation(#{
+    id: "cold-border",
+    source: "scenario",
+    bindings: #{ house: "organisation", neighbour: "organisation" },
+    trigger_fn: "cold_border_instances",
+    projection_fn: "cold_border_projection",
+    priority: 90,
+    log_activation: true,
+    audience: ["house"],
+    stages: ["cold", "aggrieved"],
+    actions: [
+        #{ id: "court", assignment: "court" },
+        #{ id: "send-gifts", assignment: "send-gifts" },
+    ],
+    outcomes: [
+        #{ id: "passed-on", when_fn: "cold_border_passed_on" },
+        #{ id: "reconciled", when_fn: "cold_border_reconciled" },
+        #{ id: "eased", fallback: true },
     ],
 });

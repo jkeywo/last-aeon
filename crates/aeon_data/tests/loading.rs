@@ -2128,6 +2128,8 @@ define_plan(#{
     target: "organisation",
     covert: true,
     max_days: 100,
+    abandon_when: #{ min_target_head_opinion: 20, target_owes_no_grievance: true,
+                     at_war_with_target: false },
     methods: [
         #{ id: "from-ill-will",
            requires: #{ max_target_head_opinion: -10, min_campaign_day: 180,
@@ -2147,6 +2149,8 @@ define_goal(#{
                         with_grievance: true },
     covert: true,
     trigger: #{ min_campaign_day: 180, max_campaign_day: 260 },
+    set_aside_when: #{ min_target_head_opinion: 20, target_owes_no_grievance: true,
+                       at_war_with_target: false },
     max_days: 100,
 });
 "#;
@@ -2180,6 +2184,15 @@ define_goal(#{
     assert_eq!(ill_will.min_campaign_day, Some(180));
     assert_eq!(ill_will.max_campaign_day, Some(260));
     assert!(plan.methods[1].requires.target_owes_grievance);
+    // The lost-grounds gate reads the reconciliation predicates: the
+    // opinion line, the clear ledger, and the absence of a bilateral war.
+    let reconciled = aeon_data::model::PlanRequires {
+        min_target_head_opinion: Some(20),
+        target_owes_no_grievance: true,
+        at_war_with_target: Some(false),
+        ..Default::default()
+    };
+    assert_eq!(plan.abandon_when, Some(reconciled.clone()));
     let goal = &set.goals[&aeon_data::ContentKey::new("quiet-ambition").unwrap()];
     assert!(goal.covert);
     assert_eq!(goal.trigger.min_campaign_day, Some(180));
@@ -2191,9 +2204,74 @@ define_goal(#{
             with_grievance: true,
         }
     );
+    assert_eq!(
+        goal.set_aside_when,
+        Some(reconciled),
+        "an ambition is set aside by the same predicates its campaign gates on"
+    );
 
     // The malformed combinations, each with the finding it must raise.
     let failing = [
+        (
+            // A reconciliation line below the hostility floor is a band
+            // nothing could ever satisfy.
+            r#"
+define_assignment(#{
+    id: "quiet-work", category: "consequential", duration_days: 10,
+    skill: "intrigue", difficulty: 5, target: "province", ai_available: false,
+    results: #{ success: #{ weight: 800 }, failure: #{ weight: 200 } },
+});
+define_plan(#{
+    id: "inverted-band", goal: "subvert", target: "organisation", max_days: 100,
+    methods: [ #{ id: "only",
+        requires: #{ min_target_head_opinion: 20, max_target_head_opinion: -10 },
+        steps: [ #{ start: "quiet-work", target: "target-border-province" } ] } ],
+});
+"#,
+            "exceeds max_target_head_opinion",
+        ),
+        (
+            // A lost-grounds gate reading a head, a ledger, or war sides
+            // needs an organisation target as much as a method gate does.
+            r#"
+define_assignment(#{
+    id: "quiet-work", category: "consequential", duration_days: 10,
+    skill: "intrigue", difficulty: 5, ai_available: false,
+    results: #{ success: #{ weight: 800 }, failure: #{ weight: 200 } },
+});
+define_plan(#{
+    id: "aimless", goal: "subvert", max_days: 100,
+    abandon_when: #{ min_target_head_opinion: 20 },
+    methods: [ #{ id: "only", steps: [ #{ start: "quiet-work" } ] } ],
+});
+"#,
+            "abandon_when: 'min_target_head_opinion' compares an organisation target's head",
+        ),
+        (
+            r#"
+define_assignment(#{
+    id: "quiet-work", category: "consequential", duration_days: 10,
+    skill: "intrigue", difficulty: 5, ai_available: false,
+    results: #{ success: #{ weight: 800 }, failure: #{ weight: 200 } },
+});
+define_plan(#{
+    id: "aimless", goal: "subvert", max_days: 100,
+    methods: [ #{ id: "only",
+        requires: #{ at_war_with_target: false },
+        steps: [ #{ start: "quiet-work" } ] } ],
+});
+"#,
+            "'at_war_with_target' reads an organisation target's war sides",
+        ),
+        (
+            r#"
+define_goal(#{
+    id: "aimless", favours: ["subvert"], max_days: 100,
+    set_aside_when: #{ target_owes_no_grievance: true },
+});
+"#,
+            "set_aside_when: 'target_owes_no_grievance' reads an organisation target's ledger, but the goal targets None",
+        ),
         (
             // A hostility floor without an organisation target reads
             // nobody's head.
@@ -2421,6 +2499,20 @@ fn the_shadow_arc_carries_covert_provenance_and_order_resistance() {
     for method in &campaign.methods {
         assert_eq!(method.requires.min_wealth, Some(40), "capability is data");
     }
+    // The reconciliation contract, authored once and read by campaign and
+    // ambition alike: regard at or above +20, no grievance owed, and no
+    // war between the houses lets what is uncommitted go.
+    let reconciled = aeon_data::model::PlanRequires {
+        min_target_head_opinion: Some(20),
+        target_owes_no_grievance: true,
+        at_war_with_target: Some(false),
+        ..Default::default()
+    };
+    assert_eq!(
+        campaign.abandon_when,
+        Some(reconciled.clone()),
+        "the accepted reconciliation line, on the campaign"
+    );
 
     // The ambition: covert, windowed in data to the accepted intrigue
     // stretch, resolved against a hostile border neighbour.
@@ -2435,10 +2527,95 @@ fn the_shadow_arc_carries_covert_provenance_and_order_resistance() {
             with_grievance: true,
         }
     );
+    assert_eq!(
+        ambition.set_aside_when,
+        Some(reconciled),
+        "the accepted reconciliation line, on the ambition"
+    );
     assert!(
         ambition.directives.is_empty(),
         "a covert ambition presses no directive that could leak it"
     );
+
+    // The open half: A Cold Border is bound to the protagonist and the
+    // cold neighbour alone — no province, no actor, nothing covert to
+    // bind — with the two ordinary levers as its actions, no pausing
+    // announcement, and outcomes that read only the public relationship.
+    let border = &set.situations[&aeon_data::ContentKey::new("cold-border").unwrap()];
+    let bindings: Vec<(&str, aeon_data::model::SituationSubjectKind)> = border
+        .bindings
+        .iter()
+        .map(|(name, kind)| (name.as_str(), *kind))
+        .collect();
+    assert_eq!(
+        bindings,
+        [
+            (
+                "house",
+                aeon_data::model::SituationSubjectKind::Organisation
+            ),
+            (
+                "neighbour",
+                aeon_data::model::SituationSubjectKind::Organisation
+            ),
+        ]
+    );
+    assert_eq!(
+        border.visibility,
+        aeon_data::model::SituationVisibilityDef::Bound(vec!["house".to_owned()]),
+        "the neighbour never joins the audience of the card about it"
+    );
+    assert!(
+        border.announcement.is_none(),
+        "a standing fact pauses nobody"
+    );
+    assert!(border.guidance_objective.is_some());
+    let stages: Vec<&str> = border
+        .stages
+        .iter()
+        .map(|stage| stage.key.as_str())
+        .collect();
+    assert_eq!(stages, ["cold", "aggrieved"]);
+    let levers: Vec<(&str, &str)> = border
+        .actions
+        .iter()
+        .map(|action| (action.key.as_str(), action.assignment.as_str()))
+        .collect();
+    assert_eq!(levers, [("court", "court"), ("send-gifts", "send-gifts")]);
+    let outcomes: Vec<&str> = border
+        .outcomes
+        .iter()
+        .map(|outcome| outcome.key.as_str())
+        .collect();
+    assert_eq!(outcomes, ["passed-on", "reconciled", "eased"]);
+    assert!(
+        border
+            .outcomes
+            .iter()
+            .all(|outcome| outcome.effects_fn.is_none()),
+        "the card explains; it never acts"
+    );
+    assert!(
+        set.scenario
+            .as_ref()
+            .expect("scenario")
+            .situations
+            .contains(&aeon_data::ContentKey::new("cold-border").unwrap()),
+        "the scenario registers the card"
+    );
+
+    // The second lever: an ordinary costed diplomatic assignment aimed at
+    // an organisation, closed to the AI, with its own reason so it stacks
+    // with courtship rather than replacing it.
+    let gifts = &set.assignments[&aeon_data::ContentKey::new("send-gifts").unwrap()];
+    assert_eq!(
+        gifts.target,
+        aeon_data::model::AssignmentTargetKind::Organisation
+    );
+    assert!(!gifts.ai_available, "the lever is the player's own");
+    assert!(!gifts.covert, "gifts are nothing to hide");
+    assert!(gifts.wealth_cost > 0, "gifts cost coin");
+    assert_eq!(gifts.skill, aeon_data::model::GoverningSkill::Diplomacy);
 
     // The answer: an ordinary investigation assignment, closed to the AI,
     // aimed at the holder's OWN troubled ground rather than at any
@@ -2509,6 +2686,13 @@ fn the_shadow_arc_carries_covert_provenance_and_order_resistance() {
         "assignment.trace-the-hand.success.popup-text",
         "goal.undermine-a-neighbour.title",
         "plan.deniable-pressure.summary",
+        "situation.cold-border.title",
+        "situation.cold-border.stage.aggrieved.summary",
+        "situation.cold-border.action.send-gifts.label",
+        "situation.cold-border.resolution.reconciled.text",
+        "situation.cold-border.guidance.why",
+        "assignment.send-gifts.title",
+        "assignment.send-gifts.disaster.popup-text",
     ] {
         assert!(keys.contains(expected), "missing derived key {expected}");
     }

@@ -413,6 +413,27 @@ identities and must not be renamed as a balance or copy-editing change.
   plan's: a relationship lifted above the authored hostility floor abandons
   an uncommitted covert campaign, while work already accepted runs to its
   ordinary resolution.
+- [ai] A covert campaign or ambition may also lose its authored grounds:
+  `abandon_when` on the plan (judged only while no step is committed) and
+  `set_aside_when` on the goal (judged monthly over its resolved target,
+  ending it with no cooldown) read the reconciliation predicates — regard
+  at or above the authored line, no grievance owed, no war between the
+  houses — and both endings write a distinct lost-grounds line that keeps
+  the covert audience. Work already accepted and wars already declared are
+  never touched by either; they end only through ordinary Situation,
+  obligation, negotiation, or peace actions.
+- [ai] The player's inspectable reasoning for all of this is the open A
+  Cold Border card, which reads only public relationship facts — the live
+  regard, the two authored numbers, grievances owed, and wars — and never
+  a plan, goal, assignment, or exposure record: it says why a neighbour
+  might scheme, not that it is, and it offers the ordinary levers
+  (courting, sending gifts) as actions.
+- [ai] A change of head re-reads the relationship from the successor's own
+  regard: the dead head's plan ends by the dead-leader rule, the org-keyed
+  ambition and the obligation ledger pass through untouched, the
+  ambition's frozen target is re-judged on the next pulse, and a hostile
+  successor re-arms through ordinary adoption with no inherited cooldown
+  and no protected state.
 - [ai] An investigation is an ordinary assignment. It may be ordered, led,
   delayed, blocked, cancelled, and abandoned like any other; it may be
   ordered from the troubled province or the household list as readily as
@@ -510,7 +531,18 @@ The current design contract is met when:
     nothing at all; no result of any kind names a house that did not do
     it, discovery is recorded per discovering house, and every epistemic
     stage survives snapshot, restore, and replay without widening a line
-    already written.
+    already written;
+15. [ai] a changed relationship derails only uncommitted hostility:
+    hostile planning may begin at or below the authored floor or with a
+    grievance owed, regard above the floor suppresses new escalation,
+    regard at the authored line with no grievance and no war abandons
+    uncommitted plans and sets the ambition aside without a cooldown,
+    operations and wars already underway resolve only through ordinary
+    Situation, obligation, negotiation, or peace actions, succession
+    re-judges the relationship from the successor's own regard with no
+    protected or inherited hostility, and the player can inspect the
+    non-secret reasoning on an open card that carries no covert
+    provenance.
 
 ## Explicit exclusions and open questions
 
@@ -569,7 +601,11 @@ define such a system.
   remain out of scope, and are structurally unreachable: the culprit is
   read from a binding, not chosen. What a discovery may then be used for
   — retaliation, grievance, reconciliation — remains ordinary politics
-  and is not answered here.
+  and is not answered here. [ai] Reconciliation is now answered on its
+  own terms (the lost-grounds rules above and the reconciliation decision
+  in `pasm/spec/architecture/implementation-decisions.yaml`); retaliation
+  and a demanded settlement of a grievance remain ordinary politics, and
+  no authored effect yet settles a grievance.
 - How much of pressure scoring should the inspector expose: the selected
   reason only, ranked factors, or exact bonuses from goals and directives?
 - Should ordinary players ever receive access to an omniscient replay or

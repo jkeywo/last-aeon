@@ -10,8 +10,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use crate::key::ContentKey;
 use crate::model::{
-    AssignmentDef, AssignmentTargetKind, BodyKind, HouseTier, OrgKind, OutcomeKind, PlanStepAction,
-    PlanTargetSelector, ShipClass, SituationSubjectKind, SituationVisibilityDef, TitleKindDef,
+    AssignmentDef, AssignmentTargetKind, BodyKind, HouseTier, OrgKind, OutcomeKind, PlanRequires,
+    PlanStepAction, PlanTargetSelector, ShipClass, SituationSubjectKind, SituationVisibilityDef,
+    TitleKindDef,
 };
 
 use super::builders::BuilderState;
@@ -273,6 +274,7 @@ pub(super) fn validate_cross_references(
 
     validate_political_references(builder, &mut findings);
     validate_plans(builder, &mut findings);
+    validate_goals(builder, &mut findings);
     validate_situations(builder, fn_names, &mut findings);
 
     for (path, key, message) in findings {
@@ -595,6 +597,15 @@ fn validate_plans(builder: &BuilderState, findings: &mut Vec<(String, Option<Str
     };
 
     for (key, plan) in &builder.plans {
+        // The plan's own lost-grounds gate is judged over the same target
+        // as its method gates, so it answers to the same rules.
+        if let Some(requirements) = &plan.abandon_when {
+            for message in
+                organisation_predicate_problems("abandon_when", requirements, plan.target, "plan")
+            {
+                err(key, message);
+            }
+        }
         for method in &plan.methods {
             for (where_, requirements) in
                 std::iter::once((format!("method '{}'", method.id), &method.requires)).chain(
@@ -656,30 +667,10 @@ fn validate_plans(builder: &BuilderState, findings: &mut Vec<(String, Option<Str
                         ),
                     );
                 }
-                // The hostility predicates compare heads and ledgers of an
-                // organisation target; on any other plan they could only
-                // ever read nobody.
-                if requirements.max_target_head_opinion.is_some()
-                    && plan.target != AssignmentTargetKind::Organisation
+                for message in
+                    organisation_predicate_problems(&where_, requirements, plan.target, "plan")
                 {
-                    err(
-                        key,
-                        format!(
-                            "{where_}: 'max_target_head_opinion' compares an organisation target's head, but the plan targets {:?}",
-                            plan.target
-                        ),
-                    );
-                }
-                if requirements.target_owes_grievance
-                    && plan.target != AssignmentTargetKind::Organisation
-                {
-                    err(
-                        key,
-                        format!(
-                            "{where_}: 'target_owes_grievance' reads an organisation target's ledger, but the plan targets {:?}",
-                            plan.target
-                        ),
-                    );
+                    err(key, message);
                 }
             }
             for step in &method.steps {
@@ -829,6 +820,65 @@ fn validate_plans(builder: &BuilderState, findings: &mut Vec<(String, Option<Str
         let mut trail: Vec<&ContentKey> = Vec::new();
         if let Some(message) = plan_depth_problem(builder, key, &mut trail) {
             err(key, message);
+        }
+    }
+}
+
+/// The relationship predicates compare heads, ledgers, and war sides of an
+/// organisation target; on a plan or goal aimed at anything else they
+/// could only ever read nobody, so they are refused at load. `what` names
+/// the owning definition kind for the finding.
+fn organisation_predicate_problems(
+    where_: &str,
+    requirements: &PlanRequires,
+    target: AssignmentTargetKind,
+    what: &str,
+) -> Vec<String> {
+    if target == AssignmentTargetKind::Organisation {
+        return Vec::new();
+    }
+    let mut problems = Vec::new();
+    if requirements.max_target_head_opinion.is_some() {
+        problems.push(format!(
+            "{where_}: 'max_target_head_opinion' compares an organisation target's head, but the {what} targets {target:?}"
+        ));
+    }
+    if requirements.min_target_head_opinion.is_some() {
+        problems.push(format!(
+            "{where_}: 'min_target_head_opinion' compares an organisation target's head, but the {what} targets {target:?}"
+        ));
+    }
+    if requirements.target_owes_grievance {
+        problems.push(format!(
+            "{where_}: 'target_owes_grievance' reads an organisation target's ledger, but the {what} targets {target:?}"
+        ));
+    }
+    if requirements.target_owes_no_grievance {
+        problems.push(format!(
+            "{where_}: 'target_owes_no_grievance' reads an organisation target's ledger, but the {what} targets {target:?}"
+        ));
+    }
+    if requirements.at_war_with_target.is_some() {
+        problems.push(format!(
+            "{where_}: 'at_war_with_target' reads an organisation target's war sides, but the {what} targets {target:?}"
+        ));
+    }
+    problems
+}
+
+/// Cross-reference validation for goals: an ambition's lost-grounds gate
+/// is judged over its resolved target, so the organisation predicates need
+/// an organisation-aimed goal exactly as a plan's gates need an
+/// organisation-aimed plan.
+fn validate_goals(builder: &BuilderState, findings: &mut Vec<(String, Option<String>, String)>) {
+    for (key, goal) in &builder.goals {
+        let Some(requirements) = &goal.set_aside_when else {
+            continue;
+        };
+        for message in
+            organisation_predicate_problems("set_aside_when", requirements, goal.target, "goal")
+        {
+            findings.push((String::new(), Some(key.to_string()), message));
         }
     }
 }

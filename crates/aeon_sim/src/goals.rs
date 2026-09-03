@@ -405,8 +405,18 @@ pub fn maybe_adopt_goal(world: &mut World, head: CharacterId, authority: OrgId) 
             if !off_cooldown || !trigger_met(world, authority, &def.trigger) {
                 return None;
             }
-            resolve_target(world, authority, def)
-                .map(|target| (def.priority, def.key.clone(), target))
+            let target = resolve_target(world, authority, def)?;
+            // An ambition whose authored grounds are already gone against
+            // the target it would resolve is not adopted: what the next
+            // pulse would set aside is not taken up on this one.
+            if def
+                .set_aside_when
+                .as_ref()
+                .is_some_and(|req| crate::plans::requires_met(world, authority, target, req))
+            {
+                return None;
+            }
+            Some((def.priority, def.key.clone(), target))
         })
         .collect();
     eligible.sort_by(|left, right| right.0.cmp(&left.0).then(left.1.cmp(&right.1)));
@@ -455,11 +465,16 @@ pub fn maybe_adopt_goal(world: &mut World, head: CharacterId, authority: OrgId) 
 }
 
 /// Monthly: an ambition ends when it is out of time, its house has
-/// fallen, or the rival it was aimed at is gone.
+/// fallen, the rival it was aimed at is gone, or its authored grounds no
+/// longer hold against that rival.
 ///
 /// Walked in stable house-ID order. Completion by a fallen target and
 /// abandonment by exhaustion both start the cooldown and say so, so the
-/// player can follow what a rival house is about.
+/// player can follow what a rival house is about. Lost grounds set the
+/// ambition aside *without* a cooldown: the grounds may return — a
+/// successor of a different temper, a relationship soured again — and an
+/// ambition whose grounds have returned is adopted afresh through the
+/// ordinary monthly pulse, never protected and never locked out.
 pub fn advance_goals(world: &mut World) {
     // A content-free world (a snapshot restored without its content) holds
     // no goals worth advancing and no content to read them from.
@@ -494,15 +509,26 @@ pub fn advance_goals(world: &mut World) {
             world.resource_mut::<Goals>().active.remove(&authority);
             continue;
         }
-        if !target_fallen && !out_of_time {
+        // The ambition's own authored grounds, judged over the target it
+        // resolved at adoption with the plan vocabulary: the same
+        // relationship predicates its campaigns gate on. A standing target
+        // whose head has been reconciled, with no grievance and no war
+        // between the houses, is one the ambition has lost its reason for.
+        let grounds_lost = !target_fallen
+            && def.set_aside_when.as_ref().is_some_and(|req| {
+                crate::plans::requires_met(world, authority, active.target, req)
+            });
+        if !target_fallen && !grounds_lost && !out_of_time {
             continue;
         }
 
         // The ambition ends. A fallen rival is an ambition achieved; time
-        // run out is one set aside. Either way, the cooldown holds the
-        // house off the same ambition for a while.
+        // run out is one set aside, and the cooldown holds the house off
+        // the same ambition for a while. Grounds lost is set aside too,
+        // but with no cooldown: nothing was exhausted, and the ambition
+        // is the house's again the month its grounds come back.
         world.resource_mut::<Goals>().active.remove(&authority);
-        if def.cooldown_days > 0 {
+        if !grounds_lost && def.cooldown_days > 0 {
             world.resource_mut::<Goals>().cooldowns.insert(
                 (authority, active.def.clone()),
                 date.add_days(i64::from(def.cooldown_days)),
@@ -510,6 +536,8 @@ pub fn advance_goals(world: &mut World) {
         }
         let key = if target_fallen {
             "sim.goal.achieved"
+        } else if grounds_lost {
+            "sim.goal.set-aside-no-grounds"
         } else {
             "sim.goal.set-aside"
         };

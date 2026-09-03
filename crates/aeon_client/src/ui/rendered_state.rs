@@ -1163,8 +1163,30 @@ mod tests {
         }
         let hash_before = fixture.host.state_hash();
 
-        // Guidance on (the default): the card renders its help triggers,
-        // registered for keyboard traversal like any other control.
+        // Every visible card whose definition carries both help rows
+        // renders its two triggers. On day one that is The Court Awaits
+        // and the protagonist's Cold Border cards, one per cold neighbour.
+        let guided_cards = {
+            let content = crate::content::load_embedded();
+            let view = fixture.host.world_mut().resource::<SituationPanelView>();
+            view.active
+                .iter()
+                .filter(|card| {
+                    content
+                        .situations
+                        .get(&card.card.active.key.definition)
+                        .is_some_and(|def| def.guidance_how.is_some() && def.guidance_why.is_some())
+                })
+                .count()
+        };
+        assert!(
+            guided_cards >= 1,
+            "the day-one deck carries at least one guided card"
+        );
+
+        // Guidance on (the default): each guided card renders its help
+        // triggers, registered for keyboard traversal like any other
+        // control.
         fixture.render_full_shell(viewport, Vec::new());
         let ctx = fixture.full_egui_context();
         let guidance: Vec<_> = semantic_responses(&ctx)
@@ -1173,8 +1195,8 @@ mod tests {
             .collect();
         assert_eq!(
             guidance.len(),
-            2,
-            "Show me how and Why this matters render with guidance enabled"
+            2 * guided_cards,
+            "Show me how and Why this matters render with guidance enabled, per guided card"
         );
         let registry = crate::ui::keyboard::completed_registry(&ctx);
         assert_eq!(
@@ -1182,7 +1204,7 @@ mod tests {
                 .iter()
                 .filter(|entry| entry.logical.0.starts_with("situation-guidance:"))
                 .count(),
-            2,
+            2 * guided_cards,
             "guidance triggers are keyboard-reachable"
         );
 
@@ -1485,6 +1507,120 @@ mod tests {
                 .any(|notice| notice.situation == visit_key && notice.outcome.as_str() == "hosted"),
             "acceptance resolved the visit hosted"
         );
+    }
+
+    /// The Cold Border card is the open half of the shadow arc: it
+    /// renders for the protagonist while a neighbour's regard runs cold,
+    /// offers the two ordinary levers as real controls — courtship pinned
+    /// to the head, gifts with a free envoy — and carries no covert tell
+    /// even on a day the covert operation is running against the house.
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    fn the_cold_border_card_offers_the_ordinary_levers_and_names_no_covert_hand() {
+        let viewport = egui::vec2(1920.0, 1080.0);
+        let mut fixture = ProductionFixture::seeded(404);
+        let (harrow, vantar) = {
+            let world = fixture.host.world_mut();
+            let harrow = world.resource::<PoliticsIndex>().org_keys
+                [&aeon_data::ContentKey::new("harrow").unwrap()];
+            let vantar = world.resource::<PoliticsIndex>().org_keys
+                [&aeon_data::ContentKey::new("vantar").unwrap()];
+            world.resource_mut::<PlayerHouse>().0 = Some(harrow);
+            (harrow, vantar)
+        };
+        fixture.host.advance_days(182);
+        fixture
+            .host
+            .world_mut()
+            .resource_mut::<aeon_sim::PendingPopups>()
+            .popups
+            .clear();
+        refresh_situation_panel_view(fixture.host.world_mut());
+        let head = aeon_sim::access::org_head(fixture.host.world_mut(), harrow)
+            .expect("the house has a head");
+
+        // What would betray the covert work if any card copy carried it.
+        const TELLS: [&str; 3] = [
+            "Deniable Pressure",
+            "Undermine a Neighbour",
+            "Foment Unrest",
+        ];
+        {
+            let view = fixture.host.world_mut().resource::<SituationPanelView>();
+            // Harrow opens the reign with two cold neighbours; the card
+            // under test is the one about Vantar.
+            let border = view
+                .active
+                .iter()
+                .find(|card| {
+                    card.card.active.key.definition.as_str() == "cold-border"
+                        && card.card.active.key.bindings.get("neighbour")
+                            == Some(&SituationSubject::Organisation(vantar))
+                })
+                .expect("a cold neighbour raises the protagonist's card");
+            assert_eq!(
+                border.card.active.key.bindings.get("house"),
+                Some(&SituationSubject::Organisation(harrow))
+            );
+            let court = border
+                .actions
+                .iter()
+                .find(|action| action.action.id.as_str() == "court")
+                .expect("the card offers courtship");
+            assert_eq!(
+                court.action.leader,
+                Some(head),
+                "courtship pins the head as envoy"
+            );
+            assert_eq!(court.action.target, aeon_sim::AssignmentTarget::Org(vantar));
+            assert_eq!(court.unavailable, None);
+            let gifts = border
+                .actions
+                .iter()
+                .find(|action| action.action.id.as_str() == "send-gifts")
+                .expect("the card offers gifts");
+            assert_eq!(gifts.action.leader, None, "the envoy is a free choice");
+            assert_eq!(gifts.action.target, aeon_sim::AssignmentTarget::Org(vantar));
+            assert_eq!(gifts.unavailable, None);
+            assert!(
+                gifts
+                    .forecast
+                    .as_ref()
+                    .is_some_and(|forecast| forecast.leader == head),
+                "the leaderless lever previews the head's forecast"
+            );
+
+            let mut copy = vec![border.card.title.clone(), border.card.summary.clone()];
+            copy.extend(border.stage_title.clone());
+            copy.extend(border.stage_summary.clone());
+            copy.extend(border.actions.iter().map(|action| action.label.clone()));
+            copy.extend(border.history.iter().map(|entry| entry.text.clone()));
+            for text in &copy {
+                for tell in TELLS {
+                    assert!(
+                        !text.contains(tell),
+                        "the card carries a covert tell: '{text}'"
+                    );
+                }
+            }
+        }
+
+        // Rendered, both levers are real enabled focusables on the
+        // keyboard route.
+        fixture.render_full_shell(viewport, Vec::new());
+        let ctx = fixture.full_egui_context();
+        let audited = crate::ui::keyboard::audited_responses(&ctx);
+        for lever in ["court", "send-gifts"] {
+            let control = audited
+                .iter()
+                .find(|entry| {
+                    entry.logical.0.starts_with("situation-action:")
+                        && entry.logical.0.contains("cold-border")
+                        && entry.logical.0.ends_with(&format!(":{lever}"))
+                })
+                .unwrap_or_else(|| panic!("the {lever} control renders"));
+            assert!(control.enabled, "the {lever} control is enabled");
+        }
     }
 
     /// The investigation is the second leaderless Situation action, and

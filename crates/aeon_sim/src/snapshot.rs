@@ -22,13 +22,15 @@ use crate::state::{CampaignIds, CampaignMeta, CampaignSeed, ContentDb};
 ///
 /// Bump on any change to [`CampaignState`]'s serialised shape, and provide a
 /// migration for every version a release has ever written. No release has
-/// shipped yet, so pre-release bumps carry no migrations. Version 21 adds
+/// shipped yet, so pre-release bumps carry no migrations. Version 22 widens
+/// the persisted plan requirement shape (reconciliation predicates), which
+/// active plans carry in their step skip conditions; version 21 adds
 /// the durable covert-exposure record; version 20 adds
 /// occurrence-keyed Situation answers; version 18 adds personal Paramount
 /// claims, occurrence-identified formal wars, and authored Situation
 /// lifecycle/resolution state; version 17 is refused rather than being
 /// assigned identities it never recorded.
-pub const SNAPSHOT_FORMAT_VERSION: u32 = 21;
+pub const SNAPSHOT_FORMAT_VERSION: u32 = 22;
 
 /// The complete authoritative campaign state.
 ///

@@ -220,6 +220,24 @@ and no suspicion the game will offer on the player's behalf. What the
 player learns is theirs alone: another house's enquiry teaches them
 nothing, and their own teaches nobody else.
 
+[ai] **Reconciling** (stories 40, 43–45) is the diplomatic answer, and it
+has explicit rules that the open **A Cold Border** card states in the same
+terms the AI weighs. A neighbour whose head regards Edrun at or below -10,
+or that is owed an open grievance, may begin hostile planning; regard
+lifted above -10 suppresses new escalation; regard at +20 with no
+grievance and no war between the houses abandons what is not yet
+committed — the uncommitted campaign and the ambition behind it. Nothing
+already underway is erased by a change of heart: an operation in flight
+resolves through Unquiet Holdings on its ordinary day, and a declared war
+ends only by negotiated peace. The card shows the live regard, both
+numbers, any grievance owed, and any war, and offers the ordinary levers —
+courting the house, and sending gifts — so that reaching the line from
+the opening standing is two ordinary successes rather than one lucky
+roll. It reads only public relationship facts: it explains why a
+neighbour might scheme, never that it is. A change of head at Vantar
+reads the relationship afresh from the successor's own regard, with no
+inherited or protected hostility either way.
+
 **Proposal.** Onboarding should use a short, dismissible sequence of goals over
 the live campaign rather than a separate rules sandbox. It should teach the
 normal interface and issue ordinary logged commands, without changing odds,

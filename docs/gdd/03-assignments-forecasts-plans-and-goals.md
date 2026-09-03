@@ -317,7 +317,14 @@ Plans advance daily in stable character-ID order. Satisfied steps are skipped.
 An unresolved selector or temporarily blocked start waits, while maximum plan
 duration is the single timeout. Method gates are rechecked before every new
 step; changed strategic facts abandon the plan rather than invoking hidden
-replanning. Success advances; failure or disaster consumes a retry; exceeding
+replanning. [ai] A plan may also author `abandon_when` — the same
+declarative vocabulary as a method gate, judged over the authority and the
+plan's target — which lets an uncommitted plan go the day it holds and
+refuses adoption while it already holds; a step already accepted is never
+touched by it. That ending, and a method gate that has ceased to hold, write
+a distinct lost-grounds line, so history tells a campaign given up for want
+of grounds from one that ran out of retries or time. Success advances;
+failure or disaster consumes a retry; exceeding
 the retry budget abandons the plan. Completion and abandonment both apply the
 authored cooldown and write to the log. Death of the actor, fall of their
 organisation or target, end of a target war, or expiry also ends the plan.
@@ -369,7 +376,14 @@ or an open grievance owed), lowest stable ID first.
 
 A goal has no executor. It biases the head's ordinary scoring so that existing
 assignments and plans pursue the ambition. It ends when its house falls, an
-organisation target falls, or its time horizon expires. This is intentionally
+organisation target falls, or its time horizon expires. [ai] A goal may also
+author `set_aside_when` in the plan vocabulary, judged on the monthly pulse
+over the target it resolved at adoption: when it holds, the ambition is set
+aside for lost grounds with **no** cooldown — the grounds may return, and a
+successor of a different temper may adopt the ambition afresh — and a
+candidate on which it already holds is not adopted. The shipped covert
+ambition uses it for reconciliation: the rival head's regard at or above
++20, no grievance owed, and no war between the houses. This is intentionally
 not a general semantic victory-condition engine: current completion detection
 only recognises the states the implementation explicitly models.
 
@@ -392,9 +406,9 @@ intent are detailed in [AI Agency and Information Rules](06-ai-agency-and-inform
 | Active assignment | Stable ID, definition, owner, leader, target, war, Situation origin, start/completion dates, cancellation request | Stable assignment ID; daily resolution in ID order |
 | Command | Typed player decision, execution day, monotonic sequence | Applied in `(day, sequence)` order and appended to the command log |
 | Forecast | Derived timing, costs, contest, odds, risks, block reason, point of no return | Pure integer calculations shared with resolution |
-| Plan definition | Intent, target kind, methods, gates ([ai] including campaign-day windows and the hostility predicates), flattened step vocabulary, cooldown and limits, [ai] covert flag | Stable content key; validated acyclic composition |
+| Plan definition | Intent, target kind, methods, gates ([ai] including campaign-day windows and the hostility and reconciliation predicates — opinion floor and line, grievance owed or not, war with the target or not), flattened step vocabulary, cooldown and limits, [ai] covert flag, [ai] optional lost-grounds gate (`abandon_when`) | Stable content key; validated acyclic composition |
 | Active plan | Actor-keyed definition, method, flattened steps, target, step, dates, current assignment, retries, reason | `BTreeMap` by stable character ID |
-| Goal definition | Trigger ([ai] including campaign-day windows), priority, favoured intents, target, [ai] target selector, directives, lifetime and cooldown, [ai] covert flag | Stable content key; priority then key tie-break |
+| Goal definition | Trigger ([ai] including campaign-day windows), priority, favoured intents, target, [ai] target selector, directives, lifetime and cooldown, [ai] covert flag, [ai] optional lost-grounds gate (`set_aside_when`, in the plan vocabulary over the resolved target) | Stable content key; priority then key tie-break |
 | Active goal | Organisation-keyed definition, adopting head, resolved target, date | `BTreeMap` by stable organisation ID |
 
 Active assignments, pending popups, plans, goals, cooldowns, and manually
