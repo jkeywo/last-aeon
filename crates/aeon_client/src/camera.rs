@@ -1,10 +1,12 @@
 //! Orbit camera for the system and globe views.
 //!
 //! Right-drag rotates, wheel zooms. Switching views retargets the camera
-//! and eases toward the new framing.
+//! and eases toward the new framing. The wheel belongs to whatever the
+//! pointer is over: while egui holds the pointer, the map ignores it.
 
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll};
 use bevy::prelude::*;
+use bevy_egui::EguiContexts;
 
 use crate::skybox::{SpaceSkybox, space_skybox};
 use crate::view::{FLAT_HEIGHT, FLAT_WIDTH, MapProjection, MapView, ViewState};
@@ -94,15 +96,25 @@ pub fn retarget_on_view_change(
 /// Applies drag rotation, wheel zoom, and easing, then writes the camera
 /// transform. Both views orbit the origin: the system centres on the
 /// primary, the globe sits at the origin of its own view.
+#[allow(clippy::too_many_arguments)]
 pub fn drive_camera(
     time: Res<Time>,
     view: Res<ViewState>,
     motion: Res<AccumulatedMouseMotion>,
     scroll: Res<AccumulatedMouseScroll>,
     buttons: Res<ButtonInput<MouseButton>>,
+    mut contexts: EguiContexts,
     mut orbit: ResMut<OrbitCamera>,
     mut cameras: Query<&mut Transform, With<Camera3d>>,
 ) {
+    // Asked in Update, so this reports the layout egui drew last frame —
+    // the layout the player was looking at when they turned the wheel.
+    // Before any context exists the map is the only surface there is.
+    let egui_holds_pointer = contexts
+        .ctx_mut()
+        .map(|ctx| ctx.egui_wants_pointer_input())
+        .unwrap_or(false);
+
     // A flat map has nothing to orbit: dragging slides the map under a
     // camera that always looks straight at it.
     let flat = view.projection == MapProjection::Flat && matches!(view.view, MapView::Body(_));
@@ -119,10 +131,8 @@ pub fn drive_camera(
             orbit.pitch = (orbit.pitch + motion.delta.y * 0.008).clamp(-1.45, 1.45);
         }
     }
-    if scroll.delta.y.abs() > 0.0 {
-        let factor = 1.0 - scroll.delta.y * 0.1;
-        orbit.goal_distance =
-            (orbit.goal_distance * factor).clamp(orbit.zoom_range.0, orbit.zoom_range.1);
+    if map_takes_wheel(scroll.delta.y, egui_holds_pointer) {
+        orbit.goal_distance = zoomed_goal(orbit.goal_distance, orbit.zoom_range, scroll.delta.y);
     }
 
     // Panning stops at the map's edge, so the map cannot be lost offscreen.
@@ -141,5 +151,59 @@ pub fn drive_camera(
     };
     for mut transform in &mut cameras {
         *transform = Transform::from_translation(position).looking_at(target, Vec3::Y);
+    }
+}
+
+/// Whether the map should act on a wheel event this frame.
+///
+/// egui owns the pointer while it is over one of its surfaces or driving a
+/// widget, and a wheel turned there belongs to that surface alone — a list
+/// scrolled under the pointer must not also pull the map in behind it.
+fn map_takes_wheel(scroll_y: f32, egui_holds_pointer: bool) -> bool {
+    scroll_y.abs() > 0.0 && !egui_holds_pointer
+}
+
+/// The distance the camera should ease toward after a wheel turn, kept
+/// inside the active view's zoom range.
+fn zoomed_goal(goal: f32, range: (f32, f32), scroll_y: f32) -> f32 {
+    let factor = 1.0 - scroll_y * 0.1;
+    (goal * factor).clamp(range.0, range.1)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_wheel_over_the_map_zooms_it() {
+        assert!(map_takes_wheel(1.0, false));
+        assert!(map_takes_wheel(-1.0, false));
+    }
+
+    #[test]
+    fn a_wheel_over_an_egui_surface_leaves_the_map_alone() {
+        assert!(!map_takes_wheel(1.0, true));
+        assert!(!map_takes_wheel(-1.0, true));
+    }
+
+    #[test]
+    fn a_still_wheel_moves_nothing_either_way() {
+        assert!(!map_takes_wheel(0.0, false));
+        assert!(!map_takes_wheel(0.0, true));
+    }
+
+    #[test]
+    fn zooming_moves_toward_the_wheel_and_stops_at_the_range() {
+        let range = (10.0, 40.0);
+        assert!(
+            zoomed_goal(22.0, range, 1.0) < 22.0,
+            "scrolling up draws in"
+        );
+        assert!(
+            zoomed_goal(22.0, range, -1.0) > 22.0,
+            "scrolling down pulls out"
+        );
+        assert_eq!(zoomed_goal(10.5, range, 50.0), range.0);
+        assert_eq!(zoomed_goal(39.5, range, -50.0), range.1);
     }
 }
