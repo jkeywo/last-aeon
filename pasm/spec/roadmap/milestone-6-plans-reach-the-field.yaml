@@ -11,6 +11,11 @@
 #
 # Deliberately still excluded, as M5 excluded it: any espionage or
 # plot-detection system. Plans keep speaking openly.
+#
+# [ai] Later work qualified that last line rather than repealing it: the
+# First Year arc made authored covert work hide its provenance until an
+# investigation assignment exposes the culprit bound to a Situation. Open
+# plans still speak openly; see covert-work-and-its-exposure.
 
 entities:
   - system: milestone-6-implementation-plan

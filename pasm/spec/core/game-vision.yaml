@@ -1140,6 +1140,15 @@ entities:
       kind: presentation-and-information
       classification: interface
       authority: derived
+    implementation:
+      paths:
+        - crates/aeon_sim/src/situations.rs
+        - crates/aeon_data/src/model.rs
+        - crates/aeon_client/src/ui/situations_panel.rs
+      tests:
+        - crates/aeon_sim/tests/situations.rs
+        - crates/aeon_sim/tests/situation_war_contract.rs
+      status: declared
 
   - decision: situations-are-authored-shells-over-simulation-facts
     core:
@@ -1509,10 +1518,13 @@ entities:
         behaviour stays cheap and reactive; campaigns are for the special
         occasions — claims, grievances — and end legibly, by completion or
         abandonment, with the player able to learn what a rival has set
-        their mind to.
+        their mind to. [ai] Except where the content declares the work
+        covert: a covert campaign is legible only to the house running it
+        until an investigation exposes the hand behind it.
       references:
         - characters-are-the-acting-unit
         - intent-driven-organisation-agency
+        - covert-work-and-its-exposure
         - job-system
     architecture:
       kind: simulation-subsystem
@@ -1662,3 +1674,196 @@ entities:
       kind: presentation-and-information
       classification: interface
       authority: derived
+
+  - component: situation-responses
+    core:
+      status: accepted
+      confidence: confirmed
+      origin: ai
+      title: Situations Take Answers as Well as Orders
+      summary: >-
+        A Situation may ask a political question that no assignment can
+        answer — to promise a demand, or to refuse it. The player records
+        one answer per occurrence through an ordinary validated, delayed,
+        logged command, and that answer becomes authoritative state kept
+        beside the rest of Situation state, read by the same authored
+        predicates that decide how the Situation resolves. Recording an
+        answer changes nothing by itself: it is a fact the content may
+        later hold the house to, so a kept promise and a broken one part
+        company at the deadline rather than at the moment of speaking.
+        The first answer per occurrence is final, and a reactivation is a
+        new occurrence that starts unanswered.
+      references:
+        - situation-system
+        - situations-are-authored-shells-over-simulation-facts
+        - scripted-command-boundary
+        - versioned-snapshots-plus-command-log
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_sim/src/situations.rs
+        - crates/aeon_sim/src/command.rs
+        - crates/aeon_data/src/model.rs
+      tests:
+        - crates/aeon_sim/tests/situations.rs
+      status: declared
+
+  - component: covert-work-and-its-exposure
+    core:
+      status: accepted
+      confidence: confirmed
+      origin: ai
+      title: Covert Work and Its Exposure
+      summary: >-
+        Authored work may declare itself covert — a plan, a standing
+        ambition, or a single assignment. Until it is exposed, every
+        ordinary player surface narrows that work's provenance to the
+        house that owns it: adoption, completion and abandonment lines,
+        assignment results, the character inspector's line naming what a
+        rival pursues, and the guaranteed rumour an open hostile plan
+        would otherwise whisper. Nothing is falsified or deleted — a
+        spectator and replay verification keep the complete record, and
+        the deed's effects on the world are as visible as they ever were;
+        what is withheld is the hand behind them. Exposure is earned
+        rather than rolled: an investigation aimed at the holder's own
+        troubled ground names the culprit the content already bound to
+        that Situation, so a false accusation is structurally impossible.
+        What discovery records is a durable fact of who has proved what
+        about whom, outliving the Situation that found it. From then on
+        that house may name the culprit in new history and in live
+        projection, while lines already written keep the audience they
+        were stamped with.
+      references:
+        - plans-are-authored-campaigns
+        - grand-strategy-goals
+        - the-shadows
+        - notable-result-message-log
+        - situation-system
+        - campaign-persistence
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_sim/src/covert.rs
+        - crates/aeon_sim/src/plans.rs
+        - crates/aeon_sim/src/goals.rs
+        - crates/aeon_sim/src/assignments.rs
+        - crates/aeon_sim/src/snapshot.rs
+      tests:
+        - crates/aeon_sim/tests/situations.rs
+        - crates/aeon_sim/tests/plans.rs
+      status: declared
+
+  - component: hostile-ambitions-subvert-and-invade
+    core:
+      status: accepted
+      confidence: confirmed
+      origin: ai
+      title: Subversion and Limited War Are Ambitions Like Any Other
+      summary: >-
+        The shared intent vocabulary carries two hostile intents. Subvert
+        is deniable pressure on a rival's ground; invade is the open,
+        limited alternative — raise the host, declare a formal war,
+        besiege one holding, and settle. Neither is reachable by the
+        reactive pressure scorer that keeps everyday behaviour cheap:
+        like a claim, they are weighed only by a head pursuing a standing
+        ambition, and they name no content key. Who such an ambition is
+        aimed at, when it may be adopted, and what a house must be able
+        to field before it may are all authored data — a window and a
+        capability floor on the ambition, a selector that finds a hostile
+        border neighbour, and plans whose every step re-reads the
+        hostility that justified it. A rival whose regard recovers before
+        a step is in flight is left alone: an uncommitted campaign or
+        ambition ends for lost grounds instead of running on, while a
+        deed already under way is never erased.
+      references:
+        - grand-strategy-goals
+        - plans-are-authored-campaigns
+        - intent-driven-organisation-agency
+        - formal-war-system
+        - the-shadows
+    architecture:
+      kind: simulation-subsystem
+      classification: domain
+      authority: authoritative
+    implementation:
+      paths:
+        - crates/aeon_sim/src/goals.rs
+        - crates/aeon_sim/src/plans.rs
+        - crates/aeon_sim/src/agency.rs
+      tests:
+        - crates/aeon_sim/tests/invasion.rs
+        - crates/aeon_sim/tests/goals.rs
+        - crates/aeon_sim/tests/plans.rs
+      status: declared
+
+  - component: scenario-guidance
+    core:
+      status: accepted
+      confidence: confirmed
+      origin: ai
+      title: Scenario Guidance Is Authored Prose Behind a Client Preference
+      summary: >-
+        A new ruler can be told what a Situation wants of them without the
+        simulation knowing anything about it. Guidance is table-decided
+        prose on a Situation definition — the objective, how to meet it,
+        and why it matters — shown on the card behind a default-on
+        interface preference the player turns off wherever they set scale
+        and density. It reuses the same pinnable explanation surface the
+        rest of the interface uses, issues no command, and reaches no
+        authoritative state, so a campaign played with guidance on and the
+        same campaign played with it off are the same campaign.
+      references:
+        - situation-system
+        - job-forecast-and-explanation-ui
+        - scripted-content-with-ci-validation
+    architecture:
+      kind: presentation-and-information
+      classification: interface
+      authority: derived
+    implementation:
+      paths:
+        - crates/aeon_client/src/preferences.rs
+        - crates/aeon_client/src/ui/situations_panel.rs
+        - crates/aeon_client/src/ui/explanations.rs
+      status: declared
+
+  - component: onboarding-telemetry
+    core:
+      status: accepted
+      confidence: confirmed
+      origin: ai
+      title: Opt-In, Client-Owned Onboarding Telemetry
+      summary: >-
+        Whether the opening of a campaign teaches what it means to is
+        measured rather than assumed. Onboarding telemetry is owned by the
+        presentation layer and never enters the simulation: it is
+        structurally outside the campaign snapshot and the state hash, so
+        it can neither change a campaign nor disturb its replay. Nothing
+        is recorded until the player opts in — consent is its own stored
+        document whose every failure to read means not consented,
+        withdrawal erases the stored events as well as the session buffer,
+        and the consent gate lives in the single sink every capture site
+        calls rather than at the capture sites themselves. Captured
+        events name authored content keys, interface roles, and booleans
+        only — never a character's name or a rendered message — and the
+        player can read back in the client what has been captured.
+      references:
+        - campaign-persistence
+        - deterministic-campaign-simulation
+        - headless-authoritative-simulation
+        - shared-native-and-web-delivery
+    architecture:
+      kind: presentation-and-information
+      classification: interface
+      authority: derived
+    implementation:
+      paths:
+        - crates/aeon_client/src/telemetry.rs
+        - crates/aeon_client/src/preferences.rs
+      status: declared

@@ -76,7 +76,7 @@ entities:
       tests:
         - crates/aeon_sim/tests/assignments.rs
         - crates/aeon_sim/tests/politics.rs
-        - crates/aeon_sim/tests/forces.rs
+        - crates/aeon_sim/tests/warfare.rs
       status: declared
 
     evidence:
@@ -84,7 +84,7 @@ entities:
         reference: crates/aeon_sim/tests/assignments.rs
         summary: Each cause of unavailability reports its own variant rather than a single message, and leader_eligible never disagrees with leader_availability across the whole scenario cast, which is what stops the three implementations drifting apart again.
       - kind: test
-        reference: crates/aeon_sim/tests/forces.rs
+        reference: crates/aeon_sim/tests/warfare.rs
         summary: A captain assignment round-trips through a snapshot, a blockade by a ship with no captain is refused, and the order loss a blockade inflicts scales with the captain's command.
       - kind: test
         reference: crates/aeon_sim/tests/politics.rs

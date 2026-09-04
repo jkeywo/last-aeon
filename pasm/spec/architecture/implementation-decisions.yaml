@@ -1835,8 +1835,11 @@ entities:
         - Explicit provenance gives related history exact membership and survives later changes to the participants.
         - "[ai] Repeated projected actions carry semantic context links so every force-objective alternative stays individually identifiable without client-owned war rules."
         - "[ai] The shortcut and the ordinary path converge on provenance as well as on command, validation, and forecast: an ordinary order that a live visible lifecycle's current projection offers at the same target, leader, and formal-war context inherits that lifecycle's occurrence when it starts (situations::offering_lifecycle, consulted by apply_command's StartAssignment branch), so an answer whose effect reads its origin cannot be made to lie by pressing the province button instead of the card's, and every other answer merely gains exact history membership."
+        - "[ai] The initial-deck rule above is no longer the whole story: situation-responses-are-recorded-occurrence-answers added a second interaction kind, the recorded answer, which opens no assignment flow and mutates nothing directly. Everything else here stands — an answer is still one validated, delayed, logged command carrying the exact occurrence, and gameplay actions that do reach the world still reach it through an assignment."
       references:
         - situation-system
+        - situation-responses
+        - situation-responses-are-recorded-occurrence-answers
         - scripted-command-boundary
         - assignments-declare-who-they-may-target
         - single-source-leader-availability

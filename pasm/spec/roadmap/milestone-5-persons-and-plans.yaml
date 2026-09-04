@@ -215,8 +215,15 @@ entities:
         pressure that motivated them; when a plan is aimed at the player
         a rumour line says so; and an AI head's inspector names what
         they are pursuing. The spec records the milestone's decisions.
+        [ai] Since covert work shipped, all three read "except authored
+        covert work before it is exposed": a covert plan's lines are
+        narrowed to its owner, its rumour is not whispered at all, and
+        the inspector omits its pursuing line until an investigation has
+        proved the culprit to the viewing house. Open plans are
+        unchanged, and a spectator still sees everything.
       references:
         - intent-driven-organisation-agency
+        - covert-work-and-its-exposure
       goals:
         - The player can learn what a rival intends before its effects arrive, without an espionage system.
         - The reasons shown are the reasons used — the same scored pressure, not a narration invented for display.
