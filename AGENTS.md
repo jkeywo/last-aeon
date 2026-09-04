@@ -1,5 +1,3 @@
-@RTK.md
-
 # The Last Aeons — Agent Guide
 
 A character-led grand strategy game in a science-fantasy setting: personal

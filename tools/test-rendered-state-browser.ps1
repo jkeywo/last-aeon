@@ -9,5 +9,5 @@ $browser = (Resolve-Path -LiteralPath $ChromeBinary).Path
 $env:PATH = (Split-Path -Parent $driver) + [IO.Path]::PathSeparator + $env:PATH
 $env:CHROME_BIN = $browser
 
-& rtk cargo test -p aeon_client --bin last_aeons --target wasm32-unknown-unknown rendered_state -- --nocapture
+& cargo test -p aeon_client --bin last_aeons --target wasm32-unknown-unknown rendered_state -- --nocapture
 exit $LASTEXITCODE

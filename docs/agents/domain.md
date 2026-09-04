@@ -11,7 +11,7 @@ creating a parallel glossary or ADR hierarchy.
 - Read `pasm/spec/` for structural architecture, implementation mappings, and
   accepted decisions. Model structural changes before or alongside code.
 - Read `the_last_aeons/` for setting canon and authored world facts.
-- Read the root `AGENTS.md` and `RTK.md` before repository work.
+- Read the root `AGENTS.md` before repository work.
 
 ## Decision handling
 
