@@ -423,9 +423,15 @@ pressure, and is set aside by the same reconciliation predicates. Its
 horizon is authored to cover the whole chain it drives, not just its own
 adoption: the pressure it raises exists only while the ambition stands, so
 an ambition that lapsed after the declaration would leave a war with no
-siege and no peace overture. On the pinned scenario seed the chain adopted
-on day 270 sues for peace on day 750 and concludes on day 771, inside that
-horizon. The
+siege and no peace overture. [ai] On the corrected route graph the
+Vantar–Harrow frontier is two holdings wide, so pressing one of them does
+not empty the border and `settle-the-border` — weighed only when there is
+nothing left to press — is not reached on the AI path: the pinned scenario
+seed adopts on day 270, presses on day 480 and again on day 750, and the
+ambition lapses at its horizon on day 810 with the war still standing.
+Whether the horizon, the pressing cooldown, or the settling gate should
+change now that a border can be wider than one holding is an open content
+question. The
 `conquer-a-neighbour` ambition is unrelated to it: that one needs an
 independent house with vassals and resolves the weakest rival great
 house, so no vassal can adopt it or aim it at a sibling.

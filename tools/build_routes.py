@@ -1,7 +1,13 @@
 """Generate Last Aeon's committed initial route graph.
 
 The runtime never invokes this file. It turns the authored province coordinates
-into a stable bootstrap network which is then reviewed and committed as content.
+into the surface network which is then reviewed and committed as content.
+
+Surface adjacency is not a matter of taste: the map draws each province as the
+Voronoi cell of its coordinate, so two provinces share a border exactly when
+their cells do. That set is the spherical Delaunay triangulation, which for
+points on a sphere is the convex hull of their unit vectors. Requires numpy and
+scipy, which only a maintainer regenerating this file needs.
 """
 
 from __future__ import annotations
@@ -10,60 +16,81 @@ import math
 import re
 from pathlib import Path
 
+import numpy as np
+from scipy.spatial import ConvexHull
+
 
 ROOT = Path(__file__).resolve().parents[1]
 PROVINCES = ROOT / "assets/content/system/provinces.rhai"
 OUTPUT = ROOT / "assets/content/system/routes.rhai"
-PATTERN = re.compile(
-    r'id: "([^"]+)", body: "([^"]+)",\s*'
-    r'latitude_mdeg: (-?\d+), longitude_mdeg: (-?\d+)'
-)
+# One block per province. Reading the fields separately keeps an optional line
+# such as `starport: true` from hiding a province from the network entirely.
+BLOCK = re.compile(r"define_province\(#\{(.*?)\}\);", re.S)
+FIELDS = {
+    name: re.compile(pattern)
+    for name, pattern in (
+        ("key", r'id: "([^"]+)"'),
+        ("body", r'body: "([^"]+)"'),
+        ("latitude", r"latitude_mdeg: (-?\d+)"),
+        ("longitude", r"longitude_mdeg: (-?\d+)"),
+    )
+}
 
 
-def angular_distance(a: tuple[str, str, int, int], b: tuple[str, str, int, int]) -> float:
-    lat_a, lat_b = math.radians(a[2] / 1000), math.radians(b[2] / 1000)
-    longitude = math.radians((a[3] - b[3]) / 1000)
-    cosine = math.sin(lat_a) * math.sin(lat_b) + math.cos(lat_a) * math.cos(lat_b) * math.cos(longitude)
-    return math.acos(max(-1.0, min(1.0, cosine)))
+def unit_vectors(provinces: list[tuple[str, str, int, int]]) -> np.ndarray:
+    """Province coordinates as points on the unit sphere."""
+    latitude = np.radians(np.array([p[2] for p in provinces]) / 1000.0)
+    longitude = np.radians(np.array([p[3] for p in provinces]) / 1000.0)
+    return np.stack(
+        [
+            np.cos(latitude) * np.cos(longitude),
+            np.cos(latitude) * np.sin(longitude),
+            np.sin(latitude),
+        ],
+        axis=1,
+    )
 
 
 def surface_edges(provinces: list[tuple[str, str, int, int]]) -> set[tuple[int, int]]:
-    distances = {
-        (i, j): angular_distance(a, b)
-        for i, a in enumerate(provinces)
-        for j, b in enumerate(provinces[i + 1 :], i + 1)
-    }
+    """Every pair of provinces whose drawn cells share a border.
+
+    The convex hull of points on a sphere is their Delaunay triangulation, and
+    Delaunay is the dual of the Voronoi partition the map paints: an edge here
+    is a border a player can see and walk across. Fewer than four points cannot
+    form a hull, and a lone province has no neighbour to reach.
+    """
+    if len(provinces) < 4:
+        return {
+            (i, j)
+            for i in range(len(provinces))
+            for j in range(i + 1, len(provinces))
+        }
     edges: set[tuple[int, int]] = set()
-    seen = {0}
-    while len(seen) < len(provinces):
-        _, i, j = min(
-            (distance, i, j)
-            for (i, j), distance in distances.items()
-            if (i in seen) != (j in seen)
-        )
-        edges.add(tuple(sorted((i, j))))
-        seen.update((i, j))
-    for i in range(len(provinces)):
-        neighbours = sorted(
-            (
-                (distance, j if i == k else k)
-                for (k, j), distance in distances.items()
-                if i in (k, j)
-            ),
-            key=lambda item: (item[0], provinces[item[1]][0]),
-        )[:3]
-        edges.update(tuple(sorted((i, j))) for _, j in neighbours)
+    for simplex in ConvexHull(unit_vectors(provinces)).simplices:
+        for i in range(3):
+            edges.add(tuple(sorted((int(simplex[i]), int(simplex[(i + 1) % 3])))))
     return edges
 
 
 def main() -> None:
-    provinces = [
-        (key, body, int(latitude), int(longitude))
-        for key, body, latitude, longitude in PATTERN.findall(PROVINCES.read_text(encoding="utf-8"))
-    ]
+    provinces = []
+    for block in BLOCK.findall(PROVINCES.read_text(encoding="utf-8")):
+        found = {name: pattern.search(block) for name, pattern in FIELDS.items()}
+        if not all(found.values()):
+            continue
+        provinces.append(
+            (
+                found["key"].group(1),
+                found["body"].group(1),
+                int(found["latitude"].group(1)),
+                int(found["longitude"].group(1)),
+            )
+        )
     lines = [
-        "// Generated once from authored coordinates by tools/build_routes.py.",
-        "// Runtime pathfinding uses only these committed explicit edges.",
+        "// Generated from the authored province coordinates by",
+        "// tools/build_routes.py. Surface routes are every pair of provinces",
+        "// whose drawn Voronoi cells share a border; space routes join the",
+        "// starports. Runtime pathfinding uses only these committed edges.",
         "",
     ]
     for body in sorted({province[1] for province in provinces}):

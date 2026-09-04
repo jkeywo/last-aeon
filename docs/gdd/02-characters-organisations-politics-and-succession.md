@@ -146,9 +146,9 @@ House Harrow begins as a direct Veyrin vassal with four provinces. Its
 organisation survives an ordinary change of head, retaining its holdings,
 resources, liege, forces, and organisation-level obligations.
 
-[ai] **House Vantar.** Harrow's neighbour across the Ulmgorn border is a
-fellow Veyrin vassal of two provinces (Cindral and Ulmgorn), led by
-Perrin Vantar with Valka Vantar at his side — wary, grasping, scheming
+[ai] **House Vantar.** Harrow's neighbour across the Cindral and Ulmgorn
+border is a fellow Veyrin vassal of two provinces (Cindral and Ulmgorn),
+led by Perrin Vantar with Valka Vantar at his side — wary, grasping, scheming
 temperaments that leave Perrin regarding Edrun Harrow with authored ill
 will from day one. Vantar's authored character is indirect: too small to
 contest a field and too proud to stay a footnote, it relies on

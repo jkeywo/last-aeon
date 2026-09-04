@@ -1,63 +1,104 @@
-// Generated once from authored coordinates by tools/build_routes.py.
-// Runtime pathfinding uses only these committed explicit edges.
+// Generated from the authored province coordinates by
+// tools/build_routes.py. Surface routes are every pair of provinces
+// whose drawn Voronoi cells share a border; space routes join the
+// starports. Runtime pathfinding uses only these committed edges.
 
 // --- ashkarr: surface routes ---
 define_route(#{ id: "surface-brakkenveld-charhold", kind: "surface", a: "brakkenveld", b: "charhold", travel_days: 1 });
+define_route(#{ id: "surface-brakkenveld-drossmark", kind: "surface", a: "brakkenveld", b: "drossmark", travel_days: 1 });
 define_route(#{ id: "surface-brakkenveld-tsarovka", kind: "surface", a: "brakkenveld", b: "tsarovka", travel_days: 1 });
+define_route(#{ id: "surface-brakkenveld-ulmgorn", kind: "surface", a: "brakkenveld", b: "ulmgorn", travel_days: 1 });
 define_route(#{ id: "surface-calders-folly-shattered-coast", kind: "surface", a: "calders-folly", b: "shattered-coast", travel_days: 1 });
 define_route(#{ id: "surface-charhold-drossmark", kind: "surface", a: "charhold", b: "drossmark", travel_days: 1 });
 define_route(#{ id: "surface-charhold-greyspire", kind: "surface", a: "charhold", b: "greyspire", travel_days: 1 });
 define_route(#{ id: "surface-brakkenveld-cindral", kind: "surface", a: "brakkenveld", b: "cindral", travel_days: 1 });
 define_route(#{ id: "surface-cindral-ulmgorn", kind: "surface", a: "cindral", b: "ulmgorn", travel_days: 1 });
+define_route(#{ id: "surface-cindral-vhorruk", kind: "surface", a: "cindral", b: "vhorruk", travel_days: 1 });
 define_route(#{ id: "surface-consulate-fields-emberwash", kind: "surface", a: "consulate-fields", b: "emberwash", travel_days: 1 });
 define_route(#{ id: "surface-consulate-fields-old-anchorage", kind: "surface", a: "consulate-fields", b: "old-anchorage", travel_days: 1 });
+define_route(#{ id: "surface-brakkenveld-dreghal", kind: "surface", a: "brakkenveld", b: "dreghal", travel_days: 1 });
 define_route(#{ id: "surface-cindral-dreghal", kind: "surface", a: "cindral", b: "dreghal", travel_days: 1 });
 define_route(#{ id: "surface-dreghal-palensk", kind: "surface", a: "dreghal", b: "palensk", travel_days: 1 });
+define_route(#{ id: "surface-dreghal-tolmaz", kind: "surface", a: "dreghal", b: "tolmaz", travel_days: 1 });
+define_route(#{ id: "surface-dreghal-veyrmark", kind: "surface", a: "dreghal", b: "veyrmark", travel_days: 1 });
+define_route(#{ id: "surface-calders-folly-drossmark", kind: "surface", a: "calders-folly", b: "drossmark", travel_days: 1 });
 define_route(#{ id: "surface-drossmark-pellamir", kind: "surface", a: "drossmark", b: "pellamir", travel_days: 1 });
+define_route(#{ id: "surface-drossmark-skarnos", kind: "surface", a: "drossmark", b: "skarnos", travel_days: 1 });
+define_route(#{ id: "surface-emberwash-old-anchorage", kind: "surface", a: "emberwash", b: "old-anchorage", travel_days: 1 });
 define_route(#{ id: "surface-emberwash-rustholt", kind: "surface", a: "emberwash", b: "rustholt", travel_days: 1 });
+define_route(#{ id: "surface-emberwash-shattered-coast", kind: "surface", a: "emberwash", b: "shattered-coast", travel_days: 1 });
+define_route(#{ id: "surface-drossmark-greyspire", kind: "surface", a: "drossmark", b: "greyspire", travel_days: 1 });
 define_route(#{ id: "surface-greyspire-halveth", kind: "surface", a: "greyspire", b: "halveth", travel_days: 1 });
 define_route(#{ id: "surface-greyspire-pellamir", kind: "surface", a: "greyspire", b: "pellamir", travel_days: 1 });
+define_route(#{ id: "surface-halveth-pellamir", kind: "surface", a: "halveth", b: "pellamir", travel_days: 1 });
 define_route(#{ id: "surface-halveth-virek-sound", kind: "surface", a: "halveth", b: "virek-sound", travel_days: 1 });
 define_route(#{ id: "surface-halveth-hyperions-rest", kind: "surface", a: "halveth", b: "hyperions-rest", travel_days: 1 });
 define_route(#{ id: "surface-hyperions-rest-koszevny-flats", kind: "surface", a: "hyperions-rest", b: "koszevny-flats", travel_days: 1 });
 define_route(#{ id: "surface-dreghal-karvessa", kind: "surface", a: "dreghal", b: "karvessa", travel_days: 1 });
+define_route(#{ id: "surface-karvessa-ostragard", kind: "surface", a: "karvessa", b: "ostragard", travel_days: 1 });
+define_route(#{ id: "surface-karvessa-sallow-march", kind: "surface", a: "karvessa", b: "sallow-march", travel_days: 1 });
 define_route(#{ id: "surface-karvessa-tolmaz", kind: "surface", a: "karvessa", b: "tolmaz", travel_days: 1 });
 define_route(#{ id: "surface-karvessa-veyrmark", kind: "surface", a: "karvessa", b: "veyrmark", travel_days: 1 });
+define_route(#{ id: "surface-halveth-koszevny-flats", kind: "surface", a: "halveth", b: "koszevny-flats", travel_days: 1 });
 define_route(#{ id: "surface-koszevny-flats-old-anchorage", kind: "surface", a: "koszevny-flats", b: "old-anchorage", travel_days: 1 });
+define_route(#{ id: "surface-koszevny-flats-virek-sound", kind: "surface", a: "koszevny-flats", b: "virek-sound", travel_days: 1 });
 define_route(#{ id: "surface-consulate-fields-mournhollow", kind: "surface", a: "consulate-fields", b: "mournhollow", travel_days: 1 });
+define_route(#{ id: "surface-emberwash-mournhollow", kind: "surface", a: "emberwash", b: "mournhollow", travel_days: 1 });
 define_route(#{ id: "surface-mournhollow-sable-steppe", kind: "surface", a: "mournhollow", b: "sable-steppe", travel_days: 1 });
+define_route(#{ id: "surface-old-anchorage-shattered-coast", kind: "surface", a: "old-anchorage", b: "shattered-coast", travel_days: 1 });
 define_route(#{ id: "surface-old-anchorage-virek-sound", kind: "surface", a: "old-anchorage", b: "virek-sound", travel_days: 1 });
+define_route(#{ id: "surface-consulate-fields-ostragard", kind: "surface", a: "consulate-fields", b: "ostragard", travel_days: 1 });
 define_route(#{ id: "surface-mournhollow-ostragard", kind: "surface", a: "mournhollow", b: "ostragard", travel_days: 1 });
 define_route(#{ id: "surface-ostragard-redwater", kind: "surface", a: "ostragard", b: "redwater", travel_days: 1 });
+define_route(#{ id: "surface-ostragard-sallow-march", kind: "surface", a: "ostragard", b: "sallow-march", travel_days: 1 });
+define_route(#{ id: "surface-brakkenveld-palensk", kind: "surface", a: "brakkenveld", b: "palensk", travel_days: 1 });
 define_route(#{ id: "surface-charhold-palensk", kind: "surface", a: "charhold", b: "palensk", travel_days: 1 });
+define_route(#{ id: "surface-greyspire-palensk", kind: "surface", a: "greyspire", b: "palensk", travel_days: 1 });
 define_route(#{ id: "surface-palensk-thassik", kind: "surface", a: "palensk", b: "thassik", travel_days: 1 });
 define_route(#{ id: "surface-calders-folly-pellamir", kind: "surface", a: "calders-folly", b: "pellamir", travel_days: 1 });
+define_route(#{ id: "surface-pellamir-virek-sound", kind: "surface", a: "pellamir", b: "virek-sound", travel_days: 1 });
+define_route(#{ id: "surface-consulate-fields-redwater", kind: "surface", a: "consulate-fields", b: "redwater", travel_days: 1 });
 define_route(#{ id: "surface-koszevny-flats-redwater", kind: "surface", a: "koszevny-flats", b: "redwater", travel_days: 1 });
+define_route(#{ id: "surface-old-anchorage-redwater", kind: "surface", a: "old-anchorage", b: "redwater", travel_days: 1 });
+define_route(#{ id: "surface-calders-folly-rustholt", kind: "surface", a: "calders-folly", b: "rustholt", travel_days: 1 });
 define_route(#{ id: "surface-rustholt-shattered-coast", kind: "surface", a: "rustholt", b: "shattered-coast", travel_days: 1 });
 define_route(#{ id: "surface-emberwash-sable-steppe", kind: "surface", a: "emberwash", b: "sable-steppe", travel_days: 1 });
 define_route(#{ id: "surface-sable-steppe-vantar-deep", kind: "surface", a: "sable-steppe", b: "vantar-deep", travel_days: 1 });
 define_route(#{ id: "surface-hyperions-rest-sallow-march", kind: "surface", a: "hyperions-rest", b: "sallow-march", travel_days: 1 });
+define_route(#{ id: "surface-koszevny-flats-sallow-march", kind: "surface", a: "koszevny-flats", b: "sallow-march", travel_days: 1 });
 define_route(#{ id: "surface-redwater-sallow-march", kind: "surface", a: "redwater", b: "sallow-march", travel_days: 1 });
+define_route(#{ id: "surface-sallow-march-thassik", kind: "surface", a: "sallow-march", b: "thassik", travel_days: 1 });
 define_route(#{ id: "surface-calders-folly-skarnos", kind: "surface", a: "calders-folly", b: "skarnos", travel_days: 1 });
+define_route(#{ id: "surface-rustholt-skarnos", kind: "surface", a: "rustholt", b: "skarnos", travel_days: 1 });
 define_route(#{ id: "surface-greyspire-thassik", kind: "surface", a: "greyspire", b: "thassik", travel_days: 1 });
+define_route(#{ id: "surface-halveth-thassik", kind: "surface", a: "halveth", b: "thassik", travel_days: 1 });
 define_route(#{ id: "surface-hyperions-rest-thassik", kind: "surface", a: "hyperions-rest", b: "thassik", travel_days: 1 });
+define_route(#{ id: "surface-cindral-tolmaz", kind: "surface", a: "cindral", b: "tolmaz", travel_days: 1 });
+define_route(#{ id: "surface-mournhollow-tolmaz", kind: "surface", a: "mournhollow", b: "tolmaz", travel_days: 1 });
 define_route(#{ id: "surface-ostragard-tolmaz", kind: "surface", a: "ostragard", b: "tolmaz", travel_days: 1 });
 define_route(#{ id: "surface-tolmaz-vhorruk", kind: "surface", a: "tolmaz", b: "vhorruk", travel_days: 1 });
 define_route(#{ id: "surface-drossmark-tsarovka", kind: "surface", a: "drossmark", b: "tsarovka", travel_days: 1 });
 define_route(#{ id: "surface-skarnos-tsarovka", kind: "surface", a: "skarnos", b: "tsarovka", travel_days: 1 });
+define_route(#{ id: "surface-skarnos-ulmgorn", kind: "surface", a: "skarnos", b: "ulmgorn", travel_days: 1 });
 define_route(#{ id: "surface-tsarovka-ulmgorn", kind: "surface", a: "tsarovka", b: "ulmgorn", travel_days: 1 });
 define_route(#{ id: "surface-ulmgorn-vantar-deep", kind: "surface", a: "ulmgorn", b: "vantar-deep", travel_days: 1 });
+define_route(#{ id: "surface-emberwash-vantar-deep", kind: "surface", a: "emberwash", b: "vantar-deep", travel_days: 1 });
 define_route(#{ id: "surface-rustholt-vantar-deep", kind: "surface", a: "rustholt", b: "vantar-deep", travel_days: 1 });
 define_route(#{ id: "surface-skarnos-vantar-deep", kind: "surface", a: "skarnos", b: "vantar-deep", travel_days: 1 });
+define_route(#{ id: "surface-palensk-veyrmark", kind: "surface", a: "palensk", b: "veyrmark", travel_days: 1 });
 define_route(#{ id: "surface-sallow-march-veyrmark", kind: "surface", a: "sallow-march", b: "veyrmark", travel_days: 1 });
 define_route(#{ id: "surface-thassik-veyrmark", kind: "surface", a: "thassik", b: "veyrmark", travel_days: 1 });
+define_route(#{ id: "surface-mournhollow-vhorruk", kind: "surface", a: "mournhollow", b: "vhorruk", travel_days: 1 });
 define_route(#{ id: "surface-sable-steppe-vhorruk", kind: "surface", a: "sable-steppe", b: "vhorruk", travel_days: 1 });
 define_route(#{ id: "surface-ulmgorn-vhorruk", kind: "surface", a: "ulmgorn", b: "vhorruk", travel_days: 1 });
+define_route(#{ id: "surface-vantar-deep-vhorruk", kind: "surface", a: "vantar-deep", b: "vhorruk", travel_days: 1 });
+define_route(#{ id: "surface-calders-folly-virek-sound", kind: "surface", a: "calders-folly", b: "virek-sound", travel_days: 1 });
 define_route(#{ id: "surface-shattered-coast-virek-sound", kind: "surface", a: "shattered-coast", b: "virek-sound", travel_days: 1 });
 
 // --- aurelian-spire: surface routes ---
 
 // --- vesk: surface routes ---
+define_route(#{ id: "surface-cryon-basin-lanternfall", kind: "surface", a: "cryon-basin", b: "lanternfall", travel_days: 1 });
 define_route(#{ id: "surface-cryon-basin-regolith-verge", kind: "surface", a: "cryon-basin", b: "regolith-verge", travel_days: 1 });
 define_route(#{ id: "surface-cryon-basin-silent-quarter", kind: "surface", a: "cryon-basin", b: "silent-quarter", travel_days: 1 });
 define_route(#{ id: "surface-hollow-crown-silent-quarter", kind: "surface", a: "hollow-crown", b: "silent-quarter", travel_days: 1 });
@@ -67,8 +108,12 @@ define_route(#{ id: "surface-cryon-basin-port-vesk", kind: "surface", a: "cryon-
 define_route(#{ id: "surface-port-vesk-regolith-verge", kind: "surface", a: "port-vesk", b: "regolith-verge", travel_days: 1 });
 define_route(#{ id: "surface-port-vesk-stillmere", kind: "surface", a: "port-vesk", b: "stillmere", travel_days: 1 });
 define_route(#{ id: "surface-port-vesk-tithe-pits", kind: "surface", a: "port-vesk", b: "tithe-pits", travel_days: 1 });
+define_route(#{ id: "surface-hollow-crown-regolith-verge", kind: "surface", a: "hollow-crown", b: "regolith-verge", travel_days: 1 });
 define_route(#{ id: "surface-regolith-verge-silent-quarter", kind: "surface", a: "regolith-verge", b: "silent-quarter", travel_days: 1 });
 define_route(#{ id: "surface-hollow-crown-stillmere", kind: "surface", a: "hollow-crown", b: "stillmere", travel_days: 1 });
+define_route(#{ id: "surface-regolith-verge-stillmere", kind: "surface", a: "regolith-verge", b: "stillmere", travel_days: 1 });
+define_route(#{ id: "surface-cryon-basin-tithe-pits", kind: "surface", a: "cryon-basin", b: "tithe-pits", travel_days: 1 });
+define_route(#{ id: "surface-hollow-crown-tithe-pits", kind: "surface", a: "hollow-crown", b: "tithe-pits", travel_days: 1 });
 define_route(#{ id: "surface-lanternfall-tithe-pits", kind: "surface", a: "lanternfall", b: "tithe-pits", travel_days: 1 });
 define_route(#{ id: "surface-stillmere-tithe-pits", kind: "surface", a: "stillmere", b: "tithe-pits", travel_days: 1 });
 

@@ -102,14 +102,14 @@ fn scenario_has_the_full_authored_field() {
 #[test]
 fn authored_routes_starports_and_capacities_are_complete() {
     let content = repository_content();
-    assert_eq!(content.routes.len(), 80);
+    assert_eq!(content.routes.len(), 123);
     assert_eq!(
         content
             .routes
             .values()
             .filter(|route| route.kind == aeon_data::model::RouteKind::Surface)
             .count(),
-        65
+        108
     );
     assert_eq!(
         content
@@ -305,52 +305,84 @@ fn imperial_tithes_move_wealth_from_houses_to_the_sanctora() {
     assert!(!collect_tithes(h.world_mut(), harrow));
 }
 
+/// A decade of autonomous politics leaves the world alive: the founding
+/// generation thins, new characters are born, and the player house
+/// survives.
+///
+/// One host, not two. That this seed is deterministic is proved better and
+/// cheaper elsewhere: `aeon_tools accept` runs 0xA301 for the same span and
+/// shows a mid-run snapshot replays to an identical final hash, and
+/// `determinism.rs` starts two campaigns cold on one seed. Running a second
+/// decade here only bought a third copy of that.
+///
+/// The decade is a soak: what it buys is ten years of autonomous politics
+/// running without panicking or ending the campaign. The turnover
+/// assertions below are measured against the cast the campaign opened
+/// with, because an absolute count proves nothing — the authored scenario
+/// already starts with 41 characters, so the `> 38` this test used to
+/// assert was true on day one and passed a one-year run just as happily.
 #[test]
-fn the_scenario_runs_a_deterministic_decade() {
+fn a_decade_of_autonomous_politics_leaves_the_world_alive() {
     let mut a = scenario_host(0xA301);
-    let mut b = scenario_host(0xA301);
-    a.advance_days(360 * 10);
-    b.advance_days(360 * 10);
-    assert_eq!(a.state_hash(), b.state_hash(), "deterministic decade");
+    let opening_cast: Vec<_> = a
+        .world_mut()
+        .resource::<PoliticsIndex>()
+        .characters
+        .keys()
+        .copied()
+        .collect();
 
-    // A decade of autonomous politics leaves the world alive: the founding
-    // generation thins, new characters are born, and the player house
-    // survives.
+    a.advance_days(360 * 10);
+
     let world = a.world_mut();
     assert!(
         world.get_resource::<CampaignOver>().is_none(),
         "the player house survives the decade"
     );
     let index = world.resource::<PoliticsIndex>().clone();
+    // Nothing is ever removed from the index, so a larger one means the
+    // decade added people to the world.
     assert!(
-        index.characters.len() > 38,
-        "births occurred over the decade"
+        index.characters.len() > opening_cast.len(),
+        "the decade brought new characters into the world: opened with {}, ended with {}",
+        opening_cast.len(),
+        index.characters.len()
     );
-    let deaths = index
-        .characters
-        .values()
-        .filter(|e| {
-            world
-                .get::<aeon_sim::CharacterRecord>(**e)
-                .is_some_and(|r| r.death.is_some())
+    let founders_lost = opening_cast
+        .iter()
+        .filter(|id| {
+            index.characters.get(id).is_some_and(|entity| {
+                world
+                    .get::<aeon_sim::CharacterRecord>(*entity)
+                    .is_some_and(|record| record.death.is_some())
+            })
         })
         .count();
-    assert!(deaths > 0, "deaths occurred over the decade");
+    assert!(
+        founders_lost > 0,
+        "the founding generation thinned over the decade"
+    );
 }
 
+/// A snapshot taken mid-campaign restores to the same state and carries on
+/// identically.
+///
+/// Kept short on purpose. A round-trip bug shows itself in the first
+/// restore, not after a decade, and the decade-scale version of this exact
+/// shape is the `accept` gate on the real scenario.
 #[test]
 fn the_scenario_survives_a_snapshot_mid_campaign() {
     let content = repository_content();
     let mut original = scenario_host(55);
-    original.advance_days(360 * 6);
+    original.advance_days(360 * 2);
     let hash = original.state_hash();
 
     let snapshot = original.snapshot();
     let mut restored = SimHost::restore_with_content(snapshot, content).unwrap();
     assert_eq!(restored.state_hash(), hash);
 
-    original.advance_days(360 * 4);
-    restored.advance_days(360 * 4);
+    original.advance_days(360);
+    restored.advance_days(360);
     assert_eq!(restored.state_hash(), original.state_hash());
 }
 

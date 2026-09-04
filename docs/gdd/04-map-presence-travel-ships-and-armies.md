@@ -140,6 +140,17 @@ and military operations use deterministic fastest paths over the same authored
 route graph. Equal paths break ties by stable route and province identity. Each
 edge carries duration and persisted risk; risk has no gameplay effect yet.
 
+[ai] **Implemented now.** The surface half of that graph is not hand-authored:
+`assets/content/system/routes.rhai` is generated from the province coordinates
+by `tools/build_routes.py`, and a surface route exists for exactly those pairs
+of provinces whose drawn cells share a border. Each province is drawn as the
+Voronoi cell of its coordinate — the client bakes the map by assigning every
+texel to its nearest centroid — so the route graph is the Voronoi dual (the
+spherical Delaunay triangulation) of the authored points, and what the player
+sees as a shared frontier is what the simulation reads as adjacency. Space
+routes are the separate starport-to-starport graph. Edit coordinates and
+regenerate; never hand-edit the routes file.
+
 **Accepted design.** All movement uses one authored route graph. Same-body
 journeys advance province by province. Route edges record separate time and risk
 costs; the initial route choice is the fastest valid deterministic path, while
@@ -442,6 +453,8 @@ This section is satisfied for the current slice when the following remain true:
 - `crates/aeon_client/src/scene.rs`, `camera.rs`, `view.rs`, `map_modes.rs`,
   `map_overlay.rs`, and `ui/inspector.rs` — system/body views, projections,
   map questions, selection, force overlays, and linked inspectors.
+- `tools/build_routes.py` and `assets/content/system/routes.rhai` — the
+  generated Voronoi-dual surface graph and the space legs.
 - `assets/content/system/bodies.rhai`, `assets/content/system/provinces.rhai`,
   `assets/content/scenario/ashkarr-succession.rhai`,
   `assets/content/core/administration.rhai`, and

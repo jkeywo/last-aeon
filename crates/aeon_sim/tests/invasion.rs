@@ -353,7 +353,7 @@ fn assert_sides_are_the_two_houses(host: &mut SimHost, war_id: WarId) {
 #[test]
 fn the_engagement_formula_makes_six_hundred_dangerous_and_a_thousand_decisive_on_settled_ground() {
     let mut host = scenario_host(1, repository_content());
-    let vhorruk = province(&mut host, "vhorruk");
+    let tolmaz = province(&mut host, "tolmaz");
     let guard = only_army(&mut host, "harrow");
     let levy = only_army(&mut host, "vantar");
     assert_eq!(
@@ -378,7 +378,7 @@ fn the_engagement_formula_makes_six_hundred_dangerous_and_a_thousand_decisive_on
     let eager = army_strength(world, &eager_army, false);
     let six_hundred = army_strength(world, &guard, true);
     let one_thousand = army_strength(world, &thousand, true);
-    let order_factor = defence_factor_permille(province_order(world, vhorruk).order);
+    let order_factor = defence_factor_permille(province_order(world, tolmaz).order);
     assert_eq!(attack, 1040, "800 at +5% per point of command 6");
     assert_eq!(
         six_hundred, 972,
@@ -433,16 +433,17 @@ fn the_engagement_formula_makes_six_hundred_dangerous_and_a_thousand_decisive_on
 // muster, declaration, pressing plan, siege, and engagement.
 // ---------------------------------------------------------------------------
 
-/// How the defence of Vhorruk is fielded in a sample arm.
+/// How the defence of Tolmaz — the border holding the pressing plan's
+/// selector chooses — is fielded in a sample arm.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Defence {
-    /// The opening Guard, marched into Vhorruk: 600 in the holding.
+    /// The opening Guard, marched into Tolmaz: 600 in the holding.
     GuardInTheHolding,
     /// Aleyn's thousand as a house naturally reaches it — the Guard in
-    /// Vhorruk and a second stack of 400 raised at Ostragard. A thousand
+    /// Tolmaz and a second stack of 400 raised at Ostragard. A thousand
     /// under arms; 600 where it matters.
     ThousandSplit,
-    /// A thousand standing together in Vhorruk.
+    /// A thousand standing together in Tolmaz.
     ThousandInTheHolding,
 }
 
@@ -459,17 +460,17 @@ const SAMPLE_SEEDS: u64 = 6;
 
 /// One sampled war from a prepared host: the defence is fielded, the war
 /// declared, and the AI's own pressing plan runs its orders and siege.
-/// Returns whether Vhorruk fell.
+/// Returns whether Tolmaz fell.
 fn sample_war(seed: u64, mut host: SimHost, defence: Defence) -> bool {
     let harrow = org(&mut host, "harrow");
     let vantar = org(&mut host, "vantar");
     let perrin = character(&mut host, "perrin-vantar");
     let aleyn = character(&mut host, "aleyn-harrow");
-    let vhorruk = province(&mut host, "vhorruk");
+    let tolmaz = province(&mut host, "tolmaz");
     let ostragard = province(&mut host, "ostragard");
     let guard = only_army(&mut host, "harrow").id;
 
-    stand_army_in(&mut host, guard, vhorruk);
+    stand_army_in(&mut host, guard, tolmaz);
     match defence {
         Defence::GuardInTheHolding => {}
         Defence::ThousandSplit => {
@@ -481,7 +482,7 @@ fn sample_war(seed: u64, mut host: SimHost, defence: Defence) -> bool {
         .expect("the sibling houses may go to war");
 
     // The AI's own pressing plan does the rest: doctrine on the host, one
-    // siege of the holding across the border, then it is done.
+    // siege of the border holding its selector chose, then it is done.
     assert!(try_adopt(
         host.world_mut(),
         perrin,
@@ -504,15 +505,15 @@ fn sample_war(seed: u64, mut host: SimHost, defence: Defence) -> bool {
     );
     assert_eq!(
         sieges,
-        vec![vhorruk],
-        "seed {seed}: the pressing plan besieges the one holding across the border only"
+        vec![tolmaz],
+        "seed {seed}: the pressing plan besieges one border holding only"
     );
     assert!(
         host.world_mut().get_resource::<CampaignOver>().is_none(),
         "seed {seed}: losing one holding never ends the campaign"
     );
     assert_sides_are_the_two_houses(&mut host, war_id);
-    province_holder(host.world_mut(), vhorruk) == Some(vantar)
+    province_holder(host.world_mut(), tolmaz) == Some(vantar)
 }
 
 #[test]
@@ -547,7 +548,7 @@ fn deterministic_samples_show_six_hundred_dangerous_and_a_thousand_favourable_bu
     );
     assert!(
         guard * 3 >= SAMPLE_SEEDS,
-        "600 in the holding is dangerous: Vhorruk fell in only {guard} of {SAMPLE_SEEDS} seeds"
+        "600 in the holding is dangerous: Tolmaz fell in only {guard} of {SAMPLE_SEEDS} seeds"
     );
     assert!(
         split > 0,
@@ -559,7 +560,7 @@ fn deterministic_samples_show_six_hundred_dangerous_and_a_thousand_favourable_bu
     );
     assert!(
         together * 4 <= SAMPLE_SEEDS,
-        "a thousand standing together is favourable: Vhorruk fell in {together} of {SAMPLE_SEEDS} seeds"
+        "a thousand standing together is favourable: Tolmaz fell in {together} of {SAMPLE_SEEDS} seeds"
     );
 }
 
@@ -568,27 +569,37 @@ fn deterministic_samples_show_six_hundred_dangerous_and_a_thousand_favourable_bu
 // ---------------------------------------------------------------------------
 
 #[test]
-fn the_pressing_plan_marches_the_host_on_the_one_holding_across_the_border() {
+fn the_pressing_plan_marches_the_host_on_the_border_holding_the_selector_chooses() {
     let mut host = scenario_host(7, repository_content());
     let harrow = org(&mut host, "harrow");
     let vantar = org(&mut host, "vantar");
     let perrin = character(&mut host, "perrin-vantar");
+    let tolmaz = province(&mut host, "tolmaz");
     let vhorruk = province(&mut host, "vhorruk");
     let levy = only_army(&mut host, "vantar").id;
     set_army_manpower(&mut host, levy, 800);
     let war_id = declare_war(host.world_mut(), vantar, harrow, key("border-war")).unwrap();
+    // Tolmaz and Vhorruk are the two Harrow holdings across the Vantar
+    // border: Cindral touches both, Ulmgorn touches Vhorruk.
     assert_eq!(
         enemy_border_provinces_in_war(host.world_mut(), vantar, war_id),
-        vec![vhorruk],
-        "Vhorruk is the one Harrow holding across the Ulmgorn border"
+        vec![tolmaz, vhorruk],
+        "both Harrow holdings across the Vantar border, in stable ID order"
     );
+    // Both stand at the settled opening Order, so the selector's tie-break
+    // decides and Tolmaz — the lower stable ID — is the ground.
+    assert_eq!(
+        province_order(host.world_mut(), tolmaz).order,
+        province_order(host.world_mut(), vhorruk).order
+    );
+    assert!(tolmaz < vhorruk);
 
     wait_until_free(
         &mut host,
         vantar,
         perrin,
         "besiege",
-        AssignmentTarget::ArmyToProvince(levy, vhorruk),
+        AssignmentTarget::ArmyToProvince(levy, tolmaz),
         Some(war_id),
     );
     assert!(try_adopt(
@@ -612,8 +623,8 @@ fn the_pressing_plan_marches_the_host_on_the_one_holding_across_the_border() {
         .expect("siege");
     assert_eq!(
         siege.target,
-        AssignmentTarget::ArmyToProvince(levy, vhorruk),
-        "the host marches on the holding across the border"
+        AssignmentTarget::ArmyToProvince(levy, tolmaz),
+        "the host marches on the border holding the selector chose"
     );
     assert_eq!(siege.war, Some(war_id), "the siege carries the exact war");
     assert_eq!(siege.leader, perrin);
@@ -662,13 +673,15 @@ fn with_no_enemy_holding_across_the_border_the_head_sues_for_peace_instead() {
     let vantar = org(&mut host, "vantar");
     let veyrin = org(&mut host, "veyrin");
     let perrin = character(&mut host, "perrin-vantar");
+    let tolmaz = province(&mut host, "tolmaz");
     let vhorruk = province(&mut host, "vhorruk");
     let levy = only_army(&mut host, "vantar").id;
     set_army_manpower(&mut host, levy, 800);
     let war_id = declare_war(host.world_mut(), vantar, harrow, key("border-war")).unwrap();
 
-    // The geography changes under the war: the one border holding is
+    // The geography changes under the war: both border holdings are
     // Veyrin's now, so there is nothing across the border to press.
+    hand_province_to(&mut host, tolmaz, veyrin);
     hand_province_to(&mut host, vhorruk, veyrin);
     assert!(enemy_border_provinces_in_war(host.world_mut(), vantar, war_id).is_empty());
     let pressing = &repository_content().plans[&key("press-the-border")].methods[0].requires;
@@ -886,7 +899,7 @@ fn preparation_declaration_and_their_derailments_are_authored_gates_over_live_st
 // ---------------------------------------------------------------------------
 
 /// Runs the scripted arc on one seed: the host, the ordinary declaration
-/// through the plan, the pressing plan's siege of an undefended Vhorruk,
+/// through the plan, the pressing plan's siege of an undefended Tolmaz,
 /// and — when the siege carries — Harrow's recovery through the same war
 /// and the negotiated peace. Returns `false` when this seed's siege did
 /// not carry, so the caller can try the next.
@@ -897,9 +910,11 @@ fn loss_and_recovery(seed: u64, content: Arc<ContentSet>) -> bool {
     let veyrin = org(&mut host, "veyrin");
     let perrin = character(&mut host, "perrin-vantar");
     let aleyn = character(&mut host, "aleyn-harrow");
-    let vhorruk = province(&mut host, "vhorruk");
     let tolmaz = province(&mut host, "tolmaz");
-    let vhorruk_name = aeon_sim::access::province_name(host.world_mut(), vhorruk);
+    let vhorruk = province(&mut host, "vhorruk");
+    let mournhollow = province(&mut host, "mournhollow");
+    let ostragard = province(&mut host, "ostragard");
+    let tolmaz_name = aeon_sim::access::province_name(host.world_mut(), tolmaz);
 
     // The declaration is the plan's own seven-day assignment, aimed at
     // the ambition's target organisation.
@@ -952,14 +967,14 @@ fn loss_and_recovery(seed: u64, content: Arc<ContentSet>) -> bool {
         vantar_siege_targets(&mut sieges, host);
         plan_of(host, perrin).is_none()
     });
-    assert_eq!(sieges, vec![vhorruk], "one holding, across the border");
-    if province_holder(host.world_mut(), vhorruk) != Some(vantar) {
+    assert_eq!(sieges, vec![tolmaz], "one holding, across the border");
+    if province_holder(host.world_mut(), tolmaz) != Some(vantar) {
         return false;
     }
 
     // Genuine: the title has passed, the ground is disordered, the fall is
     // public history tagged to the exact war — and the campaign goes on.
-    assert_eq!(province_order(host.world_mut(), vhorruk).order, 350);
+    assert_eq!(province_order(host.world_mut(), tolmaz).order, 350);
     assert!(host.world_mut().get_resource::<CampaignOver>().is_none());
     assert_eq!(
         aeon_sim::order::held_provinces(host.world_mut(), harrow).len(),
@@ -972,7 +987,7 @@ fn loss_and_recovery(seed: u64, content: Arc<ContentSet>) -> bool {
             .iter()
             .find(|entry| {
                 entry.war == Some(war_id)
-                    && entry.text.contains(&vhorruk_name)
+                    && entry.text.contains(&tolmaz_name)
                     && entry.text.contains("fallen")
             })
             .expect("the fall is on record against its war");
@@ -981,11 +996,13 @@ fn loss_and_recovery(seed: u64, content: Arc<ContentSet>) -> bool {
             "an open war hides nothing"
         );
     }
-    // The AI's pressing is spent: with the holding taken it sues for
-    // peace rather than pressing on to Tolmaz, now the border.
+    // The AI's pressing is spent: taking Tolmaz moved the border rather
+    // than closing it — Tolmaz touches three more Harrow holdings — and
+    // the head still sues for peace instead of pressing on.
     assert_eq!(
         enemy_border_provinces_in_war(host.world_mut(), vantar, war_id),
-        vec![tolmaz]
+        vec![mournhollow, ostragard, vhorruk],
+        "the taken holding widened the border it was taken across"
     );
     assert!(try_adopt(
         host.world_mut(),
@@ -1002,19 +1019,19 @@ fn loss_and_recovery(seed: u64, content: Arc<ContentSet>) -> bool {
     // Recoverable, through the same war: Harrow marches a stack in and
     // besieges its own lost holding from the war's card. The fixture
     // lends Harrow the Influence a longer war would have recharged.
-    let stack = form_army(host.world_mut(), harrow, aleyn, 1200, 240, tolmaz);
+    let stack = form_army(host.world_mut(), harrow, aleyn, 1200, 240, vhorruk);
     resources_mut(&mut host, harrow, |r| r.influence = 100);
     let mut retaken = false;
     for _ in 0..3 {
         // The household may have given Aleyn free work of her own; the
         // siege waits for her exactly as a player's order would.
-        let target = AssignmentTarget::ArmyToProvince(stack, vhorruk);
+        let target = AssignmentTarget::ArmyToProvince(stack, tolmaz);
         wait_until_free(&mut host, harrow, aleyn, "besiege", target, Some(war_id));
         let siege = start_in_war(&mut host, harrow, "besiege", aleyn, target, war_id);
         advance_until(&mut host, 90, "Harrow's siege resolves", |host| {
             aeon_sim::access::assignment(host.world_mut(), siege).is_none()
         });
-        if province_holder(host.world_mut(), vhorruk) == Some(harrow) {
+        if province_holder(host.world_mut(), tolmaz) == Some(harrow) {
             retaken = true;
             break;
         }
@@ -1041,7 +1058,7 @@ fn loss_and_recovery(seed: u64, content: Arc<ContentSet>) -> bool {
         Some(WarConclusionKind::NegotiatedPeace)
     );
     host.advance_days(2);
-    assert_eq!(province_holder(host.world_mut(), vhorruk), Some(harrow));
+    assert_eq!(province_holder(host.world_mut(), tolmaz), Some(harrow));
     assert!(host.world_mut().get_resource::<CampaignOver>().is_none());
     assert_eq!(
         aeon_sim::wars::side_of(host.world_mut(), war_id, veyrin),
@@ -1648,13 +1665,11 @@ fn the_border_selector_prefers_the_most_disordered_holding_and_breaks_ties_by_st
         let perrin = character(&mut host, "perrin-vantar");
         let vhorruk = province(&mut host, "vhorruk");
         let tolmaz = province(&mut host, "tolmaz");
-        let karvessa = province(&mut host, "karvessa");
         let levy = only_army(&mut host, "vantar").id;
         set_army_manpower(&mut host, levy, 800);
 
-        // A second Harrow holding across the border: Karvessa is Vantar's
-        // now, and Tolmaz shares a route with it.
-        hand_province_to(&mut host, karvessa, vantar);
+        // Two Harrow holdings stand across the Vantar border in the
+        // authored opening: Cindral touches Tolmaz and Vhorruk both.
         let war_id = declare_war(host.world_mut(), vantar, harrow, key("border-war")).unwrap();
         let (lower, higher) = (tolmaz.min(vhorruk), tolmaz.max(vhorruk));
         assert_eq!(

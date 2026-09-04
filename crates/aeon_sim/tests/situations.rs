@@ -3629,7 +3629,10 @@ fn torvald_lifecycles_snapshot_and_replay_across_their_resolutions() {
 
 /// A campaign seed under which Edrun's courting of House Veyrin rolls a
 /// plain success and nothing else moves Casimir's opinion of him first.
-const COURT_SUCCESS_SEED: u64 = 360;
+/// Re-derived when the corrected route graph changed what the AI houses
+/// do around Harrow in the opening weeks; 360 no longer lands a plain
+/// success, 361 does.
+const COURT_SUCCESS_SEED: u64 = 361;
 
 #[test]
 fn courting_the_liege_is_the_authored_route_and_its_success_achieves_the_demand() {
@@ -4416,6 +4419,18 @@ fn unquiet_card_for(host: &mut SimHost, house: OrgId) -> Option<SituationCard> {
     })
 }
 
+/// The Unquiet Holdings card `house` holds whose bound culprit is
+/// `actor`. Harrow borders more houses than Vantar alone, and the covert
+/// content is generic, so an alarm on Harrow's ground is not by itself
+/// Vantar's work — the culprit binding is what says whose it is.
+fn unquiet_card_by(host: &mut SimHost, house: OrgId, actor: OrgId) -> Option<SituationCard> {
+    active_cards(host.world_mut()).into_iter().find(|card| {
+        card.active.key.definition == key("unquiet-holdings")
+            && card.active.key.bindings.get("house") == Some(&SituationSubject::Organisation(house))
+            && card.active.key.bindings.get("actor") == Some(&SituationSubject::Organisation(actor))
+    })
+}
+
 fn vantar_operation(host: &mut SimHost) -> Option<ActiveAssignment> {
     let vantar = org(host, "vantar");
     let world = host.world_mut();
@@ -4451,7 +4466,7 @@ fn the_covert_operation_mounts_unaided_inside_the_authored_window() {
     let harrow = org(&mut host, "harrow");
     let vantar = org(&mut host, "vantar");
     let perrin = character(&mut host, "perrin-vantar");
-    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let tolmaz = host.world_mut().resource::<MapIndex>().province_keys[&key("tolmaz")];
 
     // Before the authored window opens, nothing of the arc exists.
     host.advance_days(179);
@@ -4499,8 +4514,8 @@ fn the_covert_operation_mounts_unaided_inside_the_authored_window() {
     assert_eq!(work.leader, perrin);
     assert_eq!(
         work.target,
-        AssignmentTarget::Province(vhorruk),
-        "the border selector resolves to the one shared border province"
+        AssignmentTarget::Province(tolmaz),
+        "the border selector picks the lowest-ID of the two Harrow provinces across the Vantar border at equal Order"
     );
 
     // The holder's card binds the province, the house, and — structurally,
@@ -4509,7 +4524,7 @@ fn the_covert_operation_mounts_unaided_inside_the_authored_window() {
     assert_eq!(card.unavailable, None);
     assert_eq!(
         card.active.key.bindings.get("province"),
-        Some(&SituationSubject::Province(vhorruk))
+        Some(&SituationSubject::Province(tolmaz))
     );
     assert_eq!(
         card.active.key.bindings.get("actor"),
@@ -4537,10 +4552,7 @@ fn the_covert_operation_mounts_unaided_inside_the_authored_window() {
         .clone();
     let reading = aeon_sim::forecast::order_modifier_reading(host.world_mut(), work.target, &def)
         .expect("the sabotage authors an Order modifier");
-    assert_eq!(
-        reading.0, 800,
-        "Vhorruk stands at the settled opening Order"
-    );
+    assert_eq!(reading.0, 800, "Tolmaz stands at the settled opening Order");
     assert_eq!(
         integer_metric(&projection, "situation.metric.order-resistance"),
         Some(i64::from(reading.1)),
@@ -4548,7 +4560,7 @@ fn the_covert_operation_mounts_unaided_inside_the_authored_window() {
 
     // Strengthening the ground mid-flight changes the same live number on
     // the same card: forecast, card, and resolution share one reading.
-    aeon_sim::order::adjust_order(host.world_mut(), vhorruk, 150);
+    aeon_sim::order::adjust_order(host.world_mut(), tolmaz, 150);
     let strengthened = unquiet_card_for(&mut host, harrow)
         .and_then(|card| card.projection)
         .expect("projection");
@@ -4573,7 +4585,7 @@ fn no_player_surface_leaks_the_covert_hand_before_exposure() {
     let work = vantar_operation(&mut host).expect("the operation is live");
     let card = unquiet_card_for(&mut host, harrow).expect("the holder's card is live");
     let exact = card.active.occurrence();
-    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let tolmaz = host.world_mut().resource::<MapIndex>().province_keys[&key("tolmaz")];
 
     // The projection names the province and nothing else: no culprit
     // organisation, leader, or source plan in participants, groups,
@@ -4583,7 +4595,7 @@ fn no_player_surface_leaks_the_covert_hand_before_exposure() {
         projection.participants,
         vec![aeon_sim::situations::SituationLink {
             kind: aeon_data::model::SituationSubjectKind::Province,
-            id: vhorruk.raw(),
+            id: tolmaz.raw(),
             label_key: None,
         }]
     );
@@ -4609,7 +4621,7 @@ fn no_player_surface_leaks_the_covert_hand_before_exposure() {
                     action.leader, None,
                     "the investigation lets the player choose its leader"
                 );
-                assert_eq!(action.target, AssignmentTarget::Province(vhorruk));
+                assert_eq!(action.target, AssignmentTarget::Province(tolmaz));
             }
             other => panic!("unexpected projected action '{other}'"),
         }
@@ -4818,9 +4830,9 @@ fn live_order_materially_shifts_the_hostile_odds_through_the_one_calculation() {
     let mut host = scenario_host(440, repository_content());
     let vantar = org(&mut host, "vantar");
     let perrin = character(&mut host, "perrin-vantar");
-    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let tolmaz = host.world_mut().resource::<MapIndex>().province_keys[&key("tolmaz")];
     let sabotage = key("foment-unrest");
-    let target = AssignmentTarget::Province(vhorruk);
+    let target = AssignmentTarget::Province(tolmaz);
     let view = |host: &mut SimHost| {
         aeon_sim::forecast::forecast(host.world_mut(), vantar, &sabotage, perrin, target)
             .expect("the sabotage is defined")
@@ -4834,7 +4846,7 @@ fn live_order_materially_shifts_the_hostile_odds_through_the_one_calculation() {
 
     // A province held at the cap resists at the authored clamp, and the
     // resistance moves the same odds the resolution roll obeys.
-    aeon_sim::order::adjust_order(host.world_mut(), vhorruk, 200);
+    aeon_sim::order::adjust_order(host.world_mut(), tolmaz, 200);
     let resisted = view(&mut host);
     assert_eq!(resisted.order_value, Some(1000));
     assert_eq!(resisted.order_shift, -8, "the authored clamp holds");
@@ -4845,7 +4857,7 @@ fn live_order_materially_shifts_the_hostile_odds_through_the_one_calculation() {
     );
 
     // Disorder never helps beyond neutral: max is authored at zero.
-    aeon_sim::order::adjust_order(host.world_mut(), vhorruk, -600);
+    aeon_sim::order::adjust_order(host.world_mut(), tolmaz, -600);
     let lax = view(&mut host);
     assert_eq!(lax.order_value, Some(400));
     assert_eq!(lax.order_shift, 0);
@@ -4876,13 +4888,13 @@ fn a_transferred_target_passes_the_unquiet_card_on_through_ordinary_rules() {
         .active
         .occurrence();
 
-    // Vhorruk changes hands while the operation is still in flight.
-    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    // Tolmaz changes hands while the operation is still in flight.
+    let tolmaz = host.world_mut().resource::<MapIndex>().province_keys[&key("tolmaz")];
     {
         let world = host.world_mut();
         let entity = {
             let index = world.resource::<PoliticsIndex>();
-            index.titles[&index.province_titles[&vhorruk]]
+            index.titles[&index.province_titles[&tolmaz]]
         };
         world
             .get_mut::<aeon_sim::politics::TitleRecord>(entity)
@@ -4973,13 +4985,13 @@ fn holdings_kept_in_high_order_weather_the_operation_whatever_it_rolled() {
     // from the cap below the authored struck line, so however the rolls
     // fall the outcome is weathered — high Order is the resistance, read
     // at resolution from the live province.
-    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let tolmaz = host.world_mut().resource::<MapIndex>().province_keys[&key("tolmaz")];
     let mut resolved = None;
     for _ in 0..150 {
         host.advance_days(1);
-        let current = aeon_sim::order::province_order(host.world_mut(), vhorruk).order;
+        let current = aeon_sim::order::province_order(host.world_mut(), tolmaz).order;
         if current < 1000 {
-            aeon_sim::order::adjust_order(host.world_mut(), vhorruk, 1000 - current);
+            aeon_sim::order::adjust_order(host.world_mut(), tolmaz, 1000 - current);
         }
         let state = host.world_mut().resource::<SituationState>().clone();
         if let Some(notice) = state
@@ -5011,8 +5023,8 @@ fn holdings_left_unsteady_are_struck_when_the_operation_runs_its_course() {
     // persists. Because the outcome is a pure live-state reading of the
     // province rather than a peek at the hidden roll, ground held below
     // the authored struck line is struck however the rolls fell.
-    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
-    let unsteady = aeon_sim::order::adjust_order(host.world_mut(), vhorruk, -400);
+    let tolmaz = host.world_mut().resource::<MapIndex>().province_keys[&key("tolmaz")];
+    let unsteady = aeon_sim::order::adjust_order(host.world_mut(), tolmaz, -400);
     assert!(
         unsteady < 700,
         "the ground starts below the authored struck line, got {unsteady}"
@@ -5020,9 +5032,9 @@ fn holdings_left_unsteady_are_struck_when_the_operation_runs_its_course() {
     let mut resolved = None;
     for _ in 0..150 {
         host.advance_days(1);
-        let current = aeon_sim::order::province_order(host.world_mut(), vhorruk).order;
+        let current = aeon_sim::order::province_order(host.world_mut(), tolmaz).order;
         if current > unsteady {
-            aeon_sim::order::adjust_order(host.world_mut(), vhorruk, unsteady - current);
+            aeon_sim::order::adjust_order(host.world_mut(), tolmaz, unsteady - current);
         }
         let state = host.world_mut().resource::<SituationState>().clone();
         if let Some(notice) = state
@@ -5040,7 +5052,7 @@ fn holdings_left_unsteady_are_struck_when_the_operation_runs_its_course() {
     // The struck resolution renders its own authored text, naming the
     // province and — still, at the very end — never the hand.
     assert!(
-        notice.text.contains("Vhorruk") && notice.text.contains("the ground gave"),
+        notice.text.contains("Tolmaz") && notice.text.contains("the ground gave"),
         "the struck resolution text renders, got '{}'",
         notice.text
     );
@@ -5064,7 +5076,7 @@ fn holdings_left_unsteady_are_struck_when_the_operation_runs_its_course() {
 /// pinned seed: the outcome is the simulation's, and the test only picks
 /// which day the order was given.
 const SHADOW_PROVED_OFFSET: u32 = 2;
-const SHADOW_COLD_OFFSET: u32 = 0;
+const SHADOW_COLD_OFFSET: u32 = 1;
 /// Authored duration of `trace-the-hand`.
 const ENQUIRY_DAYS: i64 = 25;
 
@@ -5082,7 +5094,7 @@ fn order_the_enquiry(
     leader: CharacterId,
 ) -> aeon_sim::situations::SituationInstanceKey {
     let harrow = org(host, "harrow");
-    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let tolmaz = host.world_mut().resource::<MapIndex>().province_keys[&key("tolmaz")];
     let situation = unquiet_card_for(host, harrow)
         .expect("the holder's card is live")
         .active
@@ -5091,7 +5103,7 @@ fn order_the_enquiry(
         situation: situation.clone(),
         action: key("investigate"),
         leader,
-        target: AssignmentTarget::Province(vhorruk),
+        target: AssignmentTarget::Province(tolmaz),
         war: None,
     })
     .expect("the enquiry is an ordinary valid command");
@@ -5165,7 +5177,7 @@ fn the_player_compares_investigators_on_one_authoritative_forecast() {
     host.advance_days(SHADOW_LIVE_DAY);
     let card = unquiet_card_for(&mut host, harrow).expect("the holder's card is live");
     let situation = card.active.key.clone();
-    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let tolmaz = host.world_mut().resource::<MapIndex>().province_keys[&key("tolmaz")];
     let projection = card.projection.clone().expect("projection");
 
     // The enquiry is offered as an ordinary projected action, aimed at the
@@ -5177,7 +5189,7 @@ fn the_player_compares_investigators_on_one_authoritative_forecast() {
         .find(|action| action.id == key("investigate"))
         .expect("the card offers the enquiry");
     assert_eq!(enquiry.leader, None);
-    assert_eq!(enquiry.target, AssignmentTarget::Province(vhorruk));
+    assert_eq!(enquiry.target, AssignmentTarget::Province(tolmaz));
 
     // Every eligible investigator is forecast through the one
     // authoritative path the order itself will take.
@@ -5187,7 +5199,7 @@ fn the_player_compares_investigators_on_one_authoritative_forecast() {
             &situation,
             &key("investigate"),
             candidate,
-            AssignmentTarget::Province(vhorruk),
+            AssignmentTarget::Province(tolmaz),
         )
         .expect("every eligible investigator forecasts")
     };
@@ -5203,7 +5215,7 @@ fn the_player_compares_investigators_on_one_authoritative_forecast() {
             .into_iter()
             .filter(|id| {
                 aeon_sim::leader_availability(world, harrow, *id, date)
-                    .blocks_assignment(AssignmentTarget::Province(vhorruk))
+                    .blocks_assignment(AssignmentTarget::Province(tolmaz))
                     .is_none()
             })
             .collect()
@@ -5257,7 +5269,7 @@ fn the_player_compares_investigators_on_one_authoritative_forecast() {
         harrow,
         &key("trace-the-hand"),
         edrun,
-        AssignmentTarget::Province(vhorruk),
+        AssignmentTarget::Province(tolmaz),
     )
     .expect("the enquiry is an ordinary defined assignment");
     let through_card = aeon_sim::situations::forecast_for_action(
@@ -5265,7 +5277,7 @@ fn the_player_compares_investigators_on_one_authoritative_forecast() {
         &situation,
         &key("investigate"),
         edrun,
-        AssignmentTarget::Province(vhorruk),
+        AssignmentTarget::Province(tolmaz),
     )
     .expect("the card forecasts the same order");
     assert_eq!(direct.success_chance(), through_card.success_chance());
@@ -5281,7 +5293,7 @@ fn the_player_compares_investigators_on_one_authoritative_forecast() {
     let work = enquiry_in_flight(&mut host).expect("the enquiry is under way");
     assert_eq!(work.owner, harrow);
     assert_eq!(work.leader, leader);
-    assert_eq!(work.target, AssignmentTarget::Province(vhorruk));
+    assert_eq!(work.target, AssignmentTarget::Province(tolmaz));
     assert_eq!(
         work.origin_situation.as_ref(),
         Some(&card.active.occurrence()),
@@ -5296,7 +5308,7 @@ fn a_proved_enquiry_names_the_true_hand_and_opens_the_card() {
     let harrow = org(&mut host, "harrow");
     let vantar = org(&mut host, "vantar");
     let perrin = character(&mut host, "perrin-vantar");
-    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let tolmaz = host.world_mut().resource::<MapIndex>().province_keys[&key("tolmaz")];
 
     // The durable record: the culprit is the organisation the lifecycle
     // bound, the knower is the house that paid for the enquiry, and the
@@ -5330,7 +5342,7 @@ fn a_proved_enquiry_names_the_true_hand_and_opens_the_card() {
     assert!(
         projection.participants.iter().any(|link| link.kind
             == aeon_data::model::SituationSubjectKind::Province
-            && link.id == vhorruk.raw()),
+            && link.id == tolmaz.raw()),
         "the ground it was aimed at stays on the card"
     );
     assert!(
@@ -5391,7 +5403,7 @@ fn a_cold_enquiry_names_nobody_and_leaves_the_card_exactly_as_it_was() {
         campaign_after_an_enquiry(SHADOW_SEED, repository_content(), SHADOW_COLD_OFFSET);
     let harrow = org(&mut host, "harrow");
     let vantar = org(&mut host, "vantar");
-    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let tolmaz = host.world_mut().resource::<MapIndex>().province_keys[&key("tolmaz")];
 
     assert!(
         exposure_of(&mut host).records.is_empty(),
@@ -5409,7 +5421,7 @@ fn a_cold_enquiry_names_nobody_and_leaves_the_card_exactly_as_it_was() {
         projection.participants,
         vec![aeon_sim::situations::SituationLink {
             kind: aeon_data::model::SituationSubjectKind::Province,
-            id: vhorruk.raw(),
+            id: tolmaz.raw(),
             label_key: None,
         }]
     );
@@ -5617,7 +5629,7 @@ fn an_enquiry_and_the_sabotage_resolve_independently_when_they_fall_due_together
 
     // And the card's own outcome, when it ends, is still the pure
     // live-Order reading — now able to say who paid for it.
-    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let tolmaz = host.world_mut().resource::<MapIndex>().province_keys[&key("tolmaz")];
     let mut resolved = None;
     for _ in 0..200 {
         host.advance_days(1);
@@ -5632,7 +5644,7 @@ fn an_enquiry_and_the_sabotage_resolve_independently_when_they_fall_due_together
         }
     }
     let notice = resolved.expect("the operation's card resolves");
-    let order = aeon_sim::order::province_order(host.world_mut(), vhorruk).order;
+    let order = aeon_sim::order::province_order(host.world_mut(), tolmaz).order;
     let expected = if order < 700 {
         "struck-traced"
     } else {
@@ -5979,7 +5991,7 @@ fn the_enquiry_is_an_answer_to_the_alarm_not_a_free_standing_order() {
     let content = repository_content();
     let mut host = scenario_host(SHADOW_SEED, Arc::clone(&content));
     let harrow = org(&mut host, "harrow");
-    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let tolmaz = host.world_mut().resource::<MapIndex>().province_keys[&key("tolmaz")];
     let enquiry = key("trace-the-hand");
 
     let holdings_of_harrow = |host: &mut SimHost| -> Vec<aeon_sim::ProvinceId> {
@@ -6031,9 +6043,9 @@ fn the_enquiry_is_an_answer_to_the_alarm_not_a_free_standing_order() {
 
     // Before the operation exists: quiet ground everywhere.
     host.advance_days(170);
-    assert!(!worked_against(&mut host, vhorruk));
+    assert!(!worked_against(&mut host, tolmaz));
     let holdings = holdings_of_harrow(&mut host);
-    assert!(holdings.contains(&vhorruk), "Vhorruk is Harrow's to hold");
+    assert!(holdings.contains(&tolmaz), "Tolmaz is Harrow's to hold");
     for province in &holdings {
         assert!(
             !offered_on(&mut host, *province),
@@ -6042,7 +6054,7 @@ fn the_enquiry_is_an_answer_to_the_alarm_not_a_free_standing_order() {
     }
     assert!(
         matches!(
-            ordered_on(&mut host, vhorruk),
+            ordered_on(&mut host, tolmaz),
             Err(CommandRejection::Assignment(AssignmentRejection::BadTarget))
         ),
         "and ordering it anyway is refused at the gate every start path shares"
@@ -6052,11 +6064,11 @@ fn the_enquiry_is_an_answer_to_the_alarm_not_a_free_standing_order() {
     // With the operation live: offered on the worked holding, and there
     // alone.
     host.advance_days(SHADOW_LIVE_DAY - 170);
-    assert!(worked_against(&mut host, vhorruk));
+    assert!(worked_against(&mut host, tolmaz));
     for province in holdings_of_harrow(&mut host) {
         assert_eq!(
             offered_on(&mut host, province),
-            province == vhorruk,
+            province == tolmaz,
             "the enquiry is offered exactly where covert work is running"
         );
     }
@@ -6066,18 +6078,18 @@ fn the_enquiry_is_an_answer_to_the_alarm_not_a_free_standing_order() {
     let mut quiet = false;
     for _ in 0..600 {
         host.advance_days(1);
-        if !worked_against(&mut host, vhorruk) {
+        if !worked_against(&mut host, tolmaz) {
             quiet = true;
             break;
         }
     }
     assert!(quiet, "the operation ends inside the swept horizon");
     assert!(
-        !offered_on(&mut host, vhorruk),
+        !offered_on(&mut host, tolmaz),
         "with the work over there is nothing left to trace"
     );
     assert!(matches!(
-        ordered_on(&mut host, vhorruk),
+        ordered_on(&mut host, tolmaz),
         Err(CommandRejection::Assignment(AssignmentRejection::BadTarget))
     ));
 }
@@ -6096,7 +6108,7 @@ fn an_enquiry_ordered_from_the_province_inherits_the_card_and_proves_the_hand() 
     let mut host = scenario_host(SHADOW_SEED, Arc::clone(&content));
     let harrow = org(&mut host, "harrow");
     let vantar = org(&mut host, "vantar");
-    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let tolmaz = host.world_mut().resource::<MapIndex>().province_keys[&key("tolmaz")];
     host.advance_days(SHADOW_LIVE_DAY + SHADOW_PROVED_OFFSET);
     let card = unquiet_card_for(&mut host, harrow).expect("the holder's card is live");
     let exact = card.active.occurrence();
@@ -6109,7 +6121,7 @@ fn an_enquiry_ordered_from_the_province_inherits_the_card_and_proves_the_hand() 
         harrow,
         &key("trace-the-hand"),
         leader,
-        AssignmentTarget::Province(vhorruk),
+        AssignmentTarget::Province(tolmaz),
     )
     .expect("the enquiry is an ordinary defined assignment");
     let through_card = aeon_sim::situations::forecast_for_action(
@@ -6117,7 +6129,7 @@ fn an_enquiry_ordered_from_the_province_inherits_the_card_and_proves_the_hand() 
         &card.active.key,
         &key("investigate"),
         leader,
-        AssignmentTarget::Province(vhorruk),
+        AssignmentTarget::Province(tolmaz),
     )
     .expect("the card forecasts the same order");
     assert!(direct.blocked.is_none(), "the ordinary order is open");
@@ -6128,7 +6140,7 @@ fn an_enquiry_ordered_from_the_province_inherits_the_card_and_proves_the_hand() 
     host.submit(PlayerCommand::StartAssignment {
         assignment: key("trace-the-hand"),
         leader,
-        target: AssignmentTarget::Province(vhorruk),
+        target: AssignmentTarget::Province(tolmaz),
     })
     .expect("the enquiry is an ordinary valid command");
     while enquiry_in_flight(&mut host).is_none() {
@@ -6137,7 +6149,7 @@ fn an_enquiry_ordered_from_the_province_inherits_the_card_and_proves_the_hand() 
     let work = enquiry_in_flight(&mut host).expect("the enquiry is under way");
     assert_eq!(work.owner, harrow);
     assert_eq!(work.leader, leader);
-    assert_eq!(work.target, AssignmentTarget::Province(vhorruk));
+    assert_eq!(work.target, AssignmentTarget::Province(tolmaz));
     assert_eq!(
         work.origin_situation.as_ref(),
         Some(&exact),
@@ -6236,7 +6248,7 @@ fn a_proved_hand_withdraws_the_ordinary_enquiry_while_the_operation_still_runs()
         campaign_after_an_enquiry(SHADOW_SEED, repository_content(), SHADOW_PROVED_OFFSET);
     let harrow = org(&mut host, "harrow");
     let vantar = org(&mut host, "vantar");
-    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let tolmaz = host.world_mut().resource::<MapIndex>().province_keys[&key("tolmaz")];
     let enquiry = key("trace-the-hand");
 
     // The window under test: the hand is proved, and the operation is
@@ -6247,7 +6259,7 @@ fn a_proved_hand_withdraws_the_ordinary_enquiry_while_the_operation_still_runs()
         "the hand is proved"
     );
     let sabotage = vantar_operation(&mut host).expect("the operation is still running");
-    assert_eq!(sabotage.target, AssignmentTarget::Province(vhorruk));
+    assert_eq!(sabotage.target, AssignmentTarget::Province(tolmaz));
     assert!(
         enquiry_in_flight(&mut host).is_none(),
         "the enquiry that proved it has resolved"
@@ -6273,7 +6285,7 @@ fn a_proved_hand_withdraws_the_ordinary_enquiry_while_the_operation_still_runs()
             host.world_mut(),
             &enquiry,
             harrow,
-            AssignmentTarget::Province(vhorruk),
+            AssignmentTarget::Province(tolmaz),
         ),
         "an enquiry into a hand already proved is offered nowhere"
     );
@@ -6283,7 +6295,7 @@ fn a_proved_hand_withdraws_the_ordinary_enquiry_while_the_operation_still_runs()
         harrow,
         &enquiry,
         leader,
-        AssignmentTarget::Province(vhorruk),
+        AssignmentTarget::Province(tolmaz),
     )
     .expect("the enquiry is still an ordinary defined assignment");
     assert_eq!(
@@ -6299,7 +6311,7 @@ fn a_proved_hand_withdraws_the_ordinary_enquiry_while_the_operation_still_runs()
             host.submit(PlayerCommand::StartAssignment {
                 assignment: enquiry.clone(),
                 leader,
-                target: AssignmentTarget::Province(vhorruk),
+                target: AssignmentTarget::Province(tolmaz),
             }),
             Err(CommandRejection::Assignment(AssignmentRejection::BadTarget))
         ),
@@ -6499,8 +6511,10 @@ fn regard_lifted_above_the_floor_before_the_window_keeps_the_year_quiet() {
         "above the floor but short of the line is eased, not reconciled"
     );
 
-    // The whole window elapses with nothing of the arc aimed at Harrow:
-    // no ambition against it, no operation on its ground, no alarm.
+    // The whole window elapses with nothing of Vantar's arc aimed at
+    // Harrow: no ambition against it, no operation on its ground, and no
+    // alarm on that ground bound to Vantar's hand. Other cold neighbours
+    // across Harrow's other borders are their own business.
     for _ in 1..=260 {
         host.advance_days(1);
         assert!(
@@ -6509,7 +6523,10 @@ fn regard_lifted_above_the_floor_before_the_window_keeps_the_year_quiet() {
         );
         assert!(vantar_operation_against_harrow(&mut host).is_none());
     }
-    assert!(unquiet_card_for(&mut host, harrow).is_none());
+    assert!(
+        unquiet_card_by(&mut host, harrow, vantar).is_none(),
+        "no alarm on Harrow's ground is Vantar's work"
+    );
     let log = host.world_mut().resource::<MessageLog>().clone();
     assert!(
         !log.entries.iter().any(|entry| {
@@ -6576,14 +6593,18 @@ fn reconciliation_at_the_line_lets_an_uncommitted_campaign_and_its_ambition_go()
     );
     assert_confided_to_vantar(&mut host, "Undermine a Neighbour");
 
-    // Nothing of the arc mounts against Harrow for the rest of the
-    // window, whatever else the house may set its mind to.
+    // Nothing of Vantar's arc mounts against Harrow for the rest of the
+    // window, whatever else the house — or any other neighbour — may set
+    // its mind to.
     for _ in 0..51 {
         host.advance_days(1);
         assert!(vantar_ambition_against_harrow(&mut host).is_none());
         assert!(vantar_operation_against_harrow(&mut host).is_none());
     }
-    assert!(unquiet_card_for(&mut host, harrow).is_none());
+    assert!(
+        unquiet_card_by(&mut host, harrow, vantar).is_none(),
+        "no alarm on Harrow's ground is Vantar's work"
+    );
 
     // The Cold Border card reflected the thaw: resolved reconciled,
     // naming the neighbour as a neighbour and nothing as a hand.
@@ -7404,15 +7425,19 @@ fn a_triumph_of_gifts_and_a_spurned_gift_carry_their_own_authored_amounts() {
 
 // ---------------------------------------------------------------------------
 // War at the Border: the open first-year invasion. A hostile, capable house
-// raises a host, declares, and besieges the one holding across its border
-// unaided, through the ordinary goal, plan, muster, declaration, siege, and
-// negotiation; the defending house sees an open, pausing card with the
-// honest military facts; and every stage survives save, load, and replay.
+// raises a host, declares, and besieges the border holding its selector
+// chooses, unaided, through the ordinary goal, plan, muster, declaration,
+// and siege; the defending house sees an open, pausing card with the
+// honest military facts; a holding thrown off ends its card and the next
+// holding across the same border opens one of its own; and every stage
+// survives save, load, and replay.
 // ---------------------------------------------------------------------------
 
 /// A seed on which Vantar mounts the border war unaided: the open ambition
 /// on a window pulse, the host raised by the muster's own roll, the
-/// declaration, and the siege of Vhorruk, with no scripted nudge.
+/// declaration, and the siege of Tolmaz, with no scripted nudge. The days
+/// this seed produces were re-derived against the corrected route graph,
+/// which gives the two houses a two-holding border instead of one.
 const BORDER_SEED: u64 = 3;
 /// The window pulse on which the pinned seed adopts the ambition.
 const BORDER_GOAL_DAY: u32 = 270;
@@ -7553,7 +7578,13 @@ fn the_border_war_mounts_unaided_inside_the_authored_window() {
     let vantar = org(&mut host, "vantar");
     let veyrin = org(&mut host, "veyrin");
     let perrin = character(&mut host, "perrin-vantar");
-    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let map = host
+        .world_mut()
+        .resource::<MapIndex>()
+        .province_keys
+        .clone();
+    let tolmaz = map[&key("tolmaz")];
+    let vhorruk = map[&key("vhorruk")];
     let start_fielded = vantar_fielded(&mut host);
     assert_eq!(start_fielded, vec![450], "Vantar opens with its levy alone");
 
@@ -7629,8 +7660,8 @@ fn the_border_war_mounts_unaided_inside_the_authored_window() {
     );
     assert_eq!(
         card.active.key.bindings.get("objective"),
-        Some(&SituationSubject::Province(vhorruk)),
-        "Vhorruk is the one Harrow holding across the Ulmgorn border"
+        Some(&SituationSubject::Province(tolmaz)),
+        "Tolmaz is the lowest-ID Harrow holding across the Vantar border"
     );
     let projection = card.projection.clone().expect("projection");
     assert_eq!(projection.stage, key("open"));
@@ -7697,7 +7728,7 @@ fn the_border_war_mounts_unaided_inside_the_authored_window() {
     let AssignmentTarget::ArmyToProvince(army, target) = siege.target else {
         panic!("a siege is army-to-province");
     };
-    assert_eq!(target, vhorruk, "one holding, across the border");
+    assert_eq!(target, tolmaz, "one holding, the border card's objective");
     assert_eq!(
         aeon_sim::access::army(host.world_mut(), army).map(|a| a.manpower),
         Some(raised),
@@ -7718,7 +7749,7 @@ fn the_border_war_mounts_unaided_inside_the_authored_window() {
     }));
 
     // The siege runs its authored course, and on this seed the assault
-    // breaks against the walls: on day 543 the title has not moved, Harrow
+    // breaks against the walls: on day 542 the title has not moved, Harrow
     // still holds four provinces, the campaign goes on, and the card stands
     // open on the holding it still has. The scripted sibling below drives
     // the other outcome — the holding taken and the card resolved lost —
@@ -7726,7 +7757,7 @@ fn the_border_war_mounts_unaided_inside_the_authored_window() {
     border_advance_until(&mut host, 120, "the siege resolves", |host| {
         aeon_sim::access::assignment(host.world_mut(), siege.id).is_none()
     });
-    assert_eq!(border_campaign_day(&mut host), 543, "the pinned siege day");
+    assert_eq!(border_campaign_day(&mut host), 542, "the pinned siege day");
     assert!(
         host.world_mut()
             .get_resource::<aeon_sim::CampaignOver>()
@@ -7734,7 +7765,7 @@ fn the_border_war_mounts_unaided_inside_the_authored_window() {
     );
     assert_no_liege_rescues_anyone(&mut host, war_id);
     assert_eq!(
-        aeon_sim::warfare::province_holder(host.world_mut(), vhorruk),
+        aeon_sim::warfare::province_holder(host.world_mut(), tolmaz),
         Some(harrow),
         "on this seed the assault broke and the holding stands"
     );
@@ -7743,7 +7774,7 @@ fn the_border_war_mounts_unaided_inside_the_authored_window() {
         4
     );
     assert!(
-        border_war_resolution(&mut host, vantar, vhorruk).is_none(),
+        border_war_resolution(&mut host, vantar, tolmaz).is_none(),
         "a holding that held resolves nothing"
     );
     assert!(border_war_card_for(&mut host, harrow, vantar).is_some());
@@ -7762,62 +7793,19 @@ fn the_border_war_mounts_unaided_inside_the_authored_window() {
         "Veyrin received no scripted rescue behaviour"
     );
 
-    // The pressing plan spends its one retry and is given up. The ambition
-    // is still standing when that happens — its authored horizon covers the
-    // whole chain — so the settling campaign can still be taken up, which
-    // is the only reason a peace overture is ever made. On this seed the
-    // head sues for peace on day 750, well inside the ambition's horizon.
-    border_advance_until(&mut host, 250, "the head sues for peace", |host| {
-        vantar_campaign(host).is_some_and(|plan| plan.def == key("settle-the-border"))
-    });
-    assert_eq!(
-        border_campaign_day(&mut host),
-        750,
-        "the pinned settling day"
+    // The pressing plan spends its one retry and is given up, and two
+    // sieges leave Tolmaz in unrest long enough to throw off its ruler.
+    // On day 702 its title stands vacant: a genuine loss to the defender
+    // that the neighbour did not win, so that card ends its own lifecycle
+    // `ungoverned` rather than `lost`, and nothing claims House Vantar
+    // took ground it never held.
+    border_advance_until(
+        &mut host,
+        200,
+        "the besieged holding throws off its ruler",
+        |host| aeon_sim::warfare::province_holder(host.world_mut(), tolmaz).is_none(),
     );
-    assert_eq!(
-        vantar_ambition(&mut host).map(|goal| goal.def),
-        Some(key("take-the-border")),
-        "the ambition still stands, which is what makes settling adoptable"
-    );
-
-    // The overture is the ordinary negotiation, aimed at the exact war,
-    // and it carries: the war concludes in a negotiated peace.
-    border_advance_until(&mut host, 30, "the peace overture is made", |host| {
-        vantar_work(host, "negotiate").is_some_and(|work| work.war == Some(war_id))
-    });
-    border_advance_until(&mut host, 90, "the war concludes", |host| {
-        border_war_between(host).is_none()
-    });
-    // The peace lands while the ambition still stands, which is the whole
-    // point of the authored horizon: the house that started the war is
-    // the one that ends it. Pinning the day guards that margin, so a
-    // shortened horizon or a slower chain fails here rather than quietly
-    // leaving a war for the player to settle.
-    let peace_day = border_campaign_day(&mut host);
-    assert_eq!(peace_day, 771, "the pinned peace day");
-    assert!(
-        vantar_ambition(&mut host).is_some(),
-        "the ambition outlives its own war, at day {peace_day}"
-    );
-    let record = war(host.world_mut(), war_id)
-        .expect("war on record")
-        .clone();
-    assert_eq!(
-        record.conclusion.map(|end| end.kind),
-        Some(WarConclusionKind::NegotiatedPeace),
-        "the neighbour's own overture ended its war"
-    );
-    // Vhorruk was never taken, but it did not come through untouched: two
-    // sieges left it in unrest long enough to throw off its ruler, so its
-    // title stands vacant and its card ended its own lifecycle before the
-    // peace — as `ungoverned`, which is the honest reading. Nothing
-    // claims House Vantar took it, because House Vantar did not.
-    assert_eq!(
-        aeon_sim::warfare::province_holder(host.world_mut(), vhorruk),
-        None,
-        "the besieged holding revolted rather than falling"
-    );
+    assert_eq!(border_campaign_day(&mut host), 702, "the pinned revolt day");
     assert_eq!(
         held_provinces(host.world_mut(), harrow).len(),
         3,
@@ -7828,11 +7816,10 @@ fn the_border_war_mounts_unaided_inside_the_authored_window() {
         2,
         "and the neighbour gained nothing by it"
     );
-    assert!(border_war_card_for(&mut host, harrow, vantar).is_none());
     let notice =
-        border_war_resolution(&mut host, vantar, vhorruk).expect("the border card resolved");
+        border_war_resolution(&mut host, vantar, tolmaz).expect("the border card resolved");
     assert_eq!(notice.outcome, key("ungoverned"));
-    assert!(notice.text.contains("Vhorruk"), "got '{}'", notice.text);
+    assert!(notice.text.contains("Tolmaz"), "got '{}'", notice.text);
     assert!(
         notice.text.contains("House Vantar"),
         "got '{}'",
@@ -7843,6 +7830,55 @@ fn the_border_war_mounts_unaided_inside_the_authored_window() {
         "got '{}'",
         notice.text
     );
+
+    // The border moved rather than closing: Cindral and Ulmgorn still
+    // touch Vhorruk, so the holding exposed next opens its own card under
+    // the same war, exactly as the per-holding chronicle intends.
+    let next = border_war_card_for(&mut host, harrow, vantar).expect("the next holding's card");
+    assert_eq!(
+        next.active.key.bindings.get("objective"),
+        Some(&SituationSubject::Province(vhorruk)),
+        "Vhorruk is the holding across the border now"
+    );
+
+    // And because there is still ground to press, the pressing plan's
+    // 360-day cooldown re-arms on a target rather than expiring onto an
+    // empty border: on day 750 the head presses again instead of reaching
+    // for `settle-the-border`, which he takes up only when there is
+    // nothing left to press. (That settling path is exercised
+    // deterministically in tests/invasion.rs, where the border really is
+    // emptied under the war.)
+    border_advance_until(&mut host, 120, "the head presses again", |host| {
+        vantar_campaign(host).is_some_and(|plan| plan.def == key("press-the-border"))
+    });
+    assert_eq!(
+        border_campaign_day(&mut host),
+        750,
+        "the pinned second pressing day"
+    );
+    assert_eq!(
+        vantar_ambition(&mut host).map(|goal| goal.def),
+        Some(key("take-the-border")),
+        "the second pressing is taken up while the ambition still stands"
+    );
+
+    // The ambition then reaches its authored horizon and lapses on day
+    // 810 with the war still standing. Pinning that guards the margin
+    // from the other side: a horizon long enough to cover a two-holding
+    // border would end here differently, and this is the day it does not.
+    border_advance_until(&mut host, 120, "the ambition reaches its horizon", |host| {
+        vantar_ambition(host).is_none()
+    });
+    assert_eq!(
+        border_campaign_day(&mut host),
+        810,
+        "the pinned horizon day"
+    );
+    assert!(
+        border_war_between(&mut host).is_some(),
+        "the war outlives the ambition that opened it"
+    );
+    assert_no_liege_rescues_anyone(&mut host, war_id);
     assert!(
         host.world_mut()
             .get_resource::<aeon_sim::CampaignOver>()
@@ -7862,7 +7898,7 @@ fn save_load_and_replay_hold_across_the_border_war() {
     let mut host = scenario_host(BORDER_SEED, Arc::clone(&content));
     let harrow = org(&mut host, "harrow");
     let vantar = org(&mut host, "vantar");
-    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let tolmaz = host.world_mut().resource::<MapIndex>().province_keys[&key("tolmaz")];
 
     struct Checkpoint {
         stage: &'static str,
@@ -7895,7 +7931,7 @@ fn save_load_and_replay_hold_across_the_border_war() {
     // On this seed the assault breaks and the title stays put; the
     // scripted sibling below carries the post-transfer state instead.
     assert_eq!(
-        aeon_sim::warfare::province_holder(host.world_mut(), vhorruk),
+        aeon_sim::warfare::province_holder(host.world_mut(), tolmaz),
         Some(harrow)
     );
     checkpoints.push(checkpoint(&mut host, "post-siege"));
@@ -7908,9 +7944,9 @@ fn save_load_and_replay_hold_across_the_border_war() {
     assert!(border_war_card_for(&mut host, harrow, vantar).is_none());
     // A war settled with the holding still held closes the card as peace.
     let notice =
-        border_war_resolution(&mut host, vantar, vhorruk).expect("the border card resolved");
+        border_war_resolution(&mut host, vantar, tolmaz).expect("the border card resolved");
     assert_eq!(notice.outcome, key("peace"));
-    assert!(notice.text.contains("Vhorruk"), "got '{}'", notice.text);
+    assert!(notice.text.contains("Tolmaz"), "got '{}'", notice.text);
     assert!(
         notice.text.contains("House Vantar"),
         "got '{}'",
@@ -8031,11 +8067,11 @@ fn a_fallen_holding_walk(seed: u64, content: Arc<ContentSet>) -> bool {
         .resource::<MapIndex>()
         .province_keys
         .clone();
-    let vhorruk = map[&key("vhorruk")];
     let tolmaz = map[&key("tolmaz")];
+    let mournhollow = map[&key("mournhollow")];
 
     // The host at its authored strength, and the ordinary declaration's
-    // war. The Guard stands at Ostragard, so Vhorruk is undefended.
+    // war. The Guard stands at Ostragard, so Tolmaz is undefended.
     let levy = vantar_levy(&mut host);
     set_border_army_manpower(&mut host, levy, 800);
     let war_id = declare_war(host.world_mut(), vantar, harrow, key("declare-formal-war"))
@@ -8044,15 +8080,15 @@ fn a_fallen_holding_walk(seed: u64, content: Arc<ContentSet>) -> bool {
     let card = border_war_card_for(&mut host, harrow, vantar).expect("the border card opens");
     assert_eq!(
         card.active.key.bindings.get("objective"),
-        Some(&SituationSubject::Province(vhorruk))
+        Some(&SituationSubject::Province(tolmaz))
     );
 
-    let target = AssignmentTarget::ArmyToProvince(levy, vhorruk);
+    let target = AssignmentTarget::ArmyToProvince(levy, tolmaz);
     let siege = border_start_in_war(&mut host, vantar, "besiege", perrin, target, war_id);
     border_advance_until(&mut host, 120, "the siege resolves", |host| {
         aeon_sim::access::assignment(host.world_mut(), siege).is_none()
     });
-    if aeon_sim::warfare::province_holder(host.world_mut(), vhorruk) != Some(vantar) {
+    if aeon_sim::warfare::province_holder(host.world_mut(), tolmaz) != Some(vantar) {
         return false;
     }
     host.advance_days(1);
@@ -8065,10 +8101,10 @@ fn a_fallen_holding_walk(seed: u64, content: Arc<ContentSet>) -> bool {
             .get_resource::<aeon_sim::CampaignOver>()
             .is_none()
     );
-    let notice = border_war_resolution(&mut host, vantar, vhorruk)
+    let notice = border_war_resolution(&mut host, vantar, tolmaz)
         .expect("the fallen holding's card resolved");
     assert_eq!(notice.outcome, key("lost"));
-    assert!(notice.text.contains("Vhorruk"), "got '{}'", notice.text);
+    assert!(notice.text.contains("Tolmaz"), "got '{}'", notice.text);
     assert!(
         notice.text.contains("House Vantar"),
         "got '{}'",
@@ -8081,8 +8117,8 @@ fn a_fallen_holding_walk(seed: u64, content: Arc<ContentSet>) -> bool {
     let next = border_war_card_for(&mut host, harrow, vantar).expect("the next holding's card");
     assert_eq!(
         next.active.key.bindings.get("objective"),
-        Some(&SituationSubject::Province(tolmaz)),
-        "Tolmaz is the holding across the border now"
+        Some(&SituationSubject::Province(mournhollow)),
+        "Mournhollow is the holding across the border now"
     );
 
     // The post-transfer state — a title moved mid-war, one lifecycle

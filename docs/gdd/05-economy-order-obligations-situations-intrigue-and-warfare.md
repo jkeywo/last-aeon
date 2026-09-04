@@ -423,9 +423,9 @@ contested and, for fomenting unrest, genuinely deniable:
   day 180–260 window, with the authored capability floor, against a
   hostile border neighbour (head-to-head opinion at or below −10, or an
   open grievance owed). In the Ashkarr scenario that chain resolves to
-  House Vantar working Vhorruk, the one Harrow province across its
-  border. The player may order the same operation by hand and receives
-  the same deniability.
+  House Vantar working Tolmaz, the province the border selector picks
+  from the two Harrow provinces across its border. The player may order
+  the same operation by hand and receives the same deniability.
 - The targeted holder experiences the operation as the Unquiet Holdings
   Situation; counter-play is ordinary administration (raise Order),
   investigation, retaliation, reconciliation, or accepting the
@@ -533,9 +533,10 @@ Inside the authored day 260–360 window a vassal that passes the capability
 trigger (a levy in the field, an authored purse floor, a pool that can bear
 a host) may adopt the open `take-the-border` ambition against a hostile
 border neighbour; in the Ashkarr scenario that is House Vantar against
-Harrow, and the ground is Vhorruk, the one Harrow holding across the
-Ulmgorn border. Four plans then run through the ordinary catalogue and the
-ordinary gate: `raise-the-host` swells the levy the head commands to
+Harrow, and the ground is Tolmaz, the holding the border selector picks
+from the two Harrow holdings across that border (Cindral touches Tolmaz
+and Vhorruk; Ulmgorn touches Vhorruk). Four plans then run through the
+ordinary catalogue and the ordinary gate: `raise-the-host` swells the levy the head commands to
 roughly 800 (900 on a triumph) from the house's own pool through the new
 `reinforce-army` effect — one person holds one command, so a head who
 generals the levy could never lead a second army mustered beside it, and
@@ -559,7 +560,7 @@ fighting, and a lost holding stays lost until retaken through the same
 war. Sides freeze at declaration as `{Vantar}` against `{Harrow}`: no
 liege joins either side unless it adopts one through the ordinary
 head-led assignment, and no content does that for anyone — Veyrin is not
-scripted to rescue either house. Losing Vhorruk does not end the
+scripted to rescue either house. Losing the holding does not end the
 campaign: the player fails only with no living member or no held province.
 
 [ai] The balance the arc is tuned to follows from the engagement formula
@@ -567,7 +568,7 @@ above rather than from any new tuning. Against the authored host — 800
 under Perrin's command of 6, so 1,040 in the field — Harrow's opening 600
 under Edrun's 7 on home ground at settled Order stands at 972 and loses
 the field in a clear majority of engagements, while a thousand standing
-together in Vhorruk stands at 1,620 and holds every engagement the
+together in the holding stands at 1,620 and holds every engagement the
 bounded swing can produce, even against the 900-strong triumph host. What
 keeps a thousand from being a guarantee is the state the arc actually
 tests: only the largest stack inside the holding fights (two stacks are

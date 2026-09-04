@@ -195,8 +195,10 @@ standard into a live shield: **Unquiet Holdings** (stories 35–36, 39,
 41–42, 50–51). Inside a later deterministic window — roughly days 180 to
 260 — a hostile, capable neighbour may set covert pressure against a
 border province; in the authored opening that neighbour is House Vantar
-and the ground is Vhorruk, but nothing is scripted — a genuine goal,
-plan, and ordinary sabotage assignment mount the operation only while
+and the ground is Tolmaz — the lower-ID of the two Harrow holdings across
+that border, both at the settled opening Order — but nothing is scripted
+— a genuine goal, plan, and ordinary sabotage assignment mount the
+operation only while
 the authored hostility, capability, and geography hold, and
 reconciliation, succession, or a changed border derails it through
 ordinary rules. What the player sees is an alarm without a culprit: the
@@ -249,11 +251,15 @@ neighbour the shadows do, and four ordinary plans carry it — the
 standing levy is reinforced to a host of roughly eight hundred, the
 seven-day declaration is made once the host stands at that strength, the
 house is not outmatched by the target, and it leads no war of its own,
-the host marches on the one enemy holding across the border and besieges
-it, and the house then sues for peace. Declaration, frozen sides, movement, the field engagement at
+the host marches on the enemy holding the border selector picks — the
+most disordered across the shared border, lowest stable ID on a tie — and
+besieges it, and the house sues for peace once there is nothing left
+across that border to press. Declaration, frozen
+sides, movement, the field engagement at
 the end of the siege, title transfer, history, and later recovery are the
 engine's own war, unchanged. In the Ashkarr opening that chain resolves to
-House Vantar and Vhorruk. What the player sees is **War at the Border**: a
+House Vantar and Tolmaz, one of the two Harrow holdings Cindral touches.
+What the player sees is **War at the Border**: a
 pausing card naming the exposed holding, its live Order, the largest
 stack of theirs standing inside it — the only one that will fight for it
 — the enemy soldiers on its ground, and both sides' soldiers under arms,

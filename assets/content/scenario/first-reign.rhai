@@ -1205,9 +1205,9 @@ fn visit_lavish_disaster(ctx) {
 // border, and genuine ill will (or an open grievance owed to it) may
 // adopt them inside the authored window — but in the Ashkarr Succession
 // their natural bearer is House Vantar: informants, disruption, and
-// pressure no seal was ever set to, aimed across the Ulmgorn border at
-// whichever Harrow ground sits weakest. Everything is data: the window,
-// the hostility floor, the capability gate, and the covertness. The
+// pressure no seal was ever set to, aimed across the Cindral and Ulmgorn
+// border at whichever Harrow ground sits weakest. Everything is data:
+// the window, the hostility floor, the capability gate, and the covertness. The
 // engine contributes only the shared mechanisms — the border selector,
 // the opinion, grievance, and war predicates, and the owner-only audience
 // that keeps provenance from every ordinary player surface while
@@ -1851,18 +1851,25 @@ define_situation(#{
 // the siege with its field engagement, the title transfer, and the
 // negotiated peace are all the engine's own war, unchanged. In the
 // Ashkarr Succession the natural bearer is House Vantar and the natural
-// ground is Vhorruk, the one Harrow holding across the Ulmgorn border,
-// but the same data would arm any vassal against any cold neighbour —
+// ground is Tolmaz — Cindral touches Tolmaz and Vhorruk, Ulmgorn touches
+// Vhorruk, and at the settled opening Order the selector's tie-break
+// takes the lower stable ID — but the same data would arm any vassal
+// against any cold neighbour —
 // and friendship, succession, conquest, a changed border, a spent purse
 // or pool, or a war already on its hands delays, redirects, or cancels
 // the whole arc through the same predicates the shadows read.
 //
 // "One holding" is a property of the campaign, not of the war: the
 // pressing plan carries exactly one siege and then completes, and its
-// long cooldown means the ambition presses once per war, after which the
-// house only sues for peace. The war itself has no objective field —
-// peace merely stops the fighting, and what changed hands stays changed
-// until it is retaken through the same war.
+// long cooldown holds the ambition off that border for 360 days. Where a
+// frontier is only one holding wide, pressing it empties the border and
+// settling — weighed only when there is nothing left to press — is what
+// the head reaches for next; where it is wider, as the Vantar-Harrow
+// frontier is, the cooldown can expire onto ground still worth pressing
+// and the ambition may press a second time before its horizon runs out.
+// The war itself has no objective field — peace merely stops the
+// fighting, and what changed hands stays changed until it is retaken
+// through the same war.
 //
 // The host is the standing levy grown to a war's strength, not a second
 // army: one person holds one command, so a head who already generals the
@@ -1875,7 +1882,7 @@ define_situation(#{
 // target's, in permille, at the accepted three-quarters floor. Eight
 // hundred declares against Harrow's opening 600 and against a Harrow
 // that has answered Aleyn with a thousand — a thousand spread across two
-// stacks is not a thousand in Vhorruk, because only the largest stack
+// stacks is not a thousand in the holding, because only the largest stack
 // inside a holding fights for it — and is deterred by a neighbour more
 // than a third stronger.
 
