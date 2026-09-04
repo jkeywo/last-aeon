@@ -204,18 +204,7 @@ pub fn character_ids(world: &World) -> Vec<CharacterId> {
 pub fn living_character_ids(world: &World) -> Vec<CharacterId> {
     world
         .get_resource::<PoliticsIndex>()
-        .map(|index| {
-            index
-                .characters
-                .iter()
-                .filter(|(_, entity)| {
-                    world
-                        .get::<CharacterRecord>(**entity)
-                        .is_some_and(|record| record.alive())
-                })
-                .map(|(id, _)| *id)
-                .collect()
-        })
+        .map(|index| index.living.iter().copied().collect())
         .unwrap_or_default()
 }
 

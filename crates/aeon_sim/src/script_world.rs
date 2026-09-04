@@ -338,8 +338,14 @@ pub fn context_value(world: &World) -> Map {
 
         // Opinion is an authoritative derived fact, not a copy of the stored
         // modifier ledger. Pair order is stable (from, then to).
-        for from in index.characters.keys() {
-            for to in index.characters.keys() {
+        //
+        // The living only. The index keeps the dead so history can still
+        // name them, but a dead character holds no opinion and none is held
+        // of them, and pairing everyone who ever lived against everyone who
+        // ever lived grew this array — and every script scan of it — with
+        // the campaign's whole past rather than its present.
+        for from in index.living.iter() {
+            for to in index.living.iter() {
                 if from == to {
                     continue;
                 }
@@ -528,8 +534,11 @@ pub fn context_value(world: &World) -> Map {
                     ("personal_transport", record.personal_transport.into()),
                     ("orders_suspended", record.orders_suspended.into()),
                     ("retreat_destination", optional_id(record.retreat_destination.map(|value| value.raw()))),
-                    ("occupant_characters", array(world.resource::<crate::politics::PoliticsIndex>().characters.iter().filter_map(|(character, entity)| {
-                        matches!(world.get::<crate::presence::CharacterLocation>(*entity).map(|location| location.0), Some(crate::presence::Location::Aboard(aboard)) if aboard == *id)
+                    // The living aboard: a ship carries passengers, not a passenger list
+                    // of everyone who ever sailed in her.
+                    ("occupant_characters", array(world.resource::<crate::politics::PoliticsIndex>().living.iter().filter_map(|character| {
+                        let entity = crate::access::character_entity(world, *character)?;
+                        matches!(world.get::<crate::presence::CharacterLocation>(entity).map(|location| location.0), Some(crate::presence::Location::Aboard(aboard)) if aboard == *id)
                             .then_some(integer(character.raw()).into())
                     }))),
                     ("occupant_armies", array(index.armies.iter().filter_map(|(army, entity)| {

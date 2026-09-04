@@ -7,7 +7,7 @@
 //! the campaign allocator; authored entities keep their content keys so
 //! saves stay legible.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use aeon_core::calendar::{DAYS_PER_YEAR, GameDate};
 use aeon_core::rng::DeterministicRng;
@@ -195,11 +195,26 @@ pub struct OfficeRecord {
 // Resources
 // ---------------------------------------------------------------------------
 
+/// Marks a character who has died.
+///
+/// The index below never forgets anyone, so a record's `death` date is the
+/// authority on who is gone; this component carries the same fact into the
+/// ECS, where a query can say `Without<Dead>` instead of fetching a record
+/// to ask. Inserted when a character dies and when a save is restored, so
+/// the two paths agree.
+#[derive(Component, Copy, Clone, Debug, PartialEq, Eq)]
+pub struct Dead;
+
 /// Lookup between political stable IDs, content keys, and entities.
 #[derive(Resource, Clone, Debug, Default)]
 pub struct PoliticsIndex {
-    /// Characters by stable ID.
+    /// Characters by stable ID. Never forgets: the dead stay indexed so
+    /// history, provenance, and lineage can still name them.
     pub characters: BTreeMap<CharacterId, Entity>,
+    /// The characters still in play — who the world should be reasoned
+    /// about in terms of. Births add, death removes, and a restore rebuilds
+    /// it, so it is always the living subset of `characters`.
+    pub living: BTreeSet<CharacterId>,
     /// Organisations by stable ID.
     pub orgs: BTreeMap<OrgId, Entity>,
     /// Titles by stable ID.
@@ -308,6 +323,7 @@ pub fn spawn_from_content(world: &mut World, content: &ContentSet) {
             ))
             .id();
         index.characters.insert(id, entity);
+        index.living.insert(id);
     }
 
     // Character locations: members start at their organisation's first
@@ -727,6 +743,11 @@ pub fn restore_politics(world: &mut World, state: &PoliticsState, content: &Cont
             world.entity_mut(entity).insert(journey.clone());
         }
         index.characters.insert(character.id, entity);
+        if character.death.is_none() {
+            index.living.insert(character.id);
+        } else {
+            world.entity_mut(entity).insert(Dead);
+        }
         if let Some(key) = &character.key {
             index.character_keys.insert(key.clone(), character.id);
         }
@@ -1028,6 +1049,8 @@ pub fn process_death(world: &mut World, id: CharacterId, date: GameDate) {
         }
         record.death = Some(date);
     }
+    world.entity_mut(entity).insert(Dead);
+    world.resource_mut::<PoliticsIndex>().living.remove(&id);
 
     // Paramount claims are personal. Removing the dead head's declaration
     // before succession makes it impossible for an heir to inherit implicitly.
@@ -1691,10 +1714,9 @@ fn spawn_child(
                 crate::presence::Location::Province(province),
             ));
     }
-    world
-        .resource_mut::<PoliticsIndex>()
-        .characters
-        .insert(id, entity);
+    let mut index = world.resource_mut::<PoliticsIndex>();
+    index.characters.insert(id, entity);
+    index.living.insert(id);
 }
 
 /// Monthly: drop expired opinion modifiers.

@@ -3231,3 +3231,38 @@ entities:
         - core-explanations-are-owned-focusable-snapshots
         - headless-authoritative-simulation
         - ron-snapshots-and-jsonl-command-log
+
+  - decision: the-shared-world-view-shows-the-living
+    core:
+      status: accepted
+      confidence: confirmed
+      origin: ai
+      title: The Index Keeps the Dead; the World View Shows the Living
+      summary: >-
+        PoliticsIndex never forgets a character, because history,
+        provenance, and lineage still have to name people who have died.
+        What that costs is a definition of "who is there" that every caller
+        had to remember to apply for itself, and one that did not: the
+        shared world view paired every indexed character against every
+        other to derive opinions, so the array content scans grew with the
+        campaign's whole past rather than its present, and a dead character
+        held opinions of other dead characters. The index now carries a
+        living set beside the map, maintained where a character enters play
+        or leaves it — the opening cast, a birth, a restore, and a death —
+        and a Dead marker component carries the same fact into the ECS so a
+        query can say Without<Dead> rather than fetch a record to ask. The
+        living set is what the world view pairs for opinions and what a
+        ship lists as its passengers; the characters array still shows the
+        dead with alive false, because content reads it to notice that a
+        requester has died. Neither is snapshotted: PoliticsIndex is a
+        lookup rebuilt from PoliticsState, so a restore derives both from
+        each record's death date and no save format changed.
+      rationale:
+        - "[ai] The decision is what \"in play\" means, not a cache. Every AI path already filtered the dead through living_character_ids; the world view did not, so content and the simulation disagreed about who existed. One set, maintained at the four points a character can enter or leave it, is the only way that disagreement stays fixed."
+        - "[ai] Filtering opinions to the living changes what content sees, and both authored consumers scan the array for a pair and fall back to zero when it is absent, so a lookup naming a dead character now reads as no opinion rather than a derived value. That is the intended reading — the dead hold no opinions — and the bindings that could name a dead character invalidate on death first. The acceptance hash moves with it."
+        - "[ai] The cost this removes is quadratic in the cumulative population, not the living one: the array was built over everyone who had ever lived and then scanned end to end for a single pair. A campaign that ran long enough to bury people paid for them forever."
+        - "[ai] The invariant is tested rather than asserted: the living set must equal the living subset of the index, and the marker must agree with the record, checked at the opening, after births, after a death taken deliberately rather than left to a 2-per-mille roll, and after a restore — a restore that inherited a stale set instead of rebuilding it is exactly how the dead would start voting again."
+      references:
+        - headless-authoritative-simulation
+        - situations-project-live-facts-into-authored-context
+        - covert-provenance-is-an-audience-on-authored-plans-and-assignments

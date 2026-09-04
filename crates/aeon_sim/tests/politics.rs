@@ -2,6 +2,7 @@
 //! derivation, succession, the contested Consular appointment, office
 //! appointment, life-cycle simulation, and snapshot fidelity.
 
+use std::collections::BTreeSet;
 use std::sync::Arc;
 
 use aeon_core::calendar::CalendarDate;
@@ -455,15 +456,19 @@ fn the_consul_fills_a_vacant_command() {
     assert!(office.vacant_since.is_none());
 }
 
+/// Four decades in, the founding generation is gone and life went on.
+///
+/// One host, not two. Running the same forty years twice to compare hashes
+/// re-proved determinism a third time — `determinism.rs` starts two
+/// campaigns cold on one seed, and the `accept` gate replays the real
+/// scenario from a mid-run snapshot. Order-dependent nondeterminism shows
+/// up in the first days, not only in the fortieth year, so the long horizon
+/// is here to age the population, not to check the hash.
 #[test]
-fn decades_of_life_simulation_stay_deterministic() {
+fn four_decades_of_life_simulation_leave_the_world_alive() {
     let mut a = fixture_host(11);
-    let mut b = fixture_host(11);
     a.advance_days(360 * 40);
-    b.advance_days(360 * 40);
-    assert_eq!(a.state_hash(), b.state_hash());
 
-    // Forty years later the founding generation is gone and life went on.
     let world = a.world_mut();
     let index = world.resource::<PoliticsIndex>().clone();
     let deaths = index
@@ -665,4 +670,79 @@ fn a_vassals_own_ground_is_its_own_not_its_lieges() {
         None,
         "and Ash's ground is not Cedar's at any distance"
     );
+}
+
+/// The living set is the living subset of the index, at every point a
+/// character can enter or leave it.
+///
+/// The index deliberately never forgets anyone, so this set is what "who
+/// is in play" means. If the two ever disagree, the dead start voting
+/// again — in the AI's decisions, and in the opinions the shared world
+/// view hands to content.
+#[test]
+fn the_living_set_tracks_births_deaths_and_a_restore() {
+    let content = fixture_content();
+    let mut host = fixture_host(11);
+
+    let agree = |host: &mut SimHost, when: &str| {
+        let world = host.world_mut();
+        let index = world.resource::<PoliticsIndex>().clone();
+        let alive: BTreeSet<_> = index
+            .characters
+            .iter()
+            .filter(|(_, entity)| {
+                world
+                    .get::<CharacterRecord>(**entity)
+                    .is_some_and(|record| record.death.is_none())
+            })
+            .map(|(id, _)| *id)
+            .collect();
+        assert_eq!(
+            index.living, alive,
+            "the living set disagrees with the records {when}"
+        );
+        // Every dead character carries the marker, and no living one does.
+        for (id, entity) in &index.characters {
+            let dead_record = world
+                .get::<CharacterRecord>(*entity)
+                .is_some_and(|record| record.death.is_some());
+            let tagged = world.get::<aeon_sim::politics::Dead>(*entity).is_some();
+            assert_eq!(
+                dead_record, tagged,
+                "the Dead marker disagrees for {id:?} {when}"
+            );
+        }
+        alive
+    };
+
+    let opening = agree(&mut host, "at the opening");
+
+    // Long enough for the fixture to see births.
+    host.advance_days(360 * 20);
+    let grown = agree(&mut host, "after two decades");
+    assert!(
+        grown.len() > opening.len(),
+        "the fixture saw births, so the living set outgrew the opening cast"
+    );
+
+    // Death is rare enough at these ages to be luck, so take one
+    // deliberately: that transition is the whole point of the set.
+    let victim = *grown.iter().next().expect("someone is alive");
+    let date = host.date();
+    aeon_sim::politics::process_death(host.world_mut(), victim, date);
+    let after = agree(&mut host, "after a death");
+    assert!(!after.contains(&victim), "the dead left the living set");
+    assert!(
+        host.world_mut()
+            .resource::<PoliticsIndex>()
+            .characters
+            .contains_key(&victim),
+        "but the index still remembers them"
+    );
+
+    // A restore rebuilds the set rather than inheriting it.
+    let restored = SimHost::restore_with_content(host.snapshot(), content).unwrap();
+    let mut restored = restored;
+    let rebuilt = agree(&mut restored, "after a restore");
+    assert_eq!(after, rebuilt, "the restore rebuilt the same living set");
 }
