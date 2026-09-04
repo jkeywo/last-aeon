@@ -112,12 +112,39 @@ pub struct Plans {
     pub cooldowns: BTreeMap<(CharacterId, ContentKey), GameDate>,
 }
 
-/// Whether declarative plan conditions hold for an authority and target.
+/// Whether declarative plan conditions hold for an authority and target,
+/// judged for the authority's head.
 ///
 /// Integer facts over visible state, mirroring what the player could
 /// check on their own screens; evaluated identically on every replay.
+/// The reading for an ambition, which has no actor of its own: the one
+/// actor-bound predicate (`leader_commands_army`) is read against the
+/// house's head. Plans, which do have an actor, use [`requires_met_by`].
 pub fn requires_met(
     world: &World,
+    authority: OrgId,
+    target: AssignmentTarget,
+    req: &PlanRequires,
+) -> bool {
+    requires_met_by(
+        world,
+        crate::access::org_head(world, authority),
+        authority,
+        target,
+        req,
+    )
+}
+
+/// Whether declarative plan conditions hold for an actor acting with an
+/// authority's leave over a target.
+///
+/// `actor` is the character the plan belongs to — the head for a house's
+/// own campaigns, a household member for the free ones — and is what the
+/// actor-bound predicates read; every other predicate reads the authority
+/// and the target exactly as [`requires_met`] does.
+pub fn requires_met_by(
+    world: &World,
+    actor: Option<CharacterId>,
     authority: OrgId,
     target: AssignmentTarget,
     req: &PlanRequires,
@@ -314,6 +341,63 @@ pub fn requires_met(
             return false;
         }
     }
+    if let Some(wanted) = req.at_war {
+        // The unilateral reading: a war of the authority's own — one it
+        // leads a side of, having declared it or had it declared against
+        // it — whoever it is against. A house already fighting somebody
+        // else can be told to wait before opening a second front. Riding
+        // along in a liege's war as a branch member is not its own war.
+        let at_war = world
+            .get_resource::<crate::wars::Wars>()
+            .is_some_and(|wars| {
+                wars.active().any(|war| {
+                    crate::wars::WarSideId::ALL
+                        .into_iter()
+                        .any(|side| war.side(side).leader == authority)
+                })
+            });
+        if at_war != wanted {
+            return false;
+        }
+    }
+    if req.min_branch_manpower.is_some() || req.max_branch_manpower.is_some() {
+        // The house's own raised strength, in absolute terms: the same
+        // complete-branch reading the permille comparison uses.
+        let raised = branch_raised_manpower(world, authority);
+        if req
+            .min_branch_manpower
+            .is_some_and(|minimum| raised < minimum)
+            || req
+                .max_branch_manpower
+                .is_some_and(|maximum| raised > maximum)
+        {
+            return false;
+        }
+    }
+    if let Some(wanted) = req.war_has_enemy_border_province {
+        // The geographic sibling of `war_has_enemy_province`: an enemy
+        // holding this exact war's opposing side keeps that shares a
+        // surface route with a province the authority holds.
+        let AssignmentTarget::War(war) = target else {
+            return false;
+        };
+        let has = !enemy_border_provinces_in_war(world, authority, war).is_empty();
+        if has != wanted {
+            return false;
+        }
+    }
+    if let Some(wanted) = req.leader_commands_army {
+        // The actor's own standing command over an army of the authority's
+        // — the same reading the reinforce effect and the `raise-the-host`
+        // start gate use — not any army the house happens to field. No
+        // actor (an authority with no head) commands nothing.
+        let commands = actor.is_some_and(|actor| {
+            crate::assignments::commanded_army(world, authority, actor).is_some()
+        });
+        if commands != wanted {
+            return false;
+        }
+    }
     true
 }
 
@@ -361,6 +445,7 @@ fn manpower_ratio_permille(own: i64, target: i64) -> i64 {
 fn flatten_steps(
     world: &World,
     content: &aeon_data::ContentSet,
+    actor: CharacterId,
     authority: OrgId,
     target: AssignmentTarget,
     def: &PlanDef,
@@ -390,11 +475,11 @@ fn flatten_steps(
             }),
             PlanStepAction::SubPlan(sub_key) => {
                 let sub = content.plans.get(sub_key)?;
-                let chosen = sub
-                    .methods
-                    .iter()
-                    .position(|m| requires_met(world, authority, target, &m.requires))?;
-                let mut inner = flatten_steps(world, content, authority, target, sub, chosen)?;
+                let chosen = sub.methods.iter().position(|m| {
+                    requires_met_by(world, Some(actor), authority, target, &m.requires)
+                })?;
+                let mut inner =
+                    flatten_steps(world, content, actor, authority, target, sub, chosen)?;
                 steps.append(&mut inner);
             }
         }
@@ -471,7 +556,7 @@ pub fn try_adopt(
         if def
             .abandon_when
             .as_ref()
-            .is_some_and(|req| requires_met(world, authority, target, req))
+            .is_some_and(|req| requires_met_by(world, Some(actor), authority, target, req))
         {
             continue;
         }
@@ -487,7 +572,7 @@ pub fn try_adopt(
             .methods
             .iter()
             .enumerate()
-            .filter(|(_, m)| requires_met(world, authority, target, &m.requires))
+            .filter(|(_, m)| requires_met_by(world, Some(actor), authority, target, &m.requires))
             .map(|(index, _)| index)
             .collect();
         let method_index = match eligible.as_slice() {
@@ -501,7 +586,7 @@ pub fn try_adopt(
                 several[rng.roll(several.len() as u64) as usize]
             }
         };
-        if flatten_steps(world, &content, authority, target, def, method_index).is_some() {
+        if flatten_steps(world, &content, actor, authority, target, def, method_index).is_some() {
             adopted = Some((key.clone(), method_index, target));
             break;
         }
@@ -511,7 +596,7 @@ pub fn try_adopt(
     };
 
     let def = &content.plans[&key];
-    let steps = flatten_steps(world, &content, authority, target, def, method_index)
+    let steps = flatten_steps(world, &content, actor, authority, target, def, method_index)
         .expect("checked above");
     let plan = ActivePlan {
         def: key.clone(),
@@ -651,7 +736,7 @@ pub fn advance_plans(world: &mut World) {
         if def
             .abandon_when
             .as_ref()
-            .is_some_and(|req| requires_met(world, authority, plan.target, req))
+            .is_some_and(|req| requires_met_by(world, Some(actor), authority, plan.target, req))
         {
             abandon_for_lost_grounds(world, actor, date);
             continue;
@@ -666,7 +751,9 @@ pub fn advance_plans(world: &mut World) {
             .methods
             .iter()
             .find(|method| method.id == plan.method)
-            .is_some_and(|method| requires_met(world, authority, plan.target, &method.requires));
+            .is_some_and(|method| {
+                requires_met_by(world, Some(actor), authority, plan.target, &method.requires)
+            });
         if !method_still_holds {
             abandon_for_lost_grounds(world, actor, date);
             continue;
@@ -685,7 +772,7 @@ pub fn advance_plans(world: &mut World) {
             if instance
                 .skip_if
                 .as_ref()
-                .is_some_and(|req| requires_met(world, authority, plan.target, req))
+                .is_some_and(|req| requires_met_by(world, Some(actor), authority, plan.target, req))
             {
                 step += 1;
                 world
@@ -733,6 +820,17 @@ pub fn advance_plans(world: &mut World) {
                             }
                             _ => None,
                         },
+                        PlanTargetSelector::LowestEnemyBorderProvinceInWar => {
+                            match plan.target {
+                                AssignmentTarget::War(war) => lowest_enemy_border_province_in_war(
+                                    world, actor, authority, war,
+                                )
+                                .map(|(army, province)| {
+                                    (AssignmentTarget::ArmyToProvince(army, province), Some(war))
+                                }),
+                                _ => None,
+                            }
+                        }
                     };
                     let Some((target, war)) = resolved else {
                         break;
@@ -923,11 +1021,62 @@ fn enemy_provinces_in_war(world: &World, authority: OrgId, war: WarId) -> Vec<Pr
         .collect()
 }
 
+/// The provinces the opposing frozen side of an exact war holds that
+/// share a surface route with a province the authority holds, in stable
+/// ID order: the enemy ground a campaign can reach without leaving its
+/// own border. Read from the same route graph [`border_provinces_of`]
+/// walks, so "the border" means what the map says.
+pub fn enemy_border_provinces_in_war(
+    world: &World,
+    authority: OrgId,
+    war: WarId,
+) -> Vec<ProvinceId> {
+    let Some(record) = crate::wars::war(world, war) else {
+        return Vec::new();
+    };
+    if !record.active() {
+        return Vec::new();
+    }
+    let Some(own_side) = record.side_of(authority) else {
+        return Vec::new();
+    };
+    let bordering: std::collections::BTreeSet<ProvinceId> = record
+        .side(own_side.opposite())
+        .members
+        .iter()
+        .flat_map(|enemy| border_provinces_of(world, authority, *enemy))
+        .collect();
+    bordering.into_iter().collect()
+}
+
+/// The most disordered enemy province across the authority's own border
+/// in an exact war, marched on by the actor's strongest own army.
+/// Lowest stable province ID breaks an order tie.
+fn lowest_enemy_border_province_in_war(
+    world: &World,
+    actor: CharacterId,
+    authority: OrgId,
+    war: WarId,
+) -> Option<(crate::ids::ArmyId, ProvinceId)> {
+    let army = resolve_army(world, actor, authority, PlanArmySelector::Strongest)?;
+    enemy_border_provinces_in_war(world, authority, war)
+        .into_iter()
+        .min_by_key(|province| {
+            (
+                crate::order::province_order(world, *province).order,
+                *province,
+            )
+        })
+        .map(|province| (army, province))
+}
+
 /// The one army an orders step is for, if it exists right now.
 ///
 /// `Own` is the army the acting character generals, the lowest stable ID
 /// when they general several — deterministic, and the honest reading of
-/// "point my own force at the doctrine".
+/// "point my own force at the doctrine". `Strongest` is the largest of
+/// those, lowest stable ID on a tie — the host raised for a war rather
+/// than the household levy that happened to be indexed first.
 fn resolve_army(
     world: &World,
     actor: CharacterId,
@@ -935,13 +1084,17 @@ fn resolve_army(
     selector: PlanArmySelector,
 ) -> Option<crate::ids::ArmyId> {
     let forces = world.get_resource::<crate::forces::ForcesIndex>()?;
+    let mut own = forces.armies.iter().filter_map(|(id, entity)| {
+        world
+            .get::<crate::forces::ArmyRecord>(*entity)
+            .filter(|army| army.owner == authority && army.general == Some(actor))
+            .map(|army| (*id, army.manpower))
+    });
     match selector {
-        PlanArmySelector::Own => forces.armies.iter().find_map(|(id, entity)| {
-            world
-                .get::<crate::forces::ArmyRecord>(*entity)
-                .filter(|army| army.owner == authority && army.general == Some(actor))
-                .map(|_| *id)
-        }),
+        PlanArmySelector::Own => own.next().map(|(id, _)| id),
+        PlanArmySelector::Strongest => own
+            .min_by_key(|(id, manpower)| (-*manpower, *id))
+            .map(|(id, _)| id),
     }
 }
 

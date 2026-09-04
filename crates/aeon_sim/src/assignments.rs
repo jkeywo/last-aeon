@@ -516,6 +516,10 @@ pub enum AssignmentRejection {
     /// The organisation cannot pay the assignment's costs.
     #[error("the organisation cannot afford this assignment")]
     CannotAfford,
+    /// The assignment grows the leader's own force, and the leader
+    /// commands no army of this organisation's for it to land on.
+    #[error("that character commands no army to act with")]
+    NoCommand,
 }
 
 impl AssignmentRejection {
@@ -544,6 +548,7 @@ impl AssignmentRejection {
             AssignmentRejection::BadPopupAnswer => "sim.refusal.bad-popup-answer",
             AssignmentRejection::BadAssignment => "sim.refusal.bad-assignment",
             AssignmentRejection::CannotAfford => "sim.refusal.cannot-afford",
+            AssignmentRejection::NoCommand => "sim.refusal.no-command",
         }
     }
 }
@@ -765,6 +770,25 @@ pub fn leader_availability(
     }
 
     LeaderAvailability::Available
+}
+
+/// The standing command a character holds for an organisation: the lowest
+/// stable ID among the armies of `owner`'s that they general, exactly as
+/// [`leader_availability`] reads their post. `None` when they command no
+/// army of that organisation's — a successor whose house's levy still
+/// answers to the dead, or a household member who never held one.
+///
+/// The one reading shared by the `leader_commands_army` requirement, the
+/// plan predicate of the same name, and the reinforce-army effect, so what
+/// is gated, what is skipped, and what is grown are the same army.
+pub fn commanded_army(world: &World, owner: OrgId, leader: CharacterId) -> Option<ArmyId> {
+    let forces = world.get_resource::<crate::forces::ForcesIndex>()?;
+    forces.armies.iter().find_map(|(id, entity)| {
+        world
+            .get::<crate::forces::ArmyRecord>(*entity)
+            .filter(|army| army.owner == owner && army.general == Some(leader))
+            .map(|_| *id)
+    })
 }
 
 fn leader_eligible(
@@ -1355,6 +1379,14 @@ pub fn validate_start_in_war(
             return Err(AssignmentRejection::IneligibleLeader);
         }
     }
+    // An assignment that grows the leader's own force needs a force to
+    // grow. Refused at the start, so nothing is accepted, paid for, or
+    // logged for a reinforcement that could land nowhere — a successor
+    // whose house's army still answers to the dead, or a household member
+    // who never held a command.
+    if def.requires.leader_commands_army && commanded_army(world, org, leader).is_none() {
+        return Err(AssignmentRejection::NoCommand);
+    }
     let affordable = crate::access::org_entity(world, org)
         .and_then(|e| world.get::<crate::economy::OrgResources>(e))
         .is_some_and(|r| {
@@ -1725,6 +1757,44 @@ fn apply_effects_from(
                 };
                 if let Some(location) = location {
                     crate::forces::form_army(world, owner, general, manpower, supplies, location);
+                }
+            }
+            ScriptEffect::ReinforceArmy { manpower, supplies } => {
+                let Some(owner) = owner else {
+                    continue;
+                };
+                let Some(general) = roles.leader else {
+                    continue;
+                };
+                // The standing command the leader holds: the lowest stable
+                // army ID they general for this owner, exactly as leader
+                // availability reads their post. No command, no
+                // reinforcement — and the start gate (`leader_commands_army`)
+                // is what keeps such an assignment from being accepted at
+                // all, so this arm is the effect's own guard, not the rule.
+                let Some(army_entity) = commanded_army(world, owner, general)
+                    .and_then(|army| crate::access::army_entity(world, army))
+                else {
+                    continue;
+                };
+                // Validate against and deduct from the owner's pool; clamp
+                // to what actually exists, like forming an army does.
+                let (manpower, supplies) = {
+                    let org_entity = crate::access::org_entity(world, owner).expect("indexed");
+                    let Some(mut resources) =
+                        world.get_mut::<crate::economy::OrgResources>(org_entity)
+                    else {
+                        continue;
+                    };
+                    let manpower = (*manpower).clamp(0, resources.manpower);
+                    let supplies = (*supplies).clamp(0, resources.supplies);
+                    resources.manpower -= manpower;
+                    resources.supplies -= supplies;
+                    (manpower, supplies)
+                };
+                if let Some(mut army) = world.get_mut::<crate::forces::ArmyRecord>(army_entity) {
+                    army.manpower += manpower;
+                    army.supplies += supplies;
                 }
             }
             ScriptEffect::Opinion {

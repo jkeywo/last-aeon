@@ -2697,3 +2697,461 @@ fn the_shadow_arc_carries_covert_provenance_and_order_resistance() {
         assert!(keys.contains(expected), "missing derived key {expected}");
     }
 }
+
+/// The border-war arc is authored as an open, limited formal war: a plain
+/// windowed ambition, four ordinary plans that hand the war from one to
+/// the next by target kind, a host-raising muster closed to the reactive
+/// scorer, and a pausing Situation bound to the exposed holding — plus the
+/// two predicates and two selectors the engine grew for it.
+#[test]
+fn the_border_war_arc_is_authored_as_an_open_limited_formal_war() {
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/content");
+    let sources = aeon_data::fs::read_content_dir(&root).expect("assets/content readable");
+    let (strings, report) = aeon_data::fs::read_string_table(&root).expect("strings readable");
+    assert!(
+        !report.has_errors(),
+        "string findings: {:?}",
+        report.findings
+    );
+    let (set, report) = load_content(&sources, &strings.expect("valid string table"));
+    assert!(
+        !report.has_errors(),
+        "content findings: {:?}",
+        report.findings
+    );
+    let set = set.expect("repository content loads");
+    let key = |text: &str| aeon_data::ContentKey::new(text).unwrap();
+
+    // The ambition: open, windowed to the invasion stretch, gated to a
+    // capable vassal, resolved against the same hostile border neighbour
+    // the shadows resolve, set aside by the same reconciliation line.
+    let ambition = &set.goals[&key("take-the-border")];
+    assert!(!ambition.covert, "an invasion is open");
+    assert_eq!(ambition.favours, vec![aeon_data::model::AiIntent::Invade]);
+    assert_eq!(ambition.trigger.min_campaign_day, Some(260));
+    assert_eq!(ambition.trigger.max_campaign_day, Some(360));
+    assert_eq!(ambition.trigger.is_vassal, Some(true));
+    assert_eq!(ambition.trigger.has_army, Some(true));
+    assert_eq!(ambition.trigger.min_wealth, Some(60));
+    assert_eq!(ambition.trigger.min_manpower, Some(400));
+    assert_eq!(
+        ambition.target_selector,
+        aeon_data::model::GoalTargetSelector::HostileBorderNeighbour {
+            max_head_opinion: -10,
+            with_grievance: true,
+        }
+    );
+    let reconciled = aeon_data::model::PlanRequires {
+        min_target_head_opinion: Some(20),
+        target_owes_no_grievance: true,
+        at_war_with_target: Some(false),
+        ..Default::default()
+    };
+    assert_eq!(ambition.set_aside_when, Some(reconciled.clone()));
+    assert!(ambition.directives.is_empty());
+    // The horizon covers the whole chain the ambition drives — the four
+    // campaigns' work with their ordinary retries (277 days) and roughly
+    // two months' waiting on the agency pulse for each adoption (240) —
+    // because the invade pressure, and so the siege and the peace after
+    // it, exist only while the ambition stands.
+    assert_eq!(ambition.max_days, 517);
+
+    // The host: the levy the head commands reinforced to a war's strength
+    // — 450 to 800, or 900 on a triumph — through the reinforce-army
+    // effect, closed to the scorer and answering the invade pressure, and
+    // refused at the start for a leader who commands no army to grow.
+    let raise = &set.assignments[&key("raise-the-host")];
+    assert_eq!(raise.ai_intent, aeon_data::model::AiIntent::Invade);
+    assert!(!raise.ai_available);
+    assert!(!raise.covert);
+    assert!(
+        raise.requires.leader_commands_army,
+        "a reinforcement needs a command to land on"
+    );
+    assert_eq!(raise.wealth_cost, 50);
+    assert_eq!(raise.influence_cost, 10);
+    assert_eq!(raise.skill, aeon_data::model::GoverningSkill::Command);
+    let host = ScriptHost::new();
+    let effects = |kind: OutcomeKind| {
+        let fn_ref = raise.results[&kind]
+            .effect_fn
+            .clone()
+            .expect("the muster's good results form the host");
+        let mut context = rhai::Map::new();
+        context.insert("source".into(), "raise-the-host".into());
+        host.call_effect_fn(&set, &fn_ref, context)
+            .expect("effect function runs")
+    };
+    assert_eq!(
+        effects(OutcomeKind::Success),
+        vec![ScriptEffect::ReinforceArmy {
+            manpower: 350,
+            supplies: 60,
+        }]
+    );
+    assert_eq!(
+        effects(OutcomeKind::CriticalSuccess),
+        vec![ScriptEffect::ReinforceArmy {
+            manpower: 450,
+            supplies: 80,
+        }]
+    );
+    assert!(
+        raise.results[&OutcomeKind::Failure].effect_fn.is_none(),
+        "a failed call to arms forms nothing"
+    );
+
+    // Preparation and declaration: organisation-aimed, both hostility
+    // grounds as methods, the host's authored strength read absolutely
+    // (raise while below it, declare at it), the accepted three-quarters
+    // floor against the target, the unilateral at_war gate on the
+    // declaration alone, and the reconciliation gate on both.
+    let prepare = &set.plans[&key("prepare-the-host")];
+    let declare = &set.plans[&key("declare-the-border-war")];
+    for plan in [prepare, declare] {
+        assert!(!plan.covert);
+        assert_eq!(plan.goal, aeon_data::model::AiIntent::Invade);
+        assert_eq!(
+            plan.target,
+            aeon_data::model::AssignmentTargetKind::Organisation
+        );
+        assert_eq!(plan.abandon_when, Some(reconciled.clone()));
+        assert_eq!(plan.methods.len(), 2);
+        assert_eq!(plan.methods[0].requires.max_target_head_opinion, Some(-10));
+        assert!(plan.methods[1].requires.target_owes_grievance);
+    }
+    for method in &prepare.methods {
+        assert_eq!(method.requires.max_branch_manpower, Some(799));
+        assert_eq!(method.requires.min_manpower, Some(400));
+        assert_eq!(
+            method.requires.at_war, None,
+            "a house at war elsewhere may still arm"
+        );
+        let steps: Vec<(&str, Option<aeon_data::model::PlanRequires>)> = method
+            .steps
+            .iter()
+            .map(|step| (step.id.as_str(), step.skip_if.clone()))
+            .collect();
+        assert_eq!(
+            steps,
+            [
+                (
+                    "levy",
+                    Some(aeon_data::model::PlanRequires {
+                        leader_commands_army: Some(true),
+                        ..Default::default()
+                    })
+                ),
+                ("raise", None)
+            ],
+            "a head who commands no levy musters one first, then reinforces it — \
+             the skip reads the head's own command, not any army the house fields"
+        );
+    }
+    for method in &declare.methods {
+        assert_eq!(method.requires.min_branch_manpower, Some(800));
+        assert_eq!(
+            method.requires.min_target_branch_manpower_permille,
+            Some(750)
+        );
+        assert_eq!(method.requires.at_war, Some(false), "no second front");
+        assert_eq!(method.requires.has_army, Some(true));
+    }
+
+    // Pressing and settling: exact-war-aimed. One siege by the strongest
+    // own army on the border holding, then a long cooldown; peace sued for
+    // as often as it takes.
+    let press = &set.plans[&key("press-the-border")];
+    assert_eq!(press.target, aeon_data::model::AssignmentTargetKind::War);
+    assert_eq!(press.methods.len(), 1);
+    assert_eq!(press.methods[0].requires.has_army, Some(true));
+    assert_eq!(
+        press.methods[0].requires.war_has_enemy_border_province,
+        Some(true)
+    );
+    assert_eq!(press.cooldown_days, 360);
+    let steps: Vec<_> = press.methods[0]
+        .steps
+        .iter()
+        .map(|step| step.action.clone())
+        .collect();
+    assert_eq!(
+        steps,
+        vec![
+            aeon_data::model::PlanStepAction::Orders {
+                army: aeon_data::model::PlanArmySelector::Strongest,
+                orders: vec![key("respond"), key("patrol")],
+            },
+            aeon_data::model::PlanStepAction::Assignment {
+                key: key("besiege"),
+                target: aeon_data::model::PlanTargetSelector::LowestEnemyBorderProvinceInWar,
+            },
+        ]
+    );
+    let settle = &set.plans[&key("settle-the-border")];
+    assert_eq!(settle.target, aeon_data::model::AssignmentTargetKind::War);
+    assert_eq!(settle.cooldown_days, 0);
+    assert_eq!(
+        settle.methods[0].steps[0].action,
+        aeon_data::model::PlanStepAction::Assignment {
+            key: key("negotiate"),
+            target: aeon_data::model::PlanTargetSelector::PlanTarget,
+        }
+    );
+
+    // The card: bound to the protagonist, the bordering enemy, the exact
+    // war, and the exposed holding; the house alone in the audience; a
+    // pausing announcement; guidance; a warning stage; and outcomes that
+    // read only live holdings and the war record.
+    let card = &set.situations[&key("border-war")];
+    let bindings: Vec<(&str, aeon_data::model::SituationSubjectKind)> = card
+        .bindings
+        .iter()
+        .map(|(name, kind)| (name.as_str(), *kind))
+        .collect();
+    assert_eq!(
+        bindings,
+        [
+            (
+                "house",
+                aeon_data::model::SituationSubjectKind::Organisation
+            ),
+            (
+                "neighbour",
+                aeon_data::model::SituationSubjectKind::Organisation
+            ),
+            (
+                "objective",
+                aeon_data::model::SituationSubjectKind::Province
+            ),
+            ("war", aeon_data::model::SituationSubjectKind::War),
+        ]
+    );
+    assert_eq!(
+        card.visibility,
+        aeon_data::model::SituationVisibilityDef::Bound(vec!["house".to_owned()])
+    );
+    assert_eq!(card.owner_binding.as_deref(), Some("house"));
+    assert!(
+        card.announcement.is_some(),
+        "a war at the border pauses the reign"
+    );
+    assert!(card.guidance_objective.is_some());
+    assert!(card.guidance_how.is_some());
+    assert!(card.guidance_why.is_some());
+    let stages: Vec<(&str, bool)> = card
+        .stages
+        .iter()
+        .map(|stage| (stage.key.as_str(), stage.warning.is_some()))
+        .collect();
+    assert_eq!(stages, [("open", false), ("assailed", true)]);
+    let actions: Vec<(&str, &str)> = card
+        .actions
+        .iter()
+        .map(|action| (action.key.as_str(), action.assignment.as_str()))
+        .collect();
+    assert_eq!(actions, [("march", "march"), ("negotiate", "negotiate")]);
+    let outcomes: Vec<&str> = card
+        .outcomes
+        .iter()
+        .map(|outcome| outcome.key.as_str())
+        .collect();
+    assert_eq!(
+        outcomes,
+        // Lost is the neighbour's conquest and says so; ungoverned is the
+        // remainder — a holding thrown off or passed to a third hand,
+        // weighed after lost so its copy claims no conquest.
+        ["passed-on", "lost", "ungoverned", "peace", "held"]
+    );
+    assert!(
+        card.outcomes
+            .iter()
+            .all(|outcome| outcome.effects_fn.is_none()),
+        "the card narrates; the war does the deeds"
+    );
+    assert!(
+        set.scenario
+            .as_ref()
+            .expect("scenario")
+            .situations
+            .contains(&key("border-war"))
+    );
+
+    // The derived key mirror covers the new rows.
+    let keys = aeon_data::text_keys(&set);
+    for expected in [
+        "goal.take-the-border.title",
+        "plan.prepare-the-host.summary",
+        "plan.declare-the-border-war.title",
+        "plan.press-the-border.title",
+        "plan.settle-the-border.summary",
+        "assignment.raise-the-host.title",
+        "assignment.raise-the-host.critical-success.log-text",
+        "assignment.raise-the-host.failure.log-text",
+        "situation.border-war.announcement",
+        "situation.border-war.stage.assailed.warning",
+        "situation.border-war.action.march.label",
+        "situation.border-war.resolution.lost.text",
+        "situation.border-war.resolution.ungoverned.text",
+        "situation.border-war.resolution.peace.text",
+        "situation.border-war.guidance.why",
+    ] {
+        assert!(keys.contains(expected), "missing derived key {expected}");
+    }
+}
+
+/// The vocabulary the arc grew — the unilateral `at_war`, the geographic
+/// `war_has_enemy_border_province`, the `strongest` army selector, and the
+/// `lowest-enemy-border-province-in-war` step selector — parses where it
+/// belongs and is refused where it could never read anything.
+#[test]
+fn border_war_vocabulary_is_validated_against_target_kinds() {
+    const WAR_PLAN: &str = r#"
+define_assignment(#{
+    id: "storm", category: "consequential", duration_days: 20,
+    skill: "command", difficulty: 5, target: "own-army-and-province",
+    military_op: "besiege", ai_available: false,
+    results: #{ success: #{ weight: 800 }, failure: #{ weight: 200 } },
+});
+define_assignment(#{
+    id: "stand", category: "routine", duration_days: 10,
+    skill: "command", difficulty: 5, target: "own-army", ai_available: false,
+    results: #{ success: #{ weight: 800 }, failure: #{ weight: 200 } },
+});
+define_assignment(#{
+    id: "call-up", category: "consequential", duration_days: 20,
+    skill: "command", difficulty: 5, ai_available: false,
+    results: #{ success: #{ weight: 800 }, failure: #{ weight: 200 } },
+});
+define_plan(#{
+    id: "press-across", goal: "invade", target: "war", max_days: 100,
+    methods: [ #{ id: "one",
+        requires: #{ has_army: true, war_has_enemy_border_province: true },
+        steps: [
+            #{ id: "doctrine", orders: ["stand"], army: "strongest" },
+            #{ id: "siege", start: "storm", target: "lowest-enemy-border-province-in-war" },
+        ] } ],
+});
+define_plan(#{
+    id: "arm-first", goal: "invade", target: "organisation", max_days: 100,
+    methods: [ #{ id: "only",
+        requires: #{ at_war: false, min_branch_manpower: 800, max_branch_manpower: 2000 },
+        steps: [ #{ start: "call-up" } ] } ],
+});
+"#;
+    let (set, report) = load_content(
+        &[source("border.rhai", WAR_PLAN)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(
+        !report.has_errors(),
+        "unexpected findings: {:?}",
+        report.findings
+    );
+    let set = set.expect("the border fixture loads");
+    let press = &set.plans[&aeon_data::ContentKey::new("press-across").unwrap()];
+    assert_eq!(
+        press.methods[0].requires.war_has_enemy_border_province,
+        Some(true)
+    );
+    assert_eq!(
+        press.methods[0].steps[0].action,
+        aeon_data::model::PlanStepAction::Orders {
+            army: aeon_data::model::PlanArmySelector::Strongest,
+            orders: vec![aeon_data::ContentKey::new("stand").unwrap()],
+        }
+    );
+    let arm = &set.plans[&aeon_data::ContentKey::new("arm-first").unwrap()];
+    assert_eq!(arm.methods[0].requires.at_war, Some(false));
+    assert_eq!(arm.methods[0].requires.min_branch_manpower, Some(800));
+    assert_eq!(arm.methods[0].requires.max_branch_manpower, Some(2000));
+    assert_eq!(arm.goal, aeon_data::model::AiIntent::Invade);
+
+    let failing = [
+        (
+            // The geographic war predicate reads an exact war's sides.
+            r#"
+define_assignment(#{
+    id: "call-up", category: "consequential", duration_days: 20,
+    skill: "command", difficulty: 5, ai_available: false,
+    results: #{ success: #{ weight: 800 }, failure: #{ weight: 200 } },
+});
+define_plan(#{
+    id: "aimless", goal: "invade", target: "organisation", max_days: 100,
+    methods: [ #{ id: "only",
+        requires: #{ war_has_enemy_border_province: true },
+        steps: [ #{ start: "call-up" } ] } ],
+});
+"#,
+            "'war_has_enemy_border_province' needs an exact war target",
+        ),
+        (
+            // The border selector needs an exact war to read sides from.
+            r#"
+define_assignment(#{
+    id: "storm", category: "consequential", duration_days: 20,
+    skill: "command", difficulty: 5, target: "own-army-and-province",
+    military_op: "besiege", ai_available: false,
+    results: #{ success: #{ weight: 800 }, failure: #{ weight: 200 } },
+});
+define_plan(#{
+    id: "aimless", goal: "invade", target: "organisation", max_days: 100,
+    methods: [ #{ id: "only",
+        steps: [ #{ start: "storm", target: "lowest-enemy-border-province-in-war" } ] } ],
+});
+"#,
+            "selects an enemy province in a war, so the plan must target a war",
+        ),
+        (
+            // The selector produces an army-and-province target; an
+            // assignment wanting anything else cannot take it.
+            r#"
+define_assignment(#{
+    id: "parley", category: "consequential", duration_days: 20,
+    skill: "diplomacy", difficulty: 5, target: "war", ai_available: false,
+    results: #{ success: #{ weight: 800 }, failure: #{ weight: 200 } },
+});
+define_plan(#{
+    id: "mismatched", goal: "invade", target: "war", max_days: 100,
+    methods: [ #{ id: "only",
+        steps: [ #{ start: "parley", target: "lowest-enemy-border-province-in-war" } ] } ],
+});
+"#,
+            "wants a War target, but the step provides OwnArmyAndProvince",
+        ),
+        (
+            // Only the two authored army selectors exist.
+            r#"
+define_assignment(#{
+    id: "stand", category: "routine", duration_days: 10,
+    skill: "command", difficulty: 5, target: "own-army", ai_available: false,
+    results: #{ success: #{ weight: 800 }, failure: #{ weight: 200 } },
+});
+define_plan(#{
+    id: "aimless", goal: "invade", max_days: 100,
+    methods: [ #{ id: "only",
+        steps: [ #{ orders: ["stand"], army: "biggest" } ] } ],
+});
+"#,
+            "unknown step army 'biggest' (expected own, strongest)",
+        ),
+    ];
+    for (text, expected) in failing {
+        let (set, report) = load_content(
+            &[source("border.rhai", text)],
+            &aeon_data::StringTable::blank(),
+        );
+        assert!(
+            set.is_none(),
+            "{expected}: the malformed fixture must not load"
+        );
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|finding| finding.message.contains(expected)),
+            "expected a finding containing {expected:?}, got {:?}",
+            report.findings
+        );
+    }
+}

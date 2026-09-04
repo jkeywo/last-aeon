@@ -321,7 +321,7 @@ fn the_enhanced_campaign_replays_from_a_mid_campaign_snapshot() {
     );
 }
 
-/// Snapshot 22 acceptance for the connected Situation and formal-war slice.
+/// Snapshot 23 acceptance for the connected Situation and formal-war slice.
 ///
 /// Focused tests own the individual rules. This test keeps one deliberately
 /// dense campaign state alive across the same serialise, restore, and continue
@@ -329,7 +329,7 @@ fn the_enhanced_campaign_replays_from_a_mid_campaign_snapshot() {
 /// simultaneous wars, internal-war adoption, a concluded occurrence and its
 /// resolution, exact provenance, and a still-running war-bound operation.
 #[test]
-fn snapshot_22_replays_connected_situations_and_formal_wars() {
+fn snapshot_23_replays_connected_situations_and_formal_wars() {
     use std::collections::BTreeSet;
 
     use aeon_sim::assignments::{ActiveAssignment, AssignmentsIndex, MessageLog};
@@ -364,6 +364,7 @@ fn snapshot_22_replays_connected_situations_and_formal_wars() {
         content.situations.keys().cloned().collect::<BTreeSet<_>>(),
         [
             key("aleyn-levies"),
+            key("border-war"),
             key("casimir-visit"),
             key("cold-border"),
             key("consular-vacancy"),
@@ -377,7 +378,7 @@ fn snapshot_22_replays_connected_situations_and_formal_wars() {
         ]
         .into_iter()
         .collect(),
-        "acceptance runs the complete eleven-definition authored deck"
+        "acceptance runs the complete twelve-definition authored deck"
     );
 
     let mut original = scenario_host(Arc::clone(&content), 18_1818);
@@ -554,7 +555,7 @@ fn snapshot_22_replays_connected_situations_and_formal_wars() {
     assert!(dismissal.day > original.date());
 
     let snapshot = original.snapshot();
-    assert_eq!(snapshot.format_version, 22);
+    assert_eq!(snapshot.format_version, 23);
     assert_eq!(
         snapshot
             .state
@@ -567,6 +568,10 @@ fn snapshot_22_replays_connected_situations_and_formal_wars() {
             // The campaign never fields 1,000 manpower, so Aleyn's demand
             // is live at the midpoint alongside Kessarin's.
             key("aleyn-levies"),
+            // The simultaneous war is with Draksha, whose Karvessa borders
+            // Tolmaz: a war with a bordering enemy exposes a holding, so
+            // the open border-war card is live for it at the midpoint.
+            key("border-war"),
             // Nothing in the AI-only run warms the neighbours whose heads
             // regard Harrow's coldly, so the open relationship cards stay
             // live at the midpoint.
@@ -636,10 +641,10 @@ fn snapshot_22_replays_connected_situations_and_formal_wars() {
     );
 
     let midpoint_hash = original.state_hash();
-    let bytes = persistence::snapshot_to_ron(&snapshot).expect("Snapshot 22 serialises");
-    let decoded = persistence::snapshot_from_ron(&bytes).expect("Snapshot 22 deserialises");
+    let bytes = persistence::snapshot_to_ron(&snapshot).expect("Snapshot 23 serialises");
+    let decoded = persistence::snapshot_from_ron(&bytes).expect("Snapshot 23 deserialises");
     let mut replayed =
-        SimHost::restore_with_content(decoded, content).expect("Snapshot 22 restores");
+        SimHost::restore_with_content(decoded, content).expect("Snapshot 23 restores");
     assert_eq!(
         replayed.state_hash(),
         midpoint_hash,

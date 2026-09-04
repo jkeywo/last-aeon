@@ -114,6 +114,7 @@ Current scored signals include:
 | Resources | Wealth below the current operating floor |
 | Claim | The next legal stage of the authored Paramountcy ambition: declaration, challenge, war prosecution, or press |
 | Subvert | [ai] The active covert ambition's resolved hostile border neighbour, head-only, carried out by an authored covert plan |
+| Invade | [ai] The active open border ambition's resolved hostile neighbour, head-only: aimed at the organisation while the host is raised and the war declared, and at the exact bilateral war once one stands, carried out by four authored plans that share the intent |
 | Routine | Authored untargeted upkeep when nothing more urgent wins |
 
 Scores use integer arithmetic. Candidates are sorted by score and then stable
@@ -156,7 +157,11 @@ A goal belongs to an organisation and may survive succession. It is an
 ambition, not another executor. On its monthly cadence an eligible autonomous
 head may adopt an authored goal; the goal then biases ordinary pressures so
 existing plans and assignments pursue it. Current content provides ambitions
-to become Consul, take the planet, and conquer a neighbour. Their triggers,
+to become Consul, take the planet, and conquer a neighbour ([ai] the last
+reachable only by an independent house with vassals, and aimed at the
+weakest rival great house — no vassal can adopt it or aim it at a sibling;
+the First Reign's border war is its own scenario-authored ambition,
+`take-the-border`, with its own trigger, window, and plans). Their triggers,
 favoured pressures, targets, priorities, horizons, cooldowns, and directives
 are data in `assets/content/core/goals.rhai`.
 
@@ -542,7 +547,15 @@ The current design contract is met when:
     re-judges the relationship from the successor's own regard with no
     protected or inherited hostility, and the player can inspect the
     non-secret reasoning on an open card that carries no covert
-    provenance.
+    provenance;
+16. [ai] the limited border war is mounted by a hostile, capable house
+    through the ordinary invade pressure, goal, plans, muster, declaration,
+    siege, and negotiation — the scorer names no content key, the pressure
+    follows the war's phase, and every step passes the shared gate — with
+    the war's frozen sides, title transfer, history, and recovery all the
+    engine's own, no liege scripted to join either side, and the defending
+    house told the honest military truth (only the largest stack inside a
+    holding fights; the ground's Order scales it) on an open card.
 
 ## Explicit exclusions and open questions
 

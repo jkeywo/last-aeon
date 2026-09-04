@@ -166,7 +166,17 @@ carries nothing over but the house: Perrin's reconciliation dies with
 him, Valka's own scheming regard for Edrun is what the ambition's grounds
 are re-judged against on the next pulse, the house's ambition cooldowns
 and organisation-level obligations pass through untouched, and her late
-husband's plan cooldown was his alone.
+husband's plan cooldown was his alone. [ai] Vantar's levy is not only
+for holding what the quiet work wins: given a cold border, a pool that
+can bear a host, and coin for the muster, the house may — inside a later
+authored window — take up the open `take-the-border` ambition to swell
+its levy to roughly eight hundred and press one holding across the border
+by ordinary formal war. The window gates only the ambition's adoption;
+the host, the declaration, and the siege follow through ordinary plans
+on their own later days, and each may still fail or be derailed. The
+ambition stands beside the covert one, resolved through the same
+hostile-neighbour selector and set aside by the same reconciliation line,
+so the same diplomacy that quiets the shadows quiets the border too.
 
 The simulation answers two different hierarchy questions:
 

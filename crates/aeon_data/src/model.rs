@@ -977,6 +977,9 @@ pub enum AiIntent {
     Claim,
     /// Undermine a rival by indirect, deniable means.
     Subvert,
+    /// Take ground from a rival by open, limited formal war: raise the
+    /// host, declare, besiege one holding, and settle.
+    Invade,
 }
 
 /// The kind of situation an event arises from.
@@ -1129,6 +1132,13 @@ pub struct AssignmentRequires {
     /// ground nobody is working against, or against a hand already
     /// proved — either way, where it could prove nothing.
     pub target_under_covert_work: bool,
+    /// The leader must hold a standing command over an army the owner
+    /// fields — their own post, not any force the house happens to have.
+    ///
+    /// About the leader rather than the target: it is what stops an
+    /// assignment that grows the leader's own force being accepted, paid
+    /// for, and logged when they command nothing for it to land on.
+    pub leader_commands_army: bool,
     /// The target province's order must be at or below this.
     pub max_order: Option<i32>,
     /// The target province's order must be at or above this.
@@ -1416,6 +1426,11 @@ pub enum PlanArmySelector {
     /// they general several. No such army leaves the step waiting.
     #[default]
     Own,
+    /// The largest army the acting character generals — most manpower,
+    /// lowest stable ID on a tie. The host raised for a war rather than
+    /// the household levy that happened to be indexed first. No such army
+    /// leaves the step waiting.
+    Strongest,
 }
 
 /// Where a plan step's assignment target comes from.
@@ -1452,6 +1467,14 @@ pub enum PlanTargetSelector {
     /// plan to have an organisation target, and no shared border leaves
     /// the step waiting.
     TargetBorderProvince,
+    /// The most disordered province held by the opposing side of the
+    /// plan's exact formal-war target that shares a surface route with a
+    /// province the authority holds — lowest order, lowest stable ID on a
+    /// tie. Produces an army-and-province target using the acting
+    /// character's strongest own army (the host raised for the war, not
+    /// the household levy); no such army or no enemy border province
+    /// leaves the step waiting.
+    LowestEnemyBorderProvinceInWar,
 }
 
 /// Declarative conditions gating a plan method, skipping a step,
@@ -1531,6 +1554,34 @@ pub struct PlanRequires {
     /// reading, so a war already declared is a fact reconciliation cannot
     /// wish away.
     pub at_war_with_target: Option<bool>,
+    /// Whether the authority must (or must not) lead a side of an active
+    /// formal war — a war it declared or that was declared against it,
+    /// its own war — the unilateral reading beside `at_war_with_target`,
+    /// so a house already fighting somebody else can be told to wait
+    /// before opening a second front. Being swept into a liege's war as a
+    /// branch member is not a war of the house's own and does not count.
+    pub at_war: Option<bool>,
+    /// The authority's complete raised manpower — every army in its
+    /// prospective war branch — must be at or above this: the absolute
+    /// reading beside the permille comparison, for a campaign that arms
+    /// to an authored strength rather than to a rival's.
+    pub min_branch_manpower: Option<i64>,
+    /// The authority's complete raised manpower must be at or below this.
+    pub max_branch_manpower: Option<i64>,
+    /// Whether an exact formal-war target must still have at least one
+    /// province held by the opposing frozen side that shares a surface
+    /// route with a province the authority holds — the geographic sibling
+    /// of `war_has_enemy_province`, for campaigns that reach only across
+    /// their own border.
+    pub war_has_enemy_border_province: Option<bool>,
+    /// Whether the acting character must (or must not) general an army the
+    /// authority fields — their own standing command, not any force the
+    /// house happens to have. Read against the plan's actor; an ambition,
+    /// which has no actor of its own, reads its house's head. What lets a
+    /// campaign muster a levy for a head who inherited a house whose army
+    /// still answers to the dead, instead of skipping to a reinforcement
+    /// nobody could receive.
+    pub leader_commands_army: Option<bool>,
 }
 
 /// An authored grand-strategy goal: a house's standing ambition.

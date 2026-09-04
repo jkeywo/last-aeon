@@ -379,6 +379,36 @@ pub fn score_intents(world: &World, actor: CharacterId, authority: OrgId) -> Vec
         });
     }
 
+    // ---- The authored invasion ambition ----
+    // A goal favouring the invade pressure aims the head at the goal's
+    // own resolved rival, in the open. Like the claim block, the pressure
+    // follows the war's phase: aimed at the rival organisation while the
+    // host is raised and the war declared, and at the exact bilateral war
+    // once one stands, so the authored campaigns that prosecute and
+    // settle it can match on the war they are about. No content key is
+    // named here, and every step remains an ordinary validated
+    // assignment or standing order. Head-only: a war is declared in the
+    // house's name by the one person who carries it.
+    if crate::access::org_head(world, authority) == Some(actor)
+        && crate::goals::favours(world, authority, AiIntent::Invade)
+        && let Some(AssignmentTarget::Org(rival)) = crate::goals::active_target(world, authority)
+        && let Some(assignment) = plan_signal_assignment(world, AiIntent::Invade)
+    {
+        let target = match crate::wars::active_war_between(world, authority, rival) {
+            Some(war) => AssignmentTarget::War(war),
+            None => AssignmentTarget::Org(rival),
+        };
+        intents.push(ScoredIntent {
+            intent: AiIntent::Invade,
+            assignment,
+            target,
+            score: 140,
+            reason: strings.text("sim.intent.invade").to_owned(),
+            subject: Some(LogSubject::Org(authority)),
+            explains: true,
+        });
+    }
+
     // With nothing pressing, a house still attends to ordinary business.
     for assignment in assignments_for(world, AiIntent::Routine, AssignmentTargetKind::None) {
         intents.push(ScoredIntent {

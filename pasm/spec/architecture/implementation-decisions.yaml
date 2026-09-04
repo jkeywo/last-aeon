@@ -2670,7 +2670,12 @@ entities:
         the method recheck remains the above-the-floor suppressor
         described here; the +20 reconciliation line, the goal-level
         set-aside, the succession reading, and the open Cold Border
-        card are recorded there.
+        card are recorded there. [ai] EXTENDED BY
+        the-vantar-invasion-is-a-limited-formal-war-through-authored-plans:
+        the same selector, floor, line, and reconciliation predicates
+        arm the open first-year invasion (window 260-360) beside this
+        covert one, and the invasion window the first rationale bullet
+        anticipated is authored there.
       rationale:
         - "[ai] Every number the arc turns on — window days, hostility floor, capability, resistance scale, retry budget, cooldowns — is authored in Rhai; the engine grew only reusable mechanisms (two requires predicates, a goal selector, a step selector, one intent), each available to future content such as the invasion window."
         - "[ai] The goal is gated is_vassal with a modest wealth floor and adopted by the head alone: deniable pressure is the weapon of houses too small for open war, it bounds the behavioural blast radius on existing campaigns to the authored window, and it makes Perrin — not the more skilled household — the tested actor, matching the head-only claim precedent."
@@ -2888,3 +2893,204 @@ entities:
         - investigation-proves-the-bound-culprit-through-durable-exposure-state
         - situation-actions-launch-authoritative-assignments
         - casimirs-visit-is-a-windowed-hosted-situation
+
+  - decision: the-vantar-invasion-is-a-limited-formal-war-through-authored-plans
+    core:
+      status: accepted
+      confidence: confirmed
+      title: The Vantar Invasion Is a Limited Formal War Through Authored Plans
+      summary: >-
+        The first-year invasion arc is simulation-native content over the
+        ordinary formal-war engine, with no scripted hostility, no war
+        objective field, and no protected actor. An open, scenario-authored
+        ambition (take-the-border, first-reign.rhai) is adoptable inside an
+        authored window (min_campaign_day 260 to max_campaign_day 360) by a
+        vassal head whose house passes a data capability floor (a levy in
+        the field, 60 wealth, a pool of at least 400) and resolves its target through
+        the existing hostile-border-neighbour selector at the shared -10
+        floor with grievances counting; on the Ashkarr map that is Vantar
+        against Harrow. It favours a new open AiIntent, invade, which the
+        head-only scorer exposes exactly as the claim block does — naming
+        no content key, and following the war's phase: aimed at the goal's
+        organisation while the host is raised and the war declared, and at
+        the exact bilateral war (wars::active_war_between) once one stands,
+        so the campaigns that prosecute and settle it match on the war they
+        are about. Four ordinary plans share the intent and hand the war
+        from one to the next by target kind, each step through the shared
+        validation gate: prepare-the-host (organisation target) musters a
+        levy if the acting head commands none (the actor-bound
+        leader_commands_army skip, read against the head's own post rather
+        than any army the house fields, so a successor whose inherited levy
+        still answers to the dead raises a fresh one) and then raises the
+        host through raise-the-host, a closed assignment whose new
+        reinforce-army effect grows the army the head commands by 350 (450
+        on a triumph) from the house's pool — one person holds one command,
+        so a head who generals the levy could never lead a second army
+        mustered beside it, and the host is the levy at a war's strength —
+        while the house's complete raised manpower is below the host's
+        authored 800 (the new absolute max_branch_manpower reading);
+        raise-the-host itself carries the new AssignmentRequires predicate
+        leader_commands_army, so a leader with no command is refused at the
+        start (NoCommand) and nothing is accepted, paid for, or logged;
+        declare-the-border-war (organisation target) issues the ordinary
+        seven-day declaration once the host stands at 800
+        (min_branch_manpower), the house's raised manpower is at least the
+        accepted three-quarters floor of the target's, and the house leads
+        no war of its own; press-the-border (exact war
+        target) sets respond/patrol standing orders on the strongest own
+        army and starts one besiege aimed by a new step selector,
+        lowest-enemy-border-province-in-war (the opposing side's most
+        disordered holding sharing a surface route with a held one, lowest
+        stable ID on a tie, marched by the actor's strongest own army), and
+        then completes; settle-the-border (exact war target, cooldown 0)
+        sues for peace through the ordinary negotiation whenever pressing
+        is not available. "One holding" is therefore a property of the
+        pressing plan — one siege step, a 360-day cooldown, and content-key
+        order weighing pressing before settling — not of the war record,
+        which keeps no objective: title transfer happens at siege success
+        exactly as everywhere else, peace merely stops the fighting, and a
+        lost holding stays lost until retaken through the same war. Both
+        organisation-aimed plans carry the covert campaign's hostility
+        method gates and its reconciliation abandon_when, and the ambition
+        the same set_aside_when, so friendship derails what is uncommitted
+        by the accepted #19 rules; succession, conquest, and a changed
+        border derail through the selector and the existing dead-leader,
+        fallen-target, and lost-grounds rules; depleted resources hold the
+        preparation through the data floors.
+        The engine grew reusable mechanisms and no gameplay constant:
+        ScriptEffect::ReinforceArmy (soldiers and supplies from the owner's
+        pool into the lowest-ID army the leader generals, clamped like
+        form-army; the effect's own no-command arm is a guard, the rule is
+        the start gate), AssignmentRequires.leader_commands_army and
+        PlanRequires.leader_commands_army (one shared reading,
+        assignments::commanded_army: the lowest stable army ID the character
+        generals for the organisation, exactly as leader availability reads
+        their post; the plan predicate is actor-bound, read through
+        plans::requires_met_by against the plan's actor and, for an
+        ambition with no actor, the house's head), PlanRequires.at_war (the
+        unilateral reading — a war the authority leads a side of, having
+        declared it or had it declared against it — beside the bilateral
+        at_war_with_target; riding in a liege's war as a branch member is
+        not the house's own war and does not count, because the first
+        scan showed Vantar swept into a Veyrin war for the whole window),
+        PlanRequires.min_branch_manpower / max_branch_manpower (the
+        authority's complete raised manpower in absolute terms, the
+        sibling of the permille comparison), PlanRequires.
+        war_has_enemy_border_province (the geographic sibling of
+        war_has_enemy_province, refused at load without an exact war
+        target), PlanArmySelector::Strongest (most manpower among the
+        armies the actor generals, lowest stable ID on a tie), and the
+        border step selector above (refused at load without a war target,
+        and matched to own-army-and-province assignments in the selector
+        matrix). The new predicates (at_war, min/max_branch_manpower,
+        war_has_enemy_border_province, leader_commands_army) widen the
+        persisted plan requirement shape active plans carry in their step
+        skip conditions, so SNAPSHOT_FORMAT_VERSION is bumped to 23
+        (pre-release, no migration), as the snapshot rule requires.
+        The ambition's horizon is authored to cover the whole chain it
+        drives (border_war_horizon_days, 517 days: the four campaigns' work
+        with their ordinary retries plus roughly two months' waiting on the
+        agency pulse for each adoption), because the invade pressure exists
+        only while the ambition stands and try_adopt considers only plans
+        answering the top pressure — an ambition that lapsed after the
+        declaration would leave a war with no siege and no peace overture;
+        set_aside_when remains the friendship exit.
+        Sides freeze at declaration as {Vantar} against {Harrow} by the
+        existing partition rule; the common liege joins neither side unless
+        it adopts one through the ordinary head-led adopt-formal-war
+        assignment, and no content — no plan step, no scorer path — starts
+        that for anyone, so "Veyrin receives no scripted rescue behaviour"
+        is a structural fact the tests guard rather than code. Losing
+        Vhorruk never ends the campaign: check_player_failure ends it only
+        with no living member or no held province, and Harrow keeps three.
+        The player's surface is War at the Border (border-war), an open
+        First Reign Situation bound to the protagonist, the bordering enemy,
+        the exact war, and the one holding exposed to it — the lowest-ID
+        house-held province sharing a surface route with the neighbour's
+        holdings, the same border the AI's selector walks — audience the
+        house, a pausing announcement on activation, guidance rows, an
+        assailed warning stage while an enemy force stands in or a
+        war-bound enemy operation is aimed at the holding, live metrics
+        (the holding and its Order, the largest own stack standing inside
+        it, enemy soldiers on its ground, both sides' soldiers under arms,
+        days of war), march-into-the-holding and negotiate actions, and
+        outcomes passed-on, lost, ungoverned, peace, and held. Lost and
+        ungoverned are both pure live-holder readings, split so the copy is
+        true of the reading: lost is the neighbour holding the ground now,
+        and ungoverned — weighed straight after it — is the remainder, a
+        holding that is no longer the house's and not the neighbour's
+        either. A besieged province that throws off its ruler under the
+        strain of the war produces that, and so does ground taken by
+        another belligerent on the enemy side, since a siege gives the
+        title to whichever house took it; the ungoverned line therefore
+        names no cause, so it stays true of both. It reads the shared world
+        view alone. A holding that falls or is thrown off ends that
+        lifecycle on record; whatever holding is exposed next opens its own
+        lifecycle, so history reads as a chronicle of the border. It is bound to any war the house is a member of with a
+        bordering enemy, whoever declared it, so the same card serves a war
+        Harrow starts across the same border and the acceptance campaign's
+        Draksha war.
+        Balance is measured, not tuned. Layer one feeds the accepted
+        engagement formula the arc's exact strategic inputs: the 800 host
+        (the levy at its war strength) under Perrin's command of 6 stands
+        at 1,040; Harrow's opening 600
+        under Edrun's 7 on home ground at settled Order stands at 972 and
+        loses the field in a clear majority of 500 sampled seeds while
+        holding some; a thousand standing together stands at 1,620 and holds
+        every sampled field, even against the 900 triumph host — the
+        formula's truth on settled ground. Layer two is a campaign sample
+        (tests/invasion.rs) of fresh hosts over the shipped content: the
+        real raise-the-host assignment decides the host's size by its own
+        roll (800 or 900), the real war is declared, the AI's own
+        press-the-border plan runs its orders and siege, and Vhorruk's
+        holder is tallied per seed
+        across three honest defences — the Guard marched into Vhorruk (600),
+        Aleyn's thousand as a house naturally reaches it (the Guard in
+        Vhorruk plus a second stack of 400 elsewhere), and a thousand
+        standing together in Vhorruk. What keeps a thousand from being a
+        guarantee in general is the state the arc actually tests
+        — only the largest stack inside the holding fights, so the split
+        thousand is as dangerous as six hundred, while the concentrated,
+        supplied thousand at settled Order holds every sampled field — and
+        the sample asserts exactly that, alongside the
+        one-holding limit (no siege ever aimed past the border) and the
+        campaign continuing. Measured on the shipped content over seeds 1
+        to 6 (hosts of 800 and 900 both drawn): Vhorruk fell in 3 of 6
+        campaigns against the Guard alone in the holding, in 2 of 6 against
+        the split thousand, and in 0 of 6 against a thousand standing
+        together; the siege's own authored contest (difficulty 14 against
+        Perrin's command of 6) is why an undefended or outmatched holding
+        still holds in roughly half the campaigns. The pinned full-AI seed
+        (3) adopts the ambition on the day-270 pulse, raises a 900 host by
+        day 371, declares on day 428, has its siege of Vhorruk under way on
+        day 481, sees that assault break on day 543, spends the pressing
+        plan's one retry, takes up the settling campaign on day 750, and
+        concludes the war in a negotiated peace on day 771 — every link
+        probabilistic, none scripted. Vhorruk never changes hands on that
+        seed, but two sieges leave it in unrest long enough to throw off
+        its ruler, so its card ends ungoverned before the peace: a genuine
+        loss to the defender that the neighbour did not win, which is the
+        distinction the split outcome exists to keep honest.
+      rationale:
+        - "[ai] Reusing the shadows' selector, floor, line, and reconciliation predicates for the open arc means one relationship contract governs both halves of Vantar's first year: the same courtship that quiets the sabotage quiets the border, and the Cold Border card's numbers are the numbers the invasion weighs."
+        - "[ai] The invade pressure follows the war's phase (organisation, then exact war) so that plans can keep the exact-war identity the formal-war decisions require — a war-targeted plan matches only the war it is about — without any plan needing to discover the war for itself, mirroring the claim block's claimant_war_blocker hand-off."
+        - "[ai] Making one holding a property of the pressing plan (one siege step, a long cooldown, and content-key order that weighs pressing before settling) rather than adding an objective to WarRecord keeps the accepted war identity untouched: the war stays a frozen-sides ledger that peace merely stops, and the limit is authored, inspectable, and changeable in Rhai. After the holding falls the border moves to Tolmaz, and the cooldown is what keeps the ambition from following it."
+        - "[ai] The host is the levy reinforced rather than a second army because the accepted single-source leader availability rule makes a general's standing command exclusive: the brief's design — the head musters a second army and leads it to Vhorruk — cannot start a siege at all (the head is posted to the levy and every order for another army is refused as already assigned), which the first scan and the diagnostic proved. A reinforce effect is the honest reading of the engine's one-person-one-command model, gives the arc its single 800 stack exactly as the balance brief assumed, and hands the player the same lever: the one ordinary way a single stack grows, since no order merges two."
+        - "[ai] The unilateral at_war predicate is the honest third-party-war rule: a house already fighting a war of its own waits before opening a second front, whoever the enemy is, which the bilateral at_war_with_target cannot express. It reads side leadership rather than membership because the first scan showed Vantar riding in a Veyrin war for the whole window in most seeds where the ambition formed; a war the liege declared is not a war on the vassal's own hands, and counting it would have made the arc practically unreachable. Preparation is deliberately not gated on it — a house at war elsewhere may still arm."
+        - "[ai] The absolute branch-manpower predicates exist because a house that reinforces to an authored strength needs to read its own strength, not a ratio: the permille comparison alone could not distinguish a levy short of its host from a host facing a strong neighbour. The declaration keeps the permille floor beside it at the accepted three-quarters so a neighbour more than a third stronger deters the war outright. The strongest army selector remains for a house that fields several forces under one head; the border selector bakes the same choice in so the siege and the doctrine agree on which force is the host."
+        - "[ai] Splitting lost from ungoverned came out of making the pinned seed's resolution unconditional: with lost authored as the bare reading \"no longer the house's\", the seed's besieged, disordered Vhorruk revolted and the card told the player it had fallen to House Vantar, which never held it. The copy is the contract a pure live reading has to keep, so the reading is narrowed to the neighbour and the remainder gets its own outcome and its own line; the held fallback stays what it always was, the holding still the house's."
+        - "[ai] The card binds the exposed holding by lowest stable ID rather than by the AI's lowest-Order rule because a structural key must not wobble with a daily number; on the authored map the two agree (Vhorruk is the one Harrow holding across the border), and where they would not, the metrics still name the holding under assault. The per-holding lifecycle is accepted as a chronicle: a fallen holding's lost resolution is durable, and the next exposed holding is a new fact worth its own card."
+        - "[ai] Balance is asserted as the formula's truth rather than engineered: the engagement constants are pinned by the accepted strategic-engagement-formula decision and are not touched. A concentrated, supplied thousand at settled Order holding every sampled field (0 of 500 formula draws, 0 of 6 campaigns) is the honest reading, and the guidance, the GDD 01 story, and the GDD 05 acceptance bullet all say it in the same terms — a thousand is favourable, not a guarantee in general, because what makes it uncertain is Order, supply, splitting across stacks, and standing elsewhere, never the count alone; the danger to a house that has answered Aleyn is the split stack, the ground's Order, and a dry train, which is exactly the transferable lesson the onboarding programme asks for."
+        - "[ai] The pinned full-AI seed in the scenario tests exercises the whole chain unaided — goal on a window pulse, host, declaration, siege — because every link is probabilistic (a 30% goal pulse, a 50% agency pulse, the muster's roll, the siege's own contest); separate scripted tests drive each boundary deterministically, the same testing posture the claim and shadow arcs take."
+      references:
+        - the-vantar-operation-is-goal-and-plan-driven-not-scripted
+        - reconciliation-abandons-uncommitted-hostility-through-authored-predicates
+        - formal-wars-have-occurrence-stable-ledgers
+        - war-sides-freeze-branches-with-explicit-liege-adoption
+        - exact-war-identity-gates-hostility-and-operations
+        - strategic-engagement-formula
+        - engine-owned-military-operations
+        - standing-orders-fire-for-idle-armies
+        - plan-steps-bypass-ai-available-not-validation
+        - the-ai-schemes-through-plans-not-the-scorer
+        - army-formation-through-job-effects

@@ -275,6 +275,7 @@ The current reusable deck contains:
 | The Liege's Visit | Scenario, bound to House Harrow and the live liege head | [ai] First-year windowed hosted visit (days 140–180): three hospitality tiers whose live forecasts read the liege head's current opinion, a slight for an unanswered window, and passed-on adaptation when the bound head dies, is deposed, is replaced, or cannot travel |
 | Unquiet Holdings | Scenario, bound to the targeted holder, the targeted province, and (structurally, outside the audience) the culprit organisation | [ai] The covert-interference alarm: while a covert province-aimed operation runs against another holder's ground, the holder sees the province, its live Order, the exact resistance shift that Order applies, and the remaining time — and the hand only once an ordinary investigation has proved it. The card ends passed-on, struck, or weathered by a pure live-Order reading, each of the last two in a traced and an untraced form |
 | A Cold Border | Scenario, bound to House Harrow and one cold surface neighbour | [ai] The open half of the intrigue arc: while a neighbour's head regards the house head at or below the authored -10 floor, or the house owes it an open grievance, the card shows the live regard, the floor, the +20 reconciliation line, the grievances owed, and any formal war between the houses, and offers courting and sending gifts as ordinary actions. It reads public relationship facts only — never a plan, goal, operation, or exposure record — and ends passed-on, reconciled, or eased with no effects. Two open the reign: Draksha's head is as cold toward Edrun as Vantar's |
+| War at the Border | Scenario, bound to House Harrow, one bordering enemy house, the exact war, and the one holding exposed to it | [ai] The open half of the invasion arc: while the house is a member of an active war with a house across its own border, the card names the exposed holding — the lowest-ID province the house holds that shares a surface route with ground that house holds — its live Order, the largest own stack standing inside it, the enemy soldiers on its ground, both sides' soldiers under arms, and the days of war, with a pausing announcement, an assailed warning stage while an enemy force stands in it or a war-bound enemy operation is aimed at it, and march-into-the-holding and negotiate actions. It reads the shared world view alone and ends passed-on, lost (the neighbour holds the holding now), ungoverned (no longer the house's and not the neighbour's either — a holding that threw off its ruler under the strain of the war, or passed to a third hand), peace, or held. A holding that changes hands ends that lifecycle on record; whatever holding is exposed next opens its own |
 
 [ai] The Court Awaits slice added three reusable seams the deck may now use.
 Situation call contexts carry the instance's activation date (triggers see
@@ -524,6 +525,59 @@ army. Bespoke work takes precedence. It answers a raid aimed at the owner's
 holding, or siege/blockade/hostile presence involving an opponent on the exact
 formal-war side; peaceful foreign presence alone does nothing.
 
+### [ai] The First Year's limited invasion
+
+[ai] The onboarding arc's third slice is an ordinary formal war authored
+entirely in data, with no scripted hostility and no protected actor.
+Inside the authored day 260–360 window a vassal that passes the capability
+trigger (a levy in the field, an authored purse floor, a pool that can bear
+a host) may adopt the open `take-the-border` ambition against a hostile
+border neighbour; in the Ashkarr scenario that is House Vantar against
+Harrow, and the ground is Vhorruk, the one Harrow holding across the
+Ulmgorn border. Four plans then run through the ordinary catalogue and the
+ordinary gate: `raise-the-host` swells the levy the head commands to
+roughly 800 (900 on a triumph) from the house's own pool through the new
+`reinforce-army` effect — one person holds one command, so a head who
+generals the levy could never lead a second army mustered beside it, and
+a head who commands no army (a successor whose levy still answers to the
+dead, or any household member) is refused the muster at the start by the
+`leader_commands_army` requirement, spending nothing, while the
+preparation plan musters a fresh levy for such a head instead of skipping
+to a reinforcement nobody could receive;
+`declare-formal-war` is issued only once the host stands at its authored
+800, the house's complete raised manpower is at least three quarters of
+the target's, and it leads no war of its own — a liege's war it merely
+rides in holds nothing;
+`besiege` is aimed by the new border selector at the most disordered enemy
+holding across the house's own border and marched by the strongest own
+army under the ordinary `respond`/`patrol` doctrine; and `negotiate`
+follows, retried, whenever there is nothing left to press. "One holding"
+is a property of the pressing plan — one siege, then a long cooldown —
+not of the war: the war record has no objective, title transfer happens
+at siege success exactly as everywhere else, peace merely stops the
+fighting, and a lost holding stays lost until retaken through the same
+war. Sides freeze at declaration as `{Vantar}` against `{Harrow}`: no
+liege joins either side unless it adopts one through the ordinary
+head-led assignment, and no content does that for anyone — Veyrin is not
+scripted to rescue either house. Losing Vhorruk does not end the
+campaign: the player fails only with no living member or no held province.
+
+[ai] The balance the arc is tuned to follows from the engagement formula
+above rather than from any new tuning. Against the authored host — 800
+under Perrin's command of 6, so 1,040 in the field — Harrow's opening 600
+under Edrun's 7 on home ground at settled Order stands at 972 and loses
+the field in a clear majority of engagements, while a thousand standing
+together in Vhorruk stands at 1,620 and holds every engagement the
+bounded swing can produce, even against the 900-strong triumph host. What
+keeps a thousand from being a guarantee is the state the arc actually
+tests: only the largest stack inside the holding fights (two stacks are
+not a thousand), the holding's live Order scales the defence, a dry supply
+train fights at sixty percent, and the siege's own authored contest
+decides whether the assault is pressed at all. The **War at the Border**
+Situation says exactly this to the defending house, with the exposed
+holding, its Order, the largest defending stack, and the enemy soldiers
+on its ground as live metrics.
+
 ## Data and authoring rules
 
 | Data | Owner and persistence |
@@ -679,6 +733,18 @@ layout.
   retreat or destruction.
 - Snapshot, command replay, and state hash reproduce resources, order, buildings,
   routes, obligations, Situations, forces, and formal wars.
+- [ai] A hostile, capable vassal mounts the limited border war through the
+  ordinary goal, plan, muster, declaration, siege, and negotiation paths and
+  nothing else; deterministic samples show the 600-man defence dangerous, a
+  concentrated and supplied thousand at settled Order holding every sampled
+  field, and a thousand split across stacks no safer than six hundred —
+  what makes a thousand uncertain is Order, supply, splitting, and being
+  elsewhere, not the count;
+  friendship, succession, conquest, invalid geography, a spent purse or
+  pool, and a third-party war delay, redirect, or cancel it; one holding
+  changes hands at most per pressing and is recoverable through the same
+  war; and the frozen sides never gain a liege the content did not have
+  adopt one.
 
 ### Before this GDD can become final
 

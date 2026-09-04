@@ -1838,3 +1838,505 @@ define_situation(#{
         #{ id: "eased", fallback: true },
     ],
 });
+
+// --- The Border in Arms -----------------------------------------------------
+//
+// The open arm of first-year politics: a hostile, capable house may set
+// its mind to taking one holding across a shared border by ordinary
+// formal war. Nothing here is scripted. A generic ambition inside an
+// authored window resolves the same hostile border neighbour the shadows
+// do; four ordinary plans carry it — raise a host, declare, press one
+// holding, settle — and every step is an ordinary validated assignment
+// or standing order: the muster, the seven-day declaration, the march,
+// the siege with its field engagement, the title transfer, and the
+// negotiated peace are all the engine's own war, unchanged. In the
+// Ashkarr Succession the natural bearer is House Vantar and the natural
+// ground is Vhorruk, the one Harrow holding across the Ulmgorn border,
+// but the same data would arm any vassal against any cold neighbour —
+// and friendship, succession, conquest, a changed border, a spent purse
+// or pool, or a war already on its hands delays, redirects, or cancels
+// the whole arc through the same predicates the shadows read.
+//
+// "One holding" is a property of the campaign, not of the war: the
+// pressing plan carries exactly one siege and then completes, and its
+// long cooldown means the ambition presses once per war, after which the
+// house only sues for peace. The war itself has no objective field —
+// peace merely stops the fighting, and what changed hands stays changed
+// until it is retaken through the same war.
+//
+// The host is the standing levy grown to a war's strength, not a second
+// army: one person holds one command, so a head who already generals the
+// levy could never lead a host mustered beside it. Raising the host
+// reinforces the army the head commands from the house's own pool — 450
+// becomes roughly 800, or 900 when the call is answered eagerly — and the
+// preparation gate reads the house's own raised strength against an
+// authored floor. The declaration then asks the claimant campaigns'
+// question too: the house's complete raised manpower against the
+// target's, in permille, at the accepted three-quarters floor. Eight
+// hundred declares against Harrow's opening 600 and against a Harrow
+// that has answered Aleyn with a thousand — a thousand spread across two
+// stacks is not a thousand in Vhorruk, because only the largest stack
+// inside a holding fights for it — and is deterred by a neighbour more
+// than a third stronger.
+
+fn border_war_window_opens() { 260 }
+fn border_war_window_closes() { 360 }
+fn border_host_strength() { 800 }
+fn border_host_reinforcement() { 350 }
+fn border_host_reinforcement_supplies() { 60 }
+fn border_host_eager_reinforcement() { 450 }
+fn border_host_eager_reinforcement_supplies() { 80 }
+fn border_host_wealth_cost() { 50 }
+fn border_host_influence_cost() { 10 }
+fn border_war_pool_floor() { 400 }
+fn border_war_purse_floor() { 60 }
+fn border_war_strength_floor_permille() { 750 }
+
+// The ambition's horizon covers the whole chain it drives, because the
+// invade pressure exists only while the ambition stands: once it lapses,
+// no campaign that answers it — the siege, or the peace after the siege —
+// can be taken up. Summed from the authored work the four campaigns start,
+// each with its ordinary retry, and the months the head spends waiting on
+// the agency pulse that adopts each of them (answered about one month in
+// two, so two months apiece on average):
+//   muster 40 and its one retry, the seven-day declaration, the march,
+//   the siege 60 and its one retry, the negotiation 20 and its two retries
+//   = 80 + 7 + 10 + 120 + 60 = 277 days of work, and
+//   four adoptions at roughly 60 days each = 240 days of waiting.
+// The waiting term is an average, not a promise: on the pinned test seed
+// the chain adopted on day 270 declares on day 428, has its first siege
+// break on day 543, spends the pressing plan's one retry, waits nearly
+// five months for the pulse that takes up the settling campaign on day
+// 750, and concludes its war in a negotiated peace on day 771 — inside
+// this horizon, and only because the ambition was still standing on day
+// 750 to be answered. Friendship still ends the ambition early through
+// set_aside_when; the horizon is the valve for a chain that stalls, not
+// the reason a war ends.
+fn border_war_horizon_days() { 277 + 240 }
+
+// The host: the general's own army reinforced to a war's strength. Closed
+// to the reactive scorer; reached through the preparation plan, and
+// answering the open invade pressure so the plan can find it. A player
+// may order the same reinforcement by hand — it is how one stack grows,
+// since no order merges two. It is refused at the start for a leader who
+// commands no army of the house's: the reinforcement would land nowhere,
+// and nothing is accepted, paid for, or logged for it.
+define_assignment(#{
+    id: "raise-the-host",
+    ai_intent: "invade",
+    category: "consequential",
+    duration_days: 40,
+    skill: "command",
+    difficulty: 8,
+    wealth_cost: border_host_wealth_cost(),
+    influence_cost: border_host_influence_cost(),
+    requires: #{ leader_commands_army: true },
+    risks: ["injury"],
+    ai_available: false,
+    results: #{
+        critical_success: #{ weight: 150, log: true, effect_fn: "host_raised_eager" },
+        success: #{ weight: 600, log: true, effect_fn: "host_raised" },
+        failure: #{ weight: 250, log: true },
+    },
+});
+
+fn host_raised_eager(ctx) {
+    [#{ kind: "reinforce-army",
+        manpower: border_host_eager_reinforcement(),
+        supplies: border_host_eager_reinforcement_supplies() }]
+}
+fn host_raised(ctx) {
+    [#{ kind: "reinforce-army",
+        manpower: border_host_reinforcement(),
+        supplies: border_host_reinforcement_supplies() }]
+}
+
+// The ambition: open, windowed, resolved against the same hostile border
+// neighbour the shadows resolve, and set aside by the same reconciliation
+// line. Capability is data: a vassal with a levy in the field, coin for
+// the muster, and a pool that can bear a host.
+define_goal(#{
+    id: "take-the-border",
+    priority: 96,
+    favours: ["invade"],
+    favour_bonus: 60,
+    target: "organisation",
+    target_selector: #{
+        kind: "hostile-border-neighbour",
+        max_head_opinion: shadow_hostility_floor(),
+        with_grievance: true,
+    },
+    trigger: #{
+        is_vassal: true, has_army: true,
+        min_wealth: border_war_purse_floor(), min_manpower: border_war_pool_floor(),
+        min_campaign_day: border_war_window_opens(),
+        max_campaign_day: border_war_window_closes(),
+    },
+    set_aside_when: #{
+        min_target_head_opinion: shadow_reconciliation_line(),
+        target_owes_no_grievance: true,
+        at_war_with_target: false,
+    },
+    max_days: border_war_horizon_days(),
+    cooldown_days: 1080,
+});
+
+// Preparation: while the house's own raised manpower still falls short
+// of the host's authored strength, raise the host — mustering a levy
+// first if the head commands none, then reinforcing the army the head
+// commands. The muster is skipped on the head's own command, not on any
+// army the house fields: a successor inherits a levy that still answers
+// to the dead, and a reinforcement nobody commands would land nowhere.
+// Hostility is rechecked before the step like every method
+// gate, so regard lifted above the floor starts no muster, and the
+// reconciliation line lets an uncommitted preparation go.
+define_plan(#{
+    id: "prepare-the-host",
+    goal: "invade",
+    target: "organisation",
+    score_bonus: 40,
+    cooldown_days: 90,
+    max_days: 120,
+    max_step_retries: 1,
+    abandon_when: #{
+        min_target_head_opinion: shadow_reconciliation_line(),
+        target_owes_no_grievance: true,
+        at_war_with_target: false,
+    },
+    methods: [
+        #{ id: "from-ill-will",
+           requires: #{
+               max_target_head_opinion: shadow_hostility_floor(),
+               min_wealth: border_host_wealth_cost(),
+               min_influence: border_host_influence_cost(),
+               min_manpower: border_war_pool_floor(),
+               max_branch_manpower: border_host_strength() - 1,
+           },
+           steps: [
+               #{ id: "levy", start: "muster", skip_if: #{ leader_commands_army: true } },
+               #{ id: "raise", start: "raise-the-host" },
+           ] },
+        #{ id: "from-grievance",
+           requires: #{
+               target_owes_grievance: true,
+               min_wealth: border_host_wealth_cost(),
+               min_influence: border_host_influence_cost(),
+               min_manpower: border_war_pool_floor(),
+               max_branch_manpower: border_host_strength() - 1,
+           },
+           steps: [
+               #{ id: "levy", start: "muster", skip_if: #{ leader_commands_army: true } },
+               #{ id: "raise", start: "raise-the-host" },
+           ] },
+    ],
+});
+
+// Declaration: once the host stands at its authored strength and the
+// house is not outmatched — its raised manpower at or above the
+// three-quarters floor against the target's — and only while the house
+// leads no war of its own, the ordinary seven-day declaration. A war
+// already on the house's hands, against anyone, delays it; a regard
+// lifted above the floor or to the line ends it before it starts.
+define_plan(#{
+    id: "declare-the-border-war",
+    goal: "invade",
+    target: "organisation",
+    score_bonus: 40,
+    cooldown_days: 360,
+    max_days: 60,
+    max_step_retries: 0,
+    abandon_when: #{
+        min_target_head_opinion: shadow_reconciliation_line(),
+        target_owes_no_grievance: true,
+        at_war_with_target: false,
+    },
+    methods: [
+        #{ id: "from-ill-will",
+           requires: #{
+               max_target_head_opinion: shadow_hostility_floor(),
+               has_army: true,
+               at_war: false,
+               min_branch_manpower: border_host_strength(),
+               min_target_branch_manpower_permille: border_war_strength_floor_permille(),
+           },
+           steps: [ #{ id: "declare", start: "declare-formal-war", target: "plan" } ] },
+        #{ id: "from-grievance",
+           requires: #{
+               target_owes_grievance: true,
+               has_army: true,
+               at_war: false,
+               min_branch_manpower: border_host_strength(),
+               min_target_branch_manpower_permille: border_war_strength_floor_permille(),
+           },
+           steps: [ #{ id: "declare", start: "declare-formal-war", target: "plan" } ] },
+    ],
+});
+
+// Pressing: the exact war, one holding. The strongest own army — the host
+// — takes the doctrine and marches on the most disordered enemy holding
+// across the house's own border; the plan then completes, and its long
+// cooldown is what makes this a one-holding war.
+// A siege that breaks is retried once and then the plan is given up. With
+// no army left, or no enemy holding across the border, there is nothing
+// to press and the settling plan below is what the head reaches for.
+define_plan(#{
+    id: "press-the-border",
+    goal: "invade",
+    target: "war",
+    score_bonus: 40,
+    cooldown_days: 360,
+    max_days: 150,
+    max_step_retries: 1,
+    methods: [
+        #{ id: "one-holding",
+           requires: #{ has_army: true, war_has_enemy_border_province: true },
+           steps: [
+               #{ id: "hold-the-line", orders: ["respond", "patrol"], army: "strongest" },
+               #{ id: "siege", start: "besiege",
+                  target: "lowest-enemy-border-province-in-war" },
+           ] },
+    ],
+});
+
+// Settling: whenever the exact war stands and there is nothing left to
+// press — the holding taken, the siege spent, the army gone, or no enemy
+// ground across the border — the head sues for peace, and keeps suing,
+// through the ordinary negotiation until the war concludes. Plans are
+// tried in key order, so pressing is always weighed before settling.
+define_plan(#{
+    id: "settle-the-border",
+    goal: "invade",
+    target: "war",
+    score_bonus: 40,
+    cooldown_days: 0,
+    max_days: 120,
+    max_step_retries: 2,
+    methods: [
+        #{ id: "sue-for-peace",
+           steps: [ #{ id: "peace", start: "negotiate", target: "plan" } ] },
+    ],
+});
+
+// --- War at the Border ------------------------------------------------------
+//
+// What a border war looks like to the house it is aimed at: an open,
+// pausing Situation bound to the protagonist, the bordering enemy, the
+// exact war, and the one holding exposed to it — the lowest-ID province
+// the house holds that shares a surface route with ground the neighbour
+// holds, the same border the AI's own selector walks. It reads the shared
+// world view alone — wars, armies, assignments, provinces, routes — and
+// tells the honest military truth the engine keeps: only the largest
+// stack standing inside a holding fights for it, the ground's live Order
+// scales the defence, and soldiers counted elsewhere count for nothing
+// here. A holding that falls ends the lifecycle as lost, on record; the
+// war goes on, and whatever holding is exposed next opens its own card.
+//
+// It is bound to a war the house is a member of, whoever declared it, so
+// the same card serves a war Harrow starts across the same border.
+
+// The exposed holding: the lowest-ID province `house` holds that shares a
+// surface route with one `neighbour` holds, or 0 when none does.
+fn border_war_exposed_holding(world, house, neighbour) {
+    let found = 0;
+    for route in world.routes {
+        if route.kind != "surface" { continue; }
+        let a = cold_border_holder(world, route.a);
+        let b = cold_border_holder(world, route.b);
+        let exposed = 0;
+        if a == house && b == neighbour { exposed = route.a; }
+        if b == house && a == neighbour { exposed = route.b; }
+        if exposed == 0 { continue; }
+        if found == 0 || exposed < found { found = exposed; }
+    }
+    found
+}
+
+// The members of the side of `war` opposing `house`, or an empty list.
+fn border_war_enemies(war, house) {
+    if war.sides[0].members.contains(house) { return war.sides[1].members; }
+    if war.sides[1].members.contains(house) { return war.sides[0].members; }
+    []
+}
+
+fn border_war_instances(ctx) {
+    let house = first_reign_house(ctx.world);
+    if house == 0 { return []; }
+    let found = [];
+    for war in ctx.world.wars {
+        if !war.active { continue; }
+        let enemies = border_war_enemies(war, house);
+        if enemies.len() == 0 { continue; }
+        for neighbour in cold_border_neighbours(ctx.world, house) {
+            if !enemies.contains(neighbour) { continue; }
+            let objective = border_war_exposed_holding(ctx.world, house, neighbour);
+            if objective == 0 { continue; }
+            found.push(#{
+                house: house, neighbour: neighbour, war: war.id, objective: objective,
+            });
+        }
+    }
+    found
+}
+
+fn border_war_projection(ctx) {
+    let world = ctx.world;
+    let house = ctx.bindings.house;
+    let neighbour = ctx.bindings.neighbour;
+    let objective = ctx.bindings.objective;
+    let war = #{};
+    for w in world.wars {
+        if w.id == ctx.bindings.war { war = w; }
+    }
+    let enemies = [];
+    if war.len() > 0 { enemies = border_war_enemies(war, house); }
+    let name = "";
+    let order = 0;
+    for p in world.provinces {
+        if p.id == objective { name = p.name; order = p.order; }
+    }
+    let head = cold_border_head(world, house);
+    // The soldiers that would actually fight for the holding: the largest
+    // own stack standing inside it. Everything the house fields elsewhere
+    // is shown beside it so the difference is legible.
+    let defence = 0;
+    let own_total = 0;
+    let enemy_in = 0;
+    let enemy_total = 0;
+    let links = [];
+    let actions = [];
+    for army in world.armies {
+        let here = type_of(army.location) == "i64" && army.location == objective;
+        if army.owner == house {
+            own_total += army.manpower;
+            if here {
+                if army.manpower > defence { defence = army.manpower; }
+                links.push(#{ kind: "army", id: army.id });
+            } else if type_of(army.general) == "i64" && type_of(army.location) == "i64" {
+                // The ordinary answer: march the stack into the holding.
+                actions.push(#{
+                    id: "march", leader: army.general,
+                    target_kind: "army-to-province",
+                    target_a: army.id, target_b: objective,
+                    context: [
+                        #{ kind: "army", id: army.id },
+                        #{ kind: "province", id: objective },
+                    ],
+                });
+            }
+        }
+        if army.owner == neighbour { enemy_total += army.manpower; }
+        if enemies.contains(army.owner) && here {
+            enemy_in += army.manpower;
+            links.push(#{ kind: "army", id: army.id });
+        }
+    }
+    // An enemy operation bound to this war and aimed at the holding is an
+    // assault before anyone has arrived.
+    let assailed = enemy_in > 0;
+    for work in world.assignments {
+        if type_of(work.war) == "i64" && work.war == ctx.bindings.war
+                && enemies.contains(work.owner)
+                && work.target.kind == "army-to-province" && work.target.b == objective {
+            assailed = true;
+            links.push(#{ kind: "assignment", id: work.id });
+        }
+    }
+    let stage = "open";
+    if assailed { stage = "assailed"; }
+    let metrics = [
+        #{ label_key: "situation.metric.province-order", value: `${name} — ${order}` },
+        #{ label_key: "situation.metric.defence-in-holding", value: defence },
+        #{ label_key: "situation.metric.enemy-in-holding", value: enemy_in },
+        #{ label_key: "situation.metric.army-manpower", value: own_total },
+        #{ label_key: "situation.metric.neighbour-manpower", value: enemy_total },
+    ];
+    if war.len() > 0 {
+        metrics.push(#{ label_key: "situation.metric.war-days", value: world.date - war.declared });
+        links.push(#{ kind: "war", id: war.id });
+    }
+    if head > 0 {
+        actions.push(#{
+            id: "negotiate", leader: head,
+            target_kind: "war", target_a: ctx.bindings.war,
+        });
+    }
+    #{
+        stage: stage,
+        warning: assailed,
+        metrics: metrics,
+        participants: [
+            #{ kind: "organisation", id: house },
+            #{ kind: "organisation", id: neighbour },
+            #{ kind: "province", id: objective },
+        ],
+        links: links,
+        actions: actions,
+        resolution_values: #{
+            house: court_house_name(world, house),
+            neighbour: court_house_name(world, neighbour),
+            holding: name,
+        },
+    }
+}
+
+// The matter has passed to other hands: the house is no longer the
+// protagonist, or the neighbour no longer stands.
+fn border_war_passed_on(ctx) {
+    if first_reign_house(ctx.world) != ctx.bindings.house { return true; }
+    for organisation in ctx.world.organisations {
+        if organisation.id == ctx.bindings.neighbour { return organisation.defunct; }
+    }
+    true
+}
+
+// Lost is a pure live reading, and it says what its copy says: the
+// holding is the neighbour's now.
+fn border_war_lost(ctx) {
+    cold_border_holder(ctx.world, ctx.bindings.objective) == ctx.bindings.neighbour
+}
+
+// The holding stopped being the house's without the neighbour taking it:
+// a province that threw off its ruler under the strain of the war, or
+// ground that passed to a third hand — including another house on the
+// enemy side, since a siege gives the title to whichever belligerent
+// took it. Weighed after lost, so this is exactly the remainder — a
+// genuine loss, but not this neighbour's conquest. The copy therefore
+// names no cause: it must stay true of every case this reading admits.
+fn border_war_ungoverned(ctx) {
+    cold_border_holder(ctx.world, ctx.bindings.objective) != ctx.bindings.house
+}
+
+fn border_war_peace(ctx) {
+    for war in ctx.world.wars {
+        if war.id == ctx.bindings.war {
+            return !war.active && war.conclusion_kind == "negotiated-peace";
+        }
+    }
+    false
+}
+
+define_situation(#{
+    id: "border-war",
+    source: "scenario",
+    bindings: #{
+        house: "organisation", neighbour: "organisation", war: "war", objective: "province",
+    },
+    owner_binding: "house",
+    trigger_fn: "border_war_instances",
+    projection_fn: "border_war_projection",
+    priority: 118,
+    log_activation: true,
+    audience: ["house"],
+    stages: ["open", "assailed"],
+    actions: [
+        #{ id: "march", assignment: "march" },
+        #{ id: "negotiate", assignment: "negotiate" },
+    ],
+    outcomes: [
+        #{ id: "passed-on", when_fn: "border_war_passed_on" },
+        #{ id: "lost", when_fn: "border_war_lost" },
+        #{ id: "ungoverned", when_fn: "border_war_ungoverned" },
+        #{ id: "peace", when_fn: "border_war_peace" },
+        #{ id: "held", fallback: true },
+    ],
+});

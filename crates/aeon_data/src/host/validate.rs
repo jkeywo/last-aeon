@@ -656,16 +656,25 @@ fn validate_plans(builder: &BuilderState, findings: &mut Vec<(String, Option<Str
                         format!("{where_}: minimum target branch manpower ratio exceeds maximum"),
                     );
                 }
-                if requirements.war_has_enemy_province.is_some()
-                    && plan.target != AssignmentTargetKind::War
-                {
-                    err(
-                        key,
-                        format!(
-                            "{where_}: 'war_has_enemy_province' needs an exact war target, but the plan targets {:?}",
-                            plan.target
-                        ),
-                    );
+                for (field, value) in [
+                    (
+                        "war_has_enemy_province",
+                        requirements.war_has_enemy_province,
+                    ),
+                    (
+                        "war_has_enemy_border_province",
+                        requirements.war_has_enemy_border_province,
+                    ),
+                ] {
+                    if value.is_some() && plan.target != AssignmentTargetKind::War {
+                        err(
+                            key,
+                            format!(
+                                "{where_}: '{field}' needs an exact war target, but the plan targets {:?}",
+                                plan.target
+                            ),
+                        );
+                    }
                 }
                 for message in
                     organisation_predicate_problems(&where_, requirements, plan.target, "plan")
@@ -702,6 +711,9 @@ fn validate_plans(builder: &BuilderState, findings: &mut Vec<(String, Option<Str
                                 PlanTargetSelector::TargetBorderProvince => {
                                     AssignmentTargetKind::Province
                                 }
+                                PlanTargetSelector::LowestEnemyBorderProvinceInWar => {
+                                    AssignmentTargetKind::OwnArmyAndProvince
+                                }
                             };
                             if *target == PlanTargetSelector::PlanTarget
                                 && plan.target == AssignmentTargetKind::None
@@ -724,8 +736,11 @@ fn validate_plans(builder: &BuilderState, findings: &mut Vec<(String, Option<Str
                                         step.id
                                     ),
                                 );
-                            } else if *target == PlanTargetSelector::LowestEnemyProvinceInWar
-                                && plan.target != AssignmentTargetKind::War
+                            } else if matches!(
+                                target,
+                                PlanTargetSelector::LowestEnemyProvinceInWar
+                                    | PlanTargetSelector::LowestEnemyBorderProvinceInWar
+                            ) && plan.target != AssignmentTargetKind::War
                             {
                                 err(
                                     key,

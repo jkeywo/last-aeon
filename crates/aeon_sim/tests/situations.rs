@@ -7401,3 +7401,717 @@ fn a_triumph_of_gifts_and_a_spurned_gift_carry_their_own_authored_amounts() {
         "the border stays cold"
     );
 }
+
+// ---------------------------------------------------------------------------
+// War at the Border: the open first-year invasion. A hostile, capable house
+// raises a host, declares, and besieges the one holding across its border
+// unaided, through the ordinary goal, plan, muster, declaration, siege, and
+// negotiation; the defending house sees an open, pausing card with the
+// honest military facts; and every stage survives save, load, and replay.
+// ---------------------------------------------------------------------------
+
+/// A seed on which Vantar mounts the border war unaided: the open ambition
+/// on a window pulse, the host raised by the muster's own roll, the
+/// declaration, and the siege of Vhorruk, with no scripted nudge.
+const BORDER_SEED: u64 = 3;
+/// The window pulse on which the pinned seed adopts the ambition.
+const BORDER_GOAL_DAY: u32 = 270;
+
+/// The border-war card `house` holds about `neighbour`. Harrow may ride in
+/// its liege's wars too, and Draksha's Karvessa borders Tolmaz, so the
+/// card under test is always named by both bindings.
+fn border_war_card_for(
+    host: &mut SimHost,
+    house: OrgId,
+    neighbour: OrgId,
+) -> Option<SituationCard> {
+    active_cards(host.world_mut()).into_iter().find(|card| {
+        card.active.key.definition == key("border-war")
+            && card.active.key.bindings.get("house") == Some(&SituationSubject::Organisation(house))
+            && card.active.key.bindings.get("neighbour")
+                == Some(&SituationSubject::Organisation(neighbour))
+    })
+}
+
+/// The resolution the border-war lifecycle bound to `neighbour` and
+/// `objective` ended with, if that lifecycle has ended. The Draksha war
+/// opens border cards of its own, so a resolution is always named by both.
+fn border_war_resolution(
+    host: &mut SimHost,
+    neighbour: OrgId,
+    objective: aeon_sim::ProvinceId,
+) -> Option<aeon_sim::situations::SituationResolution> {
+    host.world_mut()
+        .resource::<SituationState>()
+        .resolutions
+        .iter()
+        .rev()
+        .find(|notice| {
+            notice.situation.definition == key("border-war")
+                && notice.situation.bindings.get("neighbour")
+                    == Some(&SituationSubject::Organisation(neighbour))
+                && notice.situation.bindings.get("objective")
+                    == Some(&SituationSubject::Province(objective))
+        })
+        .cloned()
+}
+
+fn vantar_work(host: &mut SimHost, def: &str) -> Option<ActiveAssignment> {
+    let vantar = org(host, "vantar");
+    let world = host.world_mut();
+    world
+        .resource::<AssignmentsIndex>()
+        .assignments
+        .values()
+        .find_map(|entity| {
+            world
+                .get::<ActiveAssignment>(*entity)
+                .filter(|work| work.owner == vantar && work.def == key(def))
+                .cloned()
+        })
+}
+
+fn vantar_fielded(host: &mut SimHost) -> Vec<i64> {
+    let vantar = org(host, "vantar");
+    let world = host.world_mut();
+    let forces = world.resource::<ForcesIndex>();
+    forces
+        .armies
+        .values()
+        .filter_map(|entity| world.get::<ArmyRecord>(*entity))
+        .filter(|army| army.owner == vantar)
+        .map(|army| army.manpower)
+        .collect()
+}
+
+fn border_war_between(host: &mut SimHost) -> Option<aeon_sim::WarId> {
+    let vantar = org(host, "vantar");
+    let harrow = org(host, "harrow");
+    aeon_sim::wars::active_war_between(host.world_mut(), vantar, harrow)
+}
+
+/// Advances day by day until the condition holds, or panics after the
+/// budget.
+fn border_advance_until(
+    host: &mut SimHost,
+    budget: u32,
+    what: &str,
+    mut done: impl FnMut(&mut SimHost) -> bool,
+) {
+    for _ in 0..budget {
+        host.advance_days(1);
+        if done(host) {
+            return;
+        }
+    }
+    panic!("{what} did not happen within {budget} days");
+}
+
+/// The sibling war is exactly {vantar} against {harrow}: no liege on either
+/// side, nothing adopted, and no adoption assignment ever started by anyone.
+fn assert_no_liege_rescues_anyone(host: &mut SimHost, war_id: aeon_sim::WarId) {
+    let harrow = org(host, "harrow");
+    let vantar = org(host, "vantar");
+    let veyrin = org(host, "veyrin");
+    let record = war(host.world_mut(), war_id)
+        .expect("war on record")
+        .clone();
+    for side in WarSideId::ALL {
+        let members = &record.side(side).members;
+        assert_eq!(members.len(), 1, "each side is one house: {members:?}");
+        assert!(members.contains(&vantar) || members.contains(&harrow));
+    }
+    assert_eq!(
+        record.side_of(veyrin),
+        None,
+        "the common liege stands aside"
+    );
+    assert!(record.adoption_history.is_empty());
+    let world = host.world_mut();
+    assert!(
+        !world
+            .resource::<AssignmentsIndex>()
+            .assignments
+            .values()
+            .filter_map(|entity| world.get::<ActiveAssignment>(*entity))
+            .any(|work| work.def == key("adopt-formal-war")),
+        "nobody is adopting a side"
+    );
+    let log = world.resource::<MessageLog>().clone();
+    assert!(
+        !log.entries
+            .iter()
+            .any(|entry| entry.org == Some(veyrin) && entry.war == Some(war_id)),
+        "Veyrin wrote nothing into this war"
+    );
+}
+
+#[test]
+fn the_border_war_mounts_unaided_inside_the_authored_window() {
+    let mut host = scenario_host(BORDER_SEED, repository_content());
+    let harrow = org(&mut host, "harrow");
+    let vantar = org(&mut host, "vantar");
+    let veyrin = org(&mut host, "veyrin");
+    let perrin = character(&mut host, "perrin-vantar");
+    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+    let start_fielded = vantar_fielded(&mut host);
+    assert_eq!(start_fielded, vec![450], "Vantar opens with its levy alone");
+
+    // Before the window nothing of the open arc exists, whatever the
+    // shadows did: no open ambition, no host, no war.
+    host.advance_days(BORDER_GOAL_DAY - 1);
+    assert!(
+        vantar_ambition(&mut host).is_none_or(|goal| goal.def != key("take-the-border")),
+        "the open ambition cannot be adopted before its authored window"
+    );
+    assert!(vantar_work(&mut host, "raise-the-host").is_none());
+    assert!(border_war_between(&mut host).is_none());
+    assert!(border_war_card_for(&mut host, harrow, vantar).is_none());
+
+    // On the window pulse the ambition forms against the hostile border
+    // neighbour; on a later agency pulse the head takes up the preparation.
+    host.advance_days(1);
+    let ambition = vantar_ambition(&mut host).expect("the ambition forms on the pulse");
+    assert_eq!(ambition.def, key("take-the-border"));
+    assert_eq!(ambition.target, AssignmentTarget::Org(harrow));
+    assert_eq!(ambition.adopted_by, perrin);
+    border_advance_until(&mut host, 120, "the head prepares", |host| {
+        vantar_campaign(host).is_some_and(|plan| plan.def == key("prepare-the-host"))
+    });
+
+    // The host is the levy reinforced by an ordinary assignment: it runs
+    // its authored days and its own roll sizes the host.
+    border_advance_until(&mut host, 60, "the muster is accepted", |host| {
+        vantar_work(host, "raise-the-host").is_some()
+    });
+    let muster = vantar_work(&mut host, "raise-the-host").expect("mustering");
+    assert_eq!(muster.leader, perrin);
+    border_advance_until(&mut host, 100, "the host stands", |host| {
+        vantar_fielded(host).iter().any(|men| *men >= 800)
+    });
+    let fielded = vantar_fielded(&mut host);
+    assert_eq!(fielded.len(), 1, "one command, one stack: {fielded:?}");
+    let raised = fielded[0];
+    assert!(
+        [800, 900].contains(&raised),
+        "the muster's roll sized the host: {fielded:?}"
+    );
+
+    // The declaration is the ordinary seven-day assignment; the war it
+    // makes freezes the two sibling houses alone.
+    border_advance_until(&mut host, 120, "the declaration is accepted", |host| {
+        vantar_work(host, "declare-formal-war").is_some()
+    });
+    assert_eq!(
+        vantar_campaign(&mut host).expect("declaring").def,
+        key("declare-the-border-war")
+    );
+    border_advance_until(&mut host, 30, "the war is declared", |host| {
+        border_war_between(host).is_some()
+    });
+    let war_id = border_war_between(&mut host).expect("at war");
+    let record = war(host.world_mut(), war_id).unwrap().clone();
+    assert_eq!(record.side(WarSideId::Attacker).leader, vantar);
+    assert_eq!(record.side(WarSideId::Defender).leader, harrow);
+    assert_no_liege_rescues_anyone(&mut host, war_id);
+
+    // The defending house sees the open card the day the war stands: the
+    // exposed holding, its Order, and what actually stands inside it.
+    let card = border_war_card_for(&mut host, harrow, vantar).expect("the border card opens");
+    assert_eq!(card.unavailable, None);
+    assert_eq!(
+        card.active.key.bindings.get("neighbour"),
+        Some(&SituationSubject::Organisation(vantar))
+    );
+    assert_eq!(
+        card.active.key.bindings.get("war"),
+        Some(&SituationSubject::War(war_id))
+    );
+    assert_eq!(
+        card.active.key.bindings.get("objective"),
+        Some(&SituationSubject::Province(vhorruk)),
+        "Vhorruk is the one Harrow holding across the Ulmgorn border"
+    );
+    let projection = card.projection.clone().expect("projection");
+    assert_eq!(projection.stage, key("open"));
+    assert!(!projection.warning);
+    assert_eq!(
+        integer_metric(&projection, "situation.metric.defence-in-holding"),
+        Some(0),
+        "the Guard stands at Ostragard, not in the holding"
+    );
+    assert_eq!(
+        integer_metric(&projection, "situation.metric.army-manpower"),
+        Some(600)
+    );
+    assert_eq!(
+        integer_metric(&projection, "situation.metric.neighbour-manpower"),
+        Some(raised)
+    );
+    assert_eq!(
+        integer_metric(&projection, "situation.metric.enemy-in-holding"),
+        Some(0)
+    );
+    assert!(
+        projection
+            .actions
+            .iter()
+            .any(|action| action.id == key("march"))
+    );
+    assert!(
+        projection
+            .actions
+            .iter()
+            .any(|action| action.id == key("negotiate"))
+    );
+    // The activation paused the reign with the authored announcement.
+    let popups = host
+        .world_mut()
+        .resource::<aeon_sim::PendingPopups>()
+        .clone();
+    assert!(
+        popups
+            .popups
+            .iter()
+            .any(|popup| popup.assignment == key("border-war")),
+        "a war at the border pauses the reign"
+    );
+    // An open war hides nothing, and the card copy carries no covert tell.
+    for text in [&card.title, &card.summary] {
+        for tell in SHADOW_TELLS {
+            assert!(
+                !text.contains(tell),
+                "the open card carries a tell: '{text}'"
+            );
+        }
+    }
+
+    // The pressing plan marches the host on the holding and besieges it
+    // under the exact war; the card turns to its warning stage.
+    border_advance_until(&mut host, 120, "the siege is accepted", |host| {
+        vantar_work(host, "besiege").is_some()
+    });
+    let siege = vantar_work(&mut host, "besiege").expect("besieging");
+    assert_eq!(siege.war, Some(war_id));
+    assert_eq!(siege.leader, perrin);
+    let AssignmentTarget::ArmyToProvince(army, target) = siege.target else {
+        panic!("a siege is army-to-province");
+    };
+    assert_eq!(target, vhorruk, "one holding, across the border");
+    assert_eq!(
+        aeon_sim::access::army(host.world_mut(), army).map(|a| a.manpower),
+        Some(raised),
+        "the host marches"
+    );
+    assert_eq!(
+        vantar_campaign(&mut host).expect("pressing").def,
+        key("press-the-border")
+    );
+    let projection = border_war_card_for(&mut host, harrow, vantar)
+        .expect("live")
+        .projection
+        .expect("projection");
+    assert_eq!(projection.stage, key("assailed"));
+    assert!(projection.warning);
+    assert!(projection.links.iter().any(|link| {
+        link.kind == aeon_data::model::SituationSubjectKind::Assignment && link.id == siege.id.raw()
+    }));
+
+    // The siege runs its authored course, and on this seed the assault
+    // breaks against the walls: on day 543 the title has not moved, Harrow
+    // still holds four provinces, the campaign goes on, and the card stands
+    // open on the holding it still has. The scripted sibling below drives
+    // the other outcome — the holding taken and the card resolved lost —
+    // deterministically.
+    border_advance_until(&mut host, 120, "the siege resolves", |host| {
+        aeon_sim::access::assignment(host.world_mut(), siege.id).is_none()
+    });
+    assert_eq!(border_campaign_day(&mut host), 543, "the pinned siege day");
+    assert!(
+        host.world_mut()
+            .get_resource::<aeon_sim::CampaignOver>()
+            .is_none()
+    );
+    assert_no_liege_rescues_anyone(&mut host, war_id);
+    assert_eq!(
+        aeon_sim::warfare::province_holder(host.world_mut(), vhorruk),
+        Some(harrow),
+        "on this seed the assault broke and the holding stands"
+    );
+    assert_eq!(
+        aeon_sim::order::held_provinces(host.world_mut(), harrow).len(),
+        4
+    );
+    assert!(
+        border_war_resolution(&mut host, vantar, vhorruk).is_none(),
+        "a holding that held resolves nothing"
+    );
+    assert!(border_war_card_for(&mut host, harrow, vantar).is_some());
+    assert_eq!(
+        vantar_fielded(&mut host),
+        vec![raised],
+        "the host is intact"
+    );
+    assert!(
+        !host
+            .world_mut()
+            .resource::<MessageLog>()
+            .entries
+            .iter()
+            .any(|entry| entry.org == Some(veyrin) && entry.text.contains("adopt")),
+        "Veyrin received no scripted rescue behaviour"
+    );
+
+    // The pressing plan spends its one retry and is given up. The ambition
+    // is still standing when that happens — its authored horizon covers the
+    // whole chain — so the settling campaign can still be taken up, which
+    // is the only reason a peace overture is ever made. On this seed the
+    // head sues for peace on day 750, well inside the ambition's horizon.
+    border_advance_until(&mut host, 250, "the head sues for peace", |host| {
+        vantar_campaign(host).is_some_and(|plan| plan.def == key("settle-the-border"))
+    });
+    assert_eq!(
+        border_campaign_day(&mut host),
+        750,
+        "the pinned settling day"
+    );
+    assert_eq!(
+        vantar_ambition(&mut host).map(|goal| goal.def),
+        Some(key("take-the-border")),
+        "the ambition still stands, which is what makes settling adoptable"
+    );
+
+    // The overture is the ordinary negotiation, aimed at the exact war,
+    // and it carries: the war concludes in a negotiated peace.
+    border_advance_until(&mut host, 30, "the peace overture is made", |host| {
+        vantar_work(host, "negotiate").is_some_and(|work| work.war == Some(war_id))
+    });
+    border_advance_until(&mut host, 90, "the war concludes", |host| {
+        border_war_between(host).is_none()
+    });
+    // The peace lands while the ambition still stands, which is the whole
+    // point of the authored horizon: the house that started the war is
+    // the one that ends it. Pinning the day guards that margin, so a
+    // shortened horizon or a slower chain fails here rather than quietly
+    // leaving a war for the player to settle.
+    let peace_day = border_campaign_day(&mut host);
+    assert_eq!(peace_day, 771, "the pinned peace day");
+    assert!(
+        vantar_ambition(&mut host).is_some(),
+        "the ambition outlives its own war, at day {peace_day}"
+    );
+    let record = war(host.world_mut(), war_id)
+        .expect("war on record")
+        .clone();
+    assert_eq!(
+        record.conclusion.map(|end| end.kind),
+        Some(WarConclusionKind::NegotiatedPeace),
+        "the neighbour's own overture ended its war"
+    );
+    // Vhorruk was never taken, but it did not come through untouched: two
+    // sieges left it in unrest long enough to throw off its ruler, so its
+    // title stands vacant and its card ended its own lifecycle before the
+    // peace — as `ungoverned`, which is the honest reading. Nothing
+    // claims House Vantar took it, because House Vantar did not.
+    assert_eq!(
+        aeon_sim::warfare::province_holder(host.world_mut(), vhorruk),
+        None,
+        "the besieged holding revolted rather than falling"
+    );
+    assert_eq!(
+        held_provinces(host.world_mut(), harrow).len(),
+        3,
+        "the revolt is a genuine loss"
+    );
+    assert_eq!(
+        held_provinces(host.world_mut(), vantar).len(),
+        2,
+        "and the neighbour gained nothing by it"
+    );
+    assert!(border_war_card_for(&mut host, harrow, vantar).is_none());
+    let notice =
+        border_war_resolution(&mut host, vantar, vhorruk).expect("the border card resolved");
+    assert_eq!(notice.outcome, key("ungoverned"));
+    assert!(notice.text.contains("Vhorruk"), "got '{}'", notice.text);
+    assert!(
+        notice.text.contains("House Vantar"),
+        "got '{}'",
+        notice.text
+    );
+    assert!(
+        notice.text.contains("House Harrow"),
+        "got '{}'",
+        notice.text
+    );
+    assert!(
+        host.world_mut()
+            .get_resource::<aeon_sim::CampaignOver>()
+            .is_none()
+    );
+}
+
+/// The campaign day: days since the campaign's first day.
+fn border_campaign_day(host: &mut SimHost) -> i64 {
+    let clock = host.world_mut().resource::<aeon_sim::CampaignClock>();
+    clock.date.days_since_epoch() - clock.start_date.days_since_epoch()
+}
+
+#[test]
+fn save_load_and_replay_hold_across_the_border_war() {
+    let content = repository_content();
+    let mut host = scenario_host(BORDER_SEED, Arc::clone(&content));
+    let harrow = org(&mut host, "harrow");
+    let vantar = org(&mut host, "vantar");
+    let vhorruk = host.world_mut().resource::<MapIndex>().province_keys[&key("vhorruk")];
+
+    struct Checkpoint {
+        stage: &'static str,
+        snapshot: aeon_sim::CampaignSnapshot,
+    }
+    let checkpoint = |host: &mut SimHost, stage: &'static str| Checkpoint {
+        stage,
+        snapshot: host.snapshot(),
+    };
+    let mut checkpoints = Vec::new();
+
+    host.advance_days(BORDER_GOAL_DAY);
+    border_advance_until(&mut host, 200, "the war is declared", |host| {
+        border_war_between(host).is_some()
+    });
+    let war_id = border_war_between(&mut host).expect("at war");
+    checkpoints.push(checkpoint(&mut host, "declaration"));
+
+    border_advance_until(&mut host, 120, "the siege is accepted", |host| {
+        vantar_work(host, "besiege").is_some()
+    });
+    let siege = vantar_work(&mut host, "besiege").expect("besieging");
+    host.advance_days(20);
+    assert!(aeon_sim::access::assignment(host.world_mut(), siege.id).is_some());
+    checkpoints.push(checkpoint(&mut host, "mid-siege"));
+
+    border_advance_until(&mut host, 120, "the siege resolves", |host| {
+        aeon_sim::access::assignment(host.world_mut(), siege.id).is_none()
+    });
+    // On this seed the assault breaks and the title stays put; the
+    // scripted sibling below carries the post-transfer state instead.
+    assert_eq!(
+        aeon_sim::warfare::province_holder(host.world_mut(), vhorruk),
+        Some(harrow)
+    );
+    checkpoints.push(checkpoint(&mut host, "post-siege"));
+
+    // Peace is the ordinary whole-war settlement by the defender's leader.
+    aeon_sim::wars::negotiate_peace(host.world_mut(), war_id, harrow)
+        .expect("Harrow may settle its own war");
+    host.advance_days(1);
+    assert!(border_war_between(&mut host).is_none());
+    assert!(border_war_card_for(&mut host, harrow, vantar).is_none());
+    // A war settled with the holding still held closes the card as peace.
+    let notice =
+        border_war_resolution(&mut host, vantar, vhorruk).expect("the border card resolved");
+    assert_eq!(notice.outcome, key("peace"));
+    assert!(notice.text.contains("Vhorruk"), "got '{}'", notice.text);
+    assert!(
+        notice.text.contains("House Vantar"),
+        "got '{}'",
+        notice.text
+    );
+    assert!(
+        notice.text.contains("House Harrow"),
+        "got '{}'",
+        notice.text
+    );
+    checkpoints.push(checkpoint(&mut host, "post-peace"));
+
+    for Checkpoint { stage, snapshot } in checkpoints {
+        assert_eq!(
+            snapshot.format_version,
+            aeon_sim::SNAPSHOT_FORMAT_VERSION,
+            "{stage}: every checkpoint is written in the current format"
+        );
+        let mut restored = SimHost::restore_with_content(snapshot, Arc::clone(&content))
+            .unwrap_or_else(|error| panic!("{stage} restores: {error}"));
+        let mut twin =
+            SimHost::restore_with_content(restored.snapshot(), Arc::clone(&content)).unwrap();
+        assert_eq!(restored.state_hash(), twin.state_hash(), "{stage}");
+        restored.advance_days(30);
+        twin.advance_days(30);
+        assert_eq!(
+            restored.state_hash(),
+            twin.state_hash(),
+            "{stage}: replay after restore stays identical"
+        );
+    }
+}
+
+/// The one army Vantar fields at the opening: Perrin's levy at Cindral.
+fn vantar_levy(host: &mut SimHost) -> aeon_sim::ArmyId {
+    let vantar = org(host, "vantar");
+    let world = host.world_mut();
+    let forces = world.resource::<ForcesIndex>();
+    let mut armies: Vec<_> = forces
+        .armies
+        .values()
+        .filter_map(|entity| world.get::<ArmyRecord>(*entity))
+        .filter(|army| army.owner == vantar)
+        .map(|army| army.id)
+        .collect();
+    assert_eq!(armies.len(), 1, "the house opens with one army");
+    armies.remove(0)
+}
+
+/// Sizes an army directly — the fixture's stand-in for the muster and the
+/// reinforcement the AI runs for itself, so the scripted walk below spends
+/// no campaign days raising a host it is not testing.
+fn set_border_army_manpower(host: &mut SimHost, army: aeon_sim::ArmyId, manpower: i64) {
+    let world = host.world_mut();
+    let entity = aeon_sim::access::army_entity(world, army).expect("army indexed");
+    world
+        .get_mut::<ArmyRecord>(entity)
+        .expect("army record")
+        .manpower = manpower;
+}
+
+/// Starts a war-bound assignment through the shared gate, waiting for the
+/// leader to come free exactly as a player's order would.
+fn border_start_in_war(
+    host: &mut SimHost,
+    owner: OrgId,
+    assignment: &str,
+    leader: CharacterId,
+    target: AssignmentTarget,
+    war_id: aeon_sim::WarId,
+) -> aeon_sim::AssignmentId {
+    for _ in 0..180 {
+        let free = aeon_sim::assignments::validate_start_in_war(
+            host.world_mut(),
+            owner,
+            &key(assignment),
+            leader,
+            target,
+            Some(war_id),
+        )
+        .is_ok();
+        if free {
+            break;
+        }
+        host.advance_days(1);
+    }
+    aeon_sim::assignments::validate_start_in_war(
+        host.world_mut(),
+        owner,
+        &key(assignment),
+        leader,
+        target,
+        Some(war_id),
+    )
+    .unwrap_or_else(|why| panic!("{assignment} is valid in its war: {why:?}"));
+    aeon_sim::assignments::start_assignment_in_war(
+        host.world_mut(),
+        owner,
+        &key(assignment),
+        leader,
+        target,
+        Some(war_id),
+    )
+}
+
+/// The other resolution of the border card, driven deterministically on
+/// one seed: an undefended holding besieged by a host at its authored
+/// strength. Returns `false` when this seed's assault was not pressed, so
+/// the caller can try the next — the siege's own authored contest is the
+/// only thing left to chance.
+fn a_fallen_holding_walk(seed: u64, content: Arc<ContentSet>) -> bool {
+    let mut host = scenario_host(seed, Arc::clone(&content));
+    let harrow = org(&mut host, "harrow");
+    let vantar = org(&mut host, "vantar");
+    let perrin = character(&mut host, "perrin-vantar");
+    let map = host
+        .world_mut()
+        .resource::<MapIndex>()
+        .province_keys
+        .clone();
+    let vhorruk = map[&key("vhorruk")];
+    let tolmaz = map[&key("tolmaz")];
+
+    // The host at its authored strength, and the ordinary declaration's
+    // war. The Guard stands at Ostragard, so Vhorruk is undefended.
+    let levy = vantar_levy(&mut host);
+    set_border_army_manpower(&mut host, levy, 800);
+    let war_id = declare_war(host.world_mut(), vantar, harrow, key("declare-formal-war"))
+        .expect("the ordinary declaration");
+    host.advance_days(1);
+    let card = border_war_card_for(&mut host, harrow, vantar).expect("the border card opens");
+    assert_eq!(
+        card.active.key.bindings.get("objective"),
+        Some(&SituationSubject::Province(vhorruk))
+    );
+
+    let target = AssignmentTarget::ArmyToProvince(levy, vhorruk);
+    let siege = border_start_in_war(&mut host, vantar, "besiege", perrin, target, war_id);
+    border_advance_until(&mut host, 120, "the siege resolves", |host| {
+        aeon_sim::access::assignment(host.world_mut(), siege).is_none()
+    });
+    if aeon_sim::warfare::province_holder(host.world_mut(), vhorruk) != Some(vantar) {
+        return false;
+    }
+    host.advance_days(1);
+
+    // Genuine and on record: the title has passed, the campaign goes on,
+    // and the card's lifecycle ends as lost.
+    assert_eq!(held_provinces(host.world_mut(), harrow).len(), 3);
+    assert!(
+        host.world_mut()
+            .get_resource::<aeon_sim::CampaignOver>()
+            .is_none()
+    );
+    let notice = border_war_resolution(&mut host, vantar, vhorruk)
+        .expect("the fallen holding's card resolved");
+    assert_eq!(notice.outcome, key("lost"));
+    assert!(notice.text.contains("Vhorruk"), "got '{}'", notice.text);
+    assert!(
+        notice.text.contains("House Vantar"),
+        "got '{}'",
+        notice.text
+    );
+
+    // The border moved, and the next exposed holding opens its own card
+    // under the same war.
+    assert!(border_war_between(&mut host).is_some(), "the war goes on");
+    let next = border_war_card_for(&mut host, harrow, vantar).expect("the next holding's card");
+    assert_eq!(
+        next.active.key.bindings.get("objective"),
+        Some(&SituationSubject::Province(tolmaz)),
+        "Tolmaz is the holding across the border now"
+    );
+
+    // The post-transfer state — a title moved mid-war, one lifecycle
+    // resolved and its successor live — survives save, load, and replay.
+    let snapshot = host.snapshot();
+    assert_eq!(snapshot.format_version, aeon_sim::SNAPSHOT_FORMAT_VERSION);
+    let mut restored = SimHost::restore_with_content(snapshot, Arc::clone(&content))
+        .expect("the post-transfer state restores");
+    let mut twin = SimHost::restore_with_content(restored.snapshot(), content).unwrap();
+    assert_eq!(restored.state_hash(), twin.state_hash());
+    restored.advance_days(30);
+    twin.advance_days(30);
+    assert_eq!(
+        restored.state_hash(),
+        twin.state_hash(),
+        "replay after restore stays identical"
+    );
+    true
+}
+
+#[test]
+fn a_fallen_holding_resolves_the_card_lost_and_the_next_holding_opens_its_own() {
+    let content = repository_content();
+    // The assault's own authored contest decides whether it is pressed at
+    // all, so an undefended holding still holds on some seeds; the first
+    // seed on which it falls carries the walk.
+    let carried = (1..=12u64).find(|seed| a_fallen_holding_walk(*seed, Arc::clone(&content)));
+    assert!(
+        carried.is_some(),
+        "an undefended holding falls to the ordinary siege within a dozen seeds"
+    );
+}

@@ -1085,6 +1085,7 @@ fn directive_intent_key(intent: AiIntent) -> &'static str {
         AiIntent::Obligation => "ui.directive.obligation",
         AiIntent::Claim => "ui.directive.claim",
         AiIntent::Subvert => "ui.directive.subvert",
+        AiIntent::Invade => "ui.directive.invade",
         AiIntent::Routine => "ui.directive.routine",
     }
 }

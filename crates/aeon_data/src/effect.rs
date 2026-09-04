@@ -45,6 +45,18 @@ pub enum ScriptEffect {
         /// Supplies committed from the organisation's stores.
         supplies: i64,
     },
+    /// Reinforce the army the assignment leader already commands — the
+    /// standing command a general holds — with soldiers and supplies drawn
+    /// from the owning organisation, clamped to what the pool holds. A
+    /// leader commanding no army reinforces nothing: one person holds one
+    /// command, so growing the force they have is how a house raises a
+    /// host without handing its head a second army they could never lead.
+    ReinforceArmy {
+        /// Soldiers drawn from the organisation's manpower pool.
+        manpower: i64,
+        /// Supplies committed from the organisation's stores.
+        supplies: i64,
+    },
     /// Press the owner's claim to the vacant paramountcy. The simulation
     /// validates the claim: the title must be vacant and the owner must
     /// hold strictly more planetary provinces than any rival.
@@ -368,6 +380,22 @@ pub fn parse_effects(value: Dynamic) -> Result<Vec<ScriptEffect>, EffectParseErr
                     })
                 };
                 effects.push(ScriptEffect::FormArmy {
+                    manpower: get_int("manpower")?,
+                    supplies: get_int("supplies")?,
+                });
+            }
+            "reinforce-army" => {
+                let get_int = |field: &str| {
+                    map.get(field).and_then(|v| v.as_int().ok()).ok_or_else(|| {
+                        EffectParseError::BadField {
+                            index,
+                            kind: kind.clone(),
+                            field: field.to_owned(),
+                            expected: "integer".to_owned(),
+                        }
+                    })
+                };
+                effects.push(ScriptEffect::ReinforceArmy {
                     manpower: get_int("manpower")?,
                     supplies: get_int("supplies")?,
                 });

@@ -238,6 +238,40 @@ neighbour might scheme, never that it is. A change of head at Vantar
 reads the relationship afresh from the successor's own regard, with no
 inherited or protected hostility either way.
 
+[ai] **The border in arms** (stories 46–51) is the arc's third slice and
+its open one: inside a later deterministic window — roughly days 260 to
+360 — a hostile, capable neighbour may set its mind to taking one holding
+across a shared border by ordinary formal war. The window gates only that
+decision; the war itself follows on its own later days and may still
+fail or be derailed at every step. Nothing is scripted: a
+genuine ambition (`take-the-border`) resolves the same hostile border
+neighbour the shadows do, and four ordinary plans carry it — the
+standing levy is reinforced to a host of roughly eight hundred, the
+seven-day declaration is made once the host stands at that strength, the
+house is not outmatched by the target, and it leads no war of its own,
+the host marches on the one enemy holding across the border and besieges
+it, and the house then sues for peace. Declaration, frozen sides, movement, the field engagement at
+the end of the siege, title transfer, history, and later recovery are the
+engine's own war, unchanged. In the Ashkarr opening that chain resolves to
+House Vantar and Vhorruk. What the player sees is **War at the Border**: a
+pausing card naming the exposed holding, its live Order, the largest
+stack of theirs standing inside it — the only one that will fight for it
+— the enemy soldiers on its ground, and both sides' soldiers under arms,
+with guidance that tells the honest military truth: Aleyn's thousand
+counts every soldier wherever it stands, but a border is held by what
+stands on it; roughly six hundred in the holding is a dangerous defence
+against a host of eight hundred, while a supplied thousand standing
+together on settled ground holds every field the engagement's bounded
+swing allows — what makes a thousand uncertain is not the count but the
+ground's Order, the stack's supply, soldiers split across stacks, and
+soldiers standing elsewhere. Losing the holding is
+genuine and recoverable: the campaign continues, the province is the
+neighbour's until it is retaken through the same war, and peace merely
+stops the fighting. Friendship, succession, conquest, a changed border, a
+spent purse or pool, or a war already on the neighbour's hands delays,
+redirects, or cancels the arc through ordinary rules, and no liege is
+scripted to come to anyone's rescue.
+
 **Proposal.** Onboarding should use a short, dismissible sequence of goals over
 the live campaign rather than a separate rules sandbox. It should teach the
 normal interface and issue ordinary logged commands, without changing odds,

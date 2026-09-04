@@ -77,7 +77,13 @@ Requirements are declarative and default to "do not care". They can constrain
 the target's holder or house, hostile occupation, army presence, title kind,
 an owed favour, whether the owner is threatened, and minimum or maximum
 provincial order. One simulation gate evaluates these facts for the action
-button, forecast, AI, plan, and standing-order paths.
+button, forecast, AI, plan, and standing-order paths. [ai] One requirement
+is about the leader rather than the target: `leader_commands_army` holds
+only while the chosen leader generals an army of the owner's — their own
+standing command, not any force the house fields — so an assignment that
+grows the leader's own force (`raise-the-host`) is refused at the start,
+spending and logging nothing, for a successor whose house's army still
+answers to the dead or a household member who never held a command.
 
 [ai] One further requirement, `target_under_covert_work`, is about what is
 being done to the target rather than who holds it: it holds only while
@@ -296,8 +302,16 @@ the authority's worst holding, the head of the target organisation, the
 lowest-order enemy province in the exact target war, and [ai] the target
 organisation's most disordered province sharing a surface route with a held
 one (`target-border-province`, lowest stable ID on a tie — how a covert
-campaign finds the shared border). Dynamic selectors resolve
+campaign finds the shared border), and [ai] the most disordered province
+the opposing side of the exact target war holds that shares a surface
+route with a held one (`lowest-enemy-border-province-in-war`, lowest
+stable ID on a tie), marched on by the actor's strongest own army rather
+than the household levy — how a limited border war reaches only across
+its own border. Dynamic selectors resolve
 when the step starts, so a months-old plan acts on current visible facts.
+[ai] An orders step likewise names which army it is for: `own` (the army
+the actor generals, lowest stable ID) or `strongest` (the largest of
+those, lowest stable ID on a tie — the host raised for a war).
 
 ### Adoption and execution
 
@@ -354,6 +368,35 @@ actually moving against that holding and has not yet been proved — never
 on quiet ground, and never against a hand already proved, where either way
 it could prove nothing.
 
+[ai] The First Reign's open arc adds four ordinary campaigns that share
+one intent (`invade`) and hand the war from one to the next by target
+kind: `prepare-the-host` (organisation target; musters a levy if the
+acting head commands none — the actor-bound `leader_commands_army` skip,
+so a successor inheriting an army that answers to the dead raises a fresh
+levy rather than skipping to a reinforcement nobody could receive — then
+reinforces the army the head commands through the
+closed `raise-the-host` assignment and the new `reinforce-army` effect,
+while the house's complete raised manpower is still below the host's
+authored strength — the new absolute `max_branch_manpower` predicate),
+`declare-the-border-war` (organisation target; the ordinary seven-day
+declaration once the host stands at strength (`min_branch_manpower`) and
+the house is not outmatched — the accepted three-quarters
+`min_target_branch_manpower_permille` floor — gated on the new unilateral
+`at_war: false`, a war the house itself leads a side of, so a house
+already fighting anybody of its own accord waits while a liege's war it
+merely rides in holds nothing),
+`press-the-border` (exact war target; standing orders on the strongest own
+army, then one siege of the lowest-order enemy holding across the border
+— gated on the new `war_has_enemy_border_province`, the geographic
+sibling of `war_has_enemy_province` — after which the plan completes and
+its long cooldown makes the war a one-holding war), and
+`settle-the-border` (exact war target; the ordinary negotiation, retried,
+whenever there is nothing left to press). Plans are tried in content-key
+order, so pressing is weighed before settling. Both organisation-aimed
+campaigns carry the reconciliation `abandon_when` and hostility method
+gates the covert campaign carries, so the same relationship rules derail
+what is uncommitted.
+
 ## Organisational goals and directives
 
 **Implemented / accepted design.** A goal is a standing ambition keyed by
@@ -372,7 +415,20 @@ with the authored capability floor, and resolved through the new authored
 `hostile-border-neighbour` target selector — a standing organisation
 outside the chain of command, holding a surface-adjacent province, hostile
 by authored data (opinion at or below the authored floor toward its head,
-or an open grievance owed), lowest stable ID first.
+or an open grievance owed), lowest stable ID first. [ai] Beside it the
+open `take-the-border` ambition is windowed to days 260–360, gated to a
+vassal with a levy in the field, an authored purse floor, and a pool that
+can bear a host, resolves through the same selector, favours the `invade`
+pressure, and is set aside by the same reconciliation predicates. Its
+horizon is authored to cover the whole chain it drives, not just its own
+adoption: the pressure it raises exists only while the ambition stands, so
+an ambition that lapsed after the declaration would leave a war with no
+siege and no peace overture. On the pinned scenario seed the chain adopted
+on day 270 sues for peace on day 750 and concludes on day 771, inside that
+horizon. The
+`conquer-a-neighbour` ambition is unrelated to it: that one needs an
+independent house with vassals and resolves the weakest rival great
+house, so no vassal can adopt it or aim it at a sibling.
 
 A goal has no executor. It biases the head's ordinary scoring so that existing
 assignments and plans pursue the ambition. It ends when its house falls, an
@@ -402,11 +458,11 @@ intent are detailed in [AI Agency and Information Rules](06-ai-agency-and-inform
 
 | Layer | Principal data | Deterministic identity and ordering |
 | --- | --- | --- |
-| Assignment definition | Target kind, requirements, skill, difficulty, duration, phases, costs, urgency, AI intent, results, risks, military operation, [ai] optional live-opinion modifier (roles, per-point scale, clamp), [ai] optional live-Order modifier (reference, per-hundred scale, clamp; province-bearing targets only), [ai] covert flag (provenance confided to the owner, and to any house that has proved it) | Stable content key; authored phase and outcome order |
+| Assignment definition | Target kind, requirements, skill, difficulty, duration, phases, costs, urgency, AI intent, results, risks, military operation, [ai] optional live-opinion modifier (roles, per-point scale, clamp), [ai] optional live-Order modifier (reference, per-hundred scale, clamp; province-bearing targets only), [ai] covert flag (provenance confided to the owner, and to any house that has proved it), [ai] typed effects including `reinforce-army` (grow the army the leader commands from the owner's pool, clamped to it), [ai] the leader-bound `leader_commands_army` requirement | Stable content key; authored phase and outcome order |
 | Active assignment | Stable ID, definition, owner, leader, target, war, Situation origin, start/completion dates, cancellation request | Stable assignment ID; daily resolution in ID order |
 | Command | Typed player decision, execution day, monotonic sequence | Applied in `(day, sequence)` order and appended to the command log |
 | Forecast | Derived timing, costs, contest, odds, risks, block reason, point of no return | Pure integer calculations shared with resolution |
-| Plan definition | Intent, target kind, methods, gates ([ai] including campaign-day windows and the hostility and reconciliation predicates — opinion floor and line, grievance owed or not, war with the target or not), flattened step vocabulary, cooldown and limits, [ai] covert flag, [ai] optional lost-grounds gate (`abandon_when`) | Stable content key; validated acyclic composition |
+| Plan definition | Intent, target kind, methods, gates ([ai] including campaign-day windows, the hostility and reconciliation predicates — opinion floor and line, grievance owed or not, war with the target or not — the unilateral `at_war` (a war the house leads a side of), the absolute `min_branch_manpower`/`max_branch_manpower` strength reading, the geographic `war_has_enemy_border_province`, and the actor-bound `leader_commands_army` predicates), flattened step vocabulary ([ai] with `own`/`strongest` army selectors), cooldown and limits, [ai] covert flag, [ai] optional lost-grounds gate (`abandon_when`) | Stable content key; validated acyclic composition |
 | Active plan | Actor-keyed definition, method, flattened steps, target, step, dates, current assignment, retries, reason | `BTreeMap` by stable character ID |
 | Goal definition | Trigger ([ai] including campaign-day windows), priority, favoured intents, target, [ai] target selector, directives, lifetime and cooldown, [ai] covert flag, [ai] optional lost-grounds gate (`set_aside_when`, in the plan vocabulary over the resolved target) | Stable content key; priority then key tie-break |
 | Active goal | Organisation-keyed definition, adopting head, resolved target, date | `BTreeMap` by stable organisation ID |

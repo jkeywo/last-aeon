@@ -667,6 +667,7 @@ fn define_assignment(state: &mut BuilderState, map: Map) {
             ("standing", AiIntent::Standing),
             ("claim", AiIntent::Claim),
             ("subvert", AiIntent::Subvert),
+            ("invade", AiIntent::Invade),
         ],
         AiIntent::Routine,
     ) else {
@@ -1040,6 +1041,7 @@ fn assignment_requires(f: &mut Fields) -> AssignmentRequires {
             "target_owes_favour",
             "owner_threatened",
             "target_under_covert_work",
+            "leader_commands_army",
             "max_order",
             "min_order",
         ],
@@ -1070,6 +1072,7 @@ fn assignment_requires(f: &mut Fields) -> AssignmentRequires {
     requires.target_owes_favour = flag(&conditions, "target_owes_favour");
     requires.owner_threatened = flag(&conditions, "owner_threatened");
     requires.target_under_covert_work = flag(&conditions, "target_under_covert_work");
+    requires.leader_commands_army = flag(&conditions, "leader_commands_army");
     requires.target_holds_title = conditions
         .get("target_holds_title")
         .and_then(|v| v.clone().into_string().ok())
@@ -2427,6 +2430,7 @@ fn define_plan(state: &mut BuilderState, map: Map) {
             ("standing", AiIntent::Standing),
             ("claim", AiIntent::Claim),
             ("subvert", AiIntent::Subvert),
+            ("invade", AiIntent::Invade),
         ],
     ) else {
         return;
@@ -2616,8 +2620,11 @@ fn plan_step(f: &mut Fields, entry: rhai::Dynamic) -> Option<PlanStepDef> {
             .as_deref()
         {
             None | Some("own") => PlanArmySelector::Own,
+            Some("strongest") => PlanArmySelector::Strongest,
             Some(other) => {
-                f.error(format!("unknown step army '{other}' (expected own)"));
+                f.error(format!(
+                    "unknown step army '{other}' (expected own, strongest)"
+                ));
                 return None;
             }
         };
@@ -2654,11 +2661,15 @@ fn plan_step(f: &mut Fields, entry: rhai::Dynamic) -> Option<PlanStepDef> {
                     PlanTargetSelector::LowestEnemyProvinceInWar
                 }
                 Some("target-border-province") => PlanTargetSelector::TargetBorderProvince,
+                Some("lowest-enemy-border-province-in-war") => {
+                    PlanTargetSelector::LowestEnemyBorderProvinceInWar
+                }
                 Some(other) => {
                     f.error(format!(
                         "unknown step target '{other}' \
                          (expected none, plan, worst-holding, target-head, \
-                         lowest-enemy-province-in-war, target-border-province)"
+                         lowest-enemy-province-in-war, target-border-province, \
+                         lowest-enemy-border-province-in-war)"
                     ));
                     return None;
                 }
@@ -2738,6 +2749,11 @@ fn plan_requires(f: &mut Fields, raw: rhai::Dynamic) -> Option<PlanRequires> {
             "min_target_head_opinion",
             "target_owes_no_grievance",
             "at_war_with_target",
+            "at_war",
+            "war_has_enemy_border_province",
+            "min_branch_manpower",
+            "max_branch_manpower",
+            "leader_commands_army",
         ],
     );
     let int = |name: &str| map.get(name).and_then(|v| v.as_int().ok());
@@ -2781,6 +2797,15 @@ fn plan_requires(f: &mut Fields, raw: rhai::Dynamic) -> Option<PlanRequires> {
         min_target_head_opinion: int("min_target_head_opinion").map(|v| v as i32),
         target_owes_no_grievance: flag("target_owes_no_grievance"),
         at_war_with_target: map.get("at_war_with_target").and_then(|v| v.as_bool().ok()),
+        at_war: map.get("at_war").and_then(|v| v.as_bool().ok()),
+        war_has_enemy_border_province: map
+            .get("war_has_enemy_border_province")
+            .and_then(|v| v.as_bool().ok()),
+        min_branch_manpower: int("min_branch_manpower"),
+        max_branch_manpower: int("max_branch_manpower"),
+        leader_commands_army: map
+            .get("leader_commands_army")
+            .and_then(|v| v.as_bool().ok()),
     })
 }
 
@@ -2830,6 +2855,7 @@ const INTENT_SPELLINGS: &[(&str, AiIntent)] = &[
     ("standing", AiIntent::Standing),
     ("claim", AiIntent::Claim),
     ("subvert", AiIntent::Subvert),
+    ("invade", AiIntent::Invade),
 ];
 
 fn parse_intent(raw: &str) -> Option<AiIntent> {

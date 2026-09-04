@@ -15,6 +15,7 @@ define_scenario(#{
     situations: [
         "formal-war", "court-awaits", "kessarin-order", "aleyn-levies",
         "torvald-standing", "casimir-visit", "unquiet-holdings", "cold-border",
+        "border-war",
     ],
 });
 
