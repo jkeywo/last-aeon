@@ -4,12 +4,13 @@
 //! and eases toward the new framing. The wheel belongs to whatever the
 //! pointer is over: while egui holds the pointer, the map ignores it.
 
+use aeon_sim::{GeoPosition, ProvinceRecord};
 use bevy::input::mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll};
 use bevy::prelude::*;
 use bevy_egui::EguiContexts;
 
 use crate::skybox::{SpaceSkybox, space_skybox};
-use crate::view::{FLAT_HEIGHT, FLAT_WIDTH, MapProjection, MapView, ViewState};
+use crate::view::{FLAT_HEIGHT, FLAT_WIDTH, MapProjection, MapView, ViewState, geo_to_unit};
 
 /// Orbit parameters, eased toward `goal_distance` when views change.
 #[derive(Resource)]
@@ -154,6 +155,52 @@ pub fn drive_camera(
     }
 }
 
+/// The orbit angles that put `direction` in the middle of the screen.
+///
+/// `drive_camera` places the camera at `Ry(yaw) * Rx(-pitch)` applied to
+/// +Z, so its direction from the origin is
+/// `(cos pitch * sin yaw, sin pitch, cos pitch * cos yaw)`. Reading that
+/// backwards gives the angles that look straight at a point. Pitch keeps
+/// the same short-of-the-poles clamp a drag obeys, so a polar province is
+/// framed as closely as the camera can ever be tilted.
+fn orbit_angles_for(direction: Vec3) -> (f32, f32) {
+    let direction = direction.normalize_or_zero();
+    let pitch = direction.y.clamp(-1.0, 1.0).asin().clamp(-1.45, 1.45);
+    (direction.x.atan2(direction.z), pitch)
+}
+
+/// Brings a province the player followed by name into view.
+///
+/// Only a name asks for this: clicking the map already points at what was
+/// clicked, and moving the camera under that click would throw the map
+/// about. The request is consumed whatever happens, so a province that has
+/// since vanished cannot leave the camera trying again every frame. Runs
+/// after `retarget_on_view_change`, which resets a flat map's pan when the
+/// view changes and would otherwise undo this.
+pub fn focus_requested_province(
+    mut view: ResMut<ViewState>,
+    provinces: Query<(&ProvinceRecord, &GeoPosition)>,
+    mut orbit: ResMut<OrbitCamera>,
+) {
+    let Some(province) = view.focus.take() else {
+        return;
+    };
+    let Some((_, geo)) = provinces.iter().find(|(record, _)| record.id == province) else {
+        return;
+    };
+    let direction = geo_to_unit(geo.latitude_mdeg, geo.longitude_mdeg);
+    match view.projection {
+        MapProjection::Globe => {
+            let (yaw, pitch) = orbit_angles_for(direction);
+            orbit.yaw = yaw;
+            orbit.pitch = pitch;
+        }
+        MapProjection::Flat => {
+            orbit.pan = MapProjection::Flat.place(direction).truncate();
+        }
+    }
+}
+
 /// Whether the map should act on a wheel event this frame.
 ///
 /// egui owns the pointer while it is over one of its surfaces or driving a
@@ -190,6 +237,35 @@ mod tests {
     fn a_still_wheel_moves_nothing_either_way() {
         assert!(!map_takes_wheel(0.0, false));
         assert!(!map_takes_wheel(0.0, true));
+    }
+
+    #[test]
+    fn facing_a_province_puts_it_in_front_of_the_camera() {
+        // The camera direction rebuilt from the angles must be the
+        // direction asked for, which is what "centred" means here.
+        for direction in [
+            Vec3::new(0.0, 0.0, 1.0),
+            Vec3::new(1.0, 0.0, 0.0),
+            Vec3::new(-0.3, 0.5, 0.8).normalize(),
+            Vec3::new(0.6, -0.4, -0.7).normalize(),
+        ] {
+            let (yaw, pitch) = orbit_angles_for(direction);
+            let rebuilt = Vec3::new(
+                pitch.cos() * yaw.sin(),
+                pitch.sin(),
+                pitch.cos() * yaw.cos(),
+            );
+            assert!(
+                rebuilt.distance(direction) < 1e-5,
+                "{direction:?} framed as {rebuilt:?}"
+            );
+        }
+    }
+
+    #[test]
+    fn a_pole_is_framed_as_closely_as_the_camera_tilts() {
+        let (_, pitch) = orbit_angles_for(Vec3::Y);
+        assert!((pitch - 1.45).abs() < 1e-6, "clamped short of the pole");
     }
 
     #[test]

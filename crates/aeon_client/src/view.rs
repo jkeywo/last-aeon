@@ -136,6 +136,11 @@ pub struct ViewState {
     pub projection: MapProjection,
     /// The current inspection selection, if any.
     pub selected: Option<Selection>,
+    /// A province the camera has been asked to bring into view, set when
+    /// the player follows a province by name rather than by pointing at
+    /// it on the map. Consumed by the camera on the frame it is read, so
+    /// it never fights a drag afterwards.
+    pub focus: Option<ProvinceId>,
 }
 
 impl Default for ViewState {
@@ -144,6 +149,7 @@ impl Default for ViewState {
             view: MapView::System,
             projection: MapProjection::default(),
             selected: None,
+            focus: None,
         }
     }
 }

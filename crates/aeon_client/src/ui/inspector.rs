@@ -337,6 +337,7 @@ pub fn draw_inspector(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                         let place = ctx.lookup.province_name(province);
                         if linked(ui, &place, &place) {
                             out.view.selected = Some(Selection::Province(province));
+                            out.view.focus = Some(province);
                         }
                     }
                     ArmyLocation::Embarked(ship) => {

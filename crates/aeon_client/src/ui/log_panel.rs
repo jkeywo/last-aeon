@@ -113,6 +113,7 @@ pub fn draw_log_panel(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                                     }
                                     LogSubject::Province(id) => {
                                         view.selected = Some(Selection::Province(id));
+                                        view.focus = Some(id);
                                         if let Some(body) = provinces
                                             .iter()
                                             .find(|record| record.id == id)

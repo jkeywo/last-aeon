@@ -135,8 +135,15 @@ fn main() {
                 scene::apply_projection,
                 scene::update_globe_selection_glow,
                 scene::apply_selection_tint,
-                camera::retarget_on_view_change,
-                camera::drive_camera,
+                // Reframing, then any follow-a-name request, then the
+                // frame's input: a focus that landed before the retarget
+                // would have its flat pan wiped by it.
+                (
+                    camera::retarget_on_view_change,
+                    camera::focus_requested_province,
+                    camera::drive_camera,
+                )
+                    .chain(),
                 assignment_ui::auto_pause_on_popups,
                 assignment_ui::flush_ui_commands,
                 forecast_view::refresh_availability,

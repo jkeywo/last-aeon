@@ -2041,11 +2041,11 @@ mod tests {
         refresh_situation_panel_view(fixture.host.world_mut());
         let head = aeon_sim::access::org_head(fixture.host.world_mut(), harrow)
             .expect("the house has a head");
-        let vhorruk = fixture
+        let tolmaz = fixture
             .host
             .world_mut()
             .resource::<aeon_sim::MapIndex>()
-            .province_keys[&aeon_data::ContentKey::new("vhorruk").unwrap()];
+            .province_keys[&aeon_data::ContentKey::new("tolmaz").unwrap()];
 
         // The panel view: the enquiry is offered, enabled, pinning no
         // leader, and previewed on the deterministic default host.
@@ -2078,7 +2078,7 @@ mod tests {
         };
         assert_eq!(
             action_target,
-            aeon_sim::AssignmentTarget::Province(vhorruk),
+            aeon_sim::AssignmentTarget::Province(tolmaz),
             "the enquiry is aimed at the holder's own troubled ground"
         );
 
@@ -2267,7 +2267,7 @@ mod tests {
                 assert_eq!(situation, &card_key);
                 assert_eq!(action.as_str(), "investigate");
                 assert_eq!(*leader, other, "the chosen investigator leads");
-                assert_eq!(*target, aeon_sim::AssignmentTarget::Province(vhorruk));
+                assert_eq!(*target, aeon_sim::AssignmentTarget::Province(tolmaz));
                 assert_eq!(*war, None);
             }
             other => panic!("unexpected UI command: {other:?}"),

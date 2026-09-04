@@ -847,6 +847,7 @@ fn draw_links(
                             .find(|(record, ..)| record.id == province)
                     {
                         out.view.view = MapView::Body(record.body);
+                        out.view.focus = Some(province);
                     }
                     out.view.selected = Some(selection);
                 }

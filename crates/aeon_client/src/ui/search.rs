@@ -106,6 +106,7 @@ pub fn draw_search_results(
                                         SearchHit::Province(id, body) => {
                                             view.view = MapView::Body(*body);
                                             view.selected = Some(Selection::Province(*id));
+                                            view.focus = Some(*id);
                                         }
                                     }
                                     search.query.clear();

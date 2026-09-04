@@ -230,6 +230,7 @@ pub fn draw_listing(ui: &mut egui::Ui, ctx: &PanelCtx, out: &mut PanelOut) {
                     .register();
                     if response.clicked() {
                         out.view.selected = Some(Selection::Province(record.id));
+                        out.view.focus = Some(record.id);
                     }
                 }
             });
