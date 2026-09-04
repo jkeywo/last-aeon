@@ -206,6 +206,30 @@ guidance block. Situation activations may also raise a pausing announcement
 popup through the ordinary popup channel, which is authoritative simulation
 state independent of the preference.
 
+**Implemented.** [ai] Onboarding measurement is opt-in and presentation-owned.
+A **Help improve onboarding** tickbox sits with the interface preferences on
+the title screen and in campaign settings, defaulting to *off*: nothing is
+recorded until the player turns it on. When it is on, the client keeps a local
+note of the onboarding moments the player produces themselves — the guidance
+choice, objectives reached, household outcomes, forecasts inspected and
+candidates compared, orders accepted and refused, the first unpause,
+interactions with the visit, intrigue, cold border, and war cards, and
+consequences returned to. Every note names authored content keys and interface
+roles only: never a character's display name, never authored or scripted
+message text, and never anything the player typed. Consent and captured events are two client documents
+of their own, separate from the interface preference document and from the
+autosave: a native file beside `preferences.json` under the per-user
+configuration directory, and their own browser local-storage entries. Consent
+is three-valued — unanswered, granted, declined — and every failure to read it
+means *not consented*: absent, malformed, unsupported-version, and inaccessible
+documents all fail safe rather than falling back to a default that happens to
+be on. Withdrawing consent clears what was captured and erases the stored
+document. The telemetry resource lives in the client crate, so it is
+structurally outside the campaign snapshot; it issues no command, derives no
+random stream, is never consulted by save or load, and contributes nothing to
+the state hash, and an isolation test and a paired consent-on/consent-off
+scripted session prove it.
+
 **Implemented.** [ai] Situation cards gained a second interaction kind
 beside assignment actions: pure recorded responses. A card whose content
 declares responses (each household demand — Kessarin's, Aleyn's, and
@@ -309,6 +333,18 @@ actual headless Chrome runtime, while Trunk separately provides the shipping was
 build. These values are
 presentation state only; an isolation test proves changing and persisting them
 does not alter campaign snapshots, command logs, or state hashes.
+
+[ai] The campaign settings window is constrained to the viewport and scrolls
+its body, so every preference control — including the close button — stays
+reachable by pointer and by Tab as the settings surface grows. [ai] The
+opt-in onboarding-telemetry consent tickbox is drawn by the same shared
+controls, and carries its own review surface: a collapsing section naming the
+local storage location, showing the captured document as selectable read-only
+text, offering a one-press copy of the whole of it to the clipboard, and
+offering deletion. That is the documented maintainer workflow on both targets
+— on native the JSONL file can simply be opened, and on the web the same
+document is selected or copied out of the panel, which is why no browser
+download path and no additional `web-sys` features were introduced.
 
 ### Responsive campaign shell
 
@@ -571,7 +607,12 @@ The current deliberate differences are:
 - native development builds support hot-reloading `theme.ron` and a specimen
   panel that is not part of the web panel list;
 - the browser supplies an HTML loading overlay before the Bevy canvas exists,
-  followed by the in-client asset-loading screen.
+  followed by the in-client asset-loading screen;
+- [ai] onboarding telemetry is captured identically on both targets, but the
+  wasm build has no filesystem: its consent and captured-event documents are
+  browser local-storage entries and are exported by selecting or copying them
+  out of the in-client review surface, while the native build writes an
+  ordinary JSONL file a maintainer can open directly.
 
 **Proposal.** Any new platform-specific feature must state whether the
 difference is a development convenience, a delivery constraint, or a player

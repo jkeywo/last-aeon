@@ -91,6 +91,10 @@ pub struct PanelOut<'a> {
     pub situation_ui: &'a mut SituationUiState,
     /// Pinned explanatory snapshot, wholly outside authoritative state.
     pub explanations: &'a mut ExplanationState,
+    /// Opt-in onboarding measurement. Writing here never reaches a
+    /// command, a snapshot, a random stream, or the state hash, and the
+    /// sink itself drops everything until the player has opted in.
+    pub telemetry: &'a mut crate::telemetry::OnboardingTelemetry,
 }
 
 /// What a panel's header was asked to do.

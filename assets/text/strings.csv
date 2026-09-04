@@ -859,6 +859,14 @@ situation.court-awaits.guidance.why,"First Reign ""Why this matters"" help for t
 sim.situation.acknowledge,Single acknowledgement choice on a Situation activation announcement popup.,[Understood]
 ui.preferences.guidance,Tickbox label for the default-on First Reign scenario guidance preference.,[First Reign guidance]
 ui.preferences.guidance-note,Small print under the guidance tickbox.,"[Adds objectives and optional help to scenario Situations. The campaign's rules, deadlines, and consequences are identical with it off.]"
+ui.preferences.telemetry,"Tickbox label for the opt-in, local-only onboarding telemetry consent control. Off until the player chooses it.",[Help improve onboarding (optional)]
+ui.preferences.telemetry-note,Small print under the onboarding telemetry tickbox: what is captured and where it goes.,"[Off unless you turn it on. When on, this build keeps a local note of onboarding moments you produce yourself — the guidance setting, objectives reached, forecasts you open, orders accepted or refused, household outcomes, the first time you let time run, visit, intrigue and war interactions, and consequences you return to. Each note names the thing you used, never a person: no character names, no text you typed, no message wording. It stays on this device, is never sent anywhere, changes no campaign rule, and is not part of any save. Turning it off again deletes what was kept.]"
+ui.preferences.telemetry-location,Line naming where the captured onboarding telemetry document is kept on this build. {location} is a file path or a browser storage key.,[Kept locally at {location}.]
+ui.preferences.telemetry-review,Collapsing header that opens the local review of captured onboarding telemetry.,[Review what has been captured]
+ui.preferences.telemetry-count,Line above the captured onboarding telemetry document giving how many events it holds. {count} is the number.,[{count} captured so far.]
+ui.preferences.telemetry-empty,Shown in the onboarding telemetry review when nothing has been captured.,[Nothing has been captured.]
+ui.preferences.telemetry-copy,Button that copies the whole captured onboarding telemetry document to the clipboard.,[Copy to clipboard]
+ui.preferences.telemetry-clear,Button that deletes every captured onboarding telemetry event without changing consent.,[Delete captured events]
 ui.situations.guidance-heading,Heading above optional First Reign guidance on a Situation card.,[Guidance]
 ui.situations.show-how,"Focusable trigger for the optional ""Show me how"" guidance help.",[Show me how]
 ui.situations.why-matters,"Focusable trigger for the optional ""Why this matters"" guidance help.",[Why this matters]

@@ -208,10 +208,15 @@ linked design note:
 
 No formal target ranges for campaign length, resource scarcity, action success,
 AI goal attainment, revolt frequency, war duration, or house survival are
-currently evidenced in the repository. There is also no evidenced telemetry,
-player analytics pipeline, or performance benchmark suite. Headless runs and
-state hashes provide a foundation for batch analysis, but a multi-seed balance
-corpus remains a proposal rather than an implemented gate.
+currently evidenced in the repository. There is no player analytics pipeline
+and no performance benchmark suite. [ai] There is one narrow, opt-in,
+local-only telemetry path, covering the first-year onboarding experience
+alone: it is presentation-owned, defaults to off, records nothing until the
+player opts in, is reviewed and exported locally, and is deliberately excluded
+from deterministic state — it is evidence about how the interface is used, not
+about how the simulation behaves, and it is not a balance gate. Headless runs
+and state hashes provide a foundation for batch analysis, but a multi-seed
+balance corpus remains a proposal rather than an implemented gate.
 
 ## Determinism and random streams
 
@@ -417,9 +422,16 @@ recorded:
 - What performance budgets matter for content load, a daily tick, long
   headless runs, snapshot size, restore time, and web delivery, and how should
   CI measure them without making unstable machines the authority?
-- Is opt-in telemetry appropriate for balancing, and if so, what minimal,
-  privacy-preserving facts answer design questions that deterministic local
-  runs cannot?
+- [ai] *Answered for onboarding, open for balancing.* Opt-in telemetry is
+  accepted for the first-year onboarding experience only: the minimal facts
+  are the onboarding moments the player produces themselves — guidance choice,
+  objective reach, household outcomes, forecast inspection and candidate
+  comparison, accepted and refused commands, first unpause, visit, intrigue
+  and invasion interactions, and consequence revisits — recorded locally,
+  never transmitted, and excluded from deterministic state. Whether the same
+  route is appropriate for *balance* questions is still open, and the accepted
+  answer so far is that it is not: balance evidence comes from deterministic
+  fixtures and headless multi-seed runs, not from measurement of play.
 - When an accepted balance change deliberately changes hashes, what durable
   baseline record should explain the new result without turning a single golden
   hash into a substitute for behavioural tests?

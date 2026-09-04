@@ -75,6 +75,18 @@ pub struct ForecastCache {
     pub leaders: Vec<LeaderOption>,
 }
 
+impl ForecastCache {
+    /// What the cached forecast is about — the assignment, its chosen
+    /// leader, and its target — without the campaign day the cache also
+    /// keys on. A reader that wants "the player is comparing candidates"
+    /// wants this, not a value that changes every time the calendar turns.
+    pub fn subject(&self) -> Option<(&ContentKey, Option<CharacterId>, Option<AssignmentTarget>)> {
+        self.key
+            .as_ref()
+            .map(|(assignment, leader, target, _)| (assignment, *leader, *target))
+    }
+}
+
 /// What every member of the player's house is committed to today.
 ///
 /// Kept as its own resource because the question — "where is this person,

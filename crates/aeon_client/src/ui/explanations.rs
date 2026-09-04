@@ -32,6 +32,13 @@ const EXPLANATION_DISMISS: &str = "production-explanation-dismiss";
 #[derive(Clone, Debug)]
 pub struct ExplanationTopic {
     pub title: String,
+    /// A stable, non-identifying discriminator of *what* is being explained:
+    /// an authored content key or a fixed interface role, prefixed by the
+    /// kind of surface it was raised from. Never a display name, never
+    /// authored prose, never anything the player typed — `title` is the
+    /// player-facing copy and may carry a character's name, so measurement
+    /// reads this instead.
+    pub subject: String,
     pub summary: String,
     pub forecast: Option<AssignmentForecast>,
 }

@@ -57,6 +57,7 @@ pub fn draw_title(
     mut contexts: EguiContexts,
     mut title: ResMut<TitleState>,
     mut preferences: ResMut<crate::preferences::UiPreferences>,
+    mut telemetry: ResMut<crate::telemetry::OnboardingTelemetry>,
     strings: Res<aeon_sim::TextDb>,
 ) {
     let Ok(ctx) = contexts.ctx_mut() else {
@@ -110,7 +111,7 @@ pub fn draw_title(
             ui.separator();
             ui.add_space(8.0);
             ui.heading(strings.text("ui.preferences.title"));
-            crate::preferences::draw_controls(ui, &strings, &mut preferences);
+            crate::preferences::draw_controls(ui, &strings, &mut preferences, &mut telemetry);
         });
     });
 }
@@ -137,6 +138,13 @@ pub fn launch(world: &mut World) {
         return;
     };
     let spectator = world.resource::<TitleState>().spectator;
+    // A campaign is about to replace whatever the client was observing.
+    // Onboarding measurement keeps its consent and its captured document,
+    // but its session-scoped baselines belong to the campaign that is
+    // ending, not the one starting.
+    if let Some(mut telemetry) = world.get_resource_mut::<crate::telemetry::OnboardingTelemetry>() {
+        telemetry.begin_campaign_session();
+    }
     match action {
         TitleAction::NewGame => {
             sim_driver::begin_campaign(world, spectator);

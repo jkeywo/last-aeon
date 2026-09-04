@@ -328,6 +328,7 @@ pub fn draw_forecast(
             strings,
             &ExplanationTopic {
                 title: view.title.clone(),
+                subject: format!("assignment:{}", view.assignment),
                 summary: forecast_summary(strings, view),
                 forecast: Some(view.clone()),
             },

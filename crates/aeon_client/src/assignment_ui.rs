@@ -137,9 +137,17 @@ impl LogFilter {
 pub fn flush_ui_commands(world: &mut World) {
     let queued: Vec<PlayerCommand> = std::mem::take(&mut world.resource_mut::<UiCommandQueue>().0);
     for command in queued {
-        if let Err(rejection) = submit_command(world, command) {
-            world.resource_mut::<AssignmentForm>().notice = Some(rejection.to_string());
+        // The presentation-owned telemetry sink observes the outcome the
+        // pipeline already reached. It never inspects, alters, retries, or
+        // re-orders the command; the sink itself drops the note unless the
+        // player has opted in.
+        let observed = command.clone();
+        let mut rejection = None;
+        if let Err(refused) = submit_command(world, command) {
+            world.resource_mut::<AssignmentForm>().notice = Some(refused.to_string());
+            rejection = Some(refused);
         }
+        crate::telemetry::record_command_outcome(world, &observed, rejection.as_ref());
     }
 }
 

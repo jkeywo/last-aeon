@@ -118,6 +118,7 @@ pub fn draw_panels(
         mut explanations,
         mut preferences,
         mut settings,
+        mut telemetry,
         escape_claim,
     } = map_ui;
     let Ok(ctx) = contexts.ctx_mut() else {
@@ -175,7 +176,13 @@ pub fn draw_panels(
     );
     layout = layout.with_measured_top(measured_top);
 
-    crate::preferences::draw_campaign_settings(ctx, strings, &mut preferences, &mut settings);
+    crate::preferences::draw_campaign_settings(
+        ctx,
+        strings,
+        &mut preferences,
+        &mut telemetry,
+        &mut settings,
+    );
 
     draw_search_results(ctx, &lookup, &data, &mut view, &mut search, layout);
     draw_overlays(
@@ -216,6 +223,7 @@ pub fn draw_panels(
         filter: &mut filter,
         situation_ui: &mut situation_ui,
         explanations: &mut explanations,
+        telemetry: &mut telemetry,
     };
 
     // Header verbs are collected and applied after drawing: a panel cannot

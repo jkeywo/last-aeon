@@ -59,6 +59,9 @@ pub struct MapUi<'w> {
     pub explanations: ResMut<'w, ExplanationState>,
     pub preferences: ResMut<'w, UiPreferences>,
     pub settings: ResMut<'w, SettingsUi>,
+    /// Opt-in onboarding measurement. Presentation-owned: panels write
+    /// captured events into it and never read a rule from it.
+    pub telemetry: ResMut<'w, crate::telemetry::OnboardingTelemetry>,
     pub escape_claim: Res<'w, crate::ui::shell::LocalEscapeClaim>,
 }
 

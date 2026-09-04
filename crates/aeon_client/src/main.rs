@@ -19,6 +19,7 @@ mod scene;
 mod selection;
 mod sim_driver;
 mod skybox;
+mod telemetry;
 mod title;
 mod ui;
 mod view;
@@ -67,6 +68,10 @@ fn main() {
         .init_resource::<ui::theme::UiTheme>()
         .init_resource::<preferences::UiPreferences>()
         .init_resource::<preferences::SettingsUi>()
+        // Opt-in onboarding measurement. Deliberately a client resource:
+        // the campaign snapshot enumerates aeon_sim resources by hand and
+        // cannot reach one that lives here.
+        .init_resource::<telemetry::OnboardingTelemetry>()
         .init_resource::<ui::shell::LocalEscapeClaim>()
         .init_resource::<ui::picker::PickerState>()
         .init_resource::<ui::assignment_popup::AssignmentPopup>()
@@ -84,6 +89,7 @@ fn main() {
             Startup,
             (
                 preferences::load_preferences,
+                telemetry::load_telemetry,
                 camera::spawn_camera,
                 loading::begin_preload,
             ),
@@ -97,6 +103,18 @@ fn main() {
             || {},
         )
         .add_systems(Update, title::launch.run_if(in_state(title::Screen::Title)))
+        // Onboarding observers watch client-owned presentation state on
+        // every screen. They read only already-projected views, write only
+        // the client-owned sink, and record nothing without consent.
+        .add_systems(
+            Update,
+            (
+                telemetry::observe_guidance_choice,
+                telemetry::observe_first_unpause,
+                telemetry::observe_explanation_pins,
+                telemetry::observe_forecast_comparison,
+            ),
+        )
         .add_systems(
             Update,
             (
@@ -124,7 +142,13 @@ fn main() {
                 forecast_view::refresh_availability,
                 offer_view::refresh_offers,
                 forecast_view::refresh_forecast,
-                ui::situations_panel::refresh_situation_panel_view,
+                // The outcome observer must see the projection built this
+                // frame, or a resolution is reported a frame late.
+                (
+                    ui::situations_panel::refresh_situation_panel_view,
+                    telemetry::observe_situation_outcomes,
+                )
+                    .chain(),
                 // The bake must observe the readout computed this frame.
                 (map_modes::refresh_map_readout, scene::refresh_globe_texture).chain(),
             )
@@ -160,6 +184,7 @@ fn main() {
                 )
                     .run_if(in_state(title::Screen::Playing)),
                 preferences::persist_preferences,
+                telemetry::persist_telemetry,
             )
                 .chain(),
         )

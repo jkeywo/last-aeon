@@ -25,6 +25,8 @@ use crate::sim_driver::TimeControl;
 #[cfg(test)]
 use crate::sim_driver::advance_for_elapsed;
 #[cfg(test)]
+use crate::telemetry::{OnboardingEvent, OnboardingTelemetry};
+#[cfg(test)]
 use crate::ui::actions::recorded_confirm;
 #[cfg(test)]
 use crate::ui::assignment_popup::AssignmentPopup;
@@ -62,6 +64,8 @@ use aeon_sim::politics::PlayerHouse;
 use aeon_sim::situations::{SituationSubject, active_cards};
 #[cfg(test)]
 use aeon_sim::{CampaignClock, LeaderAvailability, PoliticsIndex};
+#[cfg(test)]
+use bevy::ecs::system::RunSystemOnce;
 #[cfg(test)]
 use bevy::prelude::{Assets, ButtonInput, Image, IntoScheduleConfigs, KeyCode, Schedule};
 #[cfg(test)]
@@ -314,6 +318,7 @@ mod tests {
             world.insert_resource(SituationUiState::default());
             world.insert_resource(UiPreferences::default());
             world.insert_resource(SettingsUi::default());
+            world.insert_resource(OnboardingTelemetry::default());
             world.insert_resource(AssignmentPopup::default());
             world.insert_resource(LogFilter::default());
             world.insert_resource(PickerState::default());
@@ -850,6 +855,7 @@ mod tests {
             // Deliberately identical display copy: semantic caller identity,
             // never this title, must distinguish the controls.
             title: "The same displayed title".to_owned(),
+            subject: "duplicate-fixture".to_owned(),
             summary: crate::ui::forecast::forecast_summary(&strings, &forecast),
             forecast: Some(forecast),
         };
@@ -1236,6 +1242,389 @@ mod tests {
             fixture.host.state_hash(),
             hash_before,
             "the guidance preference is presentation only"
+        );
+    }
+
+    /// One scripted onboarding session, run identically with consent on and
+    /// with consent off. Returns what was captured, and the authoritative
+    /// artifacts the run produced, so the two can be compared.
+    fn drive_onboarding_session(consent: bool) -> OnboardingSessionResult {
+        let viewport = egui::vec2(1920.0, 1080.0);
+        let mut fixture = ProductionFixture::new();
+        {
+            let world = fixture.host.world_mut();
+            let harrow = world.resource::<PoliticsIndex>().org_keys
+                [&aeon_data::ContentKey::new("harrow").unwrap()];
+            world.resource_mut::<PlayerHouse>().0 = Some(harrow);
+        }
+        // Day seven: the court's window has lapsed and the three household
+        // demands stand together.
+        fixture.host.advance_days(7);
+        {
+            let world = fixture.host.world_mut();
+            world
+                .resource_mut::<aeon_sim::PendingPopups>()
+                .popups
+                .clear();
+            if consent {
+                world.resource_mut::<OnboardingTelemetry>().grant();
+            }
+            refresh_situation_panel_view(world);
+        }
+
+        // The exact production observer set, kept in one schedule so the
+        // systems' own change-detection state survives between steps.
+        let mut observers = Schedule::default();
+        observers.add_systems((
+            crate::telemetry::observe_guidance_choice,
+            crate::telemetry::observe_first_unpause,
+            crate::telemetry::observe_explanation_pins,
+            crate::telemetry::observe_forecast_comparison,
+            (
+                refresh_situation_panel_view,
+                crate::telemetry::observe_situation_outcomes,
+            )
+                .chain(),
+        ));
+        // Priming: a setting the player has not touched is not a choice.
+        observers.run(fixture.host.world_mut());
+
+        // The player turns scenario guidance off.
+        fixture
+            .host
+            .world_mut()
+            .resource_mut::<UiPreferences>()
+            .guidance = false;
+        observers.run(fixture.host.world_mut());
+
+        // The player lets campaign time run for the first time.
+        fixture
+            .host
+            .world_mut()
+            .resource_mut::<TimeControl>()
+            .paused = false;
+        observers.run(fixture.host.world_mut());
+        fixture
+            .host
+            .world_mut()
+            .resource_mut::<TimeControl>()
+            .paused = true;
+
+        // The player opens an action from a Cold Border card — the same
+        // single call site every visit, intrigue, and invasion card uses.
+        activate_logical(&mut fixture, viewport, |entry| {
+            entry.logical.0.starts_with("situation-action:")
+                && entry.logical.0.contains("cold-border")
+        });
+        // Opening an action composes a forecast; that is the comparison.
+        observers.run(fixture.host.world_mut());
+        {
+            let world = fixture.host.world_mut();
+            world.resource_mut::<AssignmentPopup>().open = false;
+            world.resource_mut::<AssignmentForm>().reset();
+        }
+
+        // The player pins an explanation to read what a control means.
+        activate_logical(&mut fixture, viewport, |entry| {
+            entry.role == "explanation-pin"
+        });
+        observers.run(fixture.host.world_mut());
+        fixture
+            .host
+            .world_mut()
+            .resource_mut::<ExplanationState>()
+            .pinned = None;
+
+        // The player records an answer on a household demand.
+        activate_logical(&mut fixture, viewport, |entry| {
+            entry.logical.0.starts_with("situation-response:")
+        });
+        // An ordinary refusal: a dismissal naming a notice that does not exist.
+        fixture
+            .host
+            .world_mut()
+            .resource_mut::<UiCommandQueue>()
+            .0
+            .push(PlayerCommand::DismissSituationResolution {
+                resolution: u64::MAX,
+            });
+        flush_ui_commands(fixture.host.world_mut());
+
+        // Time runs on until this session has produced both an ordinary
+        // objective reach and a household outcome, so the two event families
+        // can be asserted apart. The condition reads authoritative state
+        // alone — never the telemetry buffer — so the consent-off and
+        // consent-on runs stay the same campaign.
+        let baseline: std::collections::BTreeSet<u64> = fixture
+            .host
+            .world_mut()
+            .resource::<aeon_sim::situations::SituationState>()
+            .resolutions
+            .iter()
+            .map(|resolution| resolution.id)
+            .collect();
+        for _ in 0..400 {
+            fixture.host.advance_days(1);
+            observers.run(fixture.host.world_mut());
+            let (household, ordinary) = fixture
+                .host
+                .world_mut()
+                .resource::<aeon_sim::situations::SituationState>()
+                .resolutions
+                .iter()
+                .filter(|resolution| !baseline.contains(&resolution.id))
+                .fold((false, false), |(household, ordinary), resolution| {
+                    let definition = resolution.situation.definition.to_string();
+                    if crate::telemetry::HOUSEHOLD_DEMANDS.contains(&definition.as_str()) {
+                        (true, ordinary)
+                    } else {
+                        (household, true)
+                    }
+                });
+            if household && ordinary {
+                break;
+            }
+        }
+        fixture
+            .host
+            .world_mut()
+            .resource_mut::<aeon_sim::PendingPopups>()
+            .popups
+            .clear();
+        observers.run(fixture.host.world_mut());
+
+        // The player returns to a consequence they have already been shown.
+        activate_logical(&mut fixture, viewport, |entry| {
+            entry.logical.0.starts_with("resolution-dismiss:")
+        });
+        flush_ui_commands(fixture.host.world_mut());
+
+        let mut command_log = Vec::new();
+        aeon_sim::persistence::write_command_log(
+            &mut command_log,
+            &fixture.host.applied_commands(),
+        )
+        .expect("command log serialises");
+        let hash = fixture.host.state_hash();
+        let world = fixture.host.world_mut();
+        OnboardingSessionResult {
+            events: world
+                .resource::<OnboardingTelemetry>()
+                .records()
+                .iter()
+                .map(|record| record.event.clone())
+                .collect(),
+            queued: world.resource::<UiCommandQueue>().0.len(),
+            hash,
+            command_log,
+        }
+    }
+
+    struct OnboardingSessionResult {
+        events: Vec<OnboardingEvent>,
+        queued: usize,
+        hash: aeon_core::hash::StateHash,
+        command_log: Vec<u8>,
+    }
+
+    /// Focuses the first rendered control matching `wanted` and activates it
+    /// from the keyboard, exactly as a pointerless player would.
+    fn activate_logical(
+        fixture: &mut ProductionFixture,
+        viewport: egui::Vec2,
+        wanted: impl Fn(&crate::ui::keyboard::AuditedResponse) -> bool,
+    ) {
+        fixture.render_full_shell(viewport, Vec::new());
+        let ctx = fixture.full_egui_context();
+        let control = crate::ui::keyboard::audited_responses(&ctx)
+            .into_iter()
+            .find(|entry| entry.enabled && wanted(entry))
+            .expect("the scripted onboarding control renders");
+        crate::ui::keyboard::request_logical(&ctx, control.logical.clone());
+        fixture.render_full_shell(viewport, Vec::new());
+        fixture.render_full_shell(viewport, key_event(egui::Key::Enter, false));
+        fixture.render_full_shell(viewport, Vec::new());
+    }
+
+    /// The consent control is an ordinary preference: it renders with the
+    /// others, is keyboard-reachable, defaults to *not* consented, and both
+    /// opting in and withdrawing work from the keyboard alone.
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    fn onboarding_consent_renders_with_the_interface_preferences_and_is_keyboard_reachable() {
+        let viewport = egui::vec2(1920.0, 1080.0);
+        let mut fixture = ProductionFixture::new();
+        fixture.host.world_mut().resource_mut::<SettingsUi>().open = true;
+        let hash_before = fixture.host.state_hash();
+
+        fixture.render_full_shell(viewport, Vec::new());
+        fixture.render_full_shell(viewport, Vec::new());
+        let ctx = fixture.full_egui_context();
+        let control = crate::ui::keyboard::audited_responses(&ctx)
+            .into_iter()
+            .find(|entry| entry.logical.0 == "preference-telemetry")
+            .expect("the consent control renders with the interface preferences");
+        assert!(control.enabled, "the consent control is operable");
+        assert_eq!(
+            fixture
+                .host
+                .world_mut()
+                .resource::<OnboardingTelemetry>()
+                .consent(),
+            crate::telemetry::TelemetryConsent::Unset,
+            "consent starts unanswered, which records nothing"
+        );
+
+        // Opting in.
+        activate_logical(&mut fixture, viewport, |entry| {
+            entry.logical.0 == "preference-telemetry"
+        });
+        assert_eq!(
+            fixture
+                .host
+                .world_mut()
+                .resource::<OnboardingTelemetry>()
+                .consent(),
+            crate::telemetry::TelemetryConsent::Granted,
+            "the same control opts in"
+        );
+
+        // Withdrawing again, from the keyboard alone.
+        activate_logical(&mut fixture, viewport, |entry| {
+            entry.logical.0 == "preference-telemetry"
+        });
+        {
+            let telemetry = fixture.host.world_mut().resource::<OnboardingTelemetry>();
+            assert_eq!(
+                telemetry.consent(),
+                crate::telemetry::TelemetryConsent::Declined,
+                "the same control withdraws"
+            );
+            assert!(
+                telemetry.records().is_empty(),
+                "withdrawal leaves nothing captured"
+            );
+        }
+        assert!(
+            fixture
+                .host
+                .world_mut()
+                .resource::<UiCommandQueue>()
+                .0
+                .is_empty(),
+            "the consent control queues no command"
+        );
+        assert_eq!(
+            fixture.host.state_hash(),
+            hash_before,
+            "consent is presentation state only"
+        );
+    }
+
+    /// The same scripted session, with consent off and with consent on:
+    /// identical campaign, identical command log, identical state hash, and
+    /// either nothing captured or the whole expected event set.
+    #[cfg_attr(not(target_arch = "wasm32"), test)]
+    #[cfg_attr(target_arch = "wasm32", wasm_bindgen_test::wasm_bindgen_test)]
+    fn onboarding_telemetry_records_only_with_consent_and_never_moves_the_campaign() {
+        let refused = drive_onboarding_session(false);
+        let consented = drive_onboarding_session(true);
+
+        assert!(
+            refused.events.is_empty(),
+            "without consent the same session captures nothing: {:?}",
+            refused.events
+        );
+        assert_eq!(
+            refused.queued, 0,
+            "no telemetry path leaves a queued command"
+        );
+        assert_eq!(consented.queued, 0);
+        assert_eq!(
+            refused.hash, consented.hash,
+            "capturing telemetry cannot move the authoritative state hash"
+        );
+        assert_eq!(
+            refused.command_log, consented.command_log,
+            "capturing telemetry adds, removes, and reorders no command"
+        );
+
+        let events = &consented.events;
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, OnboardingEvent::GuidanceChoice { enabled: false })),
+            "the guidance choice is captured: {events:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, OnboardingEvent::FirstUnpause)),
+            "the first unpause is captured: {events:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, OnboardingEvent::ForecastCompared { .. })),
+            "comparing candidates for an action is captured: {events:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, OnboardingEvent::ForecastInspected { .. })),
+            "pinning an explanation is captured: {events:?}"
+        );
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                OnboardingEvent::SituationInteraction {
+                    definition,
+                    interaction
+                } if definition == "cold-border" && interaction.starts_with("action:")
+            )),
+            "an arc card's action is captured under its authored definition: {events:?}"
+        );
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                OnboardingEvent::SituationInteraction { interaction, .. }
+                    if interaction.starts_with("response:")
+            )),
+            "a recorded household response is captured: {events:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, OnboardingEvent::CommandAccepted { .. })),
+            "an accepted command is captured: {events:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, OnboardingEvent::CommandRefused { .. })),
+            "a refused command is captured: {events:?}"
+        );
+        // Each family is proven on its own: an alternation would let either
+        // mapping be dropped without a test noticing.
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, OnboardingEvent::ObjectiveReached { .. })),
+            "reaching an ordinary authored objective is captured: {events:?}"
+        );
+        assert!(
+            events.iter().any(|event| matches!(
+                event,
+                OnboardingEvent::HouseholdOutcome { definition, .. }
+                    if crate::telemetry::HOUSEHOLD_DEMANDS.contains(&definition.as_str())
+            )),
+            "a household demand's outcome is captured as its own family: {events:?}"
+        );
+        assert!(
+            events
+                .iter()
+                .any(|event| matches!(event, OnboardingEvent::ConsequenceRevisit { .. })),
+            "returning to a consequence is captured: {events:?}"
         );
     }
 
@@ -1757,6 +2146,77 @@ mod tests {
                 .expect("another eligible investigator exists");
             (before, other, other_chance)
         };
+
+        // Comparing candidates is the one explanation whose *displayed*
+        // title is a person's name. Measurement records the explanation's
+        // subject instead, so no identity reaches the captured document.
+        {
+            let world = fixture.host.world_mut();
+            world.resource_mut::<OnboardingTelemetry>().grant();
+        }
+        activate_logical(&mut fixture, viewport, |entry| {
+            entry.logical.0 == "choose-leader"
+        });
+        assert!(
+            fixture.host.world_mut().resource::<PickerState>().open,
+            "the comparison opens from the popup's own control"
+        );
+        let candidates: Vec<String> = fixture
+            .host
+            .world_mut()
+            .resource::<ForecastCache>()
+            .leaders
+            .iter()
+            .map(|option| option.name.clone())
+            .collect();
+        activate_logical(&mut fixture, viewport, |entry| {
+            entry.logical.0.starts_with("candidate-explanation:")
+        });
+        let pinned = fixture
+            .host
+            .world_mut()
+            .resource::<ExplanationState>()
+            .pinned
+            .as_ref()
+            .map(|topic| (topic.title.clone(), topic.subject.clone()))
+            .expect("pinning a candidate's explanation captures it");
+        assert!(
+            candidates.iter().any(|name| pinned.0.contains(name)),
+            "the candidate explanation is still titled with the person's own name: {pinned:?}"
+        );
+        fixture
+            .host
+            .world_mut()
+            .run_system_once(crate::telemetry::observe_explanation_pins)
+            .expect("the explanation observer runs");
+        let inspected: Vec<OnboardingEvent> = fixture
+            .host
+            .world_mut()
+            .resource::<OnboardingTelemetry>()
+            .records()
+            .iter()
+            .map(|record| record.event.clone())
+            .collect();
+        assert!(
+            inspected
+                .iter()
+                .any(|event| matches!(event, OnboardingEvent::ForecastInspected { .. })),
+            "the inspection itself is captured: {inspected:?}"
+        );
+        let document = format!("{inspected:?}");
+        for name in &candidates {
+            assert!(
+                !document.contains(name.as_str()),
+                "no candidate's display name may reach the captured document: {name} in {document}"
+            );
+        }
+        {
+            let world = fixture.host.world_mut();
+            world.resource_mut::<PickerState>().open = false;
+            world.resource_mut::<ExplanationState>().pinned = None;
+            world.resource_mut::<OnboardingTelemetry>().withdraw();
+        }
+        fixture.render_full_shell(viewport, Vec::new());
         fixture
             .host
             .world_mut()

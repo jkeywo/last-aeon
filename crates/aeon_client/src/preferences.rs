@@ -190,7 +190,10 @@ fn decode(document: &str) -> Result<UiPreferences, String> {
     })
 }
 
-trait PreferenceStore {
+/// A versioned client-owned document, addressed by whatever storage the
+/// platform supplies. Interface preferences and onboarding telemetry share
+/// this seam so both get the same fail-soft native and browser adapters.
+pub(crate) trait DocumentStore {
     fn load(&self) -> Result<Option<String>, String>;
     fn save(&self, document: &str) -> Result<(), String>;
 }
@@ -199,19 +202,19 @@ trait PreferenceStore {
 /// behind this seam lets the same key, errors, and codec be exercised without
 /// requiring a JavaScript runtime in Rust's ordinary test runner.
 #[cfg(any(test, target_arch = "wasm32"))]
-trait KeyValueBackend {
+pub(crate) trait KeyValueBackend {
     fn get(&self, key: &str) -> Result<Option<String>, String>;
     fn set(&self, key: &str, value: &str) -> Result<(), String>;
 }
 
 #[cfg(any(test, target_arch = "wasm32"))]
-struct KeyValueStore<B> {
-    backend: B,
-    key: &'static str,
+pub(crate) struct KeyValueStore<B> {
+    pub(crate) backend: B,
+    pub(crate) key: &'static str,
 }
 
 #[cfg(any(test, target_arch = "wasm32"))]
-impl<B: KeyValueBackend> PreferenceStore for KeyValueStore<B> {
+impl<B: KeyValueBackend> DocumentStore for KeyValueStore<B> {
     fn load(&self) -> Result<Option<String>, String> {
         self.backend.get(self.key)
     }
@@ -221,7 +224,7 @@ impl<B: KeyValueBackend> PreferenceStore for KeyValueStore<B> {
     }
 }
 
-fn load_from(store: &impl PreferenceStore) -> UiPreferences {
+fn load_from(store: &impl DocumentStore) -> UiPreferences {
     store
         .load()
         .ok()
@@ -230,19 +233,19 @@ fn load_from(store: &impl PreferenceStore) -> UiPreferences {
         .unwrap_or_default()
 }
 
-fn save_to(store: &impl PreferenceStore, preferences: UiPreferences) -> Result<(), String> {
+fn save_to(store: &impl DocumentStore, preferences: UiPreferences) -> Result<(), String> {
     let document = encode(preferences).map_err(|error| error.to_string())?;
     store.save(&document)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-struct NativeStore {
+pub(crate) struct NativeStore {
     path: std::path::PathBuf,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 impl NativeStore {
-    fn at(path: impl Into<std::path::PathBuf>) -> Self {
+    pub(crate) fn at(path: impl Into<std::path::PathBuf>) -> Self {
         Self { path: path.into() }
     }
 
@@ -252,7 +255,7 @@ impl NativeStore {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-impl PreferenceStore for NativeStore {
+impl DocumentStore for NativeStore {
     fn load(&self) -> Result<Option<String>, String> {
         match std::fs::read_to_string(&self.path) {
             Ok(document) => Ok(Some(document)),
@@ -271,25 +274,91 @@ impl PreferenceStore for NativeStore {
     }
 }
 
-/// Resolves a stable per-user application-data location without consulting
-/// the process working directory.
-#[cfg(all(not(target_arch = "wasm32"), target_os = "windows"))]
+/// The preference document inside the shared per-user configuration root.
+#[cfg(not(target_arch = "wasm32"))]
 fn native_preferences_path() -> Result<std::path::PathBuf, String> {
+    Ok(native_config_root()?.join(PREFERENCES_FILENAME))
+}
+
+/// Resolves a stable per-user application-data location without consulting
+/// the process working directory. Every client-owned document — interface
+/// preferences and onboarding telemetry alike — lives under this root.
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn native_config_root() -> Result<std::path::PathBuf, String> {
+    // A test drives the real load and persist systems, which resolve their
+    // own stores; the redirection is how it does that without writing into
+    // the developer's own configuration directory.
+    #[cfg(test)]
+    if let Some(root) = test_config_root::current() {
+        return Ok(root);
+    }
+    platform_config_root()
+}
+
+/// Test-only redirection of the configuration root, so the genuine
+/// document-writing systems can be run against an isolated directory
+/// instead of a copy of their logic.
+#[cfg(all(test, not(target_arch = "wasm32")))]
+pub(crate) mod test_config_root {
+    use std::path::{Path, PathBuf};
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    static ROOT: Mutex<Option<PathBuf>> = Mutex::new(None);
+
+    fn exclusion() -> &'static Mutex<()> {
+        static EXCLUSION: OnceLock<Mutex<()>> = OnceLock::new();
+        EXCLUSION.get_or_init(Mutex::default)
+    }
+
+    /// Every client-owned document resolves under `root` until this is
+    /// dropped. The guard is exclusive, so two redirecting tests running in
+    /// parallel take turns rather than overwriting each other's root.
+    pub(crate) struct Redirected {
+        _exclusive: MutexGuard<'static, ()>,
+    }
+
+    impl Redirected {
+        pub(crate) fn to(root: &Path) -> Self {
+            let exclusive = exclusion()
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            *ROOT.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) =
+                Some(root.to_path_buf());
+            Self {
+                _exclusive: exclusive,
+            }
+        }
+    }
+
+    impl Drop for Redirected {
+        fn drop(&mut self) {
+            *ROOT.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = None;
+        }
+    }
+
+    pub(super) fn current() -> Option<PathBuf> {
+        ROOT.lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+}
+
+#[cfg(all(not(target_arch = "wasm32"), target_os = "windows"))]
+fn platform_config_root() -> Result<std::path::PathBuf, String> {
     std::env::var_os("APPDATA")
         .map(std::path::PathBuf::from)
-        .map(|root| root.join("Last Aeon").join(PREFERENCES_FILENAME))
+        .map(|root| root.join("Last Aeon"))
         .ok_or_else(|| "APPDATA is unavailable".to_owned())
 }
 
 #[cfg(all(not(target_arch = "wasm32"), target_os = "macos"))]
-fn native_preferences_path() -> Result<std::path::PathBuf, String> {
+fn platform_config_root() -> Result<std::path::PathBuf, String> {
     std::env::var_os("HOME")
         .map(std::path::PathBuf::from)
         .map(|root| {
             root.join("Library")
                 .join("Application Support")
                 .join("Last Aeon")
-                .join(PREFERENCES_FILENAME)
         })
         .ok_or_else(|| "HOME is unavailable".to_owned())
 }
@@ -299,7 +368,7 @@ fn native_preferences_path() -> Result<std::path::PathBuf, String> {
     not(target_os = "windows"),
     not(target_os = "macos")
 ))]
-fn native_preferences_path() -> Result<std::path::PathBuf, String> {
+fn platform_config_root() -> Result<std::path::PathBuf, String> {
     let root = std::env::var_os("XDG_CONFIG_HOME")
         .map(std::path::PathBuf::from)
         .or_else(|| {
@@ -308,11 +377,11 @@ fn native_preferences_path() -> Result<std::path::PathBuf, String> {
                 .map(|home| home.join(".config"))
         })
         .ok_or_else(|| "neither XDG_CONFIG_HOME nor HOME is available".to_owned())?;
-    Ok(root.join("last-aeon").join(PREFERENCES_FILENAME))
+    Ok(root.join("last-aeon"))
 }
 
 #[cfg(target_arch = "wasm32")]
-struct BrowserBackend;
+pub(crate) struct BrowserBackend;
 
 #[cfg(target_arch = "wasm32")]
 impl BrowserBackend {
@@ -407,6 +476,7 @@ pub fn draw_controls(
     ui: &mut egui::Ui,
     strings: &aeon_sim::TextDb,
     preferences: &mut UiPreferences,
+    telemetry: &mut crate::telemetry::OnboardingTelemetry,
 ) {
     ui.label(strings.text("ui.preferences.scale"));
     let scale_combo = egui::ComboBox::from_id_salt("ui-preference-scale")
@@ -480,6 +550,10 @@ pub fn draw_controls(
     )
     .register();
     ui.weak(strings.text("ui.preferences.guidance-note"));
+    ui.separator();
+    // Onboarding measurement is opt-in and presentation-owned; the control
+    // sits with the other client preferences because that is what it is.
+    crate::telemetry::draw_consent_controls(ui, strings, telemetry);
 }
 
 /// Draws the campaign settings surface.
@@ -487,29 +561,45 @@ pub fn draw_campaign_settings(
     ctx: &egui::Context,
     strings: &aeon_sim::TextDb,
     preferences: &mut UiPreferences,
+    telemetry: &mut crate::telemetry::OnboardingTelemetry,
     settings: &mut SettingsUi,
 ) {
     if !settings.open {
         return;
     }
+    // The settings body grows with every preference it gains, and at 200%
+    // scale on a 1366x768 display it outgrows the viewport. Constraining
+    // the window and scrolling its body keeps every control — the close
+    // button included — reachable by pointer and by Tab.
+    let viewport = ctx.viewport_rect().shrink(8.0);
+    let mut close = false;
     egui::Window::new(strings.text("ui.preferences.title"))
         .resizable(false)
+        .constrain_to(viewport)
+        .max_height(viewport.height())
         .show(ctx, |ui| {
-            draw_controls(ui, strings, preferences);
-            ui.separator();
-            let response = ui.button(strings.text("ui.preferences.close"));
-            crate::ui::keyboard::capture_action(
-                ui,
-                crate::ui::keyboard::LogicalFocus::new("settings-close"),
-                "settings-close",
-                crate::ui::keyboard::FocusBand::Floating,
-                &response,
-            )
-            .register();
-            if response.clicked() {
-                settings.close(ui.ctx());
-            }
+            egui::ScrollArea::vertical()
+                .id_salt("campaign-settings-scroll")
+                .auto_shrink([false, true])
+                .max_height((viewport.height() - 64.0).clamp(120.0, 720.0))
+                .show(ui, |ui| {
+                    draw_controls(ui, strings, preferences, telemetry);
+                    ui.separator();
+                    let response = ui.button(strings.text("ui.preferences.close"));
+                    crate::ui::keyboard::capture_action(
+                        ui,
+                        crate::ui::keyboard::LogicalFocus::new("settings-close"),
+                        "settings-close",
+                        crate::ui::keyboard::FocusBand::Floating,
+                        &response,
+                    )
+                    .register();
+                    close = response.clicked();
+                });
         });
+    if close {
+        settings.close(ctx);
+    }
 }
 
 #[cfg(test)]
@@ -526,7 +616,7 @@ mod tests {
     #[derive(Default)]
     struct MemoryStore(RefCell<Option<String>>);
 
-    impl PreferenceStore for MemoryStore {
+    impl DocumentStore for MemoryStore {
         fn load(&self) -> Result<Option<String>, String> {
             Ok(self.0.borrow().clone())
         }

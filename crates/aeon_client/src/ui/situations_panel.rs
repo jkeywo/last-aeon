@@ -375,6 +375,20 @@ fn draw_resolution(
             response
         });
         if dismiss.is_some_and(|response| response.clicked()) {
+            // Dismissing is the player's deliberate return to a consequence
+            // they were already shown on an earlier frame: the diff observer
+            // reports the first sighting, this reports the revisit.
+            let occasion = if out.telemetry.has_seen_resolution(notice.id) {
+                "dismissed"
+            } else {
+                "dismissed-on-sight"
+            };
+            crate::telemetry::record_consequence_revisit(
+                out.telemetry,
+                Some(ctx.date.to_string()),
+                &notice.situation.definition,
+                occasion,
+            );
             out.situation_ui.dismissed.insert(notice.id);
             out.queue.0.push(PlayerCommand::DismissSituationResolution {
                 resolution: notice.id,
@@ -521,6 +535,12 @@ fn draw_responses(
             #[cfg(test)]
             crate::ui::rendered_state::record_response(ui, "situation-response", &button);
             if button.clicked() {
+                crate::telemetry::record_situation_interaction(
+                    out.telemetry,
+                    Some(ctx.date.to_string()),
+                    &view.card.active.key.definition,
+                    format!("response:{}", response.id),
+                );
                 out.queue.0.push(PlayerCommand::AnswerSituation {
                     situation: view.card.active.key.clone(),
                     response: response.id.clone(),
@@ -574,6 +594,7 @@ fn draw_guidance(
             };
             let topic = ExplanationTopic {
                 title: format!("{} — {}", view.card.title, ctx.strings.text(label_key)),
+                subject: format!("guidance-{kind}:{}", view.card.active.key.definition),
                 summary: prose.clone(),
                 forecast: None,
             };
@@ -591,8 +612,14 @@ fn draw_guidance(
             );
             #[cfg(test)]
             crate::ui::rendered_state::record_response(ui, "situation-guidance", &response);
-            #[cfg(not(test))]
-            let _ = response;
+            if response.clicked() {
+                crate::telemetry::record_situation_interaction(
+                    out.telemetry,
+                    Some(ctx.date.to_string()),
+                    &view.card.active.key.definition,
+                    format!("guidance:{kind}"),
+                );
+            }
         }
     });
 }
@@ -691,6 +718,7 @@ fn draw_action(
     } else if let Some(forecast) = &view.forecast {
         let topic = ExplanationTopic {
             title: label,
+            subject: format!("action:{}:{}", situation.definition, view.action.id),
             summary: forecast_summary(ctx.strings, forecast),
             forecast: Some(forecast.clone()),
         };
@@ -719,6 +747,12 @@ fn draw_action(
         });
     }
     if response.clicked() {
+        crate::telemetry::record_situation_interaction(
+            out.telemetry,
+            Some(ctx.date.to_string()),
+            &situation.definition,
+            format!("action:{}", view.action.id),
+        );
         out.form.reset();
         out.form.assignment = Some(view.assignment.clone());
         // A pinned leader is the content's choice; a leaderless action

@@ -3094,3 +3094,82 @@ entities:
         - plan-steps-bypass-ai-available-not-validation
         - the-ai-schemes-through-plans-not-the-scorer
         - army-formation-through-job-effects
+
+  - decision: onboarding-telemetry-is-opt-in-client-owned-and-outside-the-hash
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Onboarding Telemetry Is Opt-In, Client-Owned, and Outside the Hash
+      summary: >-
+        First-year onboarding measurement is a presentation-owned
+        `OnboardingTelemetry` resource in aeon_client, so it is structurally
+        outside CampaignState: the snapshot enumerates aeon_sim resources by
+        hand and cannot reach a client crate. Consent is a three-valued
+        client document — unset, granted, declined — defaulting to unset,
+        and every failure path (absent, unreadable, malformed, unsupported
+        future version, inaccessible store) resolves to unset rather than
+        to a default that happens to be on. The gate lives inside
+        `record`, so a capture site cannot be the thing that forgets to
+        ask, and a debug assertion holds the buffer empty whenever consent
+        is off. Withdrawal clears the session buffer and erases the stored
+        document, because the acceptance rule is that the player opts in
+        before anything is recorded. Consent and captured events are two
+        documents of their own — `onboarding-consent.json` and
+        `onboarding-telemetry.jsonl` under the same per-user configuration
+        root as preferences.json, or the `last-aeon.onboarding.consent` and
+        `last-aeon.onboarding.telemetry` browser entries — reusing the
+        preference module's `DocumentStore`, native and browser-shaped
+        adapters, and factored-out configuration root, and never sharing a
+        key or a file with the preference or autosave documents. Captured
+        events are objective reach, household outcomes, guidance choice,
+        first unpause, forecast inspection and candidate comparison,
+        accepted and refused commands, Situation-card interactions for the
+        visit, intrigue, cold border, and war cards, and consequence
+        revisits. Every captured field is an authored content key, an
+        interface role, or a boolean: an explanation is recorded by its
+        non-identifying subject rather than its displayed title, which on
+        the candidate-comparison path is a character's name, and a refusal
+        is recorded by the rejection's variant path rather than its
+        rendered message, which can interpolate scripted text. Objective
+        reach is defined as a resolution notice newly appearing in the
+        already-projected SituationPanelView, reported by a client-side
+        diff observer that derives no rule of its own; household outcomes
+        are the same event for the three household demand definitions. The
+        observer primes rather than reports on its first projection after a
+        campaign is started or restored, because undismissed notices
+        survive in the save and were reached in an earlier session, and
+        because the alternative — comparing a resolution date against today
+        — would be the client inventing the rule this decision keeps out of
+        it. A consequence revisit is a deliberate return to
+        a resolution the player has already been shown — dismissing a
+        notice first projected on an earlier frame, or a notice
+        reappearing in the view after leaving it. Review and export is one
+        local workflow on both targets: the JSONL document itself, plus an
+        in-client review under the consent tickbox that names the storage
+        location, shows the document as selectable read-only text, copies
+        the whole of it to the clipboard on one keyboard-reachable button,
+        and offers deletion, which is how the web build is exported without
+        adding Blob, Url, or anchor web-sys features. Telemetry does not interact with the in-fiction
+        information contract that GDD 06 governs: that contract decides
+        what in-fiction actors and player projections may see, whereas
+        telemetry records only what the player has already seen on their
+        own screen and emits nothing back into the world.
+      rationale:
+        - "[ai] Putting the sink in aeon_client rather than behind an aeon_sim interface is the whole isolation argument: capture_state lists aeon_sim resources by hand, so a client resource cannot reach a snapshot, a command log, or a state hash even by mistake, and the proof is an ordinary equality test rather than a convention."
+        - "[ai] The consent gate belongs inside record rather than at each call site, because the failure mode this acceptance criterion is really about is one capture site added later that forgets to ask; with the gate in the sink a new hook is a one-line call that cannot be wrong."
+        - "[ai] Consent is three-valued rather than a boolean so that a stored decline is distinguishable from a document that has never been written, while both still mean not consented — which is what lets every decode failure collapse to unset without inventing a positive answer the player never gave."
+        - "[ai] Withdrawal clears rather than keeps because the acceptance criterion says the player opts in before *any* telemetry is recorded; keeping a buffer through a withdrawal would make the earlier consent retroactively binding, which is the opposite of what the control means."
+        - "[ai] Objective reach is defined as a resolution notice newly appearing in the projected panel view because no authoritative reach flag exists and inventing one would be a simulation change; diffing the projection the player is already shown keeps the whole feature presentation-only and gives household outcomes the same mechanism for free."
+        - "[ai] Consequence revisit had no prior representation anywhere, so it is defined client-side and stated plainly: dismissal of an already-observed notice, or a notice returning to the view. Both are observable without new state, and neither claims to measure attention the interface cannot see."
+        - "[ai] Command outcomes are captured in the exclusive flush system as the variant name alone, taking the result the pipeline already reached — no identity, no argument, no retry, no reordering — so the record answers the balance question without becoming a second, weaker command log."
+        - "[ai] What is recorded is bounded by construction rather than by review: an explanation's subject and a rejection's variant path are both discriminators the interface already owns, whereas the displayed title and the rendered rejection message are free-form text that authored content, a script, or a person's name can flow into. The privacy note promises exactly that, so the promise and the document cannot drift apart."
+        - "[ai] The outcome observer takes a baseline instead of reporting on its first projection of a campaign, and the baseline is dropped whenever a campaign is started or restored: resolution notices are snapshotted authoritative state, so Continue would otherwise re-report every undismissed notice from the previous session, and a second campaign in one process would inherit the first one's notice identities and suppress genuine reaches."
+        - "[ai] Two documents beside preferences.json rather than fields inside it keeps the fail-safe rules separate: a corrupt preference document should restore 100%/Compact, and a corrupt consent document must restore *not consented*, and one codec cannot honestly do both."
+        - "[ai] JSONL matches the repository's existing command-log precedent and is the review surface on both targets, which is why the browser needs no download path and the wasm web-sys feature list stays at Storage and Window. That claim only holds if the document can actually leave the panel, so the review renders it through egui's read-only text buffer — selectable, unlike a non-interactive TextEdit — and adds an explicit clipboard copy beside it."
+        - "[ai] The campaign settings window became scrollable and viewport-constrained as part of this work: the consent block pushed the body past a 1366x768 viewport at scale, and the keyboard-completeness harness caught the close button falling outside its clip."
+      references:
+        - client-owned-versioned-interface-preferences
+        - first-reign-guidance-is-client-preference-prose
+        - core-explanations-are-owned-focusable-snapshots
+        - headless-authoritative-simulation
+        - ron-snapshots-and-jsonl-command-log

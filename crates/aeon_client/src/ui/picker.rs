@@ -205,6 +205,9 @@ fn draw_candidate(
     .register();
     let topic = ExplanationTopic {
         title: option.name.clone(),
+        // The candidate's own name is display copy, not a measurement
+        // subject: what is being explained is this assignment's forecast.
+        subject: format!("candidate:{}", option.forecast.assignment),
         summary: forecast_summary(strings, &option.forecast),
         forecast: Some(option.forecast.clone()),
     };
