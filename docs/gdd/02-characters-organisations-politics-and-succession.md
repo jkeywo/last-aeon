@@ -92,6 +92,18 @@ personal, conditional, and contestable.
   model. Runtime-born characters have no authored content key.
 - Characters age, face deterministic yearly mortality, can marry, and can have
   children. Death remains an inspectable state rather than deleting the person.
+- [ai] The demographic rates themselves are authored content, not compiled
+  constants: `assets/content/core/demography.rhai` sets the yearly marriage
+  chance, the fertile age range and the per-child decline in birth chance,
+  and the mortality table band by band. The simulation keeps only the age of
+  majority, which is a rule of the world rather than a tuning knob, and falls
+  back to the shipped numbers if a content set authors no demography.
+- [ai] Those rates are tuned so a campaign's population holds roughly steady —
+  about 1.2x over a century — rather than compounding. Pre-modern infant
+  mortality does most of that work; a fertility trim alone would do it too,
+  but applying both aggressively empties the political board, so the shipped
+  numbers take the middle. Deaths stay frequent enough that succession,
+  heirs, and the death-driven arcs keep firing.
 - The broader population is abstracted. The individual simulation covers the
   player household, courts, rulers, rivals, and other strategically relevant
   figures.
@@ -574,8 +586,8 @@ This system depends on:
   marriage, birth, and cleanup;
 - stable IDs, deterministic derived RNG, ordered iteration, snapshots, command
   logging, and state hashing;
-- validated scenario, trait, organisation, character, title, office, and
-  obligation definitions;
+- validated scenario, demography, trait, organisation, character, title,
+  office, and obligation definitions;
 - map and province titles for holdings, realm dominance, and territorial
   continuity;
 - presence, assignments, plans, and goals for who can act and where;

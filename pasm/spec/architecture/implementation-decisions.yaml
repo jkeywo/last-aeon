@@ -3266,3 +3266,39 @@ entities:
         - headless-authoritative-simulation
         - situations-project-live-facts-into-authored-context
         - covert-provenance-is-an-audience-on-authored-plans-and-assignments
+
+  - decision: demographic-tuning-is-authored-content
+    core:
+      status: accepted
+      confidence: confirmed
+      origin: ai
+      title: Demographic Tuning Is Authored Content, Retuned to Hold Steady
+      summary: >-
+        Mortality by age band, the yearly marriage chance, the fertile age
+        range, and the birth chance with its per-child decline were compiled
+        constants inside aeon_sim politics. They are gameplay values, so they
+        are now a singleton content definition, define_demography, authored in
+        assets/content/core/demography.rhai and validated at load like every
+        other definition: permille values in 0..=1000, a non-empty mortality
+        table whose bands ascend strictly by through_age, a fertile age above
+        the age of majority, and a birth floor no higher than the base. The age
+        of majority itself stays in Rust — it is a rule of the world, not a
+        knob — and the loader validates authored fertility against it rather
+        than letting content set it. A content set that authors no demography
+        still runs, on a compiled default carrying the shipped file's numbers;
+        a test asserts the two agree, so the fallback cannot drift.
+        The numbers were retuned at the same time. Mortality is 60 permille
+        through age 4, 6 through 17, 4 through 49, 12 through 59, 25 through
+        69, 70 through 79, 160 through 89, and 350 beyond; births are 230
+        permille base, 42 per child already born, 40 floor; marriage stays 300
+        permille and fertility 18..=45.
+      rationale:
+        - "[ai] The knobs moved because the repository's rule is that tunable gameplay values are authored, and these were the clearest surviving exception: a designer retuning a campaign's whole population curve had to edit Rust and rebuild."
+        - "[ai] The old numbers compounded — roughly a doubling per decade, 84 living characters ten years into a scenario that opens with about 41 — which made late campaigns slow, because the shared world view pairs living characters to derive opinions."
+        - "[ai] A demographic sweep found that realistic infant mortality ALONE, or a fertility trim ALONE, each land near steady, but doing both aggressively collapses the world to about 0.3x over a century and empties the political board. The shipped numbers are deliberately the middle of that: about 1.2x over a century, with deaths still frequent enough that succession, heirs, and the requester-death paths the First Reign arc depends on keep firing. This is the finding worth preserving — the two levers are not additive, and the temptation to apply both is the trap."
+        - "[ai] Today's single 5..=49 mortality band was split into a childhood band and an adult band, because a mortality table that cannot distinguish a child from an adult cannot express infant mortality at all — which is the lever the tuning turns on."
+        - "[ai] Only the thresholds moved, never the rolls: the same character rolls the same derived streams under the same frozen purpose labels — birth, marriage, mortality — in the same order and the same number of times each year. A retune must not become a replay break, so the roll structure is the part held still. The acceptance hash moves, as any demographic change makes it."
+        - "[ai] Validation is loud at load rather than clamped at use, in the style of the other authored ranges: a silently reordered or out-of-range mortality band would bend a campaign's population curve without ever reporting anything, and the symptom would surface decades of simulated time later."
+      references:
+        - headless-authoritative-simulation
+        - the-shared-world-view-shows-the-living

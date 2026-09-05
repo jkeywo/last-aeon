@@ -18,17 +18,17 @@ use rhai::{Engine, Map};
 
 use crate::key::ContentKey;
 use crate::model::{
-    AiIntent, ArmyDef, AssignmentCategory, AssignmentDef, AssignmentRequires, AssignmentTargetKind,
-    BodyDef, BodyKind, BuildingDef, CharacterDef, DirectiveDef, DirectiveTarget, EventChoiceDef,
-    EventDef, EventFamily, EventRequires, Gender, GoalDef, GoalRequires, GoalTargetSelector,
-    GoodDef, GoverningSkill, HolderRelation, HouseTier, MilitaryOp, NamePoolDef, ObligationDef,
-    ObligationKind, OfficeDef, OpinionModifierDef, OrderModifierDef, OrgDef, OrgKind, OutcomeDef,
-    OutcomeKind, PlanArmySelector, PlanDef, PlanMethodDef, PlanRequires, PlanStepAction,
-    PlanStepDef, PlanTargetSelector, PopupChoiceDef, ProvinceDef, RiskTag, RouteDef, RouteKind,
-    ScenarioDef, ScriptFnRef, ShipClass, ShipDef, SituationActionDef, SituationDef,
-    SituationOutcomeDef, SituationResponseDef, SituationStageDef, SituationSubjectKind,
-    SituationVisibilityDef, SkillsDef, StageDef, TitleDef, TitleHolderDef, TitleKindDef, TitleNeed,
-    TraitDef, Urgency,
+    ADULT_AGE, AiIntent, ArmyDef, AssignmentCategory, AssignmentDef, AssignmentRequires,
+    AssignmentTargetKind, BodyDef, BodyKind, BuildingDef, CharacterDef, DemographyDef,
+    DirectiveDef, DirectiveTarget, EventChoiceDef, EventDef, EventFamily, EventRequires, Gender,
+    GoalDef, GoalRequires, GoalTargetSelector, GoodDef, GoverningSkill, HolderRelation, HouseTier,
+    MilitaryOp, MortalityBandDef, NamePoolDef, ObligationDef, ObligationKind, OfficeDef,
+    OpinionModifierDef, OrderModifierDef, OrgDef, OrgKind, OutcomeDef, OutcomeKind,
+    PlanArmySelector, PlanDef, PlanMethodDef, PlanRequires, PlanStepAction, PlanStepDef,
+    PlanTargetSelector, PopupChoiceDef, ProvinceDef, RiskTag, RouteDef, RouteKind, ScenarioDef,
+    ScriptFnRef, ShipClass, ShipDef, SituationActionDef, SituationDef, SituationOutcomeDef,
+    SituationResponseDef, SituationStageDef, SituationSubjectKind, SituationVisibilityDef,
+    SkillsDef, StageDef, TitleDef, TitleHolderDef, TitleKindDef, TitleNeed, TraitDef, Urgency,
 };
 use crate::report::{ContentReport, Severity};
 
@@ -57,6 +57,7 @@ pub(super) struct BuilderState {
     pub(super) goals: BTreeMap<ContentKey, GoalDef>,
     pub(super) situations: BTreeMap<ContentKey, SituationDef>,
     pub(super) scenario: Option<ScenarioDef>,
+    pub(super) demography: Option<DemographyDef>,
 }
 
 impl BuilderState {
@@ -90,6 +91,7 @@ impl BuilderState {
             goals: std::mem::take(&mut self.goals),
             situations: std::mem::take(&mut self.situations),
             scenario: self.scenario.take(),
+            demography: self.demography.take(),
         }
     }
 }
@@ -1873,6 +1875,136 @@ fn define_scenario(state: &mut BuilderState, map: Map) {
     });
 }
 
+/// Demographic tuning: the yearly mortality, marriage and birth chances.
+///
+/// Singleton like the scenario: a content set defines at most one. Every
+/// chance is validated as a permille and the mortality bands must ascend,
+/// because a silently reordered or out-of-range band would quietly bend a
+/// campaign's whole population curve instead of failing at load.
+fn define_demography(state: &mut BuilderState, map: Map) {
+    let Some(mut f) = Fields::begin(state, map) else {
+        return;
+    };
+    let (
+        Some(marriage_permille),
+        Some(fertile_to_age),
+        Some(birth_base_permille),
+        Some(birth_step_permille),
+        Some(birth_floor_permille),
+        Some(mortality_beyond_permille),
+    ) = (
+        f.req_int("marriage_permille"),
+        f.req_int("fertile_to_age"),
+        f.req_int("birth_base_permille"),
+        f.req_int("birth_step_permille"),
+        f.req_int("birth_floor_permille"),
+        f.req_int("mortality_beyond_permille"),
+    )
+    else {
+        return;
+    };
+    for (field, value) in [
+        ("marriage_permille", marriage_permille),
+        ("birth_base_permille", birth_base_permille),
+        ("birth_step_permille", birth_step_permille),
+        ("birth_floor_permille", birth_floor_permille),
+        ("mortality_beyond_permille", mortality_beyond_permille),
+    ] {
+        if !(0..=1000).contains(&value) {
+            f.error(format!("{field} must be 0..=1000"));
+            return;
+        }
+    }
+    // The age of majority stays a simulation constant; fertility is authored
+    // above it, so a content set can never make children of the fertile.
+    if fertile_to_age <= ADULT_AGE {
+        f.error(format!(
+            "fertile_to_age must be above the age of majority ({ADULT_AGE})"
+        ));
+        return;
+    }
+    if birth_floor_permille > birth_base_permille {
+        f.error("birth_floor_permille must not exceed birth_base_permille");
+        return;
+    }
+    let Some(mortality) = demography_mortality(&mut f) else {
+        return;
+    };
+    let (state, key) = f.finish();
+    if state.demography.is_some() {
+        state.error(
+            Some(key.as_str()),
+            "a content set may define only one demography",
+        );
+        return;
+    }
+    state.demography = Some(DemographyDef {
+        key,
+        marriage_permille: marriage_permille as u32,
+        fertile_to_age,
+        birth_base_permille: birth_base_permille as u32,
+        birth_step_permille: birth_step_permille as u32,
+        birth_floor_permille: birth_floor_permille as u32,
+        mortality,
+        mortality_beyond_permille: mortality_beyond_permille as u32,
+    });
+}
+
+/// Reads the ordered mortality bands of a demography definition.
+fn demography_mortality(f: &mut Fields) -> Option<Vec<MortalityBandDef>> {
+    let Some(raw) = f.take_raw("mortality") else {
+        f.error("missing required field 'mortality'");
+        return None;
+    };
+    let Some(list) = raw.try_cast::<rhai::Array>() else {
+        f.error("mortality must be a list of bands");
+        return None;
+    };
+    if list.is_empty() {
+        f.error("mortality must name at least one age band");
+        return None;
+    }
+    let mut bands: Vec<MortalityBandDef> = Vec::with_capacity(list.len());
+    for entry in list {
+        let Some(map) = entry.try_cast::<Map>() else {
+            f.error("each mortality band must be a map");
+            return None;
+        };
+        warn_unknown_fields(
+            f.state,
+            &map,
+            Some(f.key.as_str()),
+            &["through_age", "permille"],
+        );
+        let Some(through_age) = map.get("through_age").and_then(|v| v.as_int().ok()) else {
+            f.error("a mortality band needs an integer 'through_age'");
+            return None;
+        };
+        let Some(permille) = map.get("permille").and_then(|v| v.as_int().ok()) else {
+            f.error("a mortality band needs an integer 'permille'");
+            return None;
+        };
+        if !(0..=1000).contains(&permille) {
+            f.error("mortality band permille must be 0..=1000");
+            return None;
+        }
+        if let Some(previous) = bands.last()
+            && through_age <= previous.through_age
+        {
+            f.error(format!(
+                "mortality bands must ascend by through_age; {through_age} follows {}",
+                previous.through_age
+            ));
+            return None;
+        }
+        bands.push(MortalityBandDef {
+            through_age,
+            permille: permille as u32,
+        });
+    }
+    Some(bands)
+}
+
 fn define_trait(state: &mut BuilderState, map: Map) {
     let Some(mut f) = Fields::begin(state, map) else {
         return;
@@ -3337,6 +3469,7 @@ pub(super) fn loading_engine(state: Arc<Mutex<BuilderState>>) -> Engine {
     register!("define_route", define_route);
     register!("define_situation", define_situation);
     register!("define_scenario", define_scenario);
+    register!("define_demography", define_demography);
     register!("define_trait", define_trait);
     register!("define_character", define_character);
     register!("define_house", define_house);

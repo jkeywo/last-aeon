@@ -485,6 +485,113 @@ pub struct ScenarioDef {
     pub situations: Vec<ContentKey>,
 }
 
+/// Age of legal adulthood, in years.
+///
+/// The age of majority is a rule of the world rather than a tuning knob, so
+/// it stays in Rust. Authored demography validates against it — fertility
+/// must begin above it — but never sets it.
+pub const ADULT_AGE: i64 = 18;
+
+/// One age band of the authored yearly mortality table.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MortalityBandDef {
+    /// Inclusive upper age of the band, in whole years.
+    pub through_age: i64,
+    /// Yearly chance of death in this band, in permille.
+    pub permille: u32,
+}
+
+/// Demographic tuning: how often characters die, marry, and bear children.
+///
+/// These are gameplay values, so they are authored rather than compiled in.
+/// A content set without a demography definition falls back to the shipped
+/// defaults, which are this file's authored numbers.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct DemographyDef {
+    /// The definition's stable content key.
+    pub key: ContentKey,
+    /// Yearly chance an unmarried adult seeks a match, in permille.
+    pub marriage_permille: u32,
+    /// Inclusive upper age at which a woman may still bear children.
+    pub fertile_to_age: i64,
+    /// Yearly birth chance for a childless couple, in permille.
+    pub birth_base_permille: u32,
+    /// Permille subtracted from the base per child already born.
+    pub birth_step_permille: u32,
+    /// Floor the per-child step may not push the chance below.
+    pub birth_floor_permille: u32,
+    /// Mortality bands, ordered by strictly ascending `through_age`.
+    pub mortality: Vec<MortalityBandDef>,
+    /// Yearly mortality above the last band, in permille.
+    pub mortality_beyond_permille: u32,
+}
+
+impl DemographyDef {
+    /// Yearly mortality permille for an age, from the authored bands.
+    pub fn mortality_permille(&self, age_years: i64) -> u32 {
+        for band in &self.mortality {
+            if age_years <= band.through_age {
+                return band.permille;
+            }
+        }
+        self.mortality_beyond_permille
+    }
+
+    /// Yearly birth permille for a mother who already has `children`.
+    pub fn birth_permille(&self, children: i64) -> u32 {
+        let step = i64::from(self.birth_step_permille) * children.max(0);
+        (i64::from(self.birth_base_permille) - step).max(i64::from(self.birth_floor_permille))
+            as u32
+    }
+}
+
+/// The demographic tuning the simulation uses when a content set authors
+/// none. These are the same numbers `assets/content/core/demography.rhai`
+/// authors, so the shipped campaign behaves identically either way.
+impl Default for DemographyDef {
+    fn default() -> Self {
+        Self {
+            key: ContentKey::new("standard").expect("valid key"),
+            marriage_permille: 300,
+            fertile_to_age: 45,
+            birth_base_permille: 230,
+            birth_step_permille: 42,
+            birth_floor_permille: 40,
+            mortality: vec![
+                MortalityBandDef {
+                    through_age: 4,
+                    permille: 60,
+                },
+                MortalityBandDef {
+                    through_age: 17,
+                    permille: 6,
+                },
+                MortalityBandDef {
+                    through_age: 49,
+                    permille: 4,
+                },
+                MortalityBandDef {
+                    through_age: 59,
+                    permille: 12,
+                },
+                MortalityBandDef {
+                    through_age: 69,
+                    permille: 25,
+                },
+                MortalityBandDef {
+                    through_age: 79,
+                    permille: 70,
+                },
+                MortalityBandDef {
+                    through_age: 89,
+                    permille: 160,
+                },
+            ],
+            mortality_beyond_permille: 350,
+        }
+    }
+}
+
 /// A semantic subject kind exposed to authored Situation scripts.
 ///
 /// These are deliberately game concepts rather than ECS component names:
@@ -689,6 +796,8 @@ pub struct ContentSet {
     pub situations: BTreeMap<ContentKey, SituationDef>,
     /// The scenario, if this content set defines one.
     pub scenario: Option<ScenarioDef>,
+    /// Demographic tuning, if this content set authors it.
+    pub demography: Option<DemographyDef>,
     /// Compiled ASTs by content-relative path, for runtime function calls.
     pub asts: BTreeMap<String, rhai::AST>,
     /// Hash over all source files; binds snapshots to content.
@@ -718,6 +827,7 @@ impl ContentSet {
             && self.goals == other.goals
             && self.situations == other.situations
             && self.scenario == other.scenario
+            && self.demography == other.demography
             && self.content_hash == other.content_hash
     }
 }

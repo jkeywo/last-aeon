@@ -1365,6 +1365,161 @@ define_assignment(#{
 }
 
 // ---------------------------------------------------------------------------
+// Demography
+// ---------------------------------------------------------------------------
+
+const GOOD_DEMOGRAPHY: &str = r#"
+define_demography(#{
+    id: "standard",
+    marriage_permille: 300,
+    fertile_to_age: 45,
+    birth_base_permille: 230,
+    birth_step_permille: 42,
+    birth_floor_permille: 40,
+    mortality: [
+        #{ through_age: 4, permille: 60 },
+        #{ through_age: 17, permille: 6 },
+        #{ through_age: 89, permille: 160 },
+    ],
+    mortality_beyond_permille: 350,
+});
+"#;
+
+#[test]
+fn demography_loads_as_authored_tuning() {
+    let (set, report) = load_content(
+        &[source("demography.rhai", GOOD_DEMOGRAPHY)],
+        &aeon_data::StringTable::blank(),
+    );
+    let set = set.unwrap_or_else(|| panic!("findings: {:?}", report.findings));
+    let demography = set.demography.expect("demography defined");
+    assert_eq!(demography.marriage_permille, 300);
+    assert_eq!(demography.fertile_to_age, 45);
+    // The bands are read in order and answer by inclusive upper age.
+    assert_eq!(demography.mortality_permille(0), 60);
+    assert_eq!(demography.mortality_permille(4), 60);
+    assert_eq!(demography.mortality_permille(5), 6);
+    assert_eq!(demography.mortality_permille(90), 350);
+    // Each child lowers the yearly chance by the step, down to the floor.
+    assert_eq!(demography.birth_permille(0), 230);
+    assert_eq!(demography.birth_permille(1), 188);
+    assert_eq!(demography.birth_permille(20), 40);
+}
+
+#[test]
+fn a_content_set_defines_only_one_demography() {
+    let doubled = format!(
+        "{GOOD_DEMOGRAPHY}
+{GOOD_DEMOGRAPHY}"
+    );
+    let (set, report) = load_content(
+        &[source("demography.rhai", &doubled)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|f| f.message.contains("only one demography")),
+        "findings: {:?}",
+        report.findings
+    );
+}
+
+#[test]
+fn demography_ranges_and_band_order_fail_loudly_at_load() {
+    // Each case replaces one field of the good definition with a value the
+    // simulation could not honour, and must be refused at load rather than
+    // silently bending a campaign's population curve.
+    let failing = [
+        (
+            "marriage_permille: 300",
+            "marriage_permille: 1200",
+            "marriage_permille must be 0..=1000",
+        ),
+        (
+            "birth_base_permille: 230",
+            "birth_base_permille: -5",
+            "birth_base_permille must be 0..=1000",
+        ),
+        (
+            "fertile_to_age: 45",
+            "fertile_to_age: 12",
+            "fertile_to_age must be above the age of majority",
+        ),
+        (
+            "birth_floor_permille: 40",
+            "birth_floor_permille: 400",
+            "birth_floor_permille must not exceed birth_base_permille",
+        ),
+        (
+            "#{ through_age: 17, permille: 6 },",
+            "#{ through_age: 4, permille: 6 },",
+            "mortality bands must ascend by through_age",
+        ),
+        (
+            "#{ through_age: 17, permille: 6 },",
+            "#{ through_age: 17, permille: 5000 },",
+            "mortality band permille must be 0..=1000",
+        ),
+        (
+            "#{ through_age: 17, permille: 6 },",
+            "#{ permille: 6 },",
+            "a mortality band needs an integer 'through_age'",
+        ),
+    ];
+    for (from, to, expected) in failing {
+        let script = GOOD_DEMOGRAPHY.replace(from, to);
+        let (set, report) = load_content(
+            &[source("bad.rhai", &script)],
+            &aeon_data::StringTable::blank(),
+        );
+        assert!(set.is_none(), "{to} must fail to load");
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|f| f.severity == Severity::Error && f.message.contains(expected)),
+            "{to}: findings {:?}",
+            report.findings
+        );
+    }
+
+    // An empty band list leaves every age answering the beyond-value; the
+    // table must name at least one band.
+    let empty = GOOD_DEMOGRAPHY
+        .replace("#{ through_age: 4, permille: 60 },", "")
+        .replace("#{ through_age: 17, permille: 6 },", "")
+        .replace("#{ through_age: 89, permille: 160 },", "");
+    let (set, report) = load_content(
+        &[source("bad.rhai", &empty)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    assert!(
+        report
+            .findings
+            .iter()
+            .any(|f| f.message.contains("at least one age band")),
+        "findings: {:?}",
+        report.findings
+    );
+}
+
+#[test]
+fn the_shipped_demography_is_the_compiled_default() {
+    // The Rust fallback exists so a content set without demography still
+    // runs; it must not silently disagree with the authored file.
+    let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/content");
+    let sources = aeon_data::fs::read_content_dir(&root).expect("content readable");
+    let (set, report) = load_content(&sources, &aeon_data::StringTable::blank());
+    let set = set.unwrap_or_else(|| panic!("findings: {:?}", report.findings));
+    let authored = set.demography.expect("shipped content authors demography");
+    assert_eq!(authored, aeon_data::model::DemographyDef::default());
+}
+
+// ---------------------------------------------------------------------------
 // Plans
 // ---------------------------------------------------------------------------
 

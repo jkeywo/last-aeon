@@ -11,7 +11,9 @@ use std::collections::{BTreeMap, BTreeSet};
 
 use aeon_core::calendar::{DAYS_PER_YEAR, GameDate};
 use aeon_core::rng::DeterministicRng;
-use aeon_data::model::{Gender, HouseTier, OrgKind, SkillsDef, TitleHolderDef, TitleKindDef};
+use aeon_data::model::{
+    DemographyDef, Gender, HouseTier, OrgKind, SkillsDef, TitleHolderDef, TitleKindDef,
+};
 use aeon_data::{ContentKey, ContentSet};
 use bevy::app::App;
 use bevy::prelude::{Component, Entity, IntoScheduleConfigs, Resource, World};
@@ -23,7 +25,7 @@ use crate::map::MapIndex;
 use crate::state::{CampaignIds, ContentDb};
 
 /// Age of legal adulthood, in years.
-pub const ADULT_AGE: i64 = 18;
+pub use aeon_data::model::ADULT_AGE;
 
 /// Days a Consular vacancy stays open before the Tsar's appointment
 /// arrives.
@@ -1002,17 +1004,16 @@ pub fn opinion_between(world: &World, from: CharacterId, to: CharacterId) -> i32
 // Life cycle: mortality, succession, marriage, birth
 // ---------------------------------------------------------------------------
 
-/// Yearly mortality permille by decade of age.
-fn mortality_permille(age_years: i64) -> u32 {
-    match age_years {
-        i64::MIN..=4 => 8,
-        5..=49 => 2,
-        50..=59 => 8,
-        60..=69 => 25,
-        70..=79 => 70,
-        80..=89 => 160,
-        _ => 350,
-    }
+/// The demographic tuning in force, from authored content.
+///
+/// A content set that authors no `define_demography` is still a runnable
+/// world: it falls back to [`DemographyDef::default`], which carries the
+/// same numbers `assets/content/core/demography.rhai` authors.
+fn demography(world: &World) -> DemographyDef {
+    world
+        .get_resource::<ContentDb>()
+        .and_then(|db| db.0.demography.clone())
+        .unwrap_or_default()
 }
 
 fn character_entity(world: &World, id: CharacterId) -> Entity {
@@ -1026,13 +1027,14 @@ pub fn yearly_mortality(world: &mut World) {
     }
     let date = world.resource::<CampaignClock>().date;
     let year = date.calendar().year;
+    let demography = demography(world);
 
     for id in crate::access::living_character_ids(world) {
         let age = crate::access::character(world, id)
             .expect("indexed")
             .age_years(date);
         let mut rng = crate::access::derived_rng(world, "mortality", &[id.raw(), year as u64]);
-        if rng.check_permille(mortality_permille(age)) {
+        if rng.check_permille(demography.mortality_permille(age)) {
             process_death(world, id, date);
         }
     }
@@ -1505,6 +1507,7 @@ pub fn yearly_marriages(world: &mut World) {
     }
     let date = world.resource::<CampaignClock>().date;
     let year = date.calendar().year;
+    let demography = demography(world);
 
     for id in crate::access::living_character_ids(world) {
         let record = crate::access::character(world, id).expect("indexed");
@@ -1520,7 +1523,7 @@ pub fn yearly_marriages(world: &mut World) {
 
         // A marriage prospect this year at all?
         let mut rng = crate::access::derived_rng(world, "marriage", &[id.raw(), year as u64]);
-        if !rng.check_permille(300) {
+        if !rng.check_permille(demography.marriage_permille) {
             continue;
         }
 
@@ -1579,6 +1582,7 @@ pub fn yearly_births(world: &mut World) {
     }
     let date = world.resource::<CampaignClock>().date;
     let year = date.calendar().year;
+    let demography = demography(world);
 
     for id in crate::access::living_character_ids(world) {
         let record = crate::access::character(world, id).expect("indexed");
@@ -1587,7 +1591,7 @@ pub fn yearly_births(world: &mut World) {
             continue;
         }
         let age = record.age_years(date);
-        if !(ADULT_AGE..=45).contains(&age) {
+        if !(ADULT_AGE..=demography.fertile_to_age).contains(&age) {
             continue;
         }
         let Some(father) = crate::access::on_character::<Lineage>(world, id)
@@ -1617,7 +1621,7 @@ pub fn yearly_births(world: &mut World) {
                 .count() as i64
         };
 
-        let chance = (250 - children * 40).max(50) as u32;
+        let chance = demography.birth_permille(children);
         let mut rng = crate::access::derived_rng(world, "birth", &[id.raw(), year as u64]);
         if !rng.check_permille(chance) {
             continue;

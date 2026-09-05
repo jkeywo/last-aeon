@@ -484,6 +484,74 @@ fn four_decades_of_life_simulation_leave_the_world_alive() {
     assert!(index.characters.len() > 8, "four decades should see births");
 }
 
+/// The demographic knobs are authored content, not compiled constants.
+///
+/// Both halves would pass against the old Rust constants only by accident,
+/// so a build that ignored `define_demography` and kept its own numbers
+/// fails here: the first half kills a world the constants would keep alive,
+/// the second freezes a cast the constants would grow.
+#[test]
+fn authored_demography_drives_mortality_and_births() {
+    let plague = fixture_content_from(format!(
+        "{FIXTURE}
+define_demography(#{{
+            id: \"plague\",
+            marriage_permille: 300, fertile_to_age: 45,
+            birth_base_permille: 230, birth_step_permille: 42,
+            birth_floor_permille: 40,
+            mortality: [#{{ through_age: 200, permille: 1000 }}],
+            mortality_beyond_permille: 1000,
+        }});"
+    ));
+    let mut host = SimHost::new_with_content(
+        CampaignConfig {
+            name: "Plague Year".to_owned(),
+            seed: 11,
+            start_date: start_date(),
+        },
+        plague,
+    );
+    host.advance_days(400);
+    assert_eq!(
+        host.world_mut().resource::<PoliticsIndex>().living.len(),
+        0,
+        "an authored certainty of death leaves nobody alive"
+    );
+
+    let barren = fixture_content_from(format!(
+        "{FIXTURE}
+define_demography(#{{
+            id: \"barren\",
+            marriage_permille: 300, fertile_to_age: 45,
+            birth_base_permille: 0, birth_step_permille: 0,
+            birth_floor_permille: 0,
+            mortality: [#{{ through_age: 89, permille: 0 }}],
+            mortality_beyond_permille: 0,
+        }});"
+    ));
+    let opening = barren.characters.len();
+    let mut host = SimHost::new_with_content(
+        CampaignConfig {
+            name: "Barren Years".to_owned(),
+            seed: 11,
+            start_date: start_date(),
+        },
+        barren,
+    );
+    host.advance_days(360 * 20);
+    let index = host.world_mut().resource::<PoliticsIndex>().clone();
+    assert_eq!(
+        index.characters.len(),
+        opening,
+        "an authored zero birth chance leaves the cast exactly as it started"
+    );
+    assert_eq!(
+        index.living.len(),
+        opening,
+        "and an authored zero mortality leaves all of them alive"
+    );
+}
+
 #[test]
 fn politics_survive_snapshot_restore_identically() {
     let content = fixture_content();

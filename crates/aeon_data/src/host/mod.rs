@@ -149,6 +149,7 @@ pub fn load_content(
         goals: builder.goals,
         situations: builder.situations,
         scenario: builder.scenario,
+        demography: builder.demography,
         asts,
         content_hash: content_hash(&sources),
     };
