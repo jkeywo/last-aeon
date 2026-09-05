@@ -28,7 +28,8 @@ use crate::model::{
     PlanTargetSelector, PopupChoiceDef, ProvinceDef, RiskTag, RouteDef, RouteKind, ScenarioDef,
     ScriptFnRef, ShipClass, ShipDef, SituationActionDef, SituationDef, SituationOutcomeDef,
     SituationResponseDef, SituationStageDef, SituationSubjectKind, SituationVisibilityDef,
-    SkillsDef, StageDef, TitleDef, TitleHolderDef, TitleKindDef, TitleNeed, TraitDef, Urgency,
+    SituationWindowDef, SkillsDef, StageDef, TitleDef, TitleHolderDef, TitleKindDef, TitleNeed,
+    TraitDef, Urgency,
 };
 use crate::report::{ContentReport, Severity};
 
@@ -1588,6 +1589,40 @@ fn situation_visibility(f: &mut Fields<'_>) -> Option<SituationVisibilityDef> {
     Some(SituationVisibilityDef::Bound(bindings))
 }
 
+/// Reads the optional authored trigger window.
+///
+/// The bounds are validated here rather than trusted, because a window is
+/// the one Situation field that decides whether a trigger is asked at all:
+/// a reversed or negative span would quietly retire an arc instead of
+/// scheduling it, and silence is the hardest content bug to see.
+fn situation_window(f: &mut Fields<'_>) -> Option<Option<SituationWindowDef>> {
+    let Some(raw) = f.take_raw("window") else {
+        return Some(None);
+    };
+    let Some(map) = raw.try_cast::<Map>() else {
+        f.error("field 'window' must be a map of 'from_day' and 'to_day'");
+        return None;
+    };
+    warn_unknown_fields(f.state, &map, Some(f.key.as_str()), &["from_day", "to_day"]);
+    let Some(from_day) = map.get("from_day").and_then(|value| value.as_int().ok()) else {
+        f.error("window needs an integer 'from_day'");
+        return None;
+    };
+    let Some(to_day) = map.get("to_day").and_then(|value| value.as_int().ok()) else {
+        f.error("window needs an integer 'to_day'");
+        return None;
+    };
+    if from_day < 0 || to_day < 0 {
+        f.error("window days are campaign days from the scenario start and cannot be negative");
+        return None;
+    }
+    if from_day > to_day {
+        f.error("window 'from_day' must not be after 'to_day'");
+        return None;
+    }
+    Some(Some(SituationWindowDef { from_day, to_day }))
+}
+
 fn situation_stages(f: &mut Fields<'_>) -> Option<Vec<SituationStageDef>> {
     let keys = f.key_list("stages")?;
     Some(
@@ -1781,6 +1816,9 @@ fn define_situation(state: &mut BuilderState, map: Map) {
     ) else {
         return;
     };
+    let Some(window) = situation_window(&mut f) else {
+        return;
+    };
     let Ok(priority) = i32::try_from(priority) else {
         f.error("field 'priority' must fit a signed 32-bit integer");
         return;
@@ -1818,6 +1856,7 @@ fn define_situation(state: &mut BuilderState, map: Map) {
                 name: projection_name,
             },
             priority,
+            window,
             log_activation,
             // Optional activation and guidance prose is table-decided:
             // the display pass fills these when their rows exist.

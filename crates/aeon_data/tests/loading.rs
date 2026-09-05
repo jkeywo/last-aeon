@@ -286,6 +286,76 @@ define_scenario(#{
     );
 }
 
+/// The trigger window decides whether a Situation is asked about at all, so
+/// a nonsense span must stop the load rather than quietly retire an arc.
+#[test]
+fn situation_windows_are_read_and_their_spans_validated() {
+    let (set, report) = load_content(
+        &[source(
+            "core/situations.rhai",
+            &GOOD_SITUATION.replace(
+                "    priority: 50,",
+                "    priority: 50,\n    window: #{ from_day: 7, to_day: 127 },",
+            ),
+        )],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(
+        !report.has_errors(),
+        "unexpected findings: {:?}",
+        report.findings
+    );
+    let set = set.expect("a well-formed window loads");
+    assert_eq!(
+        set.situations[&aeon_data::ContentKey::new("formal-war").unwrap()].window,
+        Some(aeon_data::model::SituationWindowDef {
+            from_day: 7,
+            to_day: 127,
+        })
+    );
+
+    for (window, expected) in [
+        (
+            "#{ from_day: 200, to_day: 100 }",
+            "window 'from_day' must not be after 'to_day'",
+        ),
+        (
+            "#{ from_day: -1, to_day: 100 }",
+            "window days are campaign days from the scenario start and cannot be negative",
+        ),
+        (
+            "#{ from_day: 0, to_day: -100 }",
+            "window days are campaign days from the scenario start and cannot be negative",
+        ),
+        ("#{ to_day: 100 }", "window needs an integer 'from_day'"),
+        ("#{ from_day: 0 }", "window needs an integer 'to_day'"),
+        (
+            "180",
+            "field 'window' must be a map of 'from_day' and 'to_day'",
+        ),
+    ] {
+        let (set, report) = load_content(
+            &[source(
+                "core/situations.rhai",
+                &GOOD_SITUATION.replace(
+                    "    priority: 50,",
+                    &format!("    priority: 50,\n    window: {window},"),
+                ),
+            )],
+            &aeon_data::StringTable::blank(),
+        );
+        assert!(set.is_none(), "{window} must not load");
+        assert!(
+            report
+                .findings
+                .iter()
+                .any(|finding| finding.message.contains(expected)),
+            "{window} must report {expected}: {:?}",
+            report.findings
+        );
+    }
+}
+
 #[test]
 fn situation_attachments_validate_source_kind_and_definition() {
     let bad = r#"

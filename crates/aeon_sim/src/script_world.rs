@@ -134,6 +134,12 @@ fn assignment_target(target: AssignmentTarget) -> Map {
     }
 }
 
+/// The `world.opinions` key naming one ordered pair: the regard `from`
+/// holds of `to`. Scripts build the same string to read one directly.
+fn opinion_key(from: u64, to: u64) -> String {
+    format!("{from}:{to}")
+}
+
 /// Builds the `ctx.world` value shared by every authored Rhai invocation.
 ///
 /// Arrays follow stable-ID order. Maps contain only semantic, serialisable
@@ -165,7 +171,7 @@ pub fn context_value(world: &World) -> Map {
     let mut organisations = Array::new();
     let mut titles = Array::new();
     let mut offices = Array::new();
-    let mut opinions = Array::new();
+    let mut opinions = Map::new();
     if let Some(index) = world.get_resource::<PoliticsIndex>() {
         for (id, entity) in &index.characters {
             let Some(record) = world.get::<CharacterRecord>(*entity) else {
@@ -337,28 +343,29 @@ pub fn context_value(world: &World) -> Map {
         }
 
         // Opinion is an authoritative derived fact, not a copy of the stored
-        // modifier ledger. Pair order is stable (from, then to).
+        // modifier ledger.
+        //
+        // Keyed "<from>:<to>" rather than listed, because every consumer
+        // wants one ordered pair and a list makes that a linear scan in
+        // interpreted script: at ten campaign years the living pair off into
+        // thousands of entries, and a projection that asks for two regards
+        // walked all of them twice a day. A keyed map answers each ask
+        // directly. Only the map is published — building both would pay the
+        // whole cost twice for the shape nobody reads.
         //
         // The living only. The index keeps the dead so history can still
         // name them, but a dead character holds no opinion and none is held
         // of them, and pairing everyone who ever lived against everyone who
-        // ever lived grew this array — and every script scan of it — with
-        // the campaign's whole past rather than its present.
+        // ever lived grew this view with the campaign's whole past rather
+        // than its present.
         for from in index.living.iter() {
             for to in index.living.iter() {
                 if from == to {
                     continue;
                 }
-                opinions.push(
-                    map([
-                        ("from", integer(from.raw()).into()),
-                        ("to", integer(to.raw()).into()),
-                        (
-                            "value",
-                            i64::from(crate::politics::opinion_between(world, *from, *to)).into(),
-                        ),
-                    ])
-                    .into(),
+                opinions.insert(
+                    opinion_key(from.raw(), to.raw()).into(),
+                    i64::from(crate::politics::opinion_between(world, *from, *to)).into(),
                 );
             }
         }

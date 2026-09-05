@@ -640,6 +640,30 @@ pub enum SituationVisibilityDef {
     Bound(Vec<String>),
 }
 
+/// The authored span of campaign days in which a Situation's trigger may
+/// fire, measured from the scenario's start day (day zero) — the same basis
+/// `world.date - world.start_date` gives content.
+///
+/// It is a performance declaration, not a rule the trigger may lean on: an
+/// author states a superset of the days their trigger could ever return an
+/// instance on, and the simulation stops asking outside it. Both bounds are
+/// inclusive. A definition whose trigger is genuinely open-ended declares no
+/// window and is asked every day.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SituationWindowDef {
+    /// First campaign day the trigger may be called on.
+    pub from_day: i64,
+    /// Last campaign day the trigger may be called on.
+    pub to_day: i64,
+}
+
+impl SituationWindowDef {
+    /// Whether `campaign_day` falls inside the window.
+    pub fn contains(&self, campaign_day: i64) -> bool {
+        (self.from_day..=self.to_day).contains(&campaign_day)
+    }
+}
+
 /// One authored stage a Situation projection may select.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SituationStageDef {
@@ -726,6 +750,9 @@ pub struct SituationDef {
     pub projection_fn: ScriptFnRef,
     /// Authored ordering priority; larger values appear first.
     pub priority: i32,
+    /// Optional span of campaign days the trigger is asked on. Absent means
+    /// every day.
+    pub window: Option<SituationWindowDef>,
     /// Whether activation writes a permanent tagged log entry.
     pub log_activation: bool,
     /// Optional activation announcement, filled from the string table.

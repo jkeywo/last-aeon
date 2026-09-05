@@ -27,6 +27,11 @@ define_situation(#{
     trigger_fn: "court_awaits_instances",
     projection_fn: "court_awaits_projection",
     priority: 120,
+    // The court gathers on day zero and its patience runs seven days. The
+    // trigger can return an instance on no other day, so from the eighth
+    // the simulation stops asking. A window never strands a live demand:
+    // one still open on day seven is evaluated until it resolves.
+    window: #{ from_day: 0, to_day: 7 },
     log_activation: true,
     audience: ["house"],
     stages: ["waiting"],
@@ -233,6 +238,11 @@ define_situation(#{
     subject_binding: "requester",
     trigger_fn: "kessarin_order_instances",
     projection_fn: "kessarin_order_projection",
+    // The household's shared deadline is court_days() + household_days()
+    // — campaign day 127 — and every demand's trigger returns nothing from
+    // that day on. The window states the same bound so the trigger is not
+    // asked for the rest of the campaign.
+    window: #{ from_day: 0, to_day: 127 },
     priority: 110,
     log_activation: true,
     audience: ["house"],
@@ -425,6 +435,11 @@ define_situation(#{
     subject_binding: "requester",
     trigger_fn: "aleyn_levies_instances",
     projection_fn: "aleyn_levies_projection",
+    // The household's shared deadline is court_days() + household_days()
+    // — campaign day 127 — and every demand's trigger returns nothing from
+    // that day on. The window states the same bound so the trigger is not
+    // asked for the rest of the campaign.
+    window: #{ from_day: 0, to_day: 127 },
     priority: 109,
     log_activation: true,
     audience: ["house"],
@@ -624,11 +639,12 @@ fn torvald_liege_head(world, house) {
 }
 
 // One character's derived net opinion of another, read from the shared
-// world view's authoritative opinion facts.
+// world view's authoritative opinion facts. The view keys those facts by
+// the ordered pair "<from>:<to>", so this is one direct lookup rather
+// than a walk over every living pair.
 fn torvald_opinion(world, from, to) {
-    for opinion in world.opinions {
-        if opinion.from == from && opinion.to == to { return opinion.value; }
-    }
+    let pair = `${from}:${to}`;
+    if world.opinions.contains(pair) { return world.opinions[pair]; }
     0
 }
 
@@ -671,6 +687,11 @@ define_situation(#{
     subject_binding: "requester",
     trigger_fn: "torvald_standing_instances",
     projection_fn: "torvald_standing_projection",
+    // The household's shared deadline is court_days() + household_days()
+    // — campaign day 127 — and every demand's trigger returns nothing from
+    // that day on. The window states the same bound so the trigger is not
+    // asked for the rest of the campaign.
+    window: #{ from_day: 0, to_day: 127 },
     priority: 108,
     log_activation: true,
     audience: ["house"],
@@ -948,6 +969,10 @@ define_situation(#{
     subject_binding: "liege-head",
     trigger_fn: "casimir_visit_instances",
     projection_fn: "casimir_visit_projection",
+    // Exactly the authored visit window: visit_opens() to visit_closes().
+    // The trigger tests both bounds itself and returns nothing outside
+    // them, so this only spares the call.
+    window: #{ from_day: 140, to_day: 180 },
     priority: 115,
     log_activation: true,
     audience: ["house"],
@@ -1682,11 +1707,10 @@ fn cold_border_neighbours(world, house) {
 }
 
 // The live derived opinion of one character about another, from the
-// shared world view.
+// shared world view, read by its ordered-pair key "<from>:<to>".
 fn cold_border_regard(world, from, to) {
-    for opinion in world.opinions {
-        if opinion.from == from && opinion.to == to { return opinion.value; }
-    }
+    let pair = `${from}:${to}`;
+    if world.opinions.contains(pair) { return world.opinions[pair]; }
     0
 }
 

@@ -8151,3 +8151,103 @@ fn a_fallen_holding_resolves_the_card_lost_and_the_next_holding_opens_its_own() 
         "an undefended holding falls to the ordinary siege within a dozen seeds"
     );
 }
+
+/// An authored window is a performance declaration about triggers, never a
+/// lifetime for instances. A lifecycle that is live when its window closes
+/// must keep being evaluated until it resolves — the only path by which an
+/// instance ends, pays its outcome effects, and leaves a resolution — while
+/// a definition standing at rest outside its window is not asked at all.
+#[test]
+fn a_window_silences_a_resting_definition_but_never_strands_a_live_one() {
+    let mut windowed = sources();
+    let source = windowed
+        .iter_mut()
+        .find(|source| source.path.ends_with("core/situations.rhai"))
+        .expect("the core deck defines formal-war");
+    source.source = source.source.replace(
+        "    trigger_fn: \"formal_war_instances\",",
+        "    window: #{ from_day: 0, to_day: 1 },\n    trigger_fn: \"formal_war_instances\",",
+    );
+    let content = load_sources(&windowed);
+    assert_eq!(
+        content.situations[&key("formal-war")]
+            .window
+            .expect("the test content carries the window"),
+        aeon_data::model::SituationWindowDef {
+            from_day: 0,
+            to_day: 1,
+        }
+    );
+
+    let mut host = scenario_host(204, Arc::clone(&content));
+    let player = host.world_mut().resource::<PlayerHouse>().0.unwrap();
+    let defender = org(&mut host, "vantar");
+
+    // Inside the window: the resting definition is asked, and activates.
+    let war_in_window = declare_war(
+        host.world_mut(),
+        player,
+        defender,
+        key("declared-in-window"),
+    )
+    .unwrap();
+    evaluate(host.world_mut());
+    let live = |host: &mut SimHost| {
+        host.world_mut()
+            .resource::<SituationState>()
+            .active
+            .keys()
+            .filter(|situation| situation.definition == key("formal-war"))
+            .count()
+    };
+    assert_eq!(live(&mut host), 1, "the window admits the activation");
+
+    // Far outside the window, with the war still running: the live lifecycle
+    // is still evaluated, so it survives rather than silently disappearing.
+    host.advance_days(120);
+    assert_eq!(
+        live(&mut host),
+        1,
+        "a live lifecycle is evaluated outside its window"
+    );
+
+    // And it can still end, resolve, and be recorded there.
+    let resolved = |host: &mut SimHost| {
+        host.world_mut()
+            .resource::<SituationState>()
+            .resolutions
+            .iter()
+            .filter(|notice| notice.situation.definition == key("formal-war"))
+            .count()
+    };
+    let before = resolved(&mut host);
+    conclude_war(
+        host.world_mut(),
+        war_in_window,
+        WarConclusionKind::NegotiatedPeace,
+    )
+    .unwrap();
+    evaluate(host.world_mut());
+    assert_eq!(live(&mut host), 0, "the ended lifecycle resolves");
+    assert_eq!(
+        resolved(&mut host),
+        before + 1,
+        "resolving outside the window still records the outcome"
+    );
+
+    // With nothing live, the closed window does silence the definition: a
+    // war declared here opens no card.
+    declare_war(
+        host.world_mut(),
+        player,
+        defender,
+        key("declared-after-window"),
+    )
+    .unwrap();
+    evaluate(host.world_mut());
+    assert_eq!(
+        live(&mut host),
+        0,
+        "a definition at rest is not asked outside its window"
+    );
+}

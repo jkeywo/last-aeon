@@ -3302,3 +3302,49 @@ entities:
       references:
         - headless-authoritative-simulation
         - the-shared-world-view-shows-the-living
+
+  - decision: situation-evaluation-answers-pairs-directly-and-sleeps-outside-authored-windows
+    core:
+      status: accepted
+      confidence: confirmed
+      origin: ai
+      title: Situation Evaluation Answers Opinion Pairs Directly and Sleeps Outside Authored Windows
+      summary: >-
+        Ten campaign years into the authored scenario at seed 0xA301 a single
+        simulated day cost 559 ms, and situations::evaluate was 551 ms of it —
+        98.5 per cent, with every other daily system under 0.2 ms. Building the
+        shared world view was 4.65 ms of that, so the rest was interpreted Rhai:
+        the triggers and projections of twelve define_situation definitions, run
+        every day. Two changes address it. First, world.opinions is published as
+        a map keyed "<from>:<to>" rather than as a flat array of from/to/value
+        maps: both authored consumers wanted one ordered pair and were scanning
+        thousands of entries in interpreted script to find it. Only the keyed
+        shape is published, because building both would pay the whole cost twice.
+        Second, define_situation takes an optional window of campaign days,
+        window: #{ from_day, to_day }, measured from the scenario start — the
+        same basis world.date - world.start_date gives content. Outside its
+        window a definition's trigger is not called, provided that definition has
+        nothing live: a live lifecycle is always evaluated, because evaluation is
+        the only path by which an instance ends, resolves, and pays its outcome
+        effects. Five First Reign definitions declare one — court-awaits (0..7),
+        the three household demands (0..127), and casimir-visit (140..180) —
+        each a superset of the days its own trigger can return an instance on.
+        Both changes are behaviour-preserving by construction, and the
+        simulation state is identical: the campaign state captured at campaign
+        days 8, 130, 200, 400, 1200, and 3600, with only its content hash
+        excluded, hashes the same before and after. The acceptance run's own
+        final-hash does move, from c2ea41a2f4525959 to a42b2889c5852773, because
+        CampaignState carries the content hash and both files under
+        assets/content were edited; every other captured field is unchanged.
+      rationale:
+        - "[ai] A window is a performance declaration about the trigger, never a lifetime for the instance. The skip is guarded on the definition having nothing live, and that guard is the whole correctness argument: stranding a live lifecycle would leave a card active forever and its authored outcome effects unpaid, which is the one failure here that a campaign could not recover from."
+        - "[ai] The window is authored per definition rather than inferred, because only the author knows the days their trigger can fire. It is stated as a superset of that span, so it can never be the thing that decides an outcome — every windowed trigger still tests its own bounds, and removing every window would change nothing but the cost."
+        - "[ai] Bounds are validated loudly at load — non-negative, from_day no later than to_day — because a reversed or negative span retires an arc silently, and silence is the hardest content bug to see. Validation matches the demography and opinion-modifier ranges already validated the same way."
+        - "[ai] The keyed opinions map is a shape change to the shared world view with no change to its values, so authored lookups return exactly what they returned before. Publishing an array as well would have kept the old shape working at the cost of building the whole thing twice for a reader nobody has."
+        - "[ai] Worth knowing before the next content change is measured this way: the acceptance final-hash cannot be held still across any edit to assets/content, because CampaignState captures the content hash and hash_state covers it — a changed comment in a Rhai file moves it. The check that actually says whether behaviour moved is the same capture with content_hash cleared, compared at several campaign days, which is how these two changes were verified."
+        - "[ai] Skipping a trigger cannot reorder anything: attachments are still walked in the same order, discovered instances still land in an ordered set, and a skipped definition by its author's own declaration discovers nothing there. No derived-RNG purpose label is touched."
+        - "[ai] Measured after: 153 ms per simulated day, evaluate 155 ms of it (evaluate timed alone repeats the day's work), against 559 and 551 — a 3.6x improvement. What now dominates is authored, not engine: the border-war trigger at 86 ms and cold-border at 46 ms, both of which resolve province holders by walking world.provinces once per route in interpreted script. Those two are deliberately left unwindowed — the border-war card is authored to serve a war the player starts too — so the next lever is a keyed holder lookup in the same style as the opinions map, not a wider window."
+      references:
+        - situations-project-live-facts-into-authored-context
+        - the-shared-world-view-shows-the-living
+        - headless-authoritative-simulation

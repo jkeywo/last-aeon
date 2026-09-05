@@ -383,6 +383,26 @@ The client orders completed resolutions first, then warnings, then other active
 cards. It displays stages, deadlines, metrics, participants, links, action
 availability, forecasts, and provenance-tagged history.
 
+[ai] The daily refresh is cheap in two ways that content can see. The shared
+world view publishes opinions as a map keyed by the ordered pair
+`"<from>:<to>"`, so a script asking what one character makes of another reads
+it directly instead of walking every living pair; the values are exactly the
+derived facts the flat list carried. And a definition may declare an optional
+`window: #{ from_day, to_day }` of campaign days counted from the scenario
+start — the same basis `world.date - world.start_date` gives content. Outside
+its window a definition's trigger is not called, so an arc that is over stops
+costing anything for the rest of the campaign. A window is a performance
+declaration about the trigger and never a lifetime for the instance: a
+definition with a live lifecycle is evaluated every day whatever its window
+says, because that is the only path by which an instance ends, resolves, and
+pays its outcome effects. Authors state a window as a superset of the days
+their trigger could fire — every windowed trigger still tests its own bounds —
+and a definition whose trigger is genuinely open-ended, such as A Cold Border
+or War at the Border, declares none. Bounds are validated at load:
+non-negative, and `from_day` no later than `to_day`. The First Reign windows
+are The Court Awaits over days 0–7, the three household demands over 0–127,
+and The Liege's Visit over 140–180.
+
 ## Intrigue
 
 ### Implemented/current and accepted

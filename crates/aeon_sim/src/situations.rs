@@ -1121,12 +1121,21 @@ pub fn evaluate(world: &mut World) {
     if world.get_resource::<ScriptRuntime>().is_none() {
         return;
     }
-    let date = world.resource::<CampaignClock>().date;
+    let clock = world.resource::<CampaignClock>();
+    let date = clock.date;
+    let campaign_day = date.days_since_epoch() - clock.start_date.days_since_epoch();
     let world_view = crate::script_world::context_value(world);
     let old = world
         .get_resource::<SituationState>()
         .cloned()
         .unwrap_or_default();
+
+    // Definitions with something live right now. An authored window may only
+    // silence a definition standing at rest: a live lifecycle MUST be
+    // evaluated every day, inside its window or long outside it, because
+    // evaluation is the only path by which an instance ends, resolves, and
+    // pays its outcome effects. Skipping one would strand it active forever.
+    let live: BTreeSet<&ContentKey> = old.active.keys().map(|key| &key.definition).collect();
 
     let mut discovered = BTreeSet::new();
     let mut failed_sources: BTreeMap<(ContentKey, SituationSource), String> = BTreeMap::new();
@@ -1134,6 +1143,17 @@ pub fn evaluate(world: &mut World) {
         let Some(def) = content.situations.get(&attachment.definition) else {
             continue;
         };
+        // Outside its authored window a definition at rest is not asked. It
+        // discovers nothing there by the author's own declaration, so the
+        // skip is invisible: no instance appears or disappears, and the
+        // order of every definition that still runs is untouched.
+        if !live.contains(&def.key)
+            && def
+                .window
+                .is_some_and(|window| !window.contains(campaign_day))
+        {
+            continue;
+        }
         let synthetic = SituationInstanceKey {
             definition: def.key.clone(),
             source: attachment.source.clone(),
