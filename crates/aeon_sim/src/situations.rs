@@ -5,12 +5,14 @@
 //! resolution notices, diagnostics, and the fixed presentation vocabulary.
 
 use std::collections::{BTreeMap, BTreeSet};
+use std::sync::Arc;
 
 use aeon_core::calendar::GameDate;
 use aeon_data::model::{SituationDef, SituationSubjectKind, SituationVisibilityDef};
 use aeon_data::{ContentKey, ContentSet};
 use bevy::app::App;
 use bevy::prelude::{Resource, World};
+use bevy::tasks::{ComputeTaskPool, TaskPool};
 use rhai::{Array, Dynamic, Map};
 use serde::{Deserialize, Serialize};
 
@@ -1113,89 +1115,145 @@ fn situation_log_entry(
     entry
 }
 
-/// Evaluates every attachment against the fully settled authoritative day.
-pub fn evaluate(world: &mut World) {
-    let Some(content) = world.get_resource::<ContentDb>().map(|db| db.0.clone()) else {
-        return;
+/// The read-only inputs one settled day's evaluation gathers once.
+///
+/// Every stage reads these and the [`World`] immutably. Only the apply tail
+/// of [`evaluate`] writes, so the per-item stage functions may run in any
+/// order — or at once — and the ordered merges alone decide what the day
+/// means.
+struct DayInputs {
+    content: Arc<ContentSet>,
+    world_view: Map,
+    old: SituationState,
+    date: GameDate,
+    /// Days since the scenario start — the basis an authored window states
+    /// its bounds in, and the same one `world.date - world.start_date`
+    /// gives content.
+    campaign_day: i64,
+    /// Definitions with something live right now. An authored window may
+    /// only silence a definition standing at rest: a live lifecycle MUST be
+    /// evaluated every day, inside its window or long outside it, because
+    /// evaluation is the only path by which an instance ends, resolves, and
+    /// pays its outcome effects. Skipping one would strand it active forever.
+    live: BTreeSet<ContentKey>,
+}
+
+/// What one attachment's trigger said, as plain data.
+#[derive(Clone, Debug, PartialEq, Eq)]
+enum TriggerOutcome {
+    /// The instances the trigger returned; empty when it is windowed out.
+    Discovered(Vec<SituationInstanceKey>),
+    /// The trigger or its returned shape failed, with content-derived text.
+    Failed(String),
+}
+
+type TriggerResult = (Attachment, TriggerOutcome);
+
+/// Every attachment whose definition exists in the content, in stable order.
+fn attachments_with_definitions(world: &World, content: &ContentSet) -> Vec<Attachment> {
+    attachments(world, content)
+        .into_iter()
+        .filter(|attachment| content.situations.contains_key(&attachment.definition))
+        .collect()
+}
+
+/// Evaluates one attachment's trigger. Pure over the read-only world and
+/// the day inputs: no random stream is drawn, nothing is written, and the
+/// error text is content-derived only.
+fn evaluate_trigger(world: &World, inputs: &DayInputs, attachment: &Attachment) -> TriggerOutcome {
+    let content = &inputs.content;
+    let Some(def) = content.situations.get(&attachment.definition) else {
+        return TriggerOutcome::Discovered(Vec::new());
     };
-    if world.get_resource::<ScriptRuntime>().is_none() {
-        return;
+    // Outside its authored window a definition at rest is not asked. It
+    // discovers nothing there by the author's own declaration, so the skip
+    // is invisible: no instance appears or disappears, and the merge that
+    // owns the ordering sees the same empty result it would have got.
+    if !inputs.live.contains(&def.key)
+        && def
+            .window
+            .is_some_and(|window| !window.contains(inputs.campaign_day))
+    {
+        return TriggerOutcome::Discovered(Vec::new());
     }
-    let clock = world.resource::<CampaignClock>();
-    let date = clock.date;
-    let campaign_day = date.days_since_epoch() - clock.start_date.days_since_epoch();
-    let world_view = crate::script_world::context_value(world);
-    let old = world
-        .get_resource::<SituationState>()
-        .cloned()
-        .unwrap_or_default();
+    let synthetic = SituationInstanceKey {
+        definition: def.key.clone(),
+        source: attachment.source.clone(),
+        bindings: BTreeMap::new(),
+    };
+    // The oldest live activation for this definition and source; exact
+    // for single-instance Situations, and the unit value when no
+    // lifecycle is currently active. Its recorded answer rides along so
+    // a trigger reads the same facts its outcomes will.
+    let earliest = inputs
+        .old
+        .active
+        .values()
+        .filter(|lifecycle| {
+            lifecycle.key.definition == def.key && lifecycle.key.source == attachment.source
+        })
+        .min_by_key(|lifecycle| lifecycle.activated);
+    let earliest_activation = earliest.map(|lifecycle| lifecycle.activated);
+    let earliest_answer =
+        earliest.and_then(|lifecycle| inputs.old.answers.get(&lifecycle.occurrence()));
+    let result = call_dynamic(
+        world,
+        content,
+        &def.trigger_fn,
+        call_context_with_world(
+            &synthetic,
+            earliest_activation,
+            earliest_answer,
+            &inputs.world_view,
+        ),
+    )
+    .and_then(|dynamic| parse_trigger(world, def, &attachment.source, dynamic));
+    match result {
+        Ok(keys) => TriggerOutcome::Discovered(keys),
+        Err(error) => TriggerOutcome::Failed(error.to_string()),
+    }
+}
 
-    // Definitions with something live right now. An authored window may only
-    // silence a definition standing at rest: a live lifecycle MUST be
-    // evaluated every day, inside its window or long outside it, because
-    // evaluation is the only path by which an instance ends, resolves, and
-    // pays its outcome effects. Skipping one would strand it active forever.
-    let live: BTreeSet<&ContentKey> = old.active.keys().map(|key| &key.definition).collect();
+/// The merged trigger stage: the discovered set and the failed sources.
+type MergedTriggers = (
+    BTreeSet<SituationInstanceKey>,
+    BTreeMap<(ContentKey, SituationSource), String>,
+);
 
+/// Merges trigger results into the discovered set and the failed-sources
+/// map. Both are ordered collections keyed by structural identity, so the
+/// result is the same whatever order the per-attachment results arrive in.
+fn merge_triggers(results: Vec<TriggerResult>) -> MergedTriggers {
     let mut discovered = BTreeSet::new();
-    let mut failed_sources: BTreeMap<(ContentKey, SituationSource), String> = BTreeMap::new();
-    for attachment in attachments(world, &content) {
-        let Some(def) = content.situations.get(&attachment.definition) else {
-            continue;
-        };
-        // Outside its authored window a definition at rest is not asked. It
-        // discovers nothing there by the author's own declaration, so the
-        // skip is invisible: no instance appears or disappears, and the
-        // order of every definition that still runs is untouched.
-        if !live.contains(&def.key)
-            && def
-                .window
-                .is_some_and(|window| !window.contains(campaign_day))
-        {
-            continue;
-        }
-        let synthetic = SituationInstanceKey {
-            definition: def.key.clone(),
-            source: attachment.source.clone(),
-            bindings: BTreeMap::new(),
-        };
-        // The oldest live activation for this definition and source; exact
-        // for single-instance Situations, and the unit value when no
-        // lifecycle is currently active. Its recorded answer rides along so
-        // a trigger reads the same facts its outcomes will.
-        let earliest = old
-            .active
-            .values()
-            .filter(|lifecycle| {
-                lifecycle.key.definition == def.key && lifecycle.key.source == attachment.source
-            })
-            .min_by_key(|lifecycle| lifecycle.activated);
-        let earliest_activation = earliest.map(|lifecycle| lifecycle.activated);
-        let earliest_answer =
-            earliest.and_then(|lifecycle| old.answers.get(&lifecycle.occurrence()));
-        let result = call_dynamic(
-            world,
-            &content,
-            &def.trigger_fn,
-            call_context_with_world(
-                &synthetic,
-                earliest_activation,
-                earliest_answer,
-                &world_view,
-            ),
-        )
-        .and_then(|dynamic| parse_trigger(world, def, &attachment.source, dynamic));
-        match result {
-            Ok(keys) => discovered.extend(keys),
-            Err(error) => {
-                failed_sources.insert(
-                    (def.key.clone(), attachment.source.clone()),
-                    error.to_string(),
-                );
+    let mut failed_sources = BTreeMap::new();
+    for (attachment, outcome) in results {
+        match outcome {
+            TriggerOutcome::Discovered(keys) => discovered.extend(keys),
+            TriggerOutcome::Failed(error) => {
+                failed_sources.insert((attachment.definition, attachment.source), error);
             }
         }
     }
+    (discovered, failed_sources)
+}
 
+/// The day's lifecycles installed from the merged triggers.
+struct Lifecycles {
+    active: BTreeMap<SituationInstanceKey, ActiveSituation>,
+    errors: BTreeMap<SituationInstanceKey, String>,
+    activations: Vec<SituationOccurrence>,
+}
+
+/// Installs the day's active lifecycles from the merged trigger stage:
+/// discovered keys keep or start a lifecycle, and a failed source preserves
+/// every lifecycle it had (or stands in with a source placeholder) and
+/// records its error. Pure over the prior state and the merge.
+fn install_lifecycles(
+    old: &SituationState,
+    date: GameDate,
+    discovered: BTreeSet<SituationInstanceKey>,
+    failed_sources: &BTreeMap<(ContentKey, SituationSource), String>,
+) -> Lifecycles {
     let mut active = BTreeMap::new();
     let mut errors = BTreeMap::new();
     let mut activations = Vec::new();
@@ -1211,7 +1269,7 @@ pub fn evaluate(world: &mut World) {
         active.insert(key, lifecycle);
     }
 
-    for ((definition, source), error) in &failed_sources {
+    for ((definition, source), error) in failed_sources {
         let mut preserved = false;
         for (key, lifecycle) in &old.active {
             if &key.definition == definition && &key.source == source {
@@ -1236,10 +1294,220 @@ pub fn evaluate(world: &mut World) {
             errors.insert(key, error.clone());
         }
     }
+    Lifecycles {
+        active,
+        errors,
+        activations,
+    }
+}
 
-    let mut resolutions = old.resolutions.clone();
-    let mut next_resolution_id = old.next_resolution_id;
-    let ended: Vec<_> = old
+/// One ended lifecycle resolved, before its notice id is assigned.
+#[derive(Clone, Debug)]
+struct Resolved {
+    /// The notice with a placeholder id; the merge numbers it.
+    notice: SituationResolution,
+    /// The selected outcome's authored effects, with the context they run in.
+    effects: Option<(aeon_data::model::ScriptFnRef, Map)>,
+}
+
+type ResolutionResult = (ActiveSituation, Result<Resolved, String>);
+
+/// Resolves one ended lifecycle: outcome predicates, the frozen projection,
+/// and the selected outcome's effects function with its context. Pure over
+/// the read-only world and the day inputs; the effects themselves run in
+/// the apply tail.
+fn resolve_one(
+    world: &World,
+    inputs: &DayInputs,
+    ended: &ActiveSituation,
+) -> Result<Resolved, String> {
+    let content = &inputs.content;
+    let answer = inputs.old.answers.get(&ended.occurrence()).cloned();
+    let notice = resolve_with_world(
+        world,
+        content,
+        ended,
+        0,
+        inputs.date,
+        answer.as_ref(),
+        &inputs.world_view,
+    )
+    .map_err(|error| error.to_string())?;
+    // A selected outcome may carry authored effects. They apply once,
+    // after the new lifecycle state is installed, against the
+    // organisation named by the declared owner binding.
+    let effects = content
+        .situations
+        .get(&notice.situation.definition)
+        .and_then(|def| {
+            def.outcomes
+                .iter()
+                .find(|outcome| outcome.key == notice.outcome)
+        })
+        .and_then(|outcome| outcome.effects_fn.clone())
+        .map(|effects_fn| {
+            (
+                effects_fn,
+                call_context_with_world(
+                    &ended.key,
+                    Some(ended.activated),
+                    answer.as_ref(),
+                    &inputs.world_view,
+                ),
+            )
+        });
+    Ok(Resolved { notice, effects })
+}
+
+/// The merged resolution stage.
+#[derive(Debug, Default)]
+struct MergedResolutions {
+    /// New notices, numbered, in ended-lifecycle order.
+    resolutions: Vec<SituationResolution>,
+    /// The next notice id after numbering.
+    next_resolution_id: u64,
+    /// Lifecycles whose resolution failed, restored as active.
+    restored: Vec<(ActiveSituation, String)>,
+    /// History lines for the new notices, in the same order.
+    logs: Vec<(SituationOccurrence, String)>,
+    /// Outcome effects to run, in the same order.
+    effects: Vec<(SituationOccurrence, aeon_data::model::ScriptFnRef, Map)>,
+}
+
+/// Merges resolution results in ended-lifecycle (structural key) order,
+/// numbering each successful notice from its position and skipping
+/// failures, so ids never depend on which result arrived first. A failed
+/// resolution restores its lifecycle and carries its error.
+fn merge_resolutions(
+    next_resolution_id: u64,
+    mut results: Vec<ResolutionResult>,
+) -> MergedResolutions {
+    results.sort_by(|left, right| left.0.key.cmp(&right.0.key));
+    let mut merged = MergedResolutions {
+        next_resolution_id,
+        ..Default::default()
+    };
+    for (ended, result) in results {
+        match result {
+            Ok(Resolved {
+                mut notice,
+                effects,
+            }) => {
+                merged.next_resolution_id += 1;
+                notice.id = merged.next_resolution_id;
+                merged.logs.push((notice.occurrence(), notice.text.clone()));
+                if let Some((effects_fn, context)) = effects {
+                    merged
+                        .effects
+                        .push((notice.occurrence(), effects_fn, context));
+                }
+                merged.resolutions.push(notice);
+            }
+            Err(error) => merged.restored.push((ended, error)),
+        }
+    }
+    merged
+}
+
+type ProjectionResult = (SituationInstanceKey, Option<String>);
+
+/// Projects one live lifecycle so runtime errors are deterministic,
+/// log-once, and snapshotted even if no client happens to open the panel.
+/// Pure over the read-only world and the day inputs.
+fn project_one(world: &World, inputs: &DayInputs, lifecycle: &ActiveSituation) -> Option<String> {
+    project_with_world(
+        world,
+        &inputs.content,
+        &lifecycle.key,
+        lifecycle.activated,
+        inputs.old.answers.get(&lifecycle.occurrence()),
+        &inputs.world_view,
+    )
+    .err()
+    .map(|error| error.to_string())
+}
+
+/// Merges projection results into errors keyed by instance, identical
+/// whatever order the results arrive in.
+fn merge_projections(results: Vec<ProjectionResult>) -> BTreeMap<SituationInstanceKey, String> {
+    results
+        .into_iter()
+        .filter_map(|(key, error)| error.map(|error| (key, error)))
+        .collect()
+}
+
+/// Runs `stage` over every item on the compute task pool and returns the
+/// results in item order — the order the merges consume.
+///
+/// The pool is multi-threaded on native targets and inline on the web, on
+/// this same code. Determinism does not depend on which: no stage draws a
+/// random stream (the sandbox registers none, and every roll lives in the
+/// apply tail), every stage reads the world and the inputs immutably, and
+/// the merges own every ordering decision.
+fn fan_out<I: Sync, T: Send + 'static>(items: &[I], stage: impl Fn(&I) -> T + Sync) -> Vec<T> {
+    ComputeTaskPool::get_or_init(TaskPool::default).scope(|scope| {
+        for item in items {
+            let stage = &stage;
+            scope.spawn(async move { stage(item) });
+        }
+    })
+}
+
+/// Evaluates every attachment against the fully settled authoritative day.
+///
+/// Staged as read, evaluate, merge, apply: the day's inputs are gathered
+/// once; each trigger, then each ended lifecycle's resolution and each live
+/// lifecycle's projection, is evaluated on its own from the read-only world;
+/// ordered merges turn the result vectors into the day's state; and the
+/// apply tail installs it, logs, raises popups, and runs outcome effects.
+pub fn evaluate(world: &mut World) {
+    let Some(content) = world.get_resource::<ContentDb>().map(|db| db.0.clone()) else {
+        return;
+    };
+    if world.get_resource::<ScriptRuntime>().is_none() {
+        return;
+    }
+
+    // Read.
+    let clock = world.resource::<CampaignClock>();
+    let date = clock.date;
+    let campaign_day = date.days_since_epoch() - clock.start_date.days_since_epoch();
+    let old = world
+        .get_resource::<SituationState>()
+        .cloned()
+        .unwrap_or_default();
+    let inputs = DayInputs {
+        date,
+        world_view: crate::script_world::context_value(world),
+        live: old
+            .active
+            .keys()
+            .map(|key| key.definition.clone())
+            .collect(),
+        old,
+        content: content.clone(),
+        campaign_day,
+    };
+    let attachments = attachments_with_definitions(world, &content);
+
+    // Evaluate and merge the trigger stage.
+    let trigger_results: Vec<TriggerResult> = fan_out(&attachments, |attachment| {
+        (
+            attachment.clone(),
+            evaluate_trigger(world, &inputs, attachment),
+        )
+    });
+    let (discovered, failed_sources) = merge_triggers(trigger_results);
+    let Lifecycles {
+        mut active,
+        mut errors,
+        activations,
+    } = install_lifecycles(&inputs.old, date, discovered, &failed_sources);
+
+    // Evaluate and merge the resolution and projection stage. Both read the
+    // same settled world; neither depends on the other's result.
+    let ended: Vec<ActiveSituation> = inputs
+        .old
         .active
         .iter()
         .filter(|(key, _)| {
@@ -1248,74 +1516,31 @@ pub fn evaluate(world: &mut World) {
         })
         .map(|(_, active)| active.clone())
         .collect();
-    let mut resolution_logs = Vec::new();
-    let mut resolution_effects = Vec::new();
-    for ended in ended {
-        next_resolution_id += 1;
-        let answer = old.answers.get(&ended.occurrence()).cloned();
-        match resolve_with_world(
-            world,
-            &content,
-            &ended,
-            next_resolution_id,
-            date,
-            answer.as_ref(),
-            &world_view,
-        ) {
-            Ok(notice) => {
-                resolution_logs.push((notice.occurrence(), notice.text.clone()));
-                // A selected outcome may carry authored effects. They apply
-                // once, after the new lifecycle state is installed, against
-                // the organisation named by the declared owner binding.
-                if let Some(effects_fn) = content
-                    .situations
-                    .get(&notice.situation.definition)
-                    .and_then(|def| {
-                        def.outcomes
-                            .iter()
-                            .find(|outcome| outcome.key == notice.outcome)
-                    })
-                    .and_then(|outcome| outcome.effects_fn.clone())
-                {
-                    resolution_effects.push((
-                        notice.occurrence(),
-                        effects_fn,
-                        call_context_with_world(
-                            &ended.key,
-                            Some(ended.activated),
-                            answer.as_ref(),
-                            &world_view,
-                        ),
-                    ));
-                }
-                resolutions.push(notice);
-            }
-            Err(error) => {
-                next_resolution_id -= 1;
-                active.insert(ended.key.clone(), ended.clone());
-                errors.insert(ended.key, error.to_string());
-            }
-        }
+    let live: Vec<ActiveSituation> = active
+        .iter()
+        .filter(|(key, _)| !errors.contains_key(*key))
+        .map(|(_, lifecycle)| lifecycle.clone())
+        .collect();
+    let resolution_results: Vec<ResolutionResult> = fan_out(&ended, |ended| {
+        (ended.clone(), resolve_one(world, &inputs, ended))
+    });
+    let projection_results: Vec<ProjectionResult> = fan_out(&live, |lifecycle| {
+        (
+            lifecycle.key.clone(),
+            project_one(world, &inputs, lifecycle),
+        )
+    });
+    let merged = merge_resolutions(inputs.old.next_resolution_id, resolution_results);
+    let mut resolutions = inputs.old.resolutions.clone();
+    resolutions.extend(merged.resolutions);
+    for (ended, error) in merged.restored {
+        errors.insert(ended.key.clone(), error);
+        active.insert(ended.key.clone(), ended);
     }
+    errors.extend(merge_projections(projection_results));
 
-    // Parse every live projection now so runtime errors are deterministic,
-    // log-once, and snapshotted even if no client happens to open the panel.
-    for (key, lifecycle) in &active {
-        if errors.contains_key(key) {
-            continue;
-        }
-        if let Err(error) = project_with_world(
-            world,
-            &content,
-            &lifecycle.key,
-            lifecycle.activated,
-            old.answers.get(&lifecycle.occurrence()),
-            &world_view,
-        ) {
-            errors.insert(key.clone(), error.to_string());
-        }
-    }
-
+    // Apply.
+    let old = inputs.old;
     let mut logged_diagnostics = old.logged_diagnostics.clone();
     let new_diagnostics: Vec<_> = errors
         .iter()
@@ -1345,7 +1570,7 @@ pub fn evaluate(world: &mut World) {
     world.insert_resource(SituationState {
         active,
         resolutions,
-        next_resolution_id,
+        next_resolution_id: merged.next_resolution_id,
         runtime_errors: errors,
         logged_diagnostics,
         answers,
@@ -1398,7 +1623,7 @@ pub fn evaluate(world: &mut World) {
             }
         }
     }
-    for (occurrence, text) in resolution_logs {
+    for (occurrence, text) in merged.logs {
         crate::access::log(
             world,
             situation_log_entry(world, &occurrence, LogEntry::line(text, LogChannel::Events)),
@@ -1406,7 +1631,7 @@ pub fn evaluate(world: &mut World) {
     }
     // Outcome effects run last, after lifecycle state and resolution history
     // are in place, in deterministic resolution order.
-    for (occurrence, effects_fn, context) in resolution_effects {
+    for (occurrence, effects_fn, context) in merged.effects {
         let Some(def) = content.situations.get(&occurrence.situation.definition) else {
             continue;
         };
@@ -1879,6 +2104,266 @@ pub(crate) fn install(app: &mut App) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn scenario_source() -> SituationSource {
+        SituationSource {
+            kind: SituationSubjectKind::Scenario,
+            key: ContentKey::new("ashkarr-succession").unwrap(),
+            id: None,
+        }
+    }
+
+    fn title_source(raw: u64) -> SituationSource {
+        SituationSource {
+            kind: SituationSubjectKind::Title,
+            key: ContentKey::new("consul").unwrap(),
+            id: Some(raw),
+        }
+    }
+
+    fn instance(definition: &str, source: SituationSource, province: u64) -> SituationInstanceKey {
+        SituationInstanceKey {
+            definition: ContentKey::new(definition).unwrap(),
+            source,
+            bindings: BTreeMap::from([(
+                "province".to_owned(),
+                SituationSubject::Province(ProvinceId::from_raw(province).unwrap()),
+            )]),
+        }
+    }
+
+    fn attachment(definition: &str, source: SituationSource) -> Attachment {
+        Attachment {
+            definition: ContentKey::new(definition).unwrap(),
+            source,
+        }
+    }
+
+    fn lifecycle(key: SituationInstanceKey, activated: i64) -> ActiveSituation {
+        ActiveSituation {
+            key,
+            activated: GameDate::from_days(activated),
+        }
+    }
+
+    fn notice(lifecycle: &ActiveSituation, text: &str) -> SituationResolution {
+        SituationResolution {
+            id: 0,
+            situation: lifecycle.key.clone(),
+            activated: lifecycle.activated,
+            resolved: GameDate::from_days(40),
+            outcome: ContentKey::new("closed").unwrap(),
+            text: text.to_owned(),
+            participants: Vec::new(),
+            participant_groups: Vec::new(),
+            links: Vec::new(),
+        }
+    }
+
+    /// Every rotation of `items`, so a merge can be shown order-independent.
+    fn rotations<T: Clone>(items: &[T]) -> Vec<Vec<T>> {
+        (0..items.len())
+            .map(|shift| {
+                items[shift..]
+                    .iter()
+                    .chain(&items[..shift])
+                    .cloned()
+                    .collect()
+            })
+            .collect()
+    }
+
+    #[test]
+    fn trigger_merge_is_the_same_in_any_result_order() {
+        let cold = attachment("cold-border", scenario_source());
+        let consul = attachment("consular-vacancy", title_source(7));
+        let visit = attachment("casimir-visit", scenario_source());
+        let results = vec![
+            (
+                cold.clone(),
+                TriggerOutcome::Discovered(vec![
+                    instance("cold-border", scenario_source(), 3),
+                    instance("cold-border", scenario_source(), 2),
+                ]),
+            ),
+            (
+                consul.clone(),
+                TriggerOutcome::Failed("trigger must return an array".to_owned()),
+            ),
+            // Windowed out: the trigger ran and returned nothing.
+            (visit.clone(), TriggerOutcome::Discovered(Vec::new())),
+        ];
+        let expected = merge_triggers(results.clone());
+        assert_eq!(
+            expected.0.iter().cloned().collect::<Vec<_>>(),
+            vec![
+                instance("cold-border", scenario_source(), 2),
+                instance("cold-border", scenario_source(), 3),
+            ]
+        );
+        assert_eq!(
+            expected.1,
+            BTreeMap::from([(
+                (consul.definition.clone(), consul.source.clone()),
+                "trigger must return an array".to_owned()
+            )])
+        );
+        assert!(
+            !expected
+                .0
+                .iter()
+                .any(|key| key.definition == visit.definition),
+            "a windowed-out attachment discovers nothing"
+        );
+        for order in rotations(&results) {
+            assert_eq!(merge_triggers(order), expected);
+        }
+    }
+
+    #[test]
+    fn a_failing_source_preserves_its_prior_lifecycles() {
+        let consul = attachment("consular-vacancy", title_source(7));
+        let prior = lifecycle(instance("consular-vacancy", title_source(7), 5), 12);
+        let mut old = SituationState::default();
+        old.active.insert(prior.key.clone(), prior.clone());
+        let failed = BTreeMap::from([(
+            (consul.definition.clone(), consul.source.clone()),
+            "boom".to_owned(),
+        )]);
+        let today = GameDate::from_days(40);
+
+        let installed = install_lifecycles(&old, today, BTreeSet::new(), &failed);
+        assert_eq!(installed.active.get(&prior.key), Some(&prior));
+        assert_eq!(
+            installed.errors.get(&prior.key).map(String::as_str),
+            Some("boom")
+        );
+        assert!(
+            installed.activations.is_empty(),
+            "a preserved lifecycle is not a new activation"
+        );
+
+        // Without a prior lifecycle the source stands in with a placeholder
+        // activated today.
+        let installed =
+            install_lifecycles(&SituationState::default(), today, BTreeSet::new(), &failed);
+        let placeholder = SituationInstanceKey {
+            definition: consul.definition.clone(),
+            source: consul.source.clone(),
+            bindings: BTreeMap::new(),
+        };
+        assert_eq!(
+            installed
+                .active
+                .get(&placeholder)
+                .map(|lifecycle| lifecycle.activated),
+            Some(today)
+        );
+        assert_eq!(
+            installed.errors.get(&placeholder).map(String::as_str),
+            Some("boom")
+        );
+    }
+
+    #[test]
+    fn discovered_keys_keep_their_lifecycle_or_start_one_today() {
+        let kept = lifecycle(instance("cold-border", scenario_source(), 2), 12);
+        let mut old = SituationState::default();
+        old.active.insert(kept.key.clone(), kept.clone());
+        let fresh = instance("cold-border", scenario_source(), 3);
+        let today = GameDate::from_days(40);
+        let installed = install_lifecycles(
+            &old,
+            today,
+            BTreeSet::from([kept.key.clone(), fresh.clone()]),
+            &BTreeMap::new(),
+        );
+        assert_eq!(installed.active[&kept.key], kept);
+        assert_eq!(installed.active[&fresh].activated, today);
+        assert_eq!(
+            installed.activations,
+            vec![SituationOccurrence {
+                situation: fresh,
+                activated: today
+            }]
+        );
+        assert!(installed.errors.is_empty());
+    }
+
+    #[test]
+    fn resolution_merge_numbers_from_ordered_position_skipping_failures() {
+        let first = lifecycle(instance("cold-border", scenario_source(), 1), 10);
+        let second = lifecycle(instance("cold-border", scenario_source(), 2), 11);
+        let third = lifecycle(instance("cold-border", scenario_source(), 3), 12);
+        let effects_fn = aeon_data::model::ScriptFnRef {
+            path: "scenario/first-reign.rhai".to_owned(),
+            name: "cold_border_effects".to_owned(),
+        };
+        let results: Vec<ResolutionResult> = vec![
+            (
+                third.clone(),
+                Ok(Resolved {
+                    notice: notice(&third, "third"),
+                    effects: Some((effects_fn.clone(), Map::new())),
+                }),
+            ),
+            (second.clone(), Err("no fallback outcome".to_owned())),
+            (
+                first.clone(),
+                Ok(Resolved {
+                    notice: notice(&first, "first"),
+                    effects: None,
+                }),
+            ),
+        ];
+        for order in rotations(&results) {
+            let merged = merge_resolutions(6, order);
+            assert_eq!(
+                merged
+                    .resolutions
+                    .iter()
+                    .map(|notice| (notice.id, notice.text.as_str()))
+                    .collect::<Vec<_>>(),
+                vec![(7, "first"), (8, "third")]
+            );
+            assert_eq!(merged.next_resolution_id, 8);
+            assert_eq!(
+                merged.restored,
+                vec![(second.clone(), "no fallback outcome".to_owned())]
+            );
+            assert_eq!(
+                merged.logs,
+                vec![
+                    (first.occurrence(), "first".to_owned()),
+                    (third.occurrence(), "third".to_owned())
+                ]
+            );
+            assert_eq!(merged.effects.len(), 1);
+            assert_eq!(merged.effects[0].0, third.occurrence());
+            assert_eq!(merged.effects[0].1, effects_fn);
+        }
+    }
+
+    #[test]
+    fn projection_merge_keys_errors_identically_in_any_order() {
+        let results: Vec<ProjectionResult> = vec![
+            (instance("cold-border", scenario_source(), 2), None),
+            (
+                instance("cold-border", scenario_source(), 3),
+                Some("projection must return a map".to_owned()),
+            ),
+            (
+                instance("consular-vacancy", title_source(7), 1),
+                Some("undeclared stage 'lost'".to_owned()),
+            ),
+        ];
+        let expected = merge_projections(results.clone());
+        assert_eq!(expected.len(), 2);
+        assert!(!expected.contains_key(&instance("cold-border", scenario_source(), 2)));
+        for order in rotations(&results) {
+            assert_eq!(merge_projections(order), expected);
+        }
+    }
 
     #[test]
     fn diagnostic_fingerprint_includes_ordered_structural_bindings() {

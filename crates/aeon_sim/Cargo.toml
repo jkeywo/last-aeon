@@ -17,5 +17,15 @@ serde_json = { workspace = true }
 ron = { workspace = true }
 thiserror = { workspace = true }
 
+# The headless host, the test suites, and the acceptance tool fan Situation
+# stages out across cores; the web target keeps the inline pool on the same
+# code.
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+bevy = { workspace = true, features = ["multi_threaded"] }
+
 [lints]
 workspace = true
+
+[dev-dependencies]
+# System debug names are read by the perf probe's per-system table.
+bevy = { workspace = true, features = ["debug"] }

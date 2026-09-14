@@ -829,6 +829,83 @@ fn a_great_house_forms_an_ambition_and_directs_a_vassal() {
     );
 }
 
+/// Milestone 10 acceptance: on the real authored scenario a house set on
+/// the Consulship does not wait on a natural death. Unprompted, it forms
+/// the unseat-the-consul ambition aimed at the house whose member holds
+/// the seat, its head aims the knife at the sitting Consul in person, and
+/// the seat passes — with no scripted nudge.
+#[test]
+fn a_house_makes_the_consular_vacancy_it_means_to_win() {
+    use aeon_sim::goals::Goals;
+
+    let content = repository_content();
+    let mut h = scenario_host(content, 7);
+    let sitting = aeon_sim::access::consul(h.world_mut()).expect("the scenario seats a Consul");
+    let seat_house =
+        aeon_sim::access::organisation_of(h.world_mut(), sitting).expect("the Consul has a house");
+    let unseat = key("unseat-the-consul");
+
+    let mut plotter = None;
+    let mut aimed = false;
+    for _ in 0..600 {
+        h.advance_days(1);
+        let goals = h.world_mut().resource::<Goals>().clone();
+        for (house, goal) in &goals.active {
+            if goal.def == unseat {
+                assert_eq!(
+                    goal.target,
+                    AssignmentTarget::Org(seat_house),
+                    "the ambition is aimed at the house whose member holds the seat"
+                );
+                plotter = Some(*house);
+            }
+        }
+        let index = h
+            .world_mut()
+            .resource::<aeon_sim::AssignmentsIndex>()
+            .clone();
+        for entity in index.assignments.values() {
+            let knife = h
+                .world_mut()
+                .get::<aeon_sim::assignments::ActiveAssignment>(*entity)
+                .filter(|active| {
+                    active.def.as_str() == "assassinate"
+                        && active.target == AssignmentTarget::Character(sitting)
+                })
+                .map(|active| active.leader);
+            if let Some(leader) = knife {
+                let Some(plotter) = plotter else {
+                    panic!("the knife at the Consul follows the ambition, not the other way round");
+                };
+                assert_eq!(
+                    aeon_sim::access::org_head(h.world_mut(), plotter),
+                    Some(leader),
+                    "the plotting house's own head carries the knife"
+                );
+                aimed = true;
+            }
+        }
+        if aimed {
+            break;
+        }
+    }
+    assert!(
+        plotter.is_some(),
+        "some autonomous house should set itself on the Consulship by the knife"
+    );
+    assert!(aimed, "and aim the knife at the sitting Consul in person");
+
+    // The seat passes: by the end of the decade the Consul who sat at the
+    // start no longer does, and the seat is held again by somebody else.
+    h.advance_days(3000);
+    let now = aeon_sim::access::consul(h.world_mut());
+    assert_ne!(now, Some(sitting), "the sitting Consul has been unseated");
+    assert!(
+        now.is_some(),
+        "and the contest that followed has filled the seat"
+    );
+}
+
 /// Milestone 9 acceptance: on the real authored scenario the worlds are
 /// economically interdependent — the moon cannot feed itself while the
 /// planet grows a surplus — and a transport takes up the route that

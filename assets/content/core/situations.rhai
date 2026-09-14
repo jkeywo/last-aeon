@@ -48,7 +48,7 @@ fn planetary_succession_projection(ctx) {
     for title in ctx.world.titles {
         if title.id == ctx.source.id && title.holder_kind == "character" {
             stage = "settled";
-            values["holder"] = character_name(ctx.world, title.holder);
+            values["holder"] = ctx.world.character_name(title.holder);
         }
     }
 
@@ -82,12 +82,9 @@ fn planetary_succession_projection(ctx) {
                 army_manpower = realm.army_manpower;
             }
         }
-        for organisation in ctx.world.organisations {
-            if organisation.id == claim.organisation {
-                legitimacy = organisation.effective_legitimacy;
-            }
-        }
-        let name = organisation_name(ctx.world, claim.organisation);
+        let claimant = ctx.world.organisation_by_id.get(`${claim.organisation}`);
+        if type_of(claimant) == "map" { legitimacy = claimant.effective_legitimacy; }
+        let name = ctx.world.organisation_name(claim.organisation);
         metrics.push(#{
             label_key: "situation.metric.claimant-realm",
             value: `${name} — ${provinces} / ${army_manpower} / ${legitimacy}`,
@@ -113,11 +110,8 @@ fn planetary_succession_projection(ctx) {
     metrics.push(#{ label_key: "situation.metric.press-attempts", value: press_attempts });
 
     let player_head = 0;
-    for organisation in ctx.world.organisations {
-        if organisation.id == ctx.world.player_org {
-            player_head = organisation.head;
-        }
-    }
+    let player = ctx.world.organisation_by_id.get(`${ctx.world.player_org}`);
+    if type_of(player) == "map" { player_head = player.head; }
     if player_head > 0 {
         let player_claims = false;
         for claim in ctx.world.paramount_claims {
@@ -202,7 +196,7 @@ fn consular_vacancy_projection(ctx) {
     for title in ctx.world.titles {
         if title.id == ctx.source.id && title.holder_kind == "character" {
             stage = "appointed";
-            values["holder"] = character_name(ctx.world, title.holder);
+            values["holder"] = ctx.world.character_name(title.holder);
         }
     }
 
@@ -214,7 +208,7 @@ fn consular_vacancy_projection(ctx) {
         }
         for score in ctx.world.consul_contest.scores {
             participants.push(#{ kind: "character", id: score.character });
-            let name = character_name(ctx.world, score.character);
+            let name = ctx.world.character_name(score.character);
             metrics.push(#{
                 label_key: "situation.metric.consul-score",
                 value: `${name} — ${score.score}`,
@@ -224,11 +218,8 @@ fn consular_vacancy_projection(ctx) {
     metrics.push(#{ label_key: "situation.metric.candidates", value: participants.len });
 
     let player_head = 0;
-    for organisation in ctx.world.organisations {
-        if organisation.id == ctx.world.player_org {
-            player_head = organisation.head;
-        }
-    }
+    let player = ctx.world.organisation_by_id.get(`${ctx.world.player_org}`);
+    if type_of(player) == "map" { player_head = player.head; }
     if player_head > 0 && stage != "appointed" {
         actions.push(#{ id: "seek-favour", leader: player_head });
         if participants.len > 0 {
@@ -300,11 +291,8 @@ fn favour_debt_projection(ctx) {
     let actions = [];
     let player_head = 0;
     if ctx.bindings.creditor == ctx.world.player_org {
-        for organisation in ctx.world.organisations {
-            if organisation.id == ctx.world.player_org {
-                player_head = organisation.head;
-            }
-        }
+        let player = ctx.world.organisation_by_id.get(`${ctx.world.player_org}`);
+        if type_of(player) == "map" { player_head = player.head; }
         if player_head > 0 {
             actions.push(#{
                 id: "call-favour", leader: player_head,
@@ -322,8 +310,8 @@ fn favour_debt_projection(ctx) {
         ],
         actions: actions,
         resolution_values: #{
-            debtor: organisation_name(ctx.world, ctx.bindings.debtor),
-            creditor: organisation_name(ctx.world, ctx.bindings.creditor),
+            debtor: ctx.world.organisation_name(ctx.bindings.debtor),
+            creditor: ctx.world.organisation_name(ctx.bindings.creditor),
         },
     }
 }
@@ -394,11 +382,8 @@ fn formal_war_projection(ctx) {
         }
     }
 
-    for organisation in ctx.world.organisations {
-        if organisation.id == ctx.world.player_org {
-            player_head = organisation.head;
-        }
-    }
+    let player = ctx.world.organisation_by_id.get(`${ctx.world.player_org}`);
+    if type_of(player) == "map" { player_head = player.head; }
     for army in ctx.world.armies {
         if army.owner == ctx.world.player_org {
             player_armies.push(army);
@@ -418,8 +403,8 @@ fn formal_war_projection(ctx) {
 
     for war in ctx.world.wars {
         if war.id == ctx.bindings.war {
-            values["attacker"] = organisation_name(ctx.world, war.sides[0].leader);
-            values["defender"] = organisation_name(ctx.world, war.sides[1].leader);
+            values["attacker"] = ctx.world.organisation_name(war.sides[0].leader);
+            values["defender"] = ctx.world.organisation_name(war.sides[1].leader);
             let attackers = [];
             for member in war.sides[0].members {
                 attackers.push(#{ kind: "organisation", id: member });
@@ -453,11 +438,11 @@ fn formal_war_projection(ctx) {
                     }
                     for army in ctx.world.armies {
                         if enemies.contains(army.owner) {
-                            for province in ctx.world.provinces {
-                                if province.holder == ctx.world.player_org && province.id == army.location {
-                                    warning = true;
-                                    stage = "under-pressure";
-                                }
+                            let province = ctx.world.province_by_id.get(`${army.location}`);
+                            if type_of(province) == "map"
+                                    && province.holder == ctx.world.player_org {
+                                warning = true;
+                                stage = "under-pressure";
                             }
                         }
                     }
@@ -543,16 +528,14 @@ fn war_ended_in_peace(ctx) {
     false
 }
 
-fn organisation_name(world, id) {
-    for organisation in world.organisations {
-        if organisation.id == id { return organisation.name; }
-    }
+fn organisation_name(id) {
+    let organisation = this.organisation_by_id.get(`${id}`);
+    if type_of(organisation) == "map" { return organisation.name; }
     "Unknown organisation"
 }
 
-fn character_name(world, id) {
-    for character in world.characters {
-        if character.id == id { return character.name; }
-    }
+fn character_name(id) {
+    let character = this.character_by_id.get(`${id}`);
+    if type_of(character) == "map" { return character.name; }
     "Unknown character"
 }

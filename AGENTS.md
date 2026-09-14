@@ -57,6 +57,11 @@ cargo run -p aeon_tools -- validate-content
 cargo run -p aeon_tools -- accept
 uv run pasm validate pasm/spec
 
+# Performance probe (ignored; minutes): content-hash-cleared state hashes at
+# fixed campaign days plus year-10 per-system timings. PERF_PROBE_SNAPSHOT=<file>
+# caches the year-10 world for timing-only reruns.
+cargo test -p aeon_sim --test perf_probe -- --ignored --nocapture
+
 # Run the game (run.bat / run.bat release wrap the same)
 cargo run -p aeon_client
 

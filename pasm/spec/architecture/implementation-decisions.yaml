@@ -3315,11 +3315,12 @@ entities:
         98.5 per cent, with every other daily system under 0.2 ms. Building the
         shared world view was 4.65 ms of that, so the rest was interpreted Rhai:
         the triggers and projections of twelve define_situation definitions, run
-        every day. Two changes address it. First, world.opinions is published as
-        a map keyed "<from>:<to>" rather than as a flat array of from/to/value
-        maps: both authored consumers wanted one ordered pair and were scanning
-        thousands of entries in interpreted script to find it. Only the keyed
-        shape is published, because building both would pay the whole cost twice.
+        every day. Two changes address it. First, the view's derived opinions
+        are published as opinion_by_pair, a map keyed "<from>:<to>", rather
+        than as a flat array of from/to/value maps: both authored consumers
+        wanted one ordered pair and were scanning thousands of entries in
+        interpreted script to find it. Only the keyed shape is published,
+        because building both would pay the whole cost twice.
         Second, define_situation takes an optional window of campaign days,
         window: #{ from_day, to_day }, measured from the scenario start — the
         same basis world.date - world.start_date gives content. Outside its
@@ -3344,7 +3345,234 @@ entities:
         - "[ai] Worth knowing before the next content change is measured this way: the acceptance final-hash cannot be held still across any edit to assets/content, because CampaignState captures the content hash and hash_state covers it — a changed comment in a Rhai file moves it. The check that actually says whether behaviour moved is the same capture with content_hash cleared, compared at several campaign days, which is how these two changes were verified."
         - "[ai] Skipping a trigger cannot reorder anything: attachments are still walked in the same order, discovered instances still land in an ordered set, and a skipped definition by its author's own declaration discovers nothing there. No derived-RNG purpose label is touched."
         - "[ai] Measured after: 153 ms per simulated day, evaluate 155 ms of it (evaluate timed alone repeats the day's work), against 559 and 551 — a 3.6x improvement. What now dominates is authored, not engine: the border-war trigger at 86 ms and cold-border at 46 ms, both of which resolve province holders by walking world.provinces once per route in interpreted script. Those two are deliberately left unwindowed — the border-war card is authored to serve a war the player starts too — so the next lever is a keyed holder lookup in the same style as the opinions map, not a wider window."
+        - "[ai] Both measurements here are from the line that ended at d63d677, taken before the staging, the fan-out, the keyed id maps, and the `this` receiver landed; those were developed in parallel from the same merge base and measured against a tree without these two changes, so the two sets of numbers are not on one scale and neither supersedes the other. The changes themselves compose, and both survived the merge: the window skip is now the early return in evaluate_trigger, carrying the campaign day and the live-definition set on DayInputs so the guard that makes it correct — a live lifecycle is always asked — still holds with the triggers fanned out. The next lever this names was in fact taken by world-view-records-are-keyed-beside-their-arrays."
       references:
+        - world-view-records-are-keyed-beside-their-arrays
+        - situation-evaluation-is-staged-read-evaluate-merge-apply
         - situations-project-live-facts-into-authored-context
         - the-shared-world-view-shows-the-living
         - headless-authoritative-simulation
+
+  - decision: the-client-advances-at-most-one-day-per-frame
+    core:
+      status: accepted
+      confidence: confirmed
+      title: The Client Advances at Most One Campaign Day per Frame
+      summary: >-
+        The client's wall-clock driver advances the authoritative simulation
+        by at most one day per frame. Elapsed time still accumulates into
+        the carry, but the carry is clamped to one day, so a stretch where a
+        day costs more wall time than its share degrades to "as fast as the
+        frame allows" instead of queueing a burst of days that would all
+        land in one later frame. Pausing advances nothing and keeps whatever
+        carry exists, which is at most one day. The observable behaviour is
+        that days per second can never exceed the frame rate. The seam the
+        rendered-state tests drive is the same function, and unit tests pin
+        the three behaviours through it.
+      rationale:
+        - "[ai] Before this, a slow day made the next frame owe several days, and they were all paid inside that one frame: the hitch compounded. A frame that owes at most one day can never be worse than one day late."
+        - "[ai] Clamping the carry rather than only the days advanced is what stops the backlog reappearing: a carry left at three days would drain one per frame for three frames, which is a burst by another name."
+      references:
+        - campaign-time-model
+        - headless-authoritative-simulation
+        - shared-native-and-web-delivery
+
+  - decision: situation-evaluation-is-staged-read-evaluate-merge-apply
+    core:
+      status: accepted
+      confidence: confirmed
+      title: "Situation Evaluation Is Staged: Read, Evaluate, Merge, Apply"
+      summary: >-
+        One settled day's Situation evaluation gathers a read-only
+        day-inputs value once — the content, the world view, the prior
+        Situation state, the date, and the stable-ordered list of attachments
+        whose definitions exist — then evaluates every item on its own from
+        the read-only World and those inputs, returning plain data: a
+        trigger's discovered keys (empty when windowed out) or its
+        content-derived error; an ended lifecycle's resolution — outcome
+        predicates, the frozen projection, and the selected outcome's
+        effects function with its context — or its error; a live
+        lifecycle's projection error, if any. Ordered merges turn the result
+        vectors into the day's state exactly as the former loops did: the
+        discovered set and the failed-sources map are keyed collections; a
+        failed source preserves every lifecycle it had or stands in with a
+        placeholder; resolutions are numbered from position in the ended
+        list sorted by structural key, skipping failures, so a notice id
+        never depends on which result arrived first; a failed resolution
+        restores its lifecycle and records its error; projection errors are
+        keyed by instance. The apply tail — installing state, activation
+        logs and announcement popups, resolution history lines, outcome
+        effects, and diagnostics — is unchanged, and so is the snapshot
+        format: no serialised shape moved. The merges are pure functions
+        over result vectors and are tested as such, in every input order.
+        The acceptance replay hash is byte-identical to the unstaged code.
+      rationale:
+        - "[ai] The point of the split is that the merge owns every ordering choice. Once each per-item result is plain data and the merge alone decides what it means, the per-item evaluations may be produced in any order — including at once — and parallelism cannot introduce nondeterminism by construction rather than by review."
+        - "[ai] Numbering resolutions in the merge from sorted position reproduces the former increment-then-decrement-on-failure loop exactly, which is why the acceptance replay hash is unchanged across this step; the difference is that the rule is now a sentence and a test rather than a side effect of loop order."
+        - "[ai] The projection stage reads the live set computed before restored lifecycles are added back, which is the same set the former loop skipped through its errors check, so a lifecycle whose resolution failed is projected neither twice nor at all."
+      references:
+        - situation-errors-are-visible-and-deterministic
+        - situation-lifecycle-leaves-dismissible-resolutions
+        - situation-instances-have-structural-identity
+        - deterministic-seed-and-command-replay
+
+  - decision: situation-stages-evaluate-in-parallel-and-merge-in-stable-order
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Situation Stages Evaluate in Parallel and Merge in Stable Order
+      summary: >-
+        The staged trigger evaluations, and then the resolution and
+        projection evaluations, run under Bevy's compute task pool scope,
+        which returns results in spawn order; the merges consume that order
+        unchanged. The World and the day inputs are shared by reference.
+        The simulation crate enables Bevy's multi-threaded runtime on
+        non-web targets, so the headless host, the test suites, and the
+        acceptance tool fan out natively; the web target keeps the inline
+        pool on identical code. The tick schedules are pinned to the
+        single-threaded executor so that the order between exclusive
+        systems sharing a set stays the deterministic topological order
+        every embedding has always run, whichever runtime the process
+        enables. The invariant that keeps this deterministic, reviewed and
+        stated: no random stream is drawn inside any stage function — the
+        sandbox registers no random package and every roll lives in the
+        apply tail — and error text is content-derived only, so a script
+        error surfaces once with the same message whatever the core count.
+        Measured at campaign year 10 on a 20-core machine in the
+        development profile, with the helper-binding change below already
+        in place so the comparison isolates the fan-out: a day cost 89 ms
+        with the stages run sequentially and 49 ms with them fanned out,
+        and Situation evaluation alone went from 65 ms to 38 ms. The
+        probe's six content-hash-cleared state hashes and the acceptance
+        replay hash are unchanged by the fan-out.
+      rationale:
+        - "[ai] Bevy's scope is the right seam because it already returns results in spawn order and shares the environment by reference; the merges from the staging decision needed no change to consume it, which is the whole argument that staging first and fanning out second was the safe order."
+        - "[ai] Pinning the schedules to the single-threaded executor is a belt-and-braces choice: every simulation system takes the whole World so no executor could overlap them, but enabling the multi-threaded runtime would otherwise swap the executor under the schedules, and the order between unchained exclusive systems in one set is a determinism requirement this repository states rather than measures."
+        - "[ai] Rhai's engine and compiled ASTs are shared immutably under the sync feature the workspace already enables, and each call owns its scope and operation counter, so concurrent calls need no locking and cannot observe each other."
+        - "[ai] The speedup is bounded by the longest single script call, not the core count: a settled day makes only some twenty calls, and the two longest (the cold-border and border-war triggers, which walk the neighbourhood) set the floor."
+      references:
+        - situation-evaluation-is-staged-read-evaluate-merge-apply
+        - headless-simulation-host
+        - shared-native-and-web-delivery
+        - deterministic-seed-and-command-replay
+
+  - decision: world-view-records-are-keyed-beside-their-arrays
+    core:
+      status: accepted
+      confidence: confirmed
+      title: World-View Records Are Keyed by Id Beside Their Arrays
+      summary: >-
+        The shared semantic world view publishes its province, organisation,
+        and character records a second time, keyed by the id rendered as
+        text — province_by_id, organisation_by_id, character_by_id — and
+        its derived opinions keyed by the ordered pair
+        rendered as "from:to" — opinion_by_pair, holding the value alone.
+        The keyed values are the very record maps the ordered arrays hold,
+        so whichever shape a script reads gives the same fields and values,
+        and the record arrays remain published for every helper that
+        genuinely filters a set. Opinions are the one exception: no helper
+        filters them, so the array was dropped under
+        situation-evaluation-answers-pairs-directly-and-sleeps-outside-authored-windows,
+        and opinion_by_pair is the only shape published, which also keeps
+        the whole of that cost out of the per-call context copy the next
+        decision measures. Authored helpers that answer "which record has this
+        id" or "what does this character think of that one" read the keyed
+        map with the same fallback they always had — 0 for an unknown
+        province, a unit holder, or an unknown pair; "Unknown organisation"
+        and "Unknown character" for a missing name — so a rewrite from scan
+        to lookup cannot change a card's behaviour; a missing key reads as
+        the unit value under the sandbox's default map semantics, which is
+        the shape the existing unit-guarded fallbacks were written against.
+        The keyed shapes are stable to author against. Every listed id-scan
+        in the core Situations and the First Reign scenario now reads a
+        keyed map; first_reign_house (a key scan over a handful of
+        entries), visit_reachable (an already-windowed reachability
+        search), and every loop that filters a set are deliberately left
+        as scans. The acceptance final hash moved with this change because
+        the content bytes changed; the probe's six content-hash-cleared
+        campaign-state hashes were identical before and after, which is the
+        proof that behaviour did not.
+      rationale:
+        - "[ai] Ten campaign years into the First Reign scenario a day cost 695 ms on a 20-core machine in the development profile, and 757 ms of a 772 ms per-system sum was Situation evaluation. Inside it, roughly twenty authored helpers repeated one shape — scan an array for one id — so the cost grew with every card the scenario gained, and the opinion scans walked all 6,972 derived pairs for one answer."
+        - "[ai] The keyed maps alone did not deliver the expected order-of-magnitude: the day fell only to about 527 ms. Profiling every script call showed why — each helper call was cloning the whole world view, which the next decision fixes — but the lookups are still the right shape, because once the clone was gone they are what keeps a helper's cost independent of how many provinces, houses, or characters the world holds."
+        - "[ai] No separate holders map: the province record already carries its holder, and one shape serving every field means a helper that later needs the name or the Order too reads the same lookup rather than a second one."
+      references:
+        - situations-project-live-facts-into-authored-context
+        - situations-are-authored-shells-over-simulation-facts
+        - scripted-content-with-ci-validation
+        - deterministic-seed-and-command-replay
+
+  - decision: authored-helpers-bind-the-world-view-as-this
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Authored Helpers Bind the World View as `this`
+      summary: >-
+        An authored helper that reads the world view is written as a
+        method on it — `fn cold_border_holder(province) { ...
+        this.province_by_id ... }` — and called in Rhai's method form,
+        `world.cold_border_holder(province)` or
+        `ctx.world.cold_border_holder(province)`, never with the world as
+        an ordinary first argument. Rhai passes ordinary arguments by
+        value, deep-cloning the whole world view (some 7,000 opinion
+        records among the rest, about 2 ms) on every helper call; the
+        method receiver is bound by reference and costs nothing. Every
+        world-taking helper in the core Situations and the First Reign
+        scenario follows the form; a helper's body reads `this` where it
+        read `world`, and nothing else about it changed. The per-call
+        context still carries its own copy of the world view, once per
+        authored function the simulation calls: measured at campaign year
+        10, that copy is 2.1 ms of a 49 ms day per call, and the option of
+        inserting one shared handle instead was tried and rejected, because
+        Rhai flattens a shared value back into a deep copy when it is passed
+        as an argument, lets a script write through a shared value into
+        data every other call would then see, and panics inside the
+        interpreter when a script replaces a container that holds one.
+      rationale:
+        - "[ai] This is the change that actually delivered the order of magnitude: with the keyed lookups, the staging, and the fan-out already in place a year-10 day still cost about 527 ms, and per-call profiling put over a second inside each of the cold-border and border-war triggers — hundreds of helper calls, each cloning the world. Rebinding the receiver took the day to 89 ms before the fan-out and 49 ms with it, and the slowest single script call from over a second to about 20 ms."
+        - "[ai] Measured on its own in the sandbox: two hundred helper calls cost 938 ms by value and 9.6 ms through `this`, with identical results. The method form is ordinary Rhai; content authors gain a convention, not a new vocabulary, and the mechanical rewrite left every fallback byte-identical, which the content-hash-cleared state hashes confirm."
+        - "[ai] The shared-handle experiment is recorded so that nobody retries it from the issue text: the failure is not the idea but Rhai's semantics for shared values, and the interpreter panic in particular is a crash path no authored content may be able to reach."
+        - "[ai] The remaining per-call context copy is left as it is: it is paid once per authored function rather than once per helper, its share of the day is mostly hidden by the fan-out, and the only way to remove it would be to shrink the vocabulary the arrays promise."
+      references:
+        - world-view-records-are-keyed-beside-their-arrays
+        - situations-project-live-facts-into-authored-context
+        - rhai-is-the-content-scripting-language
+        - script-host-is-the-fleets
+
+  - decision: the-consulship-can-be-made-vacant-by-authored-ambition
+    core:
+      status: accepted
+      confidence: confirmed
+      title: The Consulship Can Be Made Vacant by Authored Ambition
+      summary: >-
+        A house set on the Consulship can make the vacancy it means to win.
+        The goal target vocabulary gains the consul-house selector: the
+        organisation whose member personally holds the Consulship, nobody
+        while the seat is vacant, and never the house's own. The plan
+        predicate vocabulary gains target_head_holds_title and
+        target_head_lacks_title, judged against the target organisation's
+        current head, so a campaign is gated on the seat itself and an
+        ambition aimed at the seat is set aside the moment it has passed
+        from that house — by the knife or by nature. Goal triggers gain
+        min_influence beside min_wealth and min_legitimacy. On that
+        vocabulary the shipped content authors unseat-the-consul — a
+        covert ambition with priority 10 over the standing route, adoptable
+        by an independent house with legitimacy 55 and influence 30,
+        favouring the deniable subvert pressure — and make-the-vacancy,
+        the covert campaign that answers it with one method: the ordinary
+        assassinate assignment aimed at the target's head, on the same
+        influence and legitimacy the grievance route asks. Nothing else
+        moved: the knife, its risks, its grievance on exposure, the
+        Consul's death opening the contest, and the become-consul ambition
+        that then works toward the seat are exactly what they were.
+      rationale:
+        - "[ai] The gap was not the knife but the aim. Organisation-targeted plans take their target from the pressure that adopts them, and the only standing pressure that carried an organisation was a grievance, so no plan under any Consulship ambition could ever be pointed at the Consul's house. A selector for that house is the smallest true statement of what was missing, and it is data the goal names rather than a rule the scorer learns."
+        - "[ai] A second ambition rather than a target on become-consul keeps the existing behaviour for the houses that had it: become-consul remains adoptable during a vacancy, which is exactly when shoring up standing matters, whereas an ambition aimed at the seat has nothing to want then. The priority order says the rest — a house strong enough to plot does, and the weaker one shores up."
+        - "[ai] Gating the campaign on the seat rather than trusting the ambition's frozen target is what keeps a house from striking at whoever now leads a house that once held the Consulship; the same predicate, inverted, ends the ambition when the seat passes, so a natural death is set aside identically to a successful knife."
+        - "[ai] Riding the subvert pressure rather than adding a fourth deniable intent keeps the scorer untouched: the pressure already exists, is head-only, and is answered by authored plans with their own gates, so the existing covert campaigns and this one compete on requirements the content states."
+        - "[ai] Seed 7 on the shipped scenario shows the arc end to end in one decade — ambition on day 239, knife on day 300, the plotter's own head in the seat by year 10 — and is pinned as the acceptance proof. The probe's content-hash-cleared state hashes and the acceptance replay hash move with this change, legitimately: the campaign now contains an ambition it did not."
+      references:
+        - the-vantar-operation-is-goal-and-plan-driven-not-scripted
+        - consul-vacancy-is-a-contested-appointment
+        - obligations-are-specific-political-facts
+        - scripted-content-with-ci-validation

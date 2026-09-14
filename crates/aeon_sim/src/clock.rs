@@ -8,7 +8,7 @@
 
 use aeon_core::calendar::GameDate;
 use bevy::app::App;
-use bevy::ecs::schedule::{Schedule, ScheduleLabel, SystemSet};
+use bevy::ecs::schedule::{Schedule, ScheduleLabel, SingleThreadedExecutor, SystemSet};
 use bevy::prelude::{IntoScheduleConfigs, Resource, World};
 
 /// Runs once per campaign day, in [`TickSet`] order.
@@ -56,11 +56,25 @@ pub struct CampaignClock {
     pub date: GameDate,
 }
 
+/// A tick schedule on the single-threaded executor.
+///
+/// Every simulation system takes the whole `World`, so no executor could
+/// overlap them; pinning the executor keeps the order between systems that
+/// share a set exactly the deterministic topological order every embedding
+/// has always run, whether or not the process enables Bevy's multi-threaded
+/// runtime. Parallelism inside a day belongs to the systems themselves,
+/// through the compute task pool.
+fn sequential(label: impl ScheduleLabel) -> Schedule {
+    let mut schedule = Schedule::new(label);
+    schedule.set_executor(SingleThreadedExecutor::default());
+    schedule
+}
+
 pub(crate) fn install(app: &mut App) {
-    app.add_schedule(Schedule::new(DailyTick));
-    app.add_schedule(Schedule::new(MonthlyPulse));
-    app.add_schedule(Schedule::new(YearlyPulse));
-    app.add_schedule(Schedule::new(SettledDay));
+    app.add_schedule(sequential(DailyTick));
+    app.add_schedule(sequential(MonthlyPulse));
+    app.add_schedule(sequential(YearlyPulse));
+    app.add_schedule(sequential(SettledDay));
     app.configure_sets(
         DailyTick,
         (

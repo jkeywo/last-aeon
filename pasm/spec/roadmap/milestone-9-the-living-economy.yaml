@@ -214,6 +214,8 @@ entities:
         - assets/content/core/economy.rhai
         - assets/content/scenario/ashkarr-succession.rhai
         - assets/text/strings.csv
+        - crates/aeon_sim/src/trade.rs
+        - crates/aeon_sim/src/economy.rs
       tests:
         - crates/aeon_sim/tests/acceptance.rs
       status: declared

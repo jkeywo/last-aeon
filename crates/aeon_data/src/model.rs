@@ -1711,6 +1711,16 @@ pub struct PlanRequires {
     /// of `war_has_enemy_province`, for campaigns that reach only across
     /// their own border.
     pub war_has_enemy_border_province: Option<bool>,
+    /// The plan's target organisation's head must personally hold this
+    /// title: the predicate that keeps a knife aimed at the seat rather
+    /// than at whoever leads the house that once held it. A headless
+    /// target fails the condition.
+    pub target_head_holds_title: Option<TitleNeed>,
+    /// The plan's target organisation's head must not hold this title,
+    /// the sibling for lost-grounds conditions, so an ambition aimed at
+    /// the Consul's house is set aside once the seat has passed
+    /// elsewhere. A headless target satisfies it.
+    pub target_head_lacks_title: Option<TitleNeed>,
     /// Whether the acting character must (or must not) general an army the
     /// authority fields — their own standing command, not any force the
     /// house happens to have. Read against the plan's actor; an ambition,
@@ -1802,6 +1812,10 @@ pub enum GoalTargetSelector {
         /// qualifies it, independent of opinion.
         with_grievance: bool,
     },
+    /// The organisation whose member personally holds the Consulship.
+    /// A vacant Consulate, or a Consul of the house's own, makes the goal
+    /// unadoptable: there is no seat to make vacant, or none worth it.
+    ConsulHouse,
 }
 
 /// One advisory directive a goal presses on each of the house's vassals.
@@ -1841,6 +1855,8 @@ pub struct GoalRequires {
     pub min_wealth: Option<i64>,
     /// The house's manpower must be at or above this.
     pub min_manpower: Option<i64>,
+    /// The house's influence must be at or above this.
+    pub min_influence: Option<i64>,
     /// The house's effective legitimacy must be at or above this.
     pub min_legitimacy: Option<i32>,
     /// Whether the house must have (or must not have) a standing army.

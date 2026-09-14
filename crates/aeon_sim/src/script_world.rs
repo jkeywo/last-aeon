@@ -40,6 +40,32 @@ fn map(entries: impl IntoIterator<Item = (&'static str, Dynamic)>) -> Map {
         .collect()
 }
 
+/// The same records an ordered array holds, keyed by their `id` rendered as
+/// text, so a script can answer "which record has this id" with one lookup
+/// instead of a scan. The array stays published beside the map: helpers that
+/// genuinely filter a set keep iterating it, and both shapes hold the same
+/// values.
+fn keyed_by_id(records: &Array) -> Map {
+    records
+        .iter()
+        .map(|record| {
+            let id = record
+                .read_lock::<Map>()
+                .expect("world-view records are maps")
+                .get("id")
+                .and_then(|id| id.as_int().ok())
+                .expect("world-view records carry an integer id");
+            (id.to_string().into(), record.clone())
+        })
+        .collect()
+}
+
+/// The `opinion_by_pair` key for one ordered character pair: the two ids
+/// rendered as text, from then to, joined by a colon.
+fn opinion_pair_key(from: u64, to: u64) -> String {
+    format!("{from}:{to}")
+}
+
 fn body_kind(kind: BodyKind) -> &'static str {
     match kind {
         BodyKind::Planet => "planet",
@@ -134,12 +160,6 @@ fn assignment_target(target: AssignmentTarget) -> Map {
     }
 }
 
-/// The `world.opinions` key naming one ordered pair: the regard `from`
-/// holds of `to`. Scripts build the same string to read one directly.
-fn opinion_key(from: u64, to: u64) -> String {
-    format!("{from}:{to}")
-}
-
 /// Builds the `ctx.world` value shared by every authored Rhai invocation.
 ///
 /// Arrays follow stable-ID order. Maps contain only semantic, serialisable
@@ -171,7 +191,7 @@ pub fn context_value(world: &World) -> Map {
     let mut organisations = Array::new();
     let mut titles = Array::new();
     let mut offices = Array::new();
-    let mut opinions = Map::new();
+    let mut opinion_by_pair = Map::new();
     if let Some(index) = world.get_resource::<PoliticsIndex>() {
         for (id, entity) in &index.characters {
             let Some(record) = world.get::<CharacterRecord>(*entity) else {
@@ -363,18 +383,21 @@ pub fn context_value(world: &World) -> Map {
                 if from == to {
                     continue;
                 }
-                opinions.insert(
-                    opinion_key(from.raw(), to.raw()).into(),
-                    i64::from(crate::politics::opinion_between(world, *from, *to)).into(),
-                );
+                let value = i64::from(crate::politics::opinion_between(world, *from, *to));
+                opinion_by_pair.insert(opinion_pair_key(from.raw(), to.raw()).into(), value.into());
             }
         }
     }
+    view.insert("character_by_id".into(), keyed_by_id(&characters).into());
+    view.insert(
+        "organisation_by_id".into(),
+        keyed_by_id(&organisations).into(),
+    );
     view.insert("characters".into(), characters.into());
     view.insert("organisations".into(), organisations.into());
     view.insert("titles".into(), titles.into());
     view.insert("offices".into(), offices.into());
-    view.insert("opinions".into(), opinions.into());
+    view.insert("opinion_by_pair".into(), opinion_by_pair.into());
 
     let mut bodies = Array::new();
     let mut provinces = Array::new();
@@ -432,6 +455,7 @@ pub fn context_value(world: &World) -> Map {
         }
     }
     view.insert("bodies".into(), bodies.into());
+    view.insert("province_by_id".into(), keyed_by_id(&provinces).into());
     view.insert("provinces".into(), provinces.into());
 
     let routes = world

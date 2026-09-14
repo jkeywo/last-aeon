@@ -131,9 +131,19 @@ pub fn drive_simulation(world: &mut World) {
     }
 }
 
+/// The most carry a frame may leave behind: one campaign day.
+const MAX_CARRY_DAYS: f32 = 1.0;
+
 /// Advances the authoritative clock by the amount accumulated in one client
-/// frame. Production and rendered-state tests share this seam; only the outer
-/// driver performs platform persistence after the returned number of days.
+/// frame, by at most one day. Production and rendered-state tests share this
+/// seam; only the outer driver performs platform persistence after the
+/// returned number of days.
+///
+/// Elapsed time accumulates into the carry, but the carry is clamped to one
+/// day and at most one day is advanced per frame. A stretch where a day
+/// costs more wall time than its share therefore degrades to "as fast as the
+/// frame allows" instead of queueing a burst of days that would all land in
+/// one later frame: days per second can never exceed the frame rate.
 pub(crate) fn advance_for_elapsed(world: &mut World, delta: f32) -> u32 {
     let (paused, rate) = {
         let control = world.resource::<TimeControl>();
@@ -142,16 +152,19 @@ pub(crate) fn advance_for_elapsed(world: &mut World, delta: f32) -> u32 {
     if paused {
         return 0;
     }
-    let mut days = 0u32;
-    {
+    let days = {
         let mut control = world.resource_mut::<TimeControl>();
         control.carry += delta * rate;
-        while control.carry >= 1.0 {
+        let days = if control.carry >= 1.0 {
             control.carry -= 1.0;
-            days += 1;
-        }
-    }
-    for _ in 0..days {
+            1
+        } else {
+            0
+        };
+        control.carry = control.carry.min(MAX_CARRY_DAYS);
+        days
+    };
+    if days > 0 {
         advance_one_day(world);
     }
     days
@@ -184,5 +197,66 @@ pub fn time_hotkeys(keys: Res<ButtonInput<KeyCode>>, mut control: ResMut<TimeCon
         if keys.just_pressed(key) {
             control.days_per_second = SPEED_STEPS[index];
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use aeon_core::calendar::GameDate;
+    use aeon_sim::{CampaignConfig, SimHost};
+
+    use super::*;
+
+    fn running_host() -> SimHost {
+        let mut host = SimHost::new(CampaignConfig {
+            name: "driver".to_owned(),
+            seed: 1,
+            start_date: GameDate::from_days(0),
+        });
+        host.world_mut().insert_resource(TimeControl {
+            paused: false,
+            days_per_second: 1.0,
+            ..Default::default()
+        });
+        host
+    }
+
+    fn carry(world: &World) -> f32 {
+        world.resource::<TimeControl>().carry
+    }
+
+    #[test]
+    fn a_frame_worth_several_days_advances_exactly_one() {
+        let mut host = running_host();
+        let before = host.date();
+        assert_eq!(advance_for_elapsed(host.world_mut(), 4.5), 1);
+        assert_eq!(host.date(), before.add_days(1));
+    }
+
+    #[test]
+    fn the_remaining_carry_is_at_most_one_day() {
+        let mut host = running_host();
+        advance_for_elapsed(host.world_mut(), 4.5);
+        assert!(carry(host.world_mut()) <= 1.0);
+        // The clamped carry drains one day per frame, then stops.
+        assert_eq!(advance_for_elapsed(host.world_mut(), 0.0), 1);
+        assert!(carry(host.world_mut()) < 1.0);
+        assert_eq!(advance_for_elapsed(host.world_mut(), 0.0), 0);
+        // Sub-day frames still accumulate towards the next day.
+        assert_eq!(advance_for_elapsed(host.world_mut(), 0.6), 0);
+        assert_eq!(advance_for_elapsed(host.world_mut(), 0.6), 1);
+    }
+
+    #[test]
+    fn a_paused_clock_advances_nothing_and_does_not_accumulate() {
+        let mut host = running_host();
+        host.world_mut().resource_mut::<TimeControl>().paused = true;
+        let before = host.date();
+        assert_eq!(advance_for_elapsed(host.world_mut(), 3.0), 0);
+        assert_eq!(host.date(), before);
+        assert_eq!(carry(host.world_mut()), 0.0);
+        // Unpausing starts from the carry that existed before the pause.
+        host.world_mut().resource_mut::<TimeControl>().paused = false;
+        assert_eq!(advance_for_elapsed(host.world_mut(), 0.5), 0);
     }
 }

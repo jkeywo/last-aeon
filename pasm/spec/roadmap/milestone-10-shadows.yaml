@@ -94,8 +94,16 @@ entities:
         capture, scandal, and death if it goes wrong, and a house exposed
         in the attempt earns a lasting grievance. Because the pressure it
         answers is authored like any other, an autonomous house can reach
-        for it — and a house set on the Consulship can now make the
-        vacancy it means to win, rather than wait on a natural death.
+        for it by two routes: the grievance campaign's from-the-shadows
+        method, which aims the knife at the head of the house that
+        wronged it, and the unseat-the-consul ambition, under which a
+        strong, well-placed house set on the Consulship makes the vacancy
+        it means to win rather than waiting on a natural death. The
+        ambition is aimed at the house whose member holds the seat
+        through the consul-house goal target selector, its campaign
+        (make-the-vacancy) is gated on the seat itself by the
+        target_head_holds_title predicate, and both are set aside the
+        moment the seat has passed from that house's head.
       goals:
         - A character can be removed by intrigue, at real risk to the house that tries.
         - Being caught leaves a grievance on the record, so a failed scheme has a political cost that outlives it.
@@ -106,9 +114,17 @@ entities:
     implementation:
       paths:
         - assets/content/core/intrigue.rhai
+        - assets/content/core/goals.rhai
+        - assets/content/core/plans.rhai
         - assets/text/strings.csv
+        - crates/aeon_sim/src/assignments.rs
+        - crates/aeon_sim/src/goals.rs
+        - crates/aeon_sim/src/plans.rs
+        - crates/aeon_data/src/effect.rs
       tests:
         - crates/aeon_data/tests/loading.rs
+        - crates/aeon_sim/tests/intrigue.rs
+        - crates/aeon_sim/tests/acceptance.rs
       status: declared
     evidence:
       - kind: test
@@ -127,6 +143,31 @@ entities:
           reactive scorer never reaches them, so a house does not murder on
           a whim; a plan or a grand ambition may call for them, and the
           player may order them by hand. Content alone; no engine change.
+      - kind: test
+        reference: crates/aeon_sim/tests/acceptance.rs
+        summary: >-
+          Seed-pinned on the real scenario: unprompted, a house forms the
+          unseat-the-consul ambition aimed at the house whose member holds
+          the seat, its own head aims the knife at the sitting Consul in
+          person, and by the end of the decade the seat has passed and
+          been filled again — with no scripted nudge. The fixture trial in
+          intrigue.rs adds the consequence chain (the Consul dead, the seat
+          vacant, the contest open, the ambition set aside) and the
+          negative: a vacant seat gives the ambition nothing to aim at.
+      - kind: manual-review
+        reference: assets/content/core/plans.rhai
+        summary: >-
+          Two autonomous routes to the knife: answer-a-grievance's
+          from-the-shadows method (target-head, gated on influence and
+          legitimacy) and make-the-vacancy under the unseat-the-consul
+          ambition, gated on the same standing and on the target's head
+          holding the Consulship in person. The Consulship route was the
+          one engine addition of this sub-milestone — the consul-house
+          goal target selector, the target_head_holds_title and
+          target_head_lacks_title plan predicates, and min_influence on
+          goal triggers — because organisation-targeted plans take their
+          target from the adopting pressure and nothing before it named
+          the sitting Consul's house.
 
   - milestone: m10-sabotage
     core:

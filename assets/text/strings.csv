@@ -679,6 +679,8 @@ plan.prosecute-claimant-war.title,Plan title: conducting an active war between p
 plan.prosecute-claimant-war.summary,One-line summary of the plan to fight or settle a claimant war.,[Take the rival's ground or negotiate an end to the formal war.]
 plan.answer-a-grievance.title,Plan title: answering a grievance another house holds.,[Answer a Grievance]
 plan.answer-a-grievance.summary,One-line summary of the grievance plan.,"[Mend what was wronged - from strength directly, from weakness by rebuilding standing first.]"
+plan.make-the-vacancy.title,Plan title: removing the sitting Consul by intrigue.,[Make the Vacancy]
+plan.make-the-vacancy.summary,One-line summary of the plan that aims the knife at the Consul.,[Have the sitting Consul removed from the shadows so the seat falls vacant.]
 plan.shore-up-standing.title,Plan title: rebuilding thin political standing.,[Shore Up Standing]
 plan.shore-up-standing.summary,One-line summary of the standing plan.,[Win friends and endorsements until the house's standing recovers.]
 sim.plan.rumour,"Log line for the player when a rival's newly adopted plan is aimed at them or their holding. {house} is the plotting house, {target} what it concerns.",[You hear whispers that {house} intends something concerning {target}.]
@@ -709,6 +711,8 @@ ui.directive.obligation,A directive naming the obligation pressure.,[Answer obli
 ui.directive.claim,A directive naming the claim pressure.,[Press a claim]
 ui.directive.routine,A directive naming ordinary business.,[Ordinary business]
 goal.become-consul.title,Goal title: working toward the Consulship.,[Win the Consulship]
+goal.unseat-the-consul.title,Goal title: making the Consulship vacant by intrigue.,[Unseat the Consul]
+goal.unseat-the-consul.summary,One-line summary of the unseat-the-consul ambition.,[Make the vacancy the house means to win rather than wait on a natural death.]
 goal.become-consul.summary,One-line summary of the become-consul ambition.,[Shore up standing against the day the Consul's seat falls vacant.]
 goal.take-the-planet.title,Goal title: pressing the planetary paramountcy.,[Take the Planet]
 goal.take-the-planet.summary,One-line summary of the take-the-planet ambition.,[Bend everything toward pressing a claim to the Paramountcy.]
