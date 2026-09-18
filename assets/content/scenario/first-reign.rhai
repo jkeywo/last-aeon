@@ -38,8 +38,8 @@ define_situation(#{
     ],
 });
 
-fn first_reign_house(world) {
-    for organisation in world.organisations {
+fn first_reign_house() {
+    for organisation in this.organisations {
         if organisation.key == "harrow" { return organisation.id; }
     }
     0
@@ -50,8 +50,8 @@ fn first_reign_house(world) {
 // deadline day. Acceptance is what counts — every authored assignment
 // outlasts the window, so the accepted work is still running when the
 // court's patience would have lapsed.
-fn court_demand_answered(world, house, activated) {
-    for work in world.assignments {
+fn court_demand_answered(house, activated) {
+    for work in this.assignments {
         if work.owner == house
                 && work.started >= activated
                 && work.started <= activated + court_days() {
@@ -62,11 +62,11 @@ fn court_demand_answered(world, house, activated) {
 }
 
 fn court_awaits_instances(ctx) {
-    let house = first_reign_house(ctx.world);
+    let house = ctx.world.first_reign_house();
     if house == 0 { return []; }
     if type_of(ctx.activated) == "i64" {
         // An open demand continues until it is answered or lapses.
-        if court_demand_answered(ctx.world, house, ctx.activated) { return []; }
+        if ctx.world.court_demand_answered(house, ctx.activated) { return []; }
         if ctx.world.date >= ctx.activated + court_days() { return []; }
         return [#{ house: house }];
     }
@@ -83,11 +83,10 @@ fn court_awaits_projection(ctx) {
     let deadline = ctx.activated + court_days();
     let head = 0;
     let influence = 0;
-    for organisation in ctx.world.organisations {
-        if organisation.id == house {
-            head = organisation.head;
-            influence = organisation.influence;
-        }
+    let organisation = ctx.world.organisation_by_id.get(`${house}`);
+    if type_of(organisation) == "map" {
+        head = organisation.head;
+        influence = organisation.influence;
     }
     let actions = [];
     if type_of(head) == "i64" && head > 0 {
@@ -105,14 +104,14 @@ fn court_awaits_projection(ctx) {
         participants: [#{ kind: "organisation", id: house }],
         actions: actions,
         resolution_values: #{
-            house: court_house_name(ctx.world, house),
+            house: ctx.world.court_house_name(house),
             penalty: `${court_influence_penalty()}`,
         },
     }
 }
 
 fn court_was_answered(ctx) {
-    court_demand_answered(ctx.world, ctx.bindings.house, ctx.activated)
+    ctx.world.court_demand_answered(ctx.bindings.house, ctx.activated)
 }
 
 fn court_demand_lapsed(ctx) {
@@ -125,17 +124,15 @@ fn court_lapsed_effects(ctx) {
     [#{ kind: "resources", influence: -court_influence_penalty() }]
 }
 
-fn court_house_name(world, id) {
-    for organisation in world.organisations {
-        if organisation.id == id { return organisation.name; }
-    }
+fn court_house_name(id) {
+    let organisation = this.organisation_by_id.get(`${id}`);
+    if type_of(organisation) == "map" { return organisation.name; }
     "Unknown organisation"
 }
 
-fn first_reign_character_name(world, id) {
-    for character in world.characters {
-        if character.id == id { return character.name; }
-    }
+fn first_reign_character_name(id) {
+    let character = this.character_by_id.get(`${id}`);
+    if type_of(character) == "map" { return character.name; }
     "Unknown character"
 }
 
@@ -161,17 +158,17 @@ fn household_broken_opinion() { -20 }
 fn household_broken_days() { 1800 }
 
 // The one shared deadline, a pure function of campaign facts.
-fn household_deadline(world) {
-    world.start_date + court_days() + household_days()
+fn household_deadline() {
+    this.start_date + court_days() + household_days()
 }
 
 // The demands open the day the court is satisfied or its window closes.
 // Only activation checks this: a live demand never re-tests it, because the
 // accepted work that answered the court eventually completes and leaves the
 // assignment list.
-fn household_demands_open(world, house) {
-    if court_demand_answered(world, house, world.start_date) { return true; }
-    world.date >= world.start_date + court_days()
+fn household_demands_open(house) {
+    if this.court_demand_answered(house, this.start_date) { return true; }
+    this.date >= this.start_date + court_days()
 }
 
 // Who presses a household demand: the named family member while they live
@@ -179,21 +176,20 @@ fn household_demands_open(world, house) {
 // non-head member in stable ID order. Trigger, projection, and outcomes
 // all use this one pure rule, so death and replacement resolve identically
 // everywhere.
-fn household_requester(world, preferred, house) {
+fn household_requester(preferred, house) {
     let head = 0;
-    for organisation in world.organisations {
-        if organisation.id == house {
-            if type_of(organisation.head) == "i64" { head = organisation.head; }
-        }
+    let organisation = this.organisation_by_id.get(`${house}`);
+    if type_of(organisation) == "map" && type_of(organisation.head) == "i64" {
+        head = organisation.head;
     }
-    for character in world.characters {
+    for character in this.characters {
         if type_of(character.key) == "string" && character.key == preferred
                 && character.alive && character.organisation == house
                 && character.id != head {
             return character.id;
         }
     }
-    for character in world.characters {
+    for character in this.characters {
         if character.alive && character.adult && character.organisation == house
                 && character.id != head {
             return character.id;
@@ -214,9 +210,9 @@ fn household_requester(world, preferred, house) {
 
 fn kessarin_order_target() { 850 }
 
-fn kessarin_goal_met(world, house) {
+fn kessarin_goal_met(house) {
     let held = 0;
-    for province in world.provinces {
+    for province in this.provinces {
         if type_of(province.holder) == "i64" && province.holder == house {
             held += 1;
             if province.order < kessarin_order_target() { return false; }
@@ -256,13 +252,13 @@ define_situation(#{
 });
 
 fn kessarin_order_instances(ctx) {
-    let house = first_reign_house(ctx.world);
+    let house = ctx.world.first_reign_house();
     if house == 0 { return []; }
-    if ctx.world.date >= household_deadline(ctx.world) { return []; }
-    if kessarin_goal_met(ctx.world, house) { return []; }
-    let requester = household_requester(ctx.world, "kessarin-harrow", house);
+    if ctx.world.date >= ctx.world.household_deadline() { return []; }
+    if ctx.world.kessarin_goal_met(house) { return []; }
+    let requester = ctx.world.household_requester("kessarin-harrow", house);
     if requester == 0 { return []; }
-    if type_of(ctx.activated) != "i64" && !household_demands_open(ctx.world, house) {
+    if type_of(ctx.activated) != "i64" && !ctx.world.household_demands_open(house) {
         return [];
     }
     [#{ house: house, requester: requester }]
@@ -271,12 +267,11 @@ fn kessarin_order_instances(ctx) {
 fn kessarin_order_projection(ctx) {
     let house = ctx.bindings.house;
     let requester = ctx.bindings.requester;
-    let deadline = household_deadline(ctx.world);
+    let deadline = ctx.world.household_deadline();
     let head = 0;
-    for organisation in ctx.world.organisations {
-        if organisation.id == house {
-            if type_of(organisation.head) == "i64" { head = organisation.head; }
-        }
+    let organisation = ctx.world.organisation_by_id.get(`${house}`);
+    if type_of(organisation) == "map" && type_of(organisation.head) == "i64" {
+        head = organisation.head;
     }
     let stage = "open";
     if type_of(ctx.answer) == "string" {
@@ -339,15 +334,15 @@ fn kessarin_order_projection(ctx) {
         links: links,
         actions: actions,
         resolution_values: #{
-            requester: first_reign_character_name(ctx.world, requester),
-            house: court_house_name(ctx.world, house),
+            requester: ctx.world.first_reign_character_name(requester),
+            house: ctx.world.court_house_name(house),
             target: `${kessarin_order_target()}`,
         },
     }
 }
 
 fn kessarin_goal_reached(ctx) {
-    kessarin_goal_met(ctx.world, ctx.bindings.house)
+    ctx.world.kessarin_goal_met(ctx.bindings.house)
 }
 
 // Before the shared deadline, a lifecycle that ended because its requester
@@ -355,10 +350,10 @@ fn kessarin_goal_reached(ctx) {
 // carries no relationship consequence; the successor's own lifecycle
 // takes over from authoritative state.
 fn kessarin_demand_passed_on(ctx) {
-    if ctx.world.date >= household_deadline(ctx.world) { return false; }
-    let house = first_reign_house(ctx.world);
+    if ctx.world.date >= ctx.world.household_deadline() { return false; }
+    let house = ctx.world.first_reign_house();
     if house == 0 { return true; }
-    household_requester(ctx.world, "kessarin-harrow", house) != ctx.bindings.requester
+    ctx.world.household_requester("kessarin-harrow", house) != ctx.bindings.requester
 }
 
 fn kessarin_was_refused(ctx) {
@@ -405,16 +400,16 @@ fn kessarin_broken_effects(ctx) {
 
 fn aleyn_manpower_target() { 1000 }
 
-fn aleyn_fielded_manpower(world, house) {
+fn aleyn_fielded_manpower(house) {
     let total = 0;
-    for army in world.armies {
+    for army in this.armies {
         if army.owner == house { total += army.manpower; }
     }
     total
 }
 
-fn aleyn_goal_met(world, house) {
-    aleyn_fielded_manpower(world, house) >= aleyn_manpower_target()
+fn aleyn_goal_met(house) {
+    this.aleyn_fielded_manpower(house) >= aleyn_manpower_target()
 }
 
 define_situation(#{
@@ -446,13 +441,13 @@ define_situation(#{
 });
 
 fn aleyn_levies_instances(ctx) {
-    let house = first_reign_house(ctx.world);
+    let house = ctx.world.first_reign_house();
     if house == 0 { return []; }
-    if ctx.world.date >= household_deadline(ctx.world) { return []; }
-    if aleyn_goal_met(ctx.world, house) { return []; }
-    let requester = household_requester(ctx.world, "aleyn-harrow", house);
+    if ctx.world.date >= ctx.world.household_deadline() { return []; }
+    if ctx.world.aleyn_goal_met(house) { return []; }
+    let requester = ctx.world.household_requester("aleyn-harrow", house);
     if requester == 0 { return []; }
-    if type_of(ctx.activated) != "i64" && !household_demands_open(ctx.world, house) {
+    if type_of(ctx.activated) != "i64" && !ctx.world.household_demands_open(house) {
         return [];
     }
     [#{ house: house, requester: requester }]
@@ -461,12 +456,11 @@ fn aleyn_levies_instances(ctx) {
 fn aleyn_levies_projection(ctx) {
     let house = ctx.bindings.house;
     let requester = ctx.bindings.requester;
-    let deadline = household_deadline(ctx.world);
+    let deadline = ctx.world.household_deadline();
     let head = 0;
-    for organisation in ctx.world.organisations {
-        if organisation.id == house {
-            if type_of(organisation.head) == "i64" { head = organisation.head; }
-        }
+    let organisation = ctx.world.organisation_by_id.get(`${house}`);
+    if type_of(organisation) == "map" && type_of(organisation.head) == "i64" {
+        head = organisation.head;
     }
     let stage = "open";
     if type_of(ctx.answer) == "string" {
@@ -528,15 +522,15 @@ fn aleyn_levies_projection(ctx) {
         links: links,
         actions: actions,
         resolution_values: #{
-            requester: first_reign_character_name(ctx.world, requester),
-            house: court_house_name(ctx.world, house),
+            requester: ctx.world.first_reign_character_name(requester),
+            house: ctx.world.court_house_name(house),
             target: `${aleyn_manpower_target()}`,
         },
     }
 }
 
 fn aleyn_goal_reached(ctx) {
-    aleyn_goal_met(ctx.world, ctx.bindings.house)
+    ctx.world.aleyn_goal_met(ctx.bindings.house)
 }
 
 // Before the shared deadline, a lifecycle that ended because its requester
@@ -544,10 +538,10 @@ fn aleyn_goal_reached(ctx) {
 // carries no relationship consequence; the successor's own lifecycle
 // takes over from authoritative state.
 fn aleyn_demand_passed_on(ctx) {
-    if ctx.world.date >= household_deadline(ctx.world) { return false; }
-    let house = first_reign_house(ctx.world);
+    if ctx.world.date >= ctx.world.household_deadline() { return false; }
+    let house = ctx.world.first_reign_house();
     if house == 0 { return true; }
-    household_requester(ctx.world, "aleyn-harrow", house) != ctx.bindings.requester
+    ctx.world.household_requester("aleyn-harrow", house) != ctx.bindings.requester
 }
 
 fn aleyn_was_refused(ctx) {
@@ -602,41 +596,36 @@ fn torvald_opinion_target() { 0 }
 
 // The living head of the house's liege, or 0 when the house has no
 // liege, the liege has no head, or that head is no longer alive.
-fn torvald_liege_head(world, house) {
+fn torvald_liege_head(house) {
     let liege = 0;
-    for organisation in world.organisations {
-        if organisation.id == house {
-            if type_of(organisation.liege) == "i64" { liege = organisation.liege; }
-        }
+    let organisation = this.organisation_by_id.get(`${house}`);
+    if type_of(organisation) == "map" && type_of(organisation.liege) == "i64" {
+        liege = organisation.liege;
     }
     if liege == 0 { return 0; }
     let head = 0;
-    for organisation in world.organisations {
-        if organisation.id == liege {
-            if type_of(organisation.head) == "i64" { head = organisation.head; }
-        }
+    let liege_org = this.organisation_by_id.get(`${liege}`);
+    if type_of(liege_org) == "map" && type_of(liege_org.head) == "i64" {
+        head = liege_org.head;
     }
     if head == 0 { return 0; }
-    for character in world.characters {
-        if character.id == head && character.alive { return head; }
-    }
+    let character = this.character_by_id.get(`${head}`);
+    if type_of(character) == "map" && character.alive { return head; }
     0
 }
 
 // One character's derived net opinion of another, read from the shared
 // world view's authoritative opinion facts.
-fn torvald_opinion(world, from, to) {
-    for opinion in world.opinions {
-        if opinion.from == from && opinion.to == to { return opinion.value; }
-    }
+fn torvald_opinion(from, to) {
+    let value = this.opinion_by_pair.get(`${from}:${to}`);
+    if type_of(value) == "i64" { return value; }
     0
 }
 
-fn torvald_house_head(world, house) {
-    for organisation in world.organisations {
-        if organisation.id == house {
-            if type_of(organisation.head) == "i64" { return organisation.head; }
-        }
+fn torvald_house_head(house) {
+    let organisation = this.organisation_by_id.get(`${house}`);
+    if type_of(organisation) == "map" && type_of(organisation.head) == "i64" {
+        return organisation.head;
     }
     0
 }
@@ -645,18 +634,18 @@ fn torvald_house_head(world, house) {
 // the head of the house's current liege. The achieved outcome and the
 // passed-on rule share this one test, so a liege succession can never
 // pay a relationship tier in the pass that should pass the demand on.
-fn torvald_liege_head_stands(world, house, liege_head) {
-    liege_head != 0 && torvald_liege_head(world, house) == liege_head
+fn torvald_liege_head_stands(house, liege_head) {
+    liege_head != 0 && this.torvald_liege_head(house) == liege_head
 }
 
 // The goal, judged from the bound liege head toward the house's current
 // head. The demand follows the office of head-of-house — Torvald's
 // concern is the house's standing, whoever leads it — while the judging
 // liege head stays the exact bound person.
-fn torvald_goal_met(world, liege_head, house) {
-    let head = torvald_house_head(world, house);
+fn torvald_goal_met(liege_head, house) {
+    let head = this.torvald_house_head(house);
     if head == 0 { return false; }
-    torvald_opinion(world, liege_head, head) >= torvald_opinion_target()
+    this.torvald_opinion(liege_head, head) >= torvald_opinion_target()
 }
 
 define_situation(#{
@@ -692,15 +681,15 @@ define_situation(#{
 });
 
 fn torvald_standing_instances(ctx) {
-    let house = first_reign_house(ctx.world);
+    let house = ctx.world.first_reign_house();
     if house == 0 { return []; }
-    if ctx.world.date >= household_deadline(ctx.world) { return []; }
-    let liege_head = torvald_liege_head(ctx.world, house);
+    if ctx.world.date >= ctx.world.household_deadline() { return []; }
+    let liege_head = ctx.world.torvald_liege_head(house);
     if liege_head == 0 { return []; }
-    if torvald_goal_met(ctx.world, liege_head, house) { return []; }
-    let requester = household_requester(ctx.world, "torvald-harrow", house);
+    if ctx.world.torvald_goal_met(liege_head, house) { return []; }
+    let requester = ctx.world.household_requester("torvald-harrow", house);
     if requester == 0 { return []; }
-    if type_of(ctx.activated) != "i64" && !household_demands_open(ctx.world, house) {
+    if type_of(ctx.activated) != "i64" && !ctx.world.household_demands_open(house) {
         return [];
     }
     [#{ house: house, requester: requester, "liege-head": liege_head }]
@@ -710,22 +699,22 @@ fn torvald_standing_projection(ctx) {
     let house = ctx.bindings.house;
     let requester = ctx.bindings.requester;
     let liege_head = ctx.bindings["liege-head"];
-    let deadline = household_deadline(ctx.world);
-    let head = torvald_house_head(ctx.world, house);
+    let deadline = ctx.world.household_deadline();
+    let head = ctx.world.torvald_house_head(house);
     let stage = "open";
     if type_of(ctx.answer) == "string" {
         if ctx.answer == "promise" { stage = "promised"; }
         if ctx.answer == "refuse" { stage = "refused"; }
     }
     let current = 0;
-    if head != 0 { current = torvald_opinion(ctx.world, liege_head, head); }
+    if head != 0 { current = ctx.world.torvald_opinion(liege_head, head); }
     let links = [];
     let metrics = [
         #{ label_key: "situation.metric.opinion-target", value: torvald_opinion_target() },
         #{ label_key: "situation.metric.days-left", value: deadline - ctx.world.date },
         #{
             label_key: "situation.metric.liege-opinion",
-            value: `${first_reign_character_name(ctx.world, liege_head)} — ${current}`,
+            value: `${ctx.world.first_reign_character_name(liege_head)} — ${current}`,
         },
     ];
     let shortfall = torvald_opinion_target() - current;
@@ -751,10 +740,9 @@ fn torvald_standing_projection(ctx) {
         links.push(#{ kind: "character", id: liege_head });
     }
     let liege = 0;
-    for organisation in ctx.world.organisations {
-        if organisation.id == house {
-            if type_of(organisation.liege) == "i64" { liege = organisation.liege; }
-        }
+    let organisation = ctx.world.organisation_by_id.get(`${house}`);
+    if type_of(organisation) == "map" && type_of(organisation.liege) == "i64" {
+        liege = organisation.liege;
     }
     let actions = [];
     if head > 0 && liege > 0 {
@@ -778,9 +766,9 @@ fn torvald_standing_projection(ctx) {
         links: links,
         actions: actions,
         resolution_values: #{
-            requester: first_reign_character_name(ctx.world, requester),
-            house: court_house_name(ctx.world, house),
-            liege: first_reign_character_name(ctx.world, liege_head),
+            requester: ctx.world.first_reign_character_name(requester),
+            house: ctx.world.court_house_name(house),
+            liege: ctx.world.first_reign_character_name(liege_head),
             target: `${torvald_opinion_target()}`,
         },
     }
@@ -793,8 +781,8 @@ fn torvald_standing_projection(ctx) {
 fn torvald_goal_reached(ctx) {
     let house = ctx.bindings.house;
     let liege_head = ctx.bindings["liege-head"];
-    if !torvald_liege_head_stands(ctx.world, house, liege_head) { return false; }
-    torvald_goal_met(ctx.world, liege_head, house)
+    if !ctx.world.torvald_liege_head_stands(house, liege_head) { return false; }
+    ctx.world.torvald_goal_met(liege_head, house)
 }
 
 // Before the shared deadline, a lifecycle that ended because its
@@ -803,13 +791,13 @@ fn torvald_goal_reached(ctx) {
 // carries no relationship consequence; whatever expectation remains is
 // judged afresh from authoritative state.
 fn torvald_demand_passed_on(ctx) {
-    if ctx.world.date >= household_deadline(ctx.world) { return false; }
-    let house = first_reign_house(ctx.world);
+    if ctx.world.date >= ctx.world.household_deadline() { return false; }
+    let house = ctx.world.first_reign_house();
     if house == 0 { return true; }
-    if !torvald_liege_head_stands(ctx.world, house, ctx.bindings["liege-head"]) {
+    if !ctx.world.torvald_liege_head_stands(house, ctx.bindings["liege-head"]) {
         return true;
     }
-    household_requester(ctx.world, "torvald-harrow", house) != ctx.bindings.requester
+    ctx.world.household_requester("torvald-harrow", house) != ctx.bindings.requester
 }
 
 fn torvald_was_refused(ctx) {
@@ -869,8 +857,8 @@ fn visit_warning_days() { 10 }
 fn visit_slighted_opinion() { -20 }
 fn visit_slighted_days() { 1440 }
 
-fn visit_window_open(world) { world.start_date + visit_opens() }
-fn visit_window_close(world) { world.start_date + visit_closes() }
+fn visit_window_open() { this.start_date + visit_opens() }
+fn visit_window_close() { this.start_date + visit_closes() }
 
 // Whether a hosting assignment was accepted inside the window. Acceptance
 // is what counts, exactly as the court's test counted it, and the closing
@@ -879,14 +867,14 @@ fn visit_window_close(world) { world.start_date + visit_closes() }
 // Every tier's authored duration is at least the window's length, so
 // accepted work is still running whenever this is asked inside the window
 // — the visit can never be hosted twice.
-fn visit_hosted(world, house) {
-    for work in world.assignments {
+fn visit_hosted(house) {
+    for work in this.assignments {
         if work.owner == house
                 && (work.key == "host-visit-restrained"
                     || work.key == "host-visit-proper"
                     || work.key == "host-visit-lavish")
-                && work.started >= visit_window_open(world)
-                && work.started <= visit_window_close(world) {
+                && work.started >= this.visit_window_open()
+                && work.started <= this.visit_window_close() {
             return true;
         }
     }
@@ -899,9 +887,9 @@ fn visit_hosted(world, house) {
 // landless house, or a severed graph all mean the visit cannot happen —
 // the same simulation facts that govern real travel, not a hardcoded
 // assumption of connectivity.
-fn visit_reachable(world, liege_head, house) {
+fn visit_reachable(liege_head, house) {
     let from = 0;
-    for character in world.characters {
+    for character in this.characters {
         if character.id == liege_head {
             if type_of(character.location_kind) == "string"
                     && character.location_kind == "province" {
@@ -911,7 +899,7 @@ fn visit_reachable(world, liege_head, house) {
     }
     if from == 0 { return false; }
     let held = [];
-    for province in world.provinces {
+    for province in this.provinces {
         if type_of(province.holder) == "i64" && province.holder == house {
             held.push(province.id);
         }
@@ -922,7 +910,7 @@ fn visit_reachable(world, liege_head, house) {
     while frontier.len() > 0 {
         let next = [];
         for at in frontier {
-            for leg in world.routes {
+            for leg in this.routes {
                 let to = 0;
                 if leg.a == at { to = leg.b; }
                 if leg.b == at { to = leg.a; }
@@ -975,14 +963,14 @@ define_situation(#{
 // lifecycle of its own.
 fn casimir_visit_instances(ctx) {
     let world = ctx.world;
-    let house = first_reign_house(world);
+    let house = world.first_reign_house();
     if house == 0 { return []; }
-    if world.date < visit_window_open(world) { return []; }
-    if world.date >= visit_window_close(world) { return []; }
-    if visit_hosted(world, house) { return []; }
-    let liege_head = torvald_liege_head(world, house);
+    if world.date < world.visit_window_open() { return []; }
+    if world.date >= world.visit_window_close() { return []; }
+    if world.visit_hosted(house) { return []; }
+    let liege_head = world.torvald_liege_head(house);
     if liege_head == 0 { return []; }
-    if !visit_reachable(world, liege_head, house) { return []; }
+    if !world.visit_reachable(liege_head, house) { return []; }
     [#{ house: house, "liege-head": liege_head }]
 }
 
@@ -990,10 +978,10 @@ fn casimir_visit_projection(ctx) {
     let world = ctx.world;
     let house = ctx.bindings.house;
     let liege_head = ctx.bindings["liege-head"];
-    let close = visit_window_close(world);
-    let head = torvald_house_head(world, house);
+    let close = world.visit_window_close();
+    let head = world.torvald_house_head(house);
     let current = 0;
-    if head != 0 { current = torvald_opinion(world, liege_head, head); }
+    if head != 0 { current = world.torvald_opinion(liege_head, head); }
     #{
         stage: "awaiting",
         deadline: close,
@@ -1002,7 +990,7 @@ fn casimir_visit_projection(ctx) {
             #{ label_key: "situation.metric.days-left", value: close - world.date },
             #{
                 label_key: "situation.metric.liege-opinion",
-                value: `${first_reign_character_name(world, liege_head)} — ${current}`,
+                value: `${world.first_reign_character_name(liege_head)} — ${current}`,
             },
         ],
         participants: [
@@ -1018,8 +1006,8 @@ fn casimir_visit_projection(ctx) {
             #{ id: "host-lavish" },
         ],
         resolution_values: #{
-            house: court_house_name(world, house),
-            liege: first_reign_character_name(world, liege_head),
+            house: world.court_house_name(house),
+            liege: world.first_reign_character_name(liege_head),
         },
     }
 }
@@ -1031,27 +1019,27 @@ fn casimir_visit_projection(ctx) {
 // it on, never pay hospitality's dues to a man who no longer exists.
 fn casimir_visit_was_hosted(ctx) {
     let house = ctx.bindings.house;
-    if !torvald_liege_head_stands(ctx.world, house, ctx.bindings["liege-head"]) {
+    if !ctx.world.torvald_liege_head_stands(house, ctx.bindings["liege-head"]) {
         return false;
     }
-    visit_hosted(ctx.world, house)
+    ctx.world.visit_hosted(house)
 }
 
 fn casimir_visit_was_slighted(ctx) {
     let house = ctx.bindings.house;
     let liege_head = ctx.bindings["liege-head"];
-    if !torvald_liege_head_stands(ctx.world, house, liege_head) { return false; }
-    if !visit_reachable(ctx.world, liege_head, house) { return false; }
-    ctx.world.date >= visit_window_close(ctx.world)
+    if !ctx.world.torvald_liege_head_stands(house, liege_head) { return false; }
+    if !ctx.world.visit_reachable(liege_head, house) { return false; }
+    ctx.world.date >= ctx.world.visit_window_close()
 }
 
 fn casimir_visit_passed_on(ctx) {
-    let house = first_reign_house(ctx.world);
+    let house = ctx.world.first_reign_house();
     if house == 0 { return true; }
-    if !torvald_liege_head_stands(ctx.world, house, ctx.bindings["liege-head"]) {
+    if !ctx.world.torvald_liege_head_stands(house, ctx.bindings["liege-head"]) {
         return true;
     }
-    !visit_reachable(ctx.world, ctx.bindings["liege-head"], house)
+    !ctx.world.visit_reachable(ctx.bindings["liege-head"], house)
 }
 
 // The stated cost of an unanswered window: the bound liege head — the
@@ -1363,8 +1351,8 @@ fn the_hand_traced(ctx) {
 
 // Whether this holder has proved this culprit. Discovery is per knower:
 // another house's investigation teaches this card nothing.
-fn unquiet_hand_known(world, house, culprit) {
-    for record in world.exposures {
+fn unquiet_hand_known(house, culprit) {
+    for record in this.exposures {
         if record.culprit == culprit && record.knower == house { return true; }
     }
     false
@@ -1372,8 +1360,8 @@ fn unquiet_hand_known(world, house, culprit) {
 
 // The live covert operation behind one bound instance, or an empty map
 // once it has ended. The projection and the trigger share this read.
-fn unquiet_live_work(world, province, culprit) {
-    for work in world.assignments {
+fn unquiet_live_work(province, culprit) {
+    for work in this.assignments {
         if work.covert && work.target.kind == "province"
                 && work.target.a == province && work.owner == culprit {
             return work;
@@ -1389,11 +1377,8 @@ fn unquiet_holdings_instances(ctx) {
         if work.target.kind != "province" { continue; }
         let province = work.target.a;
         let holder = 0;
-        for p in ctx.world.provinces {
-            if p.id == province {
-                if type_of(p.holder) == "i64" { holder = p.holder; }
-            }
-        }
+        let p = ctx.world.province_by_id.get(`${province}`);
+        if type_of(p) == "map" && type_of(p.holder) == "i64" { holder = p.holder; }
         if holder == 0 { continue; }
         // A house's own covert work on its own ground raises no alarm.
         if holder == work.owner { continue; }
@@ -1408,33 +1393,30 @@ fn unquiet_holdings_projection(ctx) {
     let province = ctx.bindings.province;
     let name = "";
     let order = 0;
-    for p in world.provinces {
-        if p.id == province { name = p.name; order = p.order; }
-    }
+    let p = world.province_by_id.get(`${province}`);
+    if type_of(p) == "map" { name = p.name; order = p.order; }
     let head = 0;
-    for organisation in world.organisations {
-        if organisation.id == house {
-            if type_of(organisation.head) == "i64" { head = organisation.head; }
-        }
+    let organisation = world.organisation_by_id.get(`${house}`);
+    if type_of(organisation) == "map" && type_of(organisation.head) == "i64" {
+        head = organisation.head;
     }
     // The live operation, while it runs: its completion day is the card's
     // deadline and its exact live Order shift is the resistance the roll
     // will use. Once the work has ended (this same projection freezes the
     // resolution) both rows simply drop away.
-    let work = unquiet_live_work(world, province, ctx.bindings.actor);
+    let work = world.unquiet_live_work(province, ctx.bindings.actor);
     let live = work.len() > 0;
     // What this holder has proved. Before it is proved this reads false
     // for everyone but the culprit itself, and the whole disclosure block
     // below is simply absent from the card.
-    let known = unquiet_hand_known(world, house, ctx.bindings.actor);
+    let known = world.unquiet_hand_known(house, ctx.bindings.actor);
     let culprit_name = "";
     let culprit_head = 0;
     if known {
-        for organisation in world.organisations {
-            if organisation.id == ctx.bindings.actor {
-                culprit_name = organisation.name;
-                if type_of(organisation.head) == "i64" { culprit_head = organisation.head; }
-            }
+        let culprit = world.organisation_by_id.get(`${ctx.bindings.actor}`);
+        if type_of(culprit) == "map" {
+            culprit_name = culprit.name;
+            if type_of(culprit.head) == "i64" { culprit_head = culprit.head; }
         }
     }
     let metrics = [];
@@ -1508,11 +1490,8 @@ fn unquiet_holdings_projection(ctx) {
 // further reading, however the operation went.
 fn unquiet_passed_on(ctx) {
     let holder = 0;
-    for p in ctx.world.provinces {
-        if p.id == ctx.bindings.province {
-            if type_of(p.holder) == "i64" { holder = p.holder; }
-        }
-    }
+    let p = ctx.world.province_by_id.get(`${ctx.bindings.province}`);
+    if type_of(p) == "map" && type_of(p.holder) == "i64" { holder = p.holder; }
     holder != ctx.bindings.house
 }
 
@@ -1523,9 +1502,8 @@ fn unquiet_passed_on(ctx) {
 // level. A province kept strong absorbs even a landed blow.
 fn unquiet_struck(ctx) {
     let order = 0;
-    for p in ctx.world.provinces {
-        if p.id == ctx.bindings.province { order = p.order; }
-    }
+    let p = ctx.world.province_by_id.get(`${ctx.bindings.province}`);
+    if type_of(p) == "map" { order = p.order; }
     order < unquiet_struck_line()
 }
 
@@ -1534,7 +1512,7 @@ fn unquiet_struck(ctx) {
 // about what is and is not known — the reading of the ground is unchanged
 // either way, because proof is knowledge, never protection.
 fn unquiet_traced(ctx) {
-    unquiet_hand_known(ctx.world, ctx.bindings.house, ctx.bindings.actor)
+    ctx.world.unquiet_hand_known(ctx.bindings.house, ctx.bindings.actor)
 }
 fn unquiet_struck_traced(ctx) {
     unquiet_struck(ctx) && unquiet_traced(ctx)
@@ -1620,34 +1598,29 @@ fn gifts_spurned(ctx) {
         amount: -10, days: 1440, reason: "gift-spurned" }]
 }
 
-fn cold_border_head(world, org) {
-    for organisation in world.organisations {
-        if organisation.id == org {
-            if type_of(organisation.head) == "i64" { return organisation.head; }
-        }
+fn cold_border_head(org) {
+    let organisation = this.organisation_by_id.get(`${org}`);
+    if type_of(organisation) == "map" && type_of(organisation.head) == "i64" {
+        return organisation.head;
     }
     0
 }
 
-fn cold_border_holder(world, province) {
-    for p in world.provinces {
-        if p.id == province {
-            if type_of(p.holder) == "i64" { return p.holder; }
-        }
-    }
+fn cold_border_holder(province) {
+    let p = this.province_by_id.get(`${province}`);
+    if type_of(p) == "map" && type_of(p.holder) == "i64" { return p.holder; }
     0
 }
 
 // Whether `house` answers, directly or through its lieges, to `liege`.
-fn cold_border_answers_to(world, house, liege) {
+fn cold_border_answers_to(house, liege) {
     let current = house;
     let steps = 0;
     while steps < 16 {
         let next = 0;
-        for organisation in world.organisations {
-            if organisation.id == current {
-                if type_of(organisation.liege) == "i64" { next = organisation.liege; }
-            }
+        let organisation = this.organisation_by_id.get(`${current}`);
+        if type_of(organisation) == "map" && type_of(organisation.liege) == "i64" {
+            next = organisation.liege;
         }
         if next == 0 { return false; }
         if next == liege { return true; }
@@ -1661,20 +1634,20 @@ fn cold_border_answers_to(world, house, liege) {
 // holds a province sharing a surface route with a province the house
 // holds — the same neighbourhood the hostile-border selector walks —
 // lowest stable ID first.
-fn cold_border_neighbours(world, house) {
+fn cold_border_neighbours(house) {
     let found = [];
-    for route in world.routes {
+    for route in this.routes {
         if route.kind != "surface" { continue; }
-        let a = cold_border_holder(world, route.a);
-        let b = cold_border_holder(world, route.b);
+        let a = this.cold_border_holder(route.a);
+        let b = this.cold_border_holder(route.b);
         if a == 0 || b == 0 || a == b { continue; }
         let other = 0;
         if a == house { other = b; }
         if b == house { other = a; }
         if other == 0 { continue; }
         if found.contains(other) { continue; }
-        if cold_border_answers_to(world, house, other) { continue; }
-        if cold_border_answers_to(world, other, house) { continue; }
+        if this.cold_border_answers_to(house, other) { continue; }
+        if this.cold_border_answers_to(other, house) { continue; }
         found.push(other);
     }
     found.sort();
@@ -1683,18 +1656,17 @@ fn cold_border_neighbours(world, house) {
 
 // The live derived opinion of one character about another, from the
 // shared world view.
-fn cold_border_regard(world, from, to) {
-    for opinion in world.opinions {
-        if opinion.from == from && opinion.to == to { return opinion.value; }
-    }
+fn cold_border_regard(from, to) {
+    let value = this.opinion_by_pair.get(`${from}:${to}`);
+    if type_of(value) == "i64" { return value; }
     0
 }
 
 // Open grievances `debtor` owes `creditor`: the grounds a wronged house
 // keeps whatever the regard between the heads.
-fn cold_border_grievances(world, debtor, creditor) {
+fn cold_border_grievances(debtor, creditor) {
     let count = 0;
-    for entry in world.obligations {
+    for entry in this.obligations {
         if entry.kind == "grievance" && entry.status == "open"
                 && entry.debtor == debtor && entry.creditor == creditor {
             count += 1;
@@ -1705,8 +1677,8 @@ fn cold_border_grievances(world, debtor, creditor) {
 
 // The active formal war placing the two houses on opposing sides, or an
 // empty map when there is none.
-fn cold_border_war(world, house, neighbour) {
-    for war in world.wars {
+fn cold_border_war(house, neighbour) {
+    for war in this.wars {
         if !war.active { continue; }
         let first = war.sides[0].members;
         let second = war.sides[1].members;
@@ -1721,20 +1693,20 @@ fn cold_border_war(world, house, neighbour) {
 // A neighbour is cold when its head regards the house's head at or below
 // the floor, or when the house owes it an open grievance — the two
 // authored grounds on which hostile planning may begin.
-fn cold_border_is_cold(world, house, neighbour) {
-    let own = cold_border_head(world, house);
-    let theirs = cold_border_head(world, neighbour);
+fn cold_border_is_cold(house, neighbour) {
+    let own = this.cold_border_head(house);
+    let theirs = this.cold_border_head(neighbour);
     if own == 0 || theirs == 0 { return false; }
-    if cold_border_regard(world, theirs, own) <= shadow_hostility_floor() { return true; }
-    cold_border_grievances(world, house, neighbour) > 0
+    if this.cold_border_regard(theirs, own) <= shadow_hostility_floor() { return true; }
+    this.cold_border_grievances(house, neighbour) > 0
 }
 
 fn cold_border_instances(ctx) {
-    let house = first_reign_house(ctx.world);
+    let house = ctx.world.first_reign_house();
     if house == 0 { return []; }
     let found = [];
-    for neighbour in cold_border_neighbours(ctx.world, house) {
-        if cold_border_is_cold(ctx.world, house, neighbour) {
+    for neighbour in ctx.world.cold_border_neighbours(house) {
+        if ctx.world.cold_border_is_cold(house, neighbour) {
             found.push(#{ house: house, neighbour: neighbour });
         }
     }
@@ -1745,12 +1717,12 @@ fn cold_border_projection(ctx) {
     let world = ctx.world;
     let house = ctx.bindings.house;
     let neighbour = ctx.bindings.neighbour;
-    let own = cold_border_head(world, house);
-    let theirs = cold_border_head(world, neighbour);
+    let own = world.cold_border_head(house);
+    let theirs = world.cold_border_head(neighbour);
     let regard = 0;
-    if own != 0 && theirs != 0 { regard = cold_border_regard(world, theirs, own); }
-    let grievances = cold_border_grievances(world, house, neighbour);
-    let war = cold_border_war(world, house, neighbour);
+    if own != 0 && theirs != 0 { regard = world.cold_border_regard(theirs, own); }
+    let grievances = world.cold_border_grievances(house, neighbour);
+    let war = world.cold_border_war(house, neighbour);
     let stage = "cold";
     if grievances > 0 { stage = "aggrieved"; }
     let metrics = [
@@ -1787,8 +1759,8 @@ fn cold_border_projection(ctx) {
         links: links,
         actions: actions,
         resolution_values: #{
-            house: court_house_name(world, house),
-            neighbour: court_house_name(world, neighbour),
+            house: world.court_house_name(house),
+            neighbour: world.court_house_name(neighbour),
         },
     }
 }
@@ -1797,11 +1769,11 @@ fn cold_border_projection(ctx) {
 // or the houses no longer neighbours outside each other's chain of
 // command. Judged with the old bindings against the live world.
 fn cold_border_passed_on(ctx) {
-    let house = first_reign_house(ctx.world);
+    let house = ctx.world.first_reign_house();
     if house != ctx.bindings.house { return true; }
-    if cold_border_head(ctx.world, house) == 0 { return true; }
-    if cold_border_head(ctx.world, ctx.bindings.neighbour) == 0 { return true; }
-    !cold_border_neighbours(ctx.world, house).contains(ctx.bindings.neighbour)
+    if ctx.world.cold_border_head(house) == 0 { return true; }
+    if ctx.world.cold_border_head(ctx.bindings.neighbour) == 0 { return true; }
+    !ctx.world.cold_border_neighbours(house).contains(ctx.bindings.neighbour)
 }
 
 // Reconciled is the full line — the same three facts the ambition's
@@ -1810,12 +1782,12 @@ fn cold_border_passed_on(ctx) {
 // houses. A war already declared keeps every design its grounds until
 // peace is made, so a card closing under one is merely eased.
 fn cold_border_reconciled(ctx) {
-    let own = cold_border_head(ctx.world, ctx.bindings.house);
-    let theirs = cold_border_head(ctx.world, ctx.bindings.neighbour);
+    let own = ctx.world.cold_border_head(ctx.bindings.house);
+    let theirs = ctx.world.cold_border_head(ctx.bindings.neighbour);
     if own == 0 || theirs == 0 { return false; }
-    cold_border_regard(ctx.world, theirs, own) >= shadow_reconciliation_line()
-        && cold_border_grievances(ctx.world, ctx.bindings.house, ctx.bindings.neighbour) == 0
-        && cold_border_war(ctx.world, ctx.bindings.house, ctx.bindings.neighbour).len() == 0
+    ctx.world.cold_border_regard(theirs, own) >= shadow_reconciliation_line()
+        && ctx.world.cold_border_grievances(ctx.bindings.house, ctx.bindings.neighbour) == 0
+        && ctx.world.cold_border_war(ctx.bindings.house, ctx.bindings.neighbour).len() == 0
 }
 
 define_situation(#{
@@ -2136,12 +2108,12 @@ define_plan(#{
 
 // The exposed holding: the lowest-ID province `house` holds that shares a
 // surface route with one `neighbour` holds, or 0 when none does.
-fn border_war_exposed_holding(world, house, neighbour) {
+fn border_war_exposed_holding(house, neighbour) {
     let found = 0;
-    for route in world.routes {
+    for route in this.routes {
         if route.kind != "surface" { continue; }
-        let a = cold_border_holder(world, route.a);
-        let b = cold_border_holder(world, route.b);
+        let a = this.cold_border_holder(route.a);
+        let b = this.cold_border_holder(route.b);
         let exposed = 0;
         if a == house && b == neighbour { exposed = route.a; }
         if b == house && a == neighbour { exposed = route.b; }
@@ -2159,16 +2131,16 @@ fn border_war_enemies(war, house) {
 }
 
 fn border_war_instances(ctx) {
-    let house = first_reign_house(ctx.world);
+    let house = ctx.world.first_reign_house();
     if house == 0 { return []; }
     let found = [];
     for war in ctx.world.wars {
         if !war.active { continue; }
         let enemies = border_war_enemies(war, house);
         if enemies.len() == 0 { continue; }
-        for neighbour in cold_border_neighbours(ctx.world, house) {
+        for neighbour in ctx.world.cold_border_neighbours(house) {
             if !enemies.contains(neighbour) { continue; }
-            let objective = border_war_exposed_holding(ctx.world, house, neighbour);
+            let objective = ctx.world.border_war_exposed_holding(house, neighbour);
             if objective == 0 { continue; }
             found.push(#{
                 house: house, neighbour: neighbour, war: war.id, objective: objective,
@@ -2191,10 +2163,9 @@ fn border_war_projection(ctx) {
     if war.len() > 0 { enemies = border_war_enemies(war, house); }
     let name = "";
     let order = 0;
-    for p in world.provinces {
-        if p.id == objective { name = p.name; order = p.order; }
-    }
-    let head = cold_border_head(world, house);
+    let p = world.province_by_id.get(`${objective}`);
+    if type_of(p) == "map" { name = p.name; order = p.order; }
+    let head = world.cold_border_head(house);
     // The soldiers that would actually fight for the holding: the largest
     // own stack standing inside it. Everything the house fields elsewhere
     // is shown beside it so the difference is legible.
@@ -2272,8 +2243,8 @@ fn border_war_projection(ctx) {
         links: links,
         actions: actions,
         resolution_values: #{
-            house: court_house_name(world, house),
-            neighbour: court_house_name(world, neighbour),
+            house: world.court_house_name(house),
+            neighbour: world.court_house_name(neighbour),
             holding: name,
         },
     }
@@ -2282,17 +2253,16 @@ fn border_war_projection(ctx) {
 // The matter has passed to other hands: the house is no longer the
 // protagonist, or the neighbour no longer stands.
 fn border_war_passed_on(ctx) {
-    if first_reign_house(ctx.world) != ctx.bindings.house { return true; }
-    for organisation in ctx.world.organisations {
-        if organisation.id == ctx.bindings.neighbour { return organisation.defunct; }
-    }
+    if ctx.world.first_reign_house() != ctx.bindings.house { return true; }
+    let organisation = ctx.world.organisation_by_id.get(`${ctx.bindings.neighbour}`);
+    if type_of(organisation) == "map" { return organisation.defunct; }
     true
 }
 
 // Lost is a pure live reading, and it says what its copy says: the
 // holding is the neighbour's now.
 fn border_war_lost(ctx) {
-    cold_border_holder(ctx.world, ctx.bindings.objective) == ctx.bindings.neighbour
+    ctx.world.cold_border_holder(ctx.bindings.objective) == ctx.bindings.neighbour
 }
 
 // The holding stopped being the house's without the neighbour taking it:
@@ -2303,7 +2273,7 @@ fn border_war_lost(ctx) {
 // genuine loss, but not this neighbour's conquest. The copy therefore
 // names no cause: it must stay true of every case this reading admits.
 fn border_war_ungoverned(ctx) {
-    cold_border_holder(ctx.world, ctx.bindings.objective) != ctx.bindings.house
+    ctx.world.cold_border_holder(ctx.bindings.objective) != ctx.bindings.house
 }
 
 fn border_war_peace(ctx) {

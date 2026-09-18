@@ -3279,3 +3279,81 @@ entities:
         - headless-simulation-host
         - shared-native-and-web-delivery
         - deterministic-seed-and-command-replay
+
+  - decision: world-view-records-are-keyed-beside-their-arrays
+    core:
+      status: accepted
+      confidence: confirmed
+      title: World-View Records Are Keyed by Id Beside Their Arrays
+      summary: >-
+        The shared semantic world view publishes its province, organisation,
+        and character records a second time, keyed by the id rendered as
+        text — province_by_id, organisation_by_id, character_by_id — and
+        its derived opinions a second time keyed by the ordered pair
+        rendered as "from:to" — opinion_by_pair, holding the value alone.
+        The keyed values are the very record maps the ordered arrays hold,
+        so whichever shape a script reads gives the same fields and values,
+        and the arrays remain published for every helper that genuinely
+        filters a set. Authored helpers that answer "which record has this
+        id" or "what does this character think of that one" read the keyed
+        map with the same fallback they always had — 0 for an unknown
+        province, a unit holder, or an unknown pair; "Unknown organisation"
+        and "Unknown character" for a missing name — so a rewrite from scan
+        to lookup cannot change a card's behaviour; a missing key reads as
+        the unit value under the sandbox's default map semantics, which is
+        the shape the existing unit-guarded fallbacks were written against.
+        The keyed shapes are stable to author against. Every listed id-scan
+        in the core Situations and the First Reign scenario now reads a
+        keyed map; first_reign_house (a key scan over a handful of
+        entries), visit_reachable (an already-windowed reachability
+        search), and every loop that filters a set are deliberately left
+        as scans. The acceptance final hash moved with this change because
+        the content bytes changed; the probe's six content-hash-cleared
+        campaign-state hashes were identical before and after, which is the
+        proof that behaviour did not.
+      rationale:
+        - "[ai] Ten campaign years into the First Reign scenario a day cost 695 ms on a 20-core machine in the development profile, and 757 ms of a 772 ms per-system sum was Situation evaluation. Inside it, roughly twenty authored helpers repeated one shape — scan an array for one id — so the cost grew with every card the scenario gained, and the opinion scans walked all 6,972 derived pairs for one answer."
+        - "[ai] The keyed maps alone did not deliver the expected order-of-magnitude: the day fell only to about 527 ms. Profiling every script call showed why — each helper call was cloning the whole world view, which the next decision fixes — but the lookups are still the right shape, because once the clone was gone they are what keeps a helper's cost independent of how many provinces, houses, or characters the world holds."
+        - "[ai] No separate holders map: the province record already carries its holder, and one shape serving every field means a helper that later needs the name or the Order too reads the same lookup rather than a second one."
+      references:
+        - situations-project-live-facts-into-authored-context
+        - situations-are-authored-shells-over-simulation-facts
+        - scripted-content-with-ci-validation
+        - deterministic-seed-and-command-replay
+
+  - decision: authored-helpers-bind-the-world-view-as-this
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Authored Helpers Bind the World View as `this`
+      summary: >-
+        An authored helper that reads the world view is written as a
+        method on it — `fn cold_border_holder(province) { ...
+        this.province_by_id ... }` — and called in Rhai's method form,
+        `world.cold_border_holder(province)` or
+        `ctx.world.cold_border_holder(province)`, never with the world as
+        an ordinary first argument. Rhai passes ordinary arguments by
+        value, deep-cloning the whole world view (some 7,000 opinion
+        records among the rest, about 2 ms) on every helper call; the
+        method receiver is bound by reference and costs nothing. Every
+        world-taking helper in the core Situations and the First Reign
+        scenario follows the form; a helper's body reads `this` where it
+        read `world`, and nothing else about it changed. The per-call
+        context still carries its own copy of the world view, once per
+        authored function the simulation calls: measured at campaign year
+        10, that copy is 2.1 ms of a 49 ms day per call, and the option of
+        inserting one shared handle instead was tried and rejected, because
+        Rhai flattens a shared value back into a deep copy when it is passed
+        as an argument, lets a script write through a shared value into
+        data every other call would then see, and panics inside the
+        interpreter when a script replaces a container that holds one.
+      rationale:
+        - "[ai] This is the change that actually delivered the order of magnitude: with the keyed lookups, the staging, and the fan-out already in place a year-10 day still cost about 527 ms, and per-call profiling put over a second inside each of the cold-border and border-war triggers — hundreds of helper calls, each cloning the world. Rebinding the receiver took the day to 89 ms before the fan-out and 49 ms with it, and the slowest single script call from over a second to about 20 ms."
+        - "[ai] Measured on its own in the sandbox: two hundred helper calls cost 938 ms by value and 9.6 ms through `this`, with identical results. The method form is ordinary Rhai; content authors gain a convention, not a new vocabulary, and the mechanical rewrite left every fallback byte-identical, which the content-hash-cleared state hashes confirm."
+        - "[ai] The shared-handle experiment is recorded so that nobody retries it from the issue text: the failure is not the idea but Rhai's semantics for shared values, and the interpreter panic in particular is a crash path no authored content may be able to reach."
+        - "[ai] The remaining per-call context copy is left as it is: it is paid once per authored function rather than once per helper, its share of the day is mostly hidden by the fan-out, and the only way to remove it would be to shrink the vocabulary the arrays promise."
+      references:
+        - world-view-records-are-keyed-beside-their-arrays
+        - situations-project-live-facts-into-authored-context
+        - rhai-is-the-content-scripting-language
+        - script-host-is-the-fleets
