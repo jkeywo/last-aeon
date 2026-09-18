@@ -259,6 +259,30 @@ pub fn requires_met_by(
             return false;
         }
     }
+    if let Some(need) = req.target_head_holds_title {
+        // The seat, not the house: the target's current head must hold
+        // the authored title in person. A headless target holds nothing.
+        let AssignmentTarget::Org(rival) = target else {
+            return false;
+        };
+        let holds = crate::access::org_head(world, rival)
+            .is_some_and(|head| crate::assignments::holds_title(world, head, need));
+        if !holds {
+            return false;
+        }
+    }
+    if let Some(need) = req.target_head_lacks_title {
+        // The sibling for lost grounds: the seat has passed elsewhere, or
+        // the house has no head to hold it.
+        let AssignmentTarget::Org(rival) = target else {
+            return false;
+        };
+        let holds = crate::access::org_head(world, rival)
+            .is_some_and(|head| crate::assignments::holds_title(world, head, need));
+        if holds {
+            return false;
+        }
+    }
     if let Some(floor) = req.max_target_head_opinion {
         // The authored hostility floor: the authority head's live regard
         // for the target's head, at or below the authored value. A

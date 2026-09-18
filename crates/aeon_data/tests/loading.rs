@@ -3155,3 +3155,92 @@ define_plan(#{
         );
     }
 }
+
+/// The Consulship vocabulary: a goal aimed at the sitting Consul's house
+/// and a campaign gated on the seat itself.
+#[test]
+fn the_consul_house_selector_and_seat_predicates_load() {
+    const SEAT_FIXTURE: &str = r#"
+define_assignment(#{
+    id: "quiet-knife", category: "consequential", duration_days: 30,
+    skill: "intrigue", difficulty: 8, target: "character",
+    ai_available: false, requires: #{ target_house: "other" },
+    results: #{ success: #{ weight: 900 }, failure: #{ weight: 100 } },
+});
+define_plan(#{
+    id: "make-the-seat-vacant",
+    goal: "subvert",
+    target: "organisation",
+    covert: true,
+    max_days: 360,
+    abandon_when: #{ target_head_lacks_title: "consul" },
+    methods: [
+        #{ id: "from-the-shadows",
+           requires: #{ target_head_holds_title: "consul", min_influence: 30 },
+           steps: [ #{ start: "quiet-knife", target: "target-head" } ] },
+    ],
+});
+define_goal(#{
+    id: "unseat",
+    favours: ["subvert"],
+    favour_bonus: 60,
+    target: "organisation",
+    target_selector: #{ kind: "consul-house" },
+    covert: true,
+    trigger: #{ is_vassal: false, min_influence: 30 },
+    set_aside_when: #{ target_head_lacks_title: "consul" },
+    max_days: 720,
+});
+"#;
+    let (set, report) = load_content(
+        &[source("seat.rhai", SEAT_FIXTURE)],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(
+        !report.has_errors(),
+        "unexpected findings: {:?}",
+        report.findings
+    );
+    let set = set.expect("the seat fixture loads");
+    let plan = &set.plans[&aeon_data::ContentKey::new("make-the-seat-vacant").unwrap()];
+    assert_eq!(
+        plan.methods[0].requires.target_head_holds_title,
+        Some(aeon_data::model::TitleNeed::Consul)
+    );
+    assert_eq!(plan.methods[0].requires.min_influence, Some(30));
+    assert_eq!(
+        plan.abandon_when
+            .as_ref()
+            .and_then(|req| req.target_head_lacks_title),
+        Some(aeon_data::model::TitleNeed::Consul)
+    );
+    let goal = &set.goals[&aeon_data::ContentKey::new("unseat").unwrap()];
+    assert_eq!(
+        goal.target_selector,
+        aeon_data::model::GoalTargetSelector::ConsulHouse
+    );
+    assert_eq!(goal.trigger.min_influence, Some(30));
+    assert_eq!(
+        goal.set_aside_when
+            .as_ref()
+            .and_then(|req| req.target_head_lacks_title),
+        Some(aeon_data::model::TitleNeed::Consul)
+    );
+
+    // A title nobody can hold is an authoring mistake, loudly.
+    let (set, report) = load_content(
+        &[source(
+            "bad.rhai",
+            &SEAT_FIXTURE.replace(
+                "target_head_holds_title: \"consul\"",
+                "target_head_holds_title: \"emperor\"",
+            ),
+        )],
+        &aeon_data::StringTable::blank(),
+    );
+    assert!(set.is_none());
+    assert!(report.findings.iter().any(|f| {
+        f.message
+            .contains("target_head_holds_title must be one of consul, paramount, province")
+    }));
+}

@@ -3357,3 +3357,41 @@ entities:
         - situations-project-live-facts-into-authored-context
         - rhai-is-the-content-scripting-language
         - script-host-is-the-fleets
+
+  - decision: the-consulship-can-be-made-vacant-by-authored-ambition
+    core:
+      status: accepted
+      confidence: confirmed
+      title: The Consulship Can Be Made Vacant by Authored Ambition
+      summary: >-
+        A house set on the Consulship can make the vacancy it means to win.
+        The goal target vocabulary gains the consul-house selector: the
+        organisation whose member personally holds the Consulship, nobody
+        while the seat is vacant, and never the house's own. The plan
+        predicate vocabulary gains target_head_holds_title and
+        target_head_lacks_title, judged against the target organisation's
+        current head, so a campaign is gated on the seat itself and an
+        ambition aimed at the seat is set aside the moment it has passed
+        from that house — by the knife or by nature. Goal triggers gain
+        min_influence beside min_wealth and min_legitimacy. On that
+        vocabulary the shipped content authors unseat-the-consul — a
+        covert ambition with priority 10 over the standing route, adoptable
+        by an independent house with legitimacy 55 and influence 30,
+        favouring the deniable subvert pressure — and make-the-vacancy,
+        the covert campaign that answers it with one method: the ordinary
+        assassinate assignment aimed at the target's head, on the same
+        influence and legitimacy the grievance route asks. Nothing else
+        moved: the knife, its risks, its grievance on exposure, the
+        Consul's death opening the contest, and the become-consul ambition
+        that then works toward the seat are exactly what they were.
+      rationale:
+        - "[ai] The gap was not the knife but the aim. Organisation-targeted plans take their target from the pressure that adopts them, and the only standing pressure that carried an organisation was a grievance, so no plan under any Consulship ambition could ever be pointed at the Consul's house. A selector for that house is the smallest true statement of what was missing, and it is data the goal names rather than a rule the scorer learns."
+        - "[ai] A second ambition rather than a target on become-consul keeps the existing behaviour for the houses that had it: become-consul remains adoptable during a vacancy, which is exactly when shoring up standing matters, whereas an ambition aimed at the seat has nothing to want then. The priority order says the rest — a house strong enough to plot does, and the weaker one shores up."
+        - "[ai] Gating the campaign on the seat rather than trusting the ambition's frozen target is what keeps a house from striking at whoever now leads a house that once held the Consulship; the same predicate, inverted, ends the ambition when the seat passes, so a natural death is set aside identically to a successful knife."
+        - "[ai] Riding the subvert pressure rather than adding a fourth deniable intent keeps the scorer untouched: the pressure already exists, is head-only, and is answered by authored plans with their own gates, so the existing covert campaigns and this one compete on requirements the content states."
+        - "[ai] Seed 7 on the shipped scenario shows the arc end to end in one decade — ambition on day 239, knife on day 300, the plotter's own head in the seat by year 10 — and is pinned as the acceptance proof. The probe's content-hash-cleared state hashes and the acceptance replay hash move with this change, legitimately: the campaign now contains an ambition it did not."
+      references:
+        - the-vantar-operation-is-goal-and-plan-driven-not-scripted
+        - consul-vacancy-is-a-contested-appointment
+        - obligations-are-specific-political-facts
+        - scripted-content-with-ci-validation

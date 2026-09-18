@@ -2754,9 +2754,27 @@ fn plan_requires(f: &mut Fields, raw: rhai::Dynamic) -> Option<PlanRequires> {
             "min_branch_manpower",
             "max_branch_manpower",
             "leader_commands_army",
+            "target_head_holds_title",
+            "target_head_lacks_title",
         ],
     );
     let int = |name: &str| map.get(name).and_then(|v| v.as_int().ok());
+    let mut title_need = |name: &str| -> Option<Option<TitleNeed>> {
+        let Some(raw) = map.get(name) else {
+            return Some(None);
+        };
+        match raw.clone().into_string().ok().as_deref() {
+            Some("consul") => Some(Some(TitleNeed::Consul)),
+            Some("paramount") => Some(Some(TitleNeed::Paramount)),
+            Some("province") => Some(Some(TitleNeed::Province)),
+            _ => {
+                f.error(format!("{name} must be one of consul, paramount, province"));
+                None
+            }
+        }
+    };
+    let target_head_holds_title = title_need("target_head_holds_title")?;
+    let target_head_lacks_title = title_need("target_head_lacks_title")?;
     let flag = |name: &str| {
         map.get(name)
             .and_then(|v| v.as_bool().ok())
@@ -2806,6 +2824,8 @@ fn plan_requires(f: &mut Fields, raw: rhai::Dynamic) -> Option<PlanRequires> {
         leader_commands_army: map
             .get("leader_commands_army")
             .and_then(|v| v.as_bool().ok()),
+        target_head_holds_title,
+        target_head_lacks_title,
     })
 }
 
@@ -3032,6 +3052,7 @@ fn goal_target_selector(
     };
     match kind.as_str() {
         "weakest-rival" => Some(GoalTargetSelector::WeakestRival),
+        "consul-house" => Some(GoalTargetSelector::ConsulHouse),
         "hostile-border-neighbour" => {
             let Some(max_head_opinion) = map.get("max_head_opinion").and_then(|v| v.as_int().ok())
             else {
@@ -3054,7 +3075,7 @@ fn goal_target_selector(
         other => {
             f.error(format!(
                 "unknown target_selector kind '{other}' \
-                 (expected weakest-rival, hostile-border-neighbour)"
+                 (expected weakest-rival, hostile-border-neighbour, consul-house)"
             ));
             None
         }
@@ -3120,6 +3141,7 @@ fn goal_requires(f: &mut Fields, raw: rhai::Dynamic) -> Option<GoalRequires> {
         &[
             "min_wealth",
             "min_manpower",
+            "min_influence",
             "min_legitimacy",
             "has_army",
             "dominant_claimant",
@@ -3140,6 +3162,7 @@ fn goal_requires(f: &mut Fields, raw: rhai::Dynamic) -> Option<GoalRequires> {
     Some(GoalRequires {
         min_wealth: int("min_wealth"),
         min_manpower: int("min_manpower"),
+        min_influence: int("min_influence"),
         min_legitimacy: int("min_legitimacy").map(|v| v as i32),
         has_army: flag("has_army"),
         dominant_claimant: flag("dominant_claimant").unwrap_or(false),

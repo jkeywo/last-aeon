@@ -184,6 +184,31 @@ define_plan(#{
     ],
 });
 
+// Making the vacancy: the campaign behind the unseat-the-consul
+// ambition. Its one method is gated on the seat itself — the target's
+// head must hold the Consulship in person — so a target house whose seat
+// has already passed elsewhere is never struck for what it once held,
+// and on the same influence and legitimacy the grievance route asks of
+// a house before it reaches for the knife.
+define_plan(#{
+    id: "make-the-vacancy",
+    goal: "subvert",
+    target: "organisation",
+    covert: true,
+    score_bonus: 40,
+    cooldown_days: 360,
+    max_days: 180,
+    max_step_retries: 1,
+    abandon_when: #{ target_head_lacks_title: "consul" },
+    methods: [
+        #{ id: "from-the-shadows",
+           requires: #{ target_head_holds_title: "consul", min_influence: 30, min_legitimacy: 55 },
+           steps: [
+               #{ id: "remove", start: "assassinate", target: "target-head" },
+           ] },
+    ],
+});
+
 // Rebuilding thin standing, usable on its own or expanded inside
 // another plan.
 define_plan(#{

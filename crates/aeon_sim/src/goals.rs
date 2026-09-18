@@ -210,6 +210,11 @@ fn trigger_met(world: &World, authority: OrgId, req: &GoalRequires) -> bool {
     {
         return false;
     }
+    if let Some(need) = req.min_influence
+        && resources.influence < need
+    {
+        return false;
+    }
     if let Some(need) = req.min_legitimacy
         && crate::economy::effective_legitimacy(world, authority) < need
     {
@@ -303,6 +308,9 @@ fn resolve_target(world: &World, authority: OrgId, def: &GoalDef) -> Option<Assi
                 with_grievance,
             } => hostile_border_neighbour(world, authority, max_head_opinion, with_grievance)
                 .map(AssignmentTarget::Org),
+            GoalTargetSelector::ConsulHouse => {
+                consul_house(world, authority).map(AssignmentTarget::Org)
+            }
         },
         // Province-aimed goals wait on a selector a real goal needs; none
         // does yet, so the vocabulary has not grown one.
@@ -350,6 +358,15 @@ fn hostile_border_neighbour(
                     });
             ill_will || grievance
         })
+}
+
+/// The house whose member personally holds the Consulship, when that is
+/// somebody else's: a vacant seat is nothing to make vacant, and a Consul
+/// of the house's own is nothing to want.
+fn consul_house(world: &World, self_org: OrgId) -> Option<OrgId> {
+    crate::access::consul(world)
+        .and_then(|consul| crate::access::organisation_of(world, consul))
+        .filter(|org| *org != self_org)
 }
 
 /// The weakest rival great house to `self_org`: a dynastic great house,

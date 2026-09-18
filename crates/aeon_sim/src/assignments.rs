@@ -1189,7 +1189,7 @@ fn hostile_force_in(world: &World, owner: OrgId, province: ProvinceId) -> bool {
 }
 
 /// Whether a character holds a title of the required kind.
-fn holds_title(world: &World, character: CharacterId, need: TitleNeed) -> bool {
+pub(crate) fn holds_title(world: &World, character: CharacterId, need: TitleNeed) -> bool {
     let Some(index) = world.get_resource::<crate::politics::PoliticsIndex>() else {
         return false;
     };
