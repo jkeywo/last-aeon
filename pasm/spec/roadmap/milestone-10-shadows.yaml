@@ -8,7 +8,8 @@
 # named target, and the assignments that use it — assassination and
 # abduction against a person, sabotage against a place — with all the
 # risk of being caught that such work should carry. It is the piece that
-# lets a house make the vacancy it means to fill.
+# would let a house make the vacancy it means to fill; the authored route
+# to that today runs through a grievance, not the Consulship ambition.
 
 entities:
   - system: milestone-10-implementation-plan
@@ -94,8 +95,15 @@ entities:
         capture, scandal, and death if it goes wrong, and a house exposed
         in the attempt earns a lasting grievance. Because the pressure it
         answers is authored like any other, an autonomous house can reach
-        for it — and a house set on the Consulship can now make the
-        vacancy it means to win, rather than wait on a natural death.
+        for it: the shipped route is the grievance campaign's
+        from-the-shadows method, which aims the knife at the head of the
+        house that wronged it. The Consulship route — a house set on the
+        Consulship making the vacancy it means to win rather than waiting
+        on a natural death — is not authored. The engine would carry it
+        (a Consul's death opens the contest, and a plan may aim
+        assassinate at its target organisation's head), but no goal
+        target selector or pressure names the sitting Consul's house, so
+        no plan under become-consul can be aimed at it.
       goals:
         - A character can be removed by intrigue, at real risk to the house that tries.
         - Being caught leaves a grievance on the record, so a failed scheme has a political cost that outlives it.
@@ -129,6 +137,18 @@ entities:
           reactive scorer never reaches them, so a house does not murder on
           a whim; a plan or a grand ambition may call for them, and the
           player may order them by hand. Content alone; no engine change.
+      - kind: manual-review
+        reference: assets/content/core/plans.rhai
+        summary: >-
+          The one autonomous route to the knife is answer-a-grievance's
+          from-the-shadows method (target-head, gated on influence and
+          legitimacy). No plan under become-consul reaches assassinate:
+          organisation-targeted plans take their target from the pressure
+          that adopts them, the only standing pressure carrying an
+          organisation is a grievance, and GoalTargetSelector has no
+          variant for the sitting Consul's house. Closing that gap is one
+          selector plus one authored plan, and would be the first engine
+          change of this sub-milestone.
 
   - milestone: m10-sabotage
     core:
