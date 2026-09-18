@@ -12,6 +12,7 @@ use aeon_data::model::{SituationDef, SituationSubjectKind, SituationVisibilityDe
 use aeon_data::{ContentKey, ContentSet};
 use bevy::app::App;
 use bevy::prelude::{Resource, World};
+use bevy::tasks::{ComputeTaskPool, TaskPool};
 use rhai::{Array, Dynamic, Map};
 use serde::{Deserialize, Serialize};
 
@@ -1414,12 +1415,21 @@ fn merge_projections(results: Vec<ProjectionResult>) -> BTreeMap<SituationInstan
         .collect()
 }
 
-/// Runs `stage` over every item and returns the results in item order —
-/// the order the merges consume. Every stage reads the world and the
-/// inputs immutably and draws no random stream, so the results could be
-/// produced in any order; the merges own every ordering decision.
+/// Runs `stage` over every item on the compute task pool and returns the
+/// results in item order — the order the merges consume.
+///
+/// The pool is multi-threaded on native targets and inline on the web, on
+/// this same code. Determinism does not depend on which: no stage draws a
+/// random stream (the sandbox registers none, and every roll lives in the
+/// apply tail), every stage reads the world and the inputs immutably, and
+/// the merges own every ordering decision.
 fn fan_out<I: Sync, T: Send + 'static>(items: &[I], stage: impl Fn(&I) -> T + Sync) -> Vec<T> {
-    items.iter().map(stage).collect()
+    ComputeTaskPool::get_or_init(TaskPool::default).scope(|scope| {
+        for item in items {
+            let stage = &stage;
+            scope.spawn(async move { stage(item) });
+        }
+    })
 }
 
 /// Evaluates every attachment against the fully settled authoritative day.

@@ -3239,3 +3239,43 @@ entities:
         - situation-lifecycle-leaves-dismissible-resolutions
         - situation-instances-have-structural-identity
         - deterministic-seed-and-command-replay
+
+  - decision: situation-stages-evaluate-in-parallel-and-merge-in-stable-order
+    core:
+      status: accepted
+      confidence: confirmed
+      title: Situation Stages Evaluate in Parallel and Merge in Stable Order
+      summary: >-
+        The staged trigger evaluations, and then the resolution and
+        projection evaluations, run under Bevy's compute task pool scope,
+        which returns results in spawn order; the merges consume that order
+        unchanged. The World and the day inputs are shared by reference.
+        The simulation crate enables Bevy's multi-threaded runtime on
+        non-web targets, so the headless host, the test suites, and the
+        acceptance tool fan out natively; the web target keeps the inline
+        pool on identical code. The tick schedules are pinned to the
+        single-threaded executor so that the order between exclusive
+        systems sharing a set stays the deterministic topological order
+        every embedding has always run, whichever runtime the process
+        enables. The invariant that keeps this deterministic, reviewed and
+        stated: no random stream is drawn inside any stage function — the
+        sandbox registers no random package and every roll lives in the
+        apply tail — and error text is content-derived only, so a script
+        error surfaces once with the same message whatever the core count.
+        Measured at campaign year 10 on a 20-core machine in the
+        development profile, with the helper-binding change below already
+        in place so the comparison isolates the fan-out: a day cost 89 ms
+        with the stages run sequentially and 49 ms with them fanned out,
+        and Situation evaluation alone went from 65 ms to 38 ms. The
+        probe's six content-hash-cleared state hashes and the acceptance
+        replay hash are unchanged by the fan-out.
+      rationale:
+        - "[ai] Bevy's scope is the right seam because it already returns results in spawn order and shares the environment by reference; the merges from the staging decision needed no change to consume it, which is the whole argument that staging first and fanning out second was the safe order."
+        - "[ai] Pinning the schedules to the single-threaded executor is a belt-and-braces choice: every simulation system takes the whole World so no executor could overlap them, but enabling the multi-threaded runtime would otherwise swap the executor under the schedules, and the order between unchained exclusive systems in one set is a determinism requirement this repository states rather than measures."
+        - "[ai] Rhai's engine and compiled ASTs are shared immutably under the sync feature the workspace already enables, and each call owns its scope and operation counter, so concurrent calls need no locking and cannot observe each other."
+        - "[ai] The speedup is bounded by the longest single script call, not the core count: a settled day makes only some twenty calls, and the two longest (the cold-border and border-war triggers, which walk the neighbourhood) set the floor."
+      references:
+        - situation-evaluation-is-staged-read-evaluate-merge-apply
+        - headless-simulation-host
+        - shared-native-and-web-delivery
+        - deterministic-seed-and-command-replay
