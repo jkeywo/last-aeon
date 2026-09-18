@@ -3200,3 +3200,42 @@ entities:
         - campaign-time-model
         - headless-authoritative-simulation
         - shared-native-and-web-delivery
+
+  - decision: situation-evaluation-is-staged-read-evaluate-merge-apply
+    core:
+      status: accepted
+      confidence: confirmed
+      title: "Situation Evaluation Is Staged: Read, Evaluate, Merge, Apply"
+      summary: >-
+        One settled day's Situation evaluation gathers a read-only
+        day-inputs value once — the content, the world view, the prior
+        Situation state, the date, and the stable-ordered list of attachments
+        whose definitions exist — then evaluates every item on its own from
+        the read-only World and those inputs, returning plain data: a
+        trigger's discovered keys (empty when windowed out) or its
+        content-derived error; an ended lifecycle's resolution — outcome
+        predicates, the frozen projection, and the selected outcome's
+        effects function with its context — or its error; a live
+        lifecycle's projection error, if any. Ordered merges turn the result
+        vectors into the day's state exactly as the former loops did: the
+        discovered set and the failed-sources map are keyed collections; a
+        failed source preserves every lifecycle it had or stands in with a
+        placeholder; resolutions are numbered from position in the ended
+        list sorted by structural key, skipping failures, so a notice id
+        never depends on which result arrived first; a failed resolution
+        restores its lifecycle and records its error; projection errors are
+        keyed by instance. The apply tail — installing state, activation
+        logs and announcement popups, resolution history lines, outcome
+        effects, and diagnostics — is unchanged, and so is the snapshot
+        format: no serialised shape moved. The merges are pure functions
+        over result vectors and are tested as such, in every input order.
+        The acceptance replay hash is byte-identical to the unstaged code.
+      rationale:
+        - "[ai] The point of the split is that the merge owns every ordering choice. Once each per-item result is plain data and the merge alone decides what it means, the per-item evaluations may be produced in any order — including at once — and parallelism cannot introduce nondeterminism by construction rather than by review."
+        - "[ai] Numbering resolutions in the merge from sorted position reproduces the former increment-then-decrement-on-failure loop exactly, which is why the acceptance replay hash is unchanged across this step; the difference is that the rule is now a sentence and a test rather than a side effect of loop order."
+        - "[ai] The projection stage reads the live set computed before restored lifecycles are added back, which is the same set the former loop skipped through its errors check, so a lifecycle whose resolution failed is projected neither twice nor at all."
+      references:
+        - situation-errors-are-visible-and-deterministic
+        - situation-lifecycle-leaves-dismissible-resolutions
+        - situation-instances-have-structural-identity
+        - deterministic-seed-and-command-replay
