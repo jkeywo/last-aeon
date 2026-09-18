@@ -19,3 +19,7 @@ thiserror = { workspace = true }
 
 [lints]
 workspace = true
+
+[dev-dependencies]
+# System debug names are read by the perf probe's per-system table.
+bevy = { workspace = true, features = ["debug"] }
