@@ -107,6 +107,8 @@ entities:
       paths:
         - assets/content/core/intrigue.rhai
         - assets/text/strings.csv
+        - crates/aeon_sim/src/assignments.rs
+        - crates/aeon_data/src/effect.rs
       tests:
         - crates/aeon_data/tests/loading.rs
       status: declared

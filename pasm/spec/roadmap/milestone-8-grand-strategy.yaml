@@ -265,6 +265,8 @@ entities:
       paths:
         - assets/content/core/goals.rhai
         - assets/text/strings.csv
+        - crates/aeon_sim/src/goals.rs
+        - crates/aeon_sim/src/agency.rs
       tests:
         - crates/aeon_sim/tests/acceptance.rs
       status: declared

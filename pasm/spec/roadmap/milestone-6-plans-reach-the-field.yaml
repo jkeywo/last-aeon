@@ -207,6 +207,9 @@ entities:
       paths:
         - assets/content/core/plans.rhai
         - assets/text/strings.csv
+        - crates/aeon_sim/src/plans.rs
+        - crates/aeon_sim/src/warfare.rs
+        - crates/aeon_sim/src/wars.rs
       tests:
         - crates/aeon_sim/tests/acceptance.rs
       status: declared
