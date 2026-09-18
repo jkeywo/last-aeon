@@ -3176,3 +3176,27 @@ entities:
         - core-explanations-are-owned-focusable-snapshots
         - headless-authoritative-simulation
         - ron-snapshots-and-jsonl-command-log
+
+  - decision: the-client-advances-at-most-one-day-per-frame
+    core:
+      status: accepted
+      confidence: confirmed
+      title: The Client Advances at Most One Campaign Day per Frame
+      summary: >-
+        The client's wall-clock driver advances the authoritative simulation
+        by at most one day per frame. Elapsed time still accumulates into
+        the carry, but the carry is clamped to one day, so a stretch where a
+        day costs more wall time than its share degrades to "as fast as the
+        frame allows" instead of queueing a burst of days that would all
+        land in one later frame. Pausing advances nothing and keeps whatever
+        carry exists, which is at most one day. The observable behaviour is
+        that days per second can never exceed the frame rate. The seam the
+        rendered-state tests drive is the same function, and unit tests pin
+        the three behaviours through it.
+      rationale:
+        - "[ai] Before this, a slow day made the next frame owe several days, and they were all paid inside that one frame: the hitch compounded. A frame that owes at most one day can never be worse than one day late."
+        - "[ai] Clamping the carry rather than only the days advanced is what stops the backlog reappearing: a carry left at three days would drain one per frame for three frames, which is a burst by another name."
+      references:
+        - campaign-time-model
+        - headless-authoritative-simulation
+        - shared-native-and-web-delivery
